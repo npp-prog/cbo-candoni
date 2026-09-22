@@ -2,6 +2,9 @@
   "projects": {
     "default": "cbo-candoni-dev",
     "dev": "cbo-candoni-dev",
-    "prod": "cbo-candoni-prod"
-  }
+    "prod": "cbo-candoni-prod",
+    "development": "cbo-candoni-dev"
+  },
+  "targets": {},
+  "etags": {}
 }
