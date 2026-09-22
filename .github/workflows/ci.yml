@@ -1,0 +1,71 @@
+name: CBO CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend - typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc -b --noEmit
+      - name: Unit tests (accounting invariants)
+        run: npm test
+      - name: Production build
+        run: npm run build
+        env:
+          # Build-time placeholders only. Real values are injected by Netlify
+          # per deploy context; the build must not depend on secrets in CI.
+          VITE_FIREBASE_API_KEY: ci-placeholder
+          VITE_FIREBASE_AUTH_DOMAIN: ci-placeholder
+          VITE_FIREBASE_PROJECT_ID: ci-placeholder
+          VITE_FIREBASE_STORAGE_BUCKET: ci-placeholder
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ci-placeholder
+          VITE_FIREBASE_APP_ID: ci-placeholder
+
+  functions:
+    name: Cloud Functions - typecheck, test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  rules:
+    name: Security rules - invariant checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the rules still enforce what the system depends on
+        # Verifies both files parse and declare rules_version 2, that every
+        # server-only collection still carries a blanket write denial, and
+        # that a posted journal entry is still immutable. Those three are the
+        # foundation the General Ledger's trustworthiness rests on; nothing
+        # else in the build would notice if one were removed.
+        run: node scripts/check-rules.mjs

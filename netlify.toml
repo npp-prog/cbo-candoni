@@ -1,0 +1,62 @@
+# Netlify configuration for CBO - Candoni Books Online
+# Production custom domain: cbo.mgocandoni.com
+#
+# The root domain mgocandoni.com stays on Squarespace and is NOT touched by this
+# project. Only the `cbo` subdomain is pointed at Netlify via a CNAME record.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--no-audit --no-fund"
+
+# --- Single Page Application routing -----------------------------------------
+# React Router owns every path below the root. Without this rule a direct hit on
+# https://cbo.mgocandoni.com/accounting/disbursements returns a Netlify 404
+# instead of the app. Status 200 rewrites (not 301 redirects) so the URL is kept.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# --- Security headers ---------------------------------------------------------
+# HSTS is set here rather than relying on the Netlify default so that an
+# accounting system is never reachable over plaintext HTTP after first contact.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+
+# Hashed build assets are immutable; the HTML shell must never be cached.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# --- Deploy contexts ----------------------------------------------------------
+# main    -> production Firebase project (cbo-candoni-prod) -> cbo.mgocandoni.com
+# develop -> development Firebase project (cbo-candoni-dev) -> staging site
+# Environment variables themselves are set per-context in the Netlify UI so that
+# no Firebase configuration is committed to the repository.
+
+[context.production]
+  command = "npm run build"
+
+[context.develop]
+  command = "npm run build"
+
+[context.deploy-preview]
+  command = "npm run build"

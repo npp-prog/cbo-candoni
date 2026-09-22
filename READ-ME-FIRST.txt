@@ -1,0 +1,168 @@
+CBO - LUMPSUM PAYROLL AND THE RCDisb
+Municipal Government of Candoni
+========================================================================
+
+WHAT THIS IS
+
+This zip REPLACES the two before it. It includes the Collections-and-
+Deposits merge as well, so whichever of the earlier ones you did or did
+not install, this one puts everything in the right state.
+
+
+WHAT CHANGED
+
+1.  The payroll is a LUMPSUM.
+
+    No "Add employee" grid. No GSIS / PhilHealth / Pag-IBIG / Tax / Loans
+    columns. One payroll is one record:
+
+        Office, period, payroll type
+        Gross amount
+        Total deductions          <- one figure
+        Net pay                   <- computed, not typed
+
+    The deductions are split by account on the disbursement voucher that
+    sets the payroll up. By the time the cash is being disbursed, the only
+    figure the entry needs is the net.
+
+2.  The RCDisb liquidates the cash advance.
+
+        Dr  Due to Officers and Employees    20101020
+            Cr  Advances for Payroll         19901020
+
+    For the net paid. That is the whole entry.
+
+3.  No returns anywhere in the payroll or the RCDisb.
+
+    Pay that comes back unclaimed is receipted and deposited like any
+    other money, under Treasury > Collections and Deposits, and reaches
+    the ledger through the RCD. Recording it on the RCDisb as well would
+    be recording it twice.
+
+4.  The payroll no longer posts its own journal entry.
+
+    It used to post one, and the RCDisb posts one too - so the same
+    salaries reached the General Ledger twice. Nothing would have caught
+    it, because both entries balance. That code is gone.
+
+
+HOW TO INSTALL - five minutes
+
+This one needs functions:build. Engine files changed.
+
+1.  Ctrl + C in each Command Prompt window running "npm run dev" or
+    "npm run emulators".
+
+2.  Open this zip by DOUBLE-CLICKING it. Do not use "Extract All".
+
+3.  Select "src", "functions" and "firestore.rules" together (click src,
+    then hold Ctrl and click the other two).
+
+4.  Drag all three into:
+
+        Documents\GitHub\cbo-candoni
+
+    Folder prompt  ->  "Merge"
+    File prompt    ->  "Replace the files in the destination"
+
+    Merge, not "Replace the folder".
+
+5.  Command Prompt, one at a time:
+
+        cd C:\Users\Windows\Documents\GitHub\cbo-candoni
+        npm run functions:build
+
+6.  Two windows again:
+
+        Window 1:   npm run emulators
+        Window 2:   npm run dev
+
+7.  Ctrl + Shift + R in the browser.
+
+
+THE CHAIN, END TO END
+
+    Accounting > Disbursement Voucher
+        The payroll's expense and its deductions are recognised here, by
+        account. The cash advance for the payroll is drawn on its own
+        voucher, paid by check or ADA, reported on an RCI.
+
+    Treasury > Payroll
+        Record the payroll: gross, total deductions, net. Nothing hits the
+        books. A banner shows which payrolls are not yet on an RCDisb.
+
+    Treasury > Payroll > Report of Cash Disbursement (RCDisb)
+        Tick the payrolls disbursed. The list prints gross, deductions and
+        net for each one - the way the office writes it - but only the net
+        goes into the entry. The Treasurer certifies and forwards it.
+
+    Accounting > Treasury Reports
+        The Accountant checks the entry, may change the ACCOUNTS, and
+        posts. The amount is not his to change.
+
+    Treasury > Collections and Deposits
+        Unclaimed pay handed back: an official receipt, a deposit, and it
+        travels with the rest of the day's collections on the RCD.
+
+
+WHAT THE SERVER CHECKS BEFORE IT WILL CERTIFY
+
+Not what the browser sent - the payroll's own record:
+
+    that gross less deductions really does equal the net on the payroll
+    that the gross, the deductions and the net on the report match it
+    that no payroll is already on another RCDisb
+    that the fund matches and nothing is cancelled
+
+A printed report whose columns do not add up is worse than no report, so
+all three figures are checked even though only one of them is posted.
+
+
+ONE BUG FOUND AND KILLED ALONG THE WAY
+
+The old payroll posting credited GSIS to 20201010 and PhilHealth to
+20201020. Those are Due to BIR and Due to GSIS. PhilHealth's own account,
+20201040, was never touched at all.
+
+The entry balanced perfectly. Nothing in the trial balance would ever have
+shown it. It would have surfaced the day someone remitted to PhilHealth
+and found the account empty while Due to BIR was overstated by the same
+amount. That code is gone with postPayroll.
+
+
+FILE BY FILE
+
+  Payroll, rewritten as a lumpsum form.
+      src/pages/treasury/Payroll.tsx
+      src/types/accounting.ts        one totalDeductions figure; the
+                                     per-employee PayrollLine is gone
+
+  The RCDisb.
+      src/pages/treasury/TreasuryReports.tsx
+      src/types/treasury.ts
+      functions/src/treasury/reports.ts
+
+  The double posting, removed.
+      functions/src/accounting/liquidation.ts   postPayroll deleted
+      functions/src/index.ts
+      src/lib/engine.ts
+
+  Accounting's journalizing screen.
+      src/pages/accounting/TreasuryReportJev.tsx
+
+  Security rules.
+      firestore.rules                a payroll already on an RCDisb can no
+                                     longer be edited or deleted from a
+                                     browser
+
+  Collections and Deposits merged into one menu item (from the earlier
+  patch, included here so this zip stands on its own).
+      src/layout/navigation.ts
+      src/App.tsx
+      src/components/ui/SectionTabs.tsx
+      src/pages/Dashboard.tsx
+      src/pages/treasury/sections.ts
+      src/pages/treasury/Collections.tsx
+      src/pages/treasury/Deposits.tsx
+      src/pages/treasury/Checks.tsx
+      src/pages/treasury/Ada.tsx

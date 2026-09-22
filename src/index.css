@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * CBO base styles.
+ *
+ * The visual language is institutional rather than fashionable: a white
+ * working surface, a dark navy rail, one blue accent, and typography that
+ * makes long columns of figures legible. Amounts are set in a monospaced face
+ * with tabular figures so that decimal points align down a column - on a
+ * financial screen that is a correctness feature, not a decorative one.
+ */
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-navy-900 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Figures line up in columns. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  h1, h2, h3, h4 {
+    @apply text-navy-900 font-semibold tracking-tight;
+  }
+
+  /* A visible focus ring everywhere: this system is used with a keyboard all
+     day by people entering figures, and losing the caret costs real time. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-1 ring-offset-white;
+  }
+
+  ::selection {
+    @apply bg-brand-100 text-navy-900;
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.slate.300') transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full border-2 border-solid border-transparent bg-clip-padding;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+}
+
+@layer components {
+  .cbo-card {
+    @apply bg-white border border-slate-200 rounded-lg shadow-card;
+  }
+
+  .cbo-input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-navy-900
+           placeholder:text-slate-400 shadow-sm transition-colors
+           focus:border-brand-500 focus:ring-1 focus:ring-brand-500
+           disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed;
+  }
+
+  .cbo-label {
+    @apply block text-xs font-medium text-slate-600 mb-1.5;
+  }
+
+  .cbo-th {
+    @apply px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wider
+           text-slate-500 bg-slate-50 border-b border-slate-200 whitespace-nowrap;
+  }
+
+  .cbo-td {
+    @apply px-3 py-2.5 text-sm text-navy-800 border-b border-slate-100 align-top;
+  }
+
+  .cbo-amount {
+    @apply font-mono text-sm tabular text-right whitespace-nowrap;
+  }
+}
+
+/**
+ * Print styles.
+ *
+ * Every report in CBO is printed and filed. When it is, the chrome must
+ * disappear and the official header must survive onto every page - a report
+ * whose heading appears only on page one is not acceptable to COA.
+ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm 12mm;
+  }
+
+  .no-print,
+  nav,
+  aside,
+  header.app-header {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    @apply bg-white text-black;
+    font-size: 10pt;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .cbo-card {
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  table {
+    page-break-inside: auto;
+    width: 100%;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  .report-header {
+    display: table-header-group;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+}
+
+.print-only {
+  display: none;
+}

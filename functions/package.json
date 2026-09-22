@@ -1,0 +1,30 @@
+{
+  "name": "cbo-functions",
+  "version": "0.1.0",
+  "description": "CBO accounting engine - server-authoritative financial operations.",
+  "main": "lib/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "npm run sync:rules && tsc",
+    "watch": "tsc --watch",
+    "sync:rules": "node ../scripts/sync-rules.mjs",
+    "check:rules": "node ../scripts/sync-rules.mjs --check",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore,auth,storage",
+    "deploy": "firebase deploy --only functions",
+    "test": "npm run check:rules && vitest run --config vitest.config.ts",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "candoni-books-online": "file:..",
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "private": true
+}

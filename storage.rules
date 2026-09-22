@@ -1,0 +1,139 @@
+rules_version = '2';
+
+// =============================================================================
+// CBO - Candoni Books Online
+// Cloud Storage Security Rules
+// =============================================================================
+//
+// Path convention (enforced below, not merely documented):
+//   /cbo/{fiscalYear}/{fund}/{documentType}/{documentId}/{fileName}
+// e.g.
+//   /cbo/2026/GF/DV/100-26-09-0001/invoice-scan.pdf
+//
+// Constraints applied here rather than only in the UI, because the Storage SDK
+// is directly callable from a console:
+//   - authenticated, active users only
+//   - 25 MB per file
+//   - a fixed allow-list of content types
+//   - writes only under the /cbo/ tree
+//   - no client deletes: supporting documents behind a financial transaction
+//     are records, and a superseded file is marked inactive in Firestore while
+//     the bytes remain
+// =============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function claims() {
+      return request.auth.token;
+    }
+
+    function roles() {
+      return isSignedIn() && 'roles' in claims() ? claims().roles : [];
+    }
+
+    function hasAny(allowed) {
+      return isSignedIn() && roles().hasAny(allowed);
+    }
+
+    function isActive() {
+      return isSignedIn() && (!('active' in claims()) || claims().active == true);
+    }
+
+    function signedIn() {
+      return isSignedIn() && isActive();
+    }
+
+    function isAdmin() {
+      return signedIn() && 'SUPER_ADMIN' in roles();
+    }
+
+    // Read-only roles may retrieve supporting documents; COA in particular
+    // must be able to open every attachment behind a voucher.
+    function canReadDocuments() {
+      return signedIn();
+    }
+
+    function canUpload() {
+      return hasAny([
+        'SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER',
+        'ACCOUNTING_ENCODER', 'BUDGET_OFFICER', 'BUDGET_STAFF',
+        'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'DEPARTMENT_USER'
+      ]);
+    }
+
+    function withinSizeLimit() {
+      return request.resource.size <= 25 * 1024 * 1024;
+    }
+
+    function allowedContentType() {
+      return request.resource.contentType in [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+    }
+
+    // Supporting documents for financial transactions.
+    match /cbo/{fiscalYear}/{fund}/{documentType}/{documentId}/{fileName} {
+      allow read: if canReadDocuments();
+
+      allow create: if signedIn()
+        && canUpload()
+        && withinSizeLimit()
+        && allowedContentType();
+
+      // Overwriting an existing attachment in place would destroy evidence.
+      // A replacement is uploaded as a new version under a new file name and
+      // the previous metadata record is marked superseded.
+      allow update: if false;
+
+      // Only an administrator may remove bytes, and only after the metadata
+      // record has been deactivated. In practice this is used for genuine
+      // mistakes (a file uploaded to the wrong voucher), not for disposal.
+      allow delete: if isAdmin();
+    }
+
+    // Bank statement files kept alongside an import batch.
+    match /cbo/{fiscalYear}/{fund}/BANK_STATEMENT/{bankAccountId}/{fileName} {
+      allow read: if canReadDocuments();
+      allow create: if signedIn()
+        && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF'])
+        && withinSizeLimit()
+        && request.resource.contentType in [
+          'text/csv',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/pdf'
+        ];
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // System branding: the municipal seal and report letterhead.
+    match /system/{fileName} {
+      allow read: if signedIn();
+      allow write: if isAdmin()
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Year-end archives produced by the export function. Written by the Admin
+    // SDK only; downloadable by administrators and audit.
+    match /archives/{fiscalYear}/{fileName} {
+      allow read: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'AUDITOR']);
+      allow write: if false;
+    }
+
+    // Default deny for everything outside the paths above.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

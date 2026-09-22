@@ -1,0 +1,275 @@
+import { Suspense, lazy, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useAuth } from './auth/AuthProvider';
+import { AppShell } from './layout/AppShell';
+import { SignIn, AwaitingAccess } from './pages/SignIn';
+import { Spinner, EmptyState } from './components/ui/Layout';
+import { Button } from './components/ui/Button';
+import type { Action, Module } from './types/system';
+
+/**
+ * Routing.
+ *
+ * Route modules are lazily loaded so the initial bundle stays small - a
+ * municipal office on a shared connection should not download the bank
+ * reconciliation workspace in order to see the dashboard.
+ *
+ * `<Guard>` hides screens a role has no business seeing. It is a usability
+ * control only: the data behind those screens is protected by Firestore
+ * Security Rules, which apply whether or not this component rendered.
+ */
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+
+const Appropriations = lazy(() => import('./pages/budget/Appropriations'));
+const Allotments = lazy(() => import('./pages/budget/Allotments'));
+const Obligations = lazy(() => import('./pages/budget/Obligations'));
+const ObligationDetail = lazy(() => import('./pages/budget/ObligationDetail'));
+const BudgetRegistry = lazy(() => import('./pages/budget/Registry'));
+
+const Disbursements = lazy(() => import('./pages/accounting/Disbursements'));
+const DisbursementDetail = lazy(() => import('./pages/accounting/DisbursementDetail'));
+const Jevs = lazy(() => import('./pages/accounting/Jevs'));
+const JevDetail = lazy(() => import('./pages/accounting/JevDetail'));
+const Checks = lazy(() => import('./pages/treasury/Checks'));
+const AdaPage = lazy(() => import('./pages/treasury/Ada'));
+const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
+const Raaf = lazy(() => import('./pages/treasury/Raaf'));
+const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJev'));
+const Payroll = lazy(() => import('./pages/treasury/Payroll'));
+const CashAdvances = lazy(() => import('./pages/accounting/CashAdvances'));
+const Liquidation = lazy(() => import('./pages/accounting/Liquidation'));
+const IndexOfPayments = lazy(() => import('./pages/accounting/IndexOfPayments'));
+
+const TreasuryCollections = lazy(() => import('./pages/treasury/Collections'));
+const Rcd = lazy(() => import('./pages/treasury/Rcd'));
+const Deposits = lazy(() => import('./pages/treasury/Deposits'));
+const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
+const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
+
+const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
+
+const ReportsHome = lazy(() => import('./pages/reports/ReportsHome'));
+const TrialBalance = lazy(() => import('./pages/reports/TrialBalance'));
+const FinancialStatements = lazy(() => import('./pages/reports/FinancialStatements'));
+const Saob = lazy(() => import('./pages/reports/Saob'));
+const GeneralLedger = lazy(() => import('./pages/reports/GeneralLedger'));
+const SubsidiaryLedger = lazy(() => import('./pages/reports/SubsidiaryLedger'));
+const Journals = lazy(() => import('./pages/reports/Journals'));
+const Registers = lazy(() => import('./pages/reports/Registers'));
+const Aging = lazy(() => import('./pages/reports/Aging'));
+const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
+const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
+
+const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
+const Documents = lazy(() => import('./pages/Documents'));
+const Users = lazy(() => import('./pages/admin/Users'));
+const Periods = lazy(() => import('./pages/admin/Periods'));
+const Numbering = lazy(() => import('./pages/admin/Numbering'));
+const Settings = lazy(() => import('./pages/admin/Settings'));
+const AuditTrail = lazy(() => import('./pages/AuditTrail'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+
+export default function App() {
+  const { user, loading, awaitingAccess } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <Spinner label="Starting CBO" />
+      </div>
+    );
+  }
+
+  if (!user) return <SignIn />;
+  if (awaitingAccess) return <AwaitingAccess />;
+
+  return (
+    <AppShell>
+      <Suspense fallback={<Spinner label="Loading" />}>
+        <Routes>
+          <Route path="/" element={<Guard module="dashboard"><Dashboard /></Guard>} />
+
+          {/* Budget */}
+          <Route path="/budget" element={<Navigate to="/budget/obligations" replace />} />
+          <Route path="/budget/appropriations" element={<Guard module="budget"><Appropriations /></Guard>} />
+          <Route path="/budget/allotments" element={<Guard module="budget"><Allotments /></Guard>} />
+          <Route path="/budget/obligations" element={<Guard module="budget"><Obligations /></Guard>} />
+          <Route path="/budget/obligations/new" element={<Guard module="budget" action="create"><ObligationDetail /></Guard>} />
+          <Route path="/budget/obligations/:id" element={<Guard module="budget"><ObligationDetail /></Guard>} />
+          <Route path="/budget/registry" element={<Guard module="budget"><BudgetRegistry /></Guard>} />
+
+          {/* Accounting */}
+          <Route path="/accounting" element={<Navigate to="/accounting/disbursements" replace />} />
+          <Route path="/accounting/disbursements" element={<Guard module="accounting"><Disbursements /></Guard>} />
+          <Route path="/accounting/disbursements/new" element={<Guard module="accounting" action="create"><DisbursementDetail /></Guard>} />
+          <Route path="/accounting/disbursements/:id" element={<Guard module="accounting"><DisbursementDetail /></Guard>} />
+          {/* "Others": manual, adjusting, closing and prior-period entries - the
+              journal entries that begin in Accounting rather than arriving on a
+              voucher or a treasury report. The /accounting/jev paths still
+              resolve so older links and notifications keep working. */}
+          <Route path="/accounting/others" element={<Guard module="accounting"><Jevs /></Guard>} />
+          <Route path="/accounting/others/new" element={<Guard module="accounting" action="create"><JevDetail /></Guard>} />
+          <Route path="/accounting/others/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
+          <Route path="/accounting/jev" element={<Navigate to="/accounting/others" replace />} />
+          <Route path="/accounting/jev/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
+          {/* Checks and ADA are Treasury's work: the Treasurer draws them against a
+              completed voucher. They live under /treasury and are guarded by the
+              treasury module. The old /accounting paths redirect so that links in
+              older documents, notifications and bookmarks still resolve. */}
+          <Route path="/treasury/checks" element={<Guard module="treasury"><Checks /></Guard>} />
+          <Route path="/treasury/checks/:id" element={<Guard module="treasury"><Checks /></Guard>} />
+          <Route path="/treasury/ada" element={<Guard module="treasury"><AdaPage /></Guard>} />
+          <Route path="/treasury/ada/:id" element={<Guard module="treasury"><AdaPage /></Guard>} />
+          {/* The four treasury reports share one screen, distinguished by the
+              type passed in. They are one document with four contents: the
+              Treasurer certifies a list, Accounting journalizes it. */}
+          <Route
+            path="/treasury/checks/rci"
+            element={<Guard module="treasury"><TreasuryReportRegister reportType="RCI" /></Guard>}
+          />
+          <Route
+            path="/treasury/ada/radai"
+            element={<Guard module="treasury"><TreasuryReportRegister reportType="RADAI" /></Guard>}
+          />
+          <Route
+            path="/treasury/collections/rcd"
+            element={<Guard module="treasury"><TreasuryReportRegister reportType="RCD" /></Guard>}
+          />
+          <Route
+            path="/treasury/accountable-forms/raaf"
+            element={<Guard module="treasury"><Raaf /></Guard>}
+          />
+          <Route
+            path="/treasury/payroll/rcdisb"
+            element={<Guard module="treasury"><TreasuryReportRegister reportType="RCDISB" /></Guard>}
+          />
+          <Route
+            path="/accounting/treasury-reports"
+            element={<Guard module="accounting"><TreasuryReportJev /></Guard>}
+          />
+          <Route
+            path="/accounting/treasury-reports/:id"
+            element={<Guard module="accounting"><TreasuryReportJev /></Guard>}
+          />
+          <Route path="/accounting/checks" element={<Navigate to="/treasury/checks" replace />} />
+          <Route path="/accounting/checks/:id" element={<Navigate to="/treasury/checks" replace />} />
+          <Route path="/accounting/ada" element={<Navigate to="/treasury/ada" replace />} />
+          <Route path="/accounting/ada/:id" element={<Navigate to="/treasury/ada" replace />} />
+          {/* Payroll is Treasury's: the payroll officer disburses it and reports
+              the cash paid on an RCDisb. */}
+          <Route path="/treasury/payroll" element={<Guard module="treasury"><Payroll /></Guard>} />
+          <Route path="/accounting/payroll" element={<Navigate to="/treasury/payroll" replace />} />
+          <Route path="/accounting/cash-advances" element={<Guard module="accounting"><CashAdvances /></Guard>} />
+          <Route path="/accounting/liquidation" element={<Guard module="accounting"><Liquidation /></Guard>} />
+          <Route path="/accounting/index-of-payments" element={<Guard module="accounting"><IndexOfPayments /></Guard>} />
+
+          {/* Treasury */}
+          <Route path="/treasury" element={<Navigate to="/treasury/collections" replace />} />
+          <Route path="/treasury/collections" element={<Guard module="treasury"><TreasuryCollections /></Guard>} />
+          <Route path="/treasury/rcd" element={<Guard module="treasury"><Rcd /></Guard>} />
+          <Route path="/treasury/rcd/:id" element={<Guard module="treasury"><Rcd /></Guard>} />
+          {/* Deposits sit inside the collections section. The old address is
+              kept as a redirect so bookmarks and older notifications still
+              land somewhere sensible. */}
+          <Route path="/treasury/collections/deposits" element={<Guard module="treasury"><Deposits /></Guard>} />
+          <Route path="/treasury/deposits" element={<Navigate to="/treasury/collections/deposits" replace />} />
+          <Route path="/treasury/accountable-forms" element={<Guard module="treasury"><AccountableForms /></Guard>} />
+          <Route path="/treasury/cash-position" element={<Guard module="treasury"><CashPosition /></Guard>} />
+
+          {/* Reconciliation */}
+          <Route path="/reconciliation" element={<Navigate to="/reconciliation/bank" replace />} />
+          <Route path="/reconciliation/bank" element={<Guard module="reconciliation"><BankReconciliation /></Guard>} />
+          <Route path="/reconciliation/bank/:id" element={<Guard module="reconciliation"><BankReconciliation /></Guard>} />
+
+          {/* Reports */}
+          <Route path="/reports" element={<Guard module="reports"><ReportsHome /></Guard>} />
+          <Route path="/reports/trial-balance" element={<Guard module="reports"><TrialBalance /></Guard>} />
+          <Route path="/reports/financial-statements" element={<Guard module="reports"><FinancialStatements /></Guard>} />
+          <Route path="/reports/saob" element={<Guard module="reports"><Saob /></Guard>} />
+          <Route path="/reports/general-ledger" element={<Guard module="reports"><GeneralLedger /></Guard>} />
+          <Route path="/reports/subsidiary-ledger" element={<Guard module="reports"><SubsidiaryLedger /></Guard>} />
+          <Route path="/reports/journals" element={<Guard module="reports"><Journals /></Guard>} />
+          <Route path="/reports/registers" element={<Guard module="reports"><Registers /></Guard>} />
+          <Route path="/reports/aging" element={<Guard module="reports"><Aging /></Guard>} />
+          <Route
+            path="/reports/trial-balance/opening"
+            element={<Guard module="accounting"><OpeningBalances /></Guard>}
+          />
+          <Route path="/reports/treasury" element={<Guard module="reports"><TreasuryReports /></Guard>} />
+
+          {/* Master data */}
+          <Route path="/master-data" element={<Navigate to="/master-data/accounts" replace />} />
+          <Route path="/master-data/:entity" element={<Guard module="masterData"><MasterData /></Guard>} />
+
+          {/* Documents, administration, audit */}
+          <Route path="/documents" element={<Guard module="documents"><Documents /></Guard>} />
+          <Route path="/administration" element={<Navigate to="/administration/users" replace />} />
+          <Route path="/administration/users" element={<Guard module="administration"><Users /></Guard>} />
+          <Route path="/administration/periods" element={<Guard module="administration"><Periods /></Guard>} />
+          <Route path="/administration/numbering" element={<Guard module="administration"><Numbering /></Guard>} />
+          <Route path="/administration/settings" element={<Guard module="administration"><Settings /></Guard>} />
+          <Route path="/audit-trail" element={<Guard module="auditTrail"><AuditTrail /></Guard>} />
+          <Route path="/notifications" element={<Notifications />} />
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </AppShell>
+  );
+}
+
+function Guard({
+  module,
+  action = 'view',
+  children,
+}: {
+  module: Module;
+  action?: Action;
+  children: ReactNode;
+}) {
+  const { can, roles } = useAuth();
+  const location = useLocation();
+
+  if (can(module, action)) return <>{children}</>;
+
+  return (
+    <EmptyState
+      title="You do not have access to this screen"
+      message={
+        `Your role${roles.length > 1 ? 's' : ''} (${roles.join(', ') || 'none'}) ` +
+        `${roles.length > 1 ? 'do' : 'does'} not include permission to ${action} in the ${module} module. ` +
+        'If you need it for your work, ask the Municipal Accounting Office to adjust your access.'
+      }
+      action={
+        <Button onClick={() => window.history.back()} variant="secondary">
+          Go back
+        </Button>
+      }
+      icon={
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+          />
+        </svg>
+      }
+      key={location.pathname}
+    />
+  );
+}
+
+function NotFound() {
+  return (
+    <EmptyState
+      title="Page not found"
+      message="That address does not correspond to a screen in CBO."
+      action={
+        <Button variant="primary" onClick={() => (window.location.href = '/')}>
+          Go to the dashboard
+        </Button>
+      }
+    />
+  );
+}

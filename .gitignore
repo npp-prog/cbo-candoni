@@ -1,0 +1,38 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*-debug.log
+.runtimeconfig.json
+emulator-data/
+
+# NEVER commit Admin SDK credentials. These grant unrestricted access to all
+# municipal financial data and bypass every security rule.
+serviceAccount*.json
+*-firebase-adminsdk-*.json
+
+# Netlify
+.netlify/
+
+# Build output
+functions/lib/
+*.tsbuildinfo
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/

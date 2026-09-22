@@ -1,0 +1,834 @@
+import { useMemo, useState } from 'react';
+import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { StatusBadge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { Field, DateInput, TextInput } from '@/components/ui/Field';
+import { useToast } from '@/components/ui/Toast';
+import { BankAccountPicker, EmployeePicker } from '@/components/pickers';
+import { useFilters } from '@/context/FilterContext';
+import { useAuth } from '@/auth/AuthProvider';
+import {
+  useTreasuryReports,
+  useChecks,
+  useAda,
+  useCollections,
+  usePayrolls,
+} from '@/data/queries';
+import { createDraft, actorStamp } from '@/data/mutations';
+import { COL } from '@/lib/collections';
+import { engine } from '@/lib/engine';
+import { formatPeso } from '@/lib/money';
+import { formatShortDate, todayPh } from '@/lib/dates';
+import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT, type TreasuryReportType } from '@/types/enums';
+import type { TreasuryReport, TreasuryReportLine } from '@/types/treasury';
+import { fundLabel } from '../budget/Obligations';
+import { SECTION_TABS } from './sections';
+
+/**
+ * Treasury reports: RCI, RADAI, RCD and RCDisb.
+ *
+ * One screen for all four, because they are one document with four contents.
+ * The Treasurer's office selects the documents it prepared, the report is
+ * certified, and it goes to Accounting to be journalized. Nothing here writes
+ * to the General Ledger; nothing here can.
+ *
+ * Two things the screen is careful about.
+ *
+ * Only unreported documents are offered for selection. A check already covered
+ * by a certified RCI does not appear in the picker, because reporting a
+ * disbursement twice is how the same payment reaches the ledger twice. The
+ * engine refuses it as well - this is the convenience, not the control.
+ *
+ * The proposed entry is built here and shown before certifying, so the
+ * Treasurer can see what the report will ask Accounting to book. But the
+ * Accountant is the one who may change it: this screen has no way to post.
+ */
+
+interface SourceDoc {
+  id: string;
+  sourceNo: string;
+  date: string;
+  payeeName?: string;
+  particulars?: string;
+  /** What the report reports: the face amount, or a payroll's net. */
+  amount: number;
+  /** RCDisb only - the payroll figures behind the net, shown but not posted. */
+  gross?: number;
+  deductions?: number;
+  treasuryReportId?: string;
+  status?: string;
+}
+
+/** Cash and payable accounts from the COA Revised Chart of Accounts for LGUs. */
+const ACCOUNTS = {
+  accountsPayable: { code: '20101010', name: 'Accounts Payable' },
+  cashCollectingOfficers: { code: '10101020', name: 'Cash - Collecting Officers' },
+  dueToOfficersAndEmployees: { code: '20101020', name: 'Due to Officers and Employees' },
+  advancesForPayroll: { code: '19901020', name: 'Advances for Payroll' },
+};
+
+/**
+ * The tabs shown above each report - the report and the register it summarises,
+ * side by side, so the Treasurer can move between the checks and the RCI of
+ * those checks without going back to the sidebar.
+ */
+
+export default function TreasuryReports({ reportType }: { reportType: TreasuryReportType }) {
+  const { fiscalYear, fundCode } = useFilters();
+  const { can, hasRole, user, profile } = useAuth();
+  const toast = useToast();
+
+  const label = TREASURY_REPORT_LABELS[reportType];
+  const short = TREASURY_REPORT_SHORT[reportType];
+
+  const { data, loading, error } = useTreasuryReports(reportType, fiscalYear, fundCode);
+
+  const [showForm, setShowForm] = useState(false);
+  const [certifying, setCertifying] = useState<TreasuryReport | null>(null);
+  const [withdrawing, setWithdrawing] = useState<TreasuryReport | null>(null);
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const canPrepare = can('treasury', 'create');
+  const canCertify = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER');
+
+  const actor =
+    user
+      ? actorStamp({
+          uid: user.uid,
+          name: profile?.displayName ?? user.email ?? user.uid,
+          position: profile?.position,
+        })
+      : null;
+
+  const columns: Column<TreasuryReport>[] = [
+    {
+      key: 'reportNo',
+      header: `${short} No.`,
+      width: '11rem',
+      value: (r) => r.reportNo ?? '',
+      cell: (r) =>
+        r.reportNo ? (
+          <span className="font-mono text-xs">{r.reportNo}</span>
+        ) : (
+          <span className="text-xs italic text-slate-400">Draft</span>
+        ),
+    },
+    {
+      key: 'reportDate',
+      header: 'Date',
+      width: '8rem',
+      value: (r) => r.reportDate,
+      cell: (r) => <span className="text-sm">{formatShortDate(r.reportDate)}</span>,
+    },
+    {
+      key: 'coverage',
+      header: 'Covering',
+      value: (r) => r.serialFrom ?? '',
+      cell: (r) => (
+        <span className="text-sm">
+          {r.lines.length} document{r.lines.length === 1 ? '' : 's'}
+          {r.serialFrom ? (
+            <span className="ml-2 font-mono text-xs text-slate-500">
+              {r.serialFrom}
+              {r.serialTo && r.serialTo !== r.serialFrom ? ` - ${r.serialTo}` : ''}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'totalAmount',
+      header: reportType === 'RCDISB' ? 'Net paid' : 'Total',
+      width: '11rem',
+      align: 'right',
+      value: (r) => r.totalAmount,
+      cell: (r) => <span className="cbo-amount block">{formatPeso(r.totalAmount)}</span>,
+    },
+    {
+      key: 'jevNo',
+      header: 'JEV',
+      width: '10rem',
+      value: (r) => r.jevNo ?? '',
+      cell: (r) =>
+        r.jevNo ? (
+          <span className="font-mono text-xs">{r.jevNo}</span>
+        ) : (
+          <span className="text-xs text-slate-400">-</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: '',
+      width: '15rem',
+      sortable: false,
+      fixed: true,
+      value: (r) => r.status,
+      cell: (r) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <StatusBadge status={r.status} />
+          {r.status === 'DRAFT' && canCertify && (
+            <Button size="sm" onClick={() => setCertifying(r)}>
+              Certify
+            </Button>
+          )}
+          {r.status !== 'JOURNALIZED' && r.status !== 'CANCELLED' && canCertify && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setWithdrawReason('');
+                setWithdrawing(r);
+              }}
+            >
+              Withdraw
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const certify = async () => {
+    if (!certifying) return;
+    setBusy(true);
+    try {
+      const res = await engine.certifyTreasuryReport({ reportId: certifying.id });
+      toast.success(
+        `${short} ${res.reportNo} certified`,
+        `${res.documentCount} document${res.documentCount === 1 ? '' : 's'}, ${formatPeso(res.totalAmount)}. Accounting has been notified.`,
+      );
+      setCertifying(null);
+    } catch (err) {
+      toast.error('Could not certify', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const withdraw = async () => {
+    if (!withdrawing || !withdrawReason.trim()) return;
+    setBusy(true);
+    try {
+      await engine.cancelTreasuryReport({
+        reportId: withdrawing.id,
+        reason: withdrawReason.trim(),
+      });
+      toast.success('Report withdrawn', 'The documents it covered are available to report again.');
+      setWithdrawing(null);
+    } catch (err) {
+      toast.error('Could not withdraw', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <PageHeader
+        title={label}
+        breadcrumbs={[{ label: 'Treasury' }, { label: short }]}
+        subtitle={
+          reportType === 'RCI'
+            ? 'The checks drawn in the period, gathered for certification and forwarded to Accounting. One journal entry is raised from the report as a whole, so the Check Disbursements Journal agrees with the check register line for line.'
+            : reportType === 'RADAI'
+              ? 'The advices to debit account sent to the bank in the period, certified and forwarded to Accounting for journalizing.'
+              : reportType === 'RCD'
+                ? 'A collecting officer&rsquo;s receipts for the period with the deposits made against them, certified and forwarded to Accounting.'
+                : 'Cash paid out in the period - a cash payroll, for instance - certified by the disbursing officer and forwarded to Accounting.'
+        }
+        actions={
+          canPrepare ? <Button onClick={() => setShowForm(true)}>Prepare {short}</Button> : undefined
+        }
+      />
+
+      <SectionTabs tabs={SECTION_TABS[reportType]} />
+
+      <Card>
+        <DataTable
+          rows={data}
+          columns={columns}
+          rowKey={(r) => r.id}
+          loading={loading}
+          error={error}
+          searchPlaceholder={`${short} number or serial`}
+          emptyMessage={`No ${short} for ${fundLabel(fundCode)}, fiscal year ${fiscalYear}.`}
+        />
+      </Card>
+
+      {showForm && actor && (
+        <PrepareReport
+          reportType={reportType}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          actor={actor}
+          onClose={() => setShowForm(false)}
+          onSaved={() => setShowForm(false)}
+        />
+      )}
+
+      {certifying && (
+        <ConfirmDialog
+          open
+          title={`Certify ${short}`}
+          confirmLabel="Certify and forward"
+          loading={busy}
+          onCancel={() => setCertifying(null)}
+          onConfirm={certify}
+          message={
+            <>
+              <p>
+                This certifies {certifying.lines.length}{' '}
+                {reportType === 'RCDISB' ? 'payroll' : 'document'}
+                {certifying.lines.length === 1 ? '' : 's'} totalling{' '}
+                <strong>{formatPeso(certifying.totalAmount)}</strong>
+                {reportType === 'RCDISB' ? ' paid in cash' : ''} and forwards the report to the
+                Municipal Accounting Office.
+              </p>
+              <p className="mt-2">
+                Once certified, the documents it covers are locked to this report and cannot be
+                cancelled without withdrawing it. The report number is drawn now.
+              </p>
+            </>
+          }
+        />
+      )}
+
+      {withdrawing && (
+        <Modal
+          open
+          title={`Withdraw ${short} ${withdrawing.reportNo ?? 'draft'}`}
+          onClose={() => setWithdrawing(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setWithdrawing(null)}>
+                Cancel
+              </Button>
+              <Button onClick={withdraw} loading={busy} disabled={!withdrawReason.trim()}>
+                Withdraw
+              </Button>
+            </>
+          }
+        >
+          <Alert tone="warning">
+            The documents this report covers will be released and can be reported again. A report
+            that has already been journalized cannot be withdrawn - its journal entry must be
+            reversed instead.
+          </Alert>
+          <Field label="Reason" required hint="Recorded on the report and in the audit trail.">
+            <TextInput
+              value={withdrawReason}
+              onChange={(e) => setWithdrawReason(e.target.value)}
+              placeholder="Why this report is being withdrawn"
+            />
+          </Field>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/**
+ * Builds the draft.
+ *
+ * The list is the Treasurer's. The entry is proposed from it so that Accounting
+ * receives something to check rather than something to invent, and so the
+ * Treasurer can see what the report is asking for before signing it.
+ */
+function PrepareReport({
+  reportType,
+  fiscalYear,
+  fundCode,
+  actor,
+  onClose,
+  onSaved,
+}: {
+  reportType: TreasuryReportType;
+  fiscalYear: number;
+  fundCode: string;
+  actor: ReturnType<typeof actorStamp>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const short = TREASURY_REPORT_SHORT[reportType];
+
+  const [reportDate, setReportDate] = useState(todayPh());
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null);
+  const [bankAccount, setBankAccount] = useState<{ glAccountCode?: string; accountName?: string; bankName?: string; accountNumber?: string } | null>(null);
+  const [officerId, setOfficerId] = useState<string | null>(null);
+  const [officerName, setOfficerName] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  const checks = useChecks(reportType === 'RCI' ? (bankAccountId ?? undefined) : undefined);
+  const ada = useAda(reportType === 'RADAI' ? (bankAccountId ?? undefined) : undefined);
+  const collections = useCollections(fiscalYear, fundCode);
+  const payrolls = usePayrolls(fiscalYear, fundCode);
+
+  /**
+   * The documents available to report: this fund, not cancelled, and not
+   * already claimed by another report. The last condition is the important one
+   * - it is what stops the same check appearing on two RCIs.
+   */
+  const available = useMemo<SourceDoc[]>(() => {
+    const unreported = (d: { treasuryReportId?: string; status?: string }) =>
+      !d.treasuryReportId && d.status !== 'CANCELLED';
+
+    if (reportType === 'RCI') {
+      return checks.data
+        .filter((c) => c.fundCode === fundCode && unreported(c))
+        .map((c) => ({
+          id: c.id,
+          sourceNo: c.checkNo,
+          date: c.checkDate,
+          payeeName: c.payeeName,
+          particulars: c.particulars,
+          amount: c.netAmount,
+        }));
+    }
+    if (reportType === 'RADAI') {
+      return ada.data
+        .filter((a) => a.fundCode === fundCode && unreported(a))
+        .map((a) => ({
+          id: a.id,
+          sourceNo: a.adaNo,
+          date: a.adaDate,
+          payeeName: a.payeeName,
+          particulars: a.particulars,
+          amount: a.amount,
+        }));
+    }
+    if (reportType === 'RCD') {
+      return collections.data
+        .filter((c) => unreported(c as never))
+        .map((c) => ({
+          id: c.id,
+          sourceNo: c.orNumber,
+          date: c.orDate,
+          payeeName: c.payorName,
+          amount: c.totalAmount,
+        }));
+    }
+    return payrolls.data
+      .filter((p) => unreported(p as never))
+      .map((p) => ({
+        id: p.id,
+        sourceNo: p.payrollNo ?? '(unnumbered)',
+        date: p.periodTo,
+        payeeName: p.officeName,
+        particulars:
+          p.particulars ??
+          (p.employeeCount ? `${p.employeeCount} employees` : undefined),
+        amount: p.totalNet,
+        gross: p.totalGross,
+        deductions: p.totalDeductions,
+      }));
+  }, [reportType, checks.data, ada.data, collections.data, payrolls.data, fundCode]);
+
+  const chosen = available.filter((d) => selected.has(d.id));
+  const total = chosen.reduce((s, d) => s + d.amount, 0);
+
+  /**
+   * RCDisb only: the payroll figures behind that total, carried onto the report
+   * so it prints the way the office writes it. They are not inputs to the
+   * entry - the RCDisb liquidates a cash advance, and the only figure the
+   * journal needs is the net that left.
+   */
+  const payrollTotals = useMemo(
+    () => ({
+      gross: chosen.reduce((s, d) => s + (d.gross ?? 0), 0),
+      deductions: chosen.reduce((s, d) => s + (d.deductions ?? 0), 0),
+    }),
+    [chosen],
+  );
+
+  /**
+   * The entry each report proposes.
+   *
+   *   RCI / RADAI   Dr Accounts Payable    Cr Cash in Bank
+   *                 The voucher already recognised the payable; the payment
+   *                 clears it and takes the cash out of the bank.
+   *   RCD           Dr Cash - Collecting Officers    Cr the revenue accounts
+   *   RCDisb        Dr Due to Officers and Employees  Cr Advances for Payroll
+   *                 The payroll's own liquidation: what was owed to the staff,
+   *                 against the cash advance that paid them.
+   *
+   * Summarised, not itemised: one debit and one credit for the report total.
+   * That is what makes the journal agree with the report at a glance, and the
+   * detail lives on the report's own lines and in the source documents.
+   */
+  const entry = useMemo(() => {
+    if (total === 0) return [];
+
+    if (reportType === 'RCI' || reportType === 'RADAI') {
+      const cash = bankAccount?.glAccountCode
+        ? {
+            code: bankAccount.glAccountCode,
+            name:
+              bankAccount.accountName ??
+              `${bankAccount.bankName ?? 'Bank'} ${bankAccount.accountNumber ?? ''}`.trim(),
+          }
+        : null;
+      if (!cash) return [];
+      return [
+        {
+          accountCode: ACCOUNTS.accountsPayable.code,
+          accountName: ACCOUNTS.accountsPayable.name,
+          debit: total,
+          credit: 0,
+          particulars: `Payments per ${short}`,
+        },
+        {
+          accountCode: cash.code,
+          accountName: cash.name,
+          debit: 0,
+          credit: total,
+          particulars: `Payments per ${short}`,
+        },
+      ];
+    }
+
+    if (reportType === 'RCDISB') {
+      // The payroll was recognised on its disbursement voucher: the expense was
+      // debited there and the net credited to Due to Officers and Employees.
+      // The cash advance was drawn separately. All the RCDisb does is close
+      // both of those out against each other.
+      //
+      //   Dr Due to Officers and Employees    what was owed to the staff
+      //     Cr Advances for Payroll           the advance that paid them
+      //
+      // Cash that came back unclaimed is not here. It is receipted and
+      // deposited like any other collection, under Collections and Deposits,
+      // and reaches the ledger through the RCD. Reporting it in two places
+      // would be reporting it twice.
+      return [
+        {
+          accountCode: ACCOUNTS.dueToOfficersAndEmployees.code,
+          accountName: ACCOUNTS.dueToOfficersAndEmployees.name,
+          debit: total,
+          credit: 0,
+          particulars: `Net pay disbursed per ${short}`,
+        },
+        {
+          accountCode: ACCOUNTS.advancesForPayroll.code,
+          accountName: ACCOUNTS.advancesForPayroll.name,
+          debit: 0,
+          credit: total,
+          particulars: `Liquidation of payroll cash advance per ${short}`,
+        },
+      ];
+    }
+
+    // RCD: the credits are the revenue accounts the receipts recorded.
+    const byAccount = new Map<string, { accountCode: string; accountName: string; amount: number }>();
+    for (const doc of chosen) {
+      const collection = collections.data.find((c) => c.id === doc.id);
+      for (const line of collection?.lines ?? []) {
+        const existing = byAccount.get(line.accountCode);
+        if (existing) existing.amount += line.amount;
+        else
+          byAccount.set(line.accountCode, {
+            accountCode: line.accountCode,
+            accountName: line.accountName,
+            amount: line.amount,
+          });
+      }
+    }
+    return [
+      {
+        accountCode: ACCOUNTS.cashCollectingOfficers.code,
+        accountName: ACCOUNTS.cashCollectingOfficers.name,
+        debit: total,
+        credit: 0,
+        particulars: `Collections per ${short}`,
+      },
+      ...[...byAccount.values()].map((a) => ({
+        accountCode: a.accountCode,
+        accountName: a.accountName,
+        debit: 0,
+        credit: a.amount,
+        particulars: `Collections per ${short}`,
+      })),
+    ];
+  }, [reportType, total, chosen, collections.data, bankAccount, short]);
+
+  const entryBalances =
+    entry.length > 0 &&
+    entry.reduce((s, l) => s + l.debit, 0) === entry.reduce((s, l) => s + l.credit, 0) &&
+    entry.reduce((s, l) => s + l.debit, 0) === total;
+
+  const isPayroll = reportType === 'RCDISB';
+  const needsBank = reportType === 'RCI' || reportType === 'RADAI';
+  const needsOfficer = reportType === 'RCD' || reportType === 'RCDISB';
+
+  const save = async () => {
+    if (!chosen.length) {
+      toast.error('Nothing selected', 'Choose at least one document to report.');
+      return;
+    }
+    if (needsBank && !bankAccount?.glAccountCode) {
+      toast.error(
+        'Bank account not mapped',
+        'This bank account has no General Ledger account recorded against it. Set it under Master Data - Banks first.',
+      );
+      return;
+    }
+    if (!entryBalances) {
+      toast.error(
+        'The entry does not foot',
+        'The proposed entry does not equal the documents selected. Check the receipts on this report.',
+      );
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const lines: TreasuryReportLine[] = chosen.map((d) => ({
+        sourceId: d.id,
+        sourceNo: d.sourceNo,
+        date: d.date,
+        payeeName: d.payeeName,
+        particulars: d.particulars,
+        amount: d.amount,
+        ...(reportType === 'RCDISB'
+          ? { gross: d.gross ?? 0, deductions: d.deductions ?? 0 }
+          : {}),
+      }));
+
+      await createDraft(
+        COL.treasuryReports,
+        {
+          reportType,
+          reportDate,
+          fiscalYear,
+          fundCode,
+          ...(needsBank && bankAccountId
+            ? {
+                bankAccountId,
+                bankName: bankAccount?.bankName ?? '',
+                bankAccountNumber: bankAccount?.accountNumber ?? '',
+              }
+            : {}),
+          ...(needsOfficer && officerId
+            ? { accountableOfficerId: officerId, accountableOfficerName: officerName }
+            : {}),
+          lines,
+          totalAmount: total,
+          ...(reportType === 'RCDISB'
+            ? { totalGross: payrollTotals.gross, totalDeductions: payrollTotals.deductions }
+            : {}),
+          entry,
+          status: 'DRAFT',
+        },
+        actor,
+      );
+
+      toast.success(
+        `${short} draft saved`,
+        'Review it, then certify to forward it to Accounting.',
+      );
+      onSaved();
+    } catch (err) {
+      toast.error('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <Modal
+      open
+      title={`Prepare ${short}`}
+      size="xl"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} loading={saving} disabled={!chosen.length}>
+            Save draft
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Report date" required>
+          <DateInput value={reportDate} onChange={setReportDate} />
+        </Field>
+
+        {needsBank && (
+          <Field
+            label="Bank account"
+            required
+            hint="The account the payments were drawn on. Its General Ledger account is what the entry credits."
+          >
+            <BankAccountPicker
+              value={bankAccountId}
+              fundCode={fundCode}
+              onChange={(id) => {
+                setBankAccountId(id);
+                setSelected(new Set());
+              }}
+            />
+          </Field>
+        )}
+
+        {needsOfficer && (
+          <Field
+            label={reportType === 'RCD' ? 'Collecting officer' : 'Disbursing officer'}
+            hint="The accountable officer this report belongs to."
+          >
+            <EmployeePicker
+              value={officerId}
+              onChange={(id, employee) => {
+                setOfficerId(id);
+                setOfficerName(employee?.name ?? '');
+              }}
+            />
+          </Field>
+        )}
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-navy-900">
+            {isPayroll ? 'Payrolls to report' : 'Documents to report'}
+          </h3>
+          <span className="text-xs text-slate-500">
+            {chosen.length} selected, {formatPeso(total)}
+            {isPayroll ? ' paid in cash' : ''}
+          </span>
+        </div>
+
+        {needsBank && !bankAccountId ? (
+          <Alert tone="info">Choose a bank account to see the documents drawn on it.</Alert>
+        ) : available.length === 0 ? (
+          <Alert tone="info">
+            Nothing left to report. Every document for this fund has already been covered by a
+            report, which is what should be the case once the period is closed out.
+          </Alert>
+        ) : (
+          <div className="max-h-72 overflow-y-auto rounded border border-slate-200">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-600">
+                <tr>
+                  <th className="w-10 px-3 py-2" />
+                  <th className="px-3 py-2 text-left">No.</th>
+                  <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">Payee / particulars</th>
+                  {isPayroll && <th className="px-3 py-2 text-right">Gross</th>}
+                  {isPayroll && <th className="px-3 py-2 text-right">Deductions</th>}
+                  <th className="px-3 py-2 text-right">{isPayroll ? 'Net paid' : 'Amount'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {available.map((doc) => (
+                  <tr key={doc.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(doc.id)}
+                        onChange={() => toggle(doc.id)}
+                        aria-label={`Include ${doc.sourceNo}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{doc.sourceNo}</td>
+                    <td className="px-3 py-2">{formatShortDate(doc.date)}</td>
+                    <td className="px-3 py-2">
+                      {doc.payeeName ?? ''}
+                      {doc.particulars ? (
+                        <span className="block text-xs text-slate-500">{doc.particulars}</span>
+                      ) : null}
+                    </td>
+                    {isPayroll && (
+                      <td className="px-3 py-2 text-right">
+                        <span className="cbo-amount">{formatPeso(doc.gross ?? 0)}</span>
+                      </td>
+                    )}
+                    {isPayroll && (
+                      <td className="px-3 py-2 text-right">
+                        <span className="cbo-amount">{formatPeso(doc.deductions ?? 0)}</span>
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-right">
+                      <span className="cbo-amount">{formatPeso(doc.amount)}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {isPayroll && chosen.length > 0 && (
+        <table className="mt-4 w-full border-collapse text-sm">
+          <tbody>
+            <tr className="border-t border-slate-200">
+              <td className="cbo-td">Gross</td>
+              <td className="cbo-td cbo-amount">
+                {formatPeso(payrollTotals.gross, { symbol: false })}
+              </td>
+            </tr>
+            <tr className="border-t border-slate-100">
+              <td className="cbo-td">Less deductions</td>
+              <td className="cbo-td cbo-amount">
+                {formatPeso(payrollTotals.deductions, { symbol: false, dash: true })}
+              </td>
+            </tr>
+            <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
+              <td className="cbo-td">Cash paid</td>
+              <td className="cbo-td cbo-amount">{formatPeso(total, { symbol: false })}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+
+      {entry.length > 0 && (
+        <div className="mt-5">
+          <h3 className="mb-2 text-sm font-semibold text-navy-900">
+            Entry this report will propose
+          </h3>
+          <p className="mb-2 text-xs text-slate-500">
+            Accounting may adjust this before posting. The total cannot be changed - the journal
+            entry must agree with the report you certify.
+            {isPayroll
+              ? ' It liquidates the payroll cash advance: the expense and the deductions were recognised on the voucher, not here.'
+              : ''}
+          </p>
+          <table className="w-full text-sm">
+            <tbody>
+              {entry.map((line, i) => (
+                <tr key={`${line.accountCode}-${i}`} className="border-t border-slate-100">
+                  <td className="py-1.5 font-mono text-xs text-slate-600">{line.accountCode}</td>
+                  <td className="py-1.5">{line.accountName}</td>
+                  <td className="py-1.5 text-right">
+                    {line.debit ? <span className="cbo-amount">{formatPeso(line.debit)}</span> : null}
+                  </td>
+                  <td className="py-1.5 text-right">
+                    {line.credit ? (
+                      <span className="cbo-amount">{formatPeso(line.credit)}</span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  );
+}

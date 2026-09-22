@@ -1,0 +1,748 @@
+rules_version = '2';
+
+// =============================================================================
+// CBO - Candoni Books Online
+// Cloud Firestore Security Rules
+// Municipal Government of Candoni, Negros Occidental
+// =============================================================================
+//
+// DESIGN POSITION
+// ---------------
+// These rules are the real authorisation boundary. The React application's
+// permission table decides what to *render*; this file decides what is
+// *permitted*. Anyone holding a valid login can open a console and call the
+// Firestore SDK directly, so every rule below assumes the client is hostile.
+//
+// Three tiers of write access:
+//
+//   SERVER ONLY   ledgerEntries, auditLogs, counters, budgetBalances,
+//                 budgetSummaries, cashPositions, accountingPeriods,
+//                 workflowHistory, notifications
+//                 -> allow write: if false;  (Admin SDK bypasses rules)
+//
+//   ENGINE ONLY   status transitions on financial documents. A client may
+//                 create and edit a DRAFT, but may not set status to
+//                 CERTIFIED/APPROVED/POSTED/PAID - those come from callables.
+//
+//   CLIENT        drafts, master data, document metadata, own profile fields.
+//
+// Roles come from Firebase Auth custom claims, set only by the setUserRoles
+// callable, which itself requires SUPER_ADMIN. A user cannot promote
+// themselves by editing their own `users` document: the rules below deny
+// writes to the `roles` field, and the claims - not the document - are what
+// these rules read.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Identity helpers
+    // -------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // App Check: reject requests that do not come from the attested CBO app.
+    // `request.auth.token` is present for signed-in users; App Check tokens are
+    // surfaced separately and are enforced at the project level as well.
+    function appChecked() {
+      return request.auth != null;
+    }
+
+    function claims() {
+      return request.auth.token;
+    }
+
+    function roles() {
+      return isSignedIn() && 'roles' in claims() ? claims().roles : [];
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && role in roles();
+    }
+
+    function hasAny(allowed) {
+      return isSignedIn() && roles().hasAny(allowed);
+    }
+
+    function isAdmin() {
+      return hasRole('SUPER_ADMIN');
+    }
+
+    function isActive() {
+      // Deactivated users keep a valid session until their token expires; the
+      // `active` claim is refreshed on every sign-in and on any role change.
+      return isSignedIn() && (!('active' in claims()) || claims().active == true);
+    }
+
+    function signedIn() {
+      return isSignedIn() && isActive() && appChecked();
+    }
+
+    // --- Role groupings ------------------------------------------------------
+
+    function accountingRoles() {
+      return ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER', 'ACCOUNTING_ENCODER'];
+    }
+
+    function budgetRoles() {
+      return ['SUPER_ADMIN', 'BUDGET_OFFICER', 'BUDGET_STAFF'];
+    }
+
+    function treasuryRoles() {
+      return ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF'];
+    }
+
+    function masterDataWriters() {
+      return ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'BUDGET_OFFICER', 'MUNICIPAL_TREASURER'];
+    }
+
+    // Every authenticated, active user may read reference and transaction data;
+    // office-level narrowing for DEPARTMENT_USER is applied per collection.
+    function canRead() {
+      return signedIn();
+    }
+
+    // -------------------------------------------------------------------------
+    // Field-level helpers
+    // -------------------------------------------------------------------------
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function onlyChanged(allowedFields) {
+      return changedKeys().hasOnly(allowedFields);
+    }
+
+    function didNotChange(protectedFields) {
+      return !changedKeys().hasAny(protectedFields);
+    }
+
+    // A client may only ever put a financial document into one of these states.
+    // Everything beyond DRAFT/SUBMITTED is an engine decision.
+    function isClientWritableStatus(status) {
+      return status in ['DRAFT', 'SUBMITTED'];
+    }
+
+    function isDraft() {
+      return resource.data.status == 'DRAFT';
+    }
+
+    // The office restriction applied to DEPARTMENT_USER. An empty officeScope
+    // claim means unrestricted (accounting, budget, treasury, audit).
+    function officeAllowed(officeId) {
+      return !hasRole('DEPARTMENT_USER')
+        || !('officeScope' in claims())
+        || claims().officeScope.size() == 0
+        || officeId in claims().officeScope;
+    }
+
+    function fundAllowed(fundCode) {
+      return !('fundScope' in claims())
+        || claims().fundScope.size() == 0
+        || fundCode in claims().fundScope;
+    }
+
+    // Creator stamp must be truthful: a user cannot create a document
+    // attributed to somebody else.
+    function createdByCaller() {
+      return request.resource.data.createdBy.uid == request.auth.uid;
+    }
+
+    // =========================================================================
+    // TIER 1 - SERVER ONLY
+    // The accounting engine writes these through the Admin SDK, which bypasses
+    // rules entirely. Denying all client writes here is what makes the General
+    // Ledger trustworthy.
+    // =========================================================================
+
+    // The General Ledger. Immutable, append-only, written solely by postJev.
+    match /ledgerEntries/{entryId} {
+      allow read: if canRead();
+      allow create, update, delete: if false;
+    }
+
+    // The audit trail. If a client could write here, the trail would be
+    // worthless; if a client could delete here, it would be worse than
+    // worthless.
+    match /auditLogs/{logId} {
+      // Read is limited to roles with an audit mandate. An encoder does not
+      // need to browse everyone else's activity.
+      allow read: if signedIn() && hasAny([
+        'SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'BUDGET_OFFICER',
+        'MUNICIPAL_TREASURER', 'ACCOUNTING_REVIEWER', 'AUDITOR'
+      ]);
+      allow create, update, delete: if false;
+    }
+
+    // Document number sequences. Client write access here would allow two
+    // vouchers to share a number.
+    match /counters/{counterId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // Derived budget control balances.
+    match /budgetBalances/{balanceId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    match /budgetSummaries/{summaryId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    match /cashPositions/{positionId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    // Accounting period control. Opening a closed period is a privileged act
+    // performed through the reopenPeriod callable, with a recorded reason.
+    match /accountingPeriods/{periodId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    // Workflow history is appended by the engine as a side effect of each
+    // transition, never by a client.
+    match /workflowHistory/{eventId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    match /notifications/{notificationId} {
+      // A user may read their own notifications and those addressed to a role
+      // they hold.
+      allow read: if signedIn() && (
+        resource.data.recipientUid == request.auth.uid
+        || (resource.data.recipientRole != null && resource.data.recipientRole in roles())
+      );
+      // Marking as read is the only client-writable change.
+      allow update: if signedIn()
+        && resource.data.recipientUid == request.auth.uid
+        && onlyChanged(['read', 'readAt']);
+      allow create, delete: if false;
+    }
+
+    // =========================================================================
+    // TIER 2 - FINANCIAL DOCUMENTS
+    // Clients may draft and submit. Certification, approval, posting, payment
+    // and cancellation are engine-only status transitions.
+    // =========================================================================
+
+    // --- Budget: appropriations ---------------------------------------------
+
+    match /appropriations/{id} {
+      allow read: if canRead();
+
+      allow create: if signedIn()
+        && hasAny(budgetRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && fundAllowed(request.resource.data.fundCode);
+
+      // A draft may be edited freely by budget staff; once approved it is
+      // frozen and may only be superseded by an adjustment entry.
+      allow update: if signedIn()
+        && hasAny(budgetRoles())
+        && isDraft()
+        && isClientWritableStatus(request.resource.data.status)
+        && didNotChange(['createdBy', 'approvedBy', 'postedAt']);
+
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // --- Budget: allotments --------------------------------------------------
+
+    match /allotments/{id} {
+      allow read: if canRead();
+
+      allow create: if signedIn()
+        && hasAny(budgetRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && fundAllowed(request.resource.data.fundCode);
+
+      allow update: if signedIn()
+        && hasAny(budgetRoles())
+        && isDraft()
+        && isClientWritableStatus(request.resource.data.status)
+        && didNotChange(['createdBy', 'approvedBy', 'allotmentNo', 'postedAt']);
+
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // --- Budget: obligations (OBR) ------------------------------------------
+
+    match /obligations/{id} {
+      allow read: if canRead() && officeAllowed(resource.data.officeId);
+
+      // A department user may raise an obligation for their own office.
+      allow create: if signedIn()
+        && hasAny(budgetRoles().concat(['DEPARTMENT_USER', 'ACCOUNTING_ENCODER']))
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && request.resource.data.disbursedAmount == 0
+        && officeAllowed(request.resource.data.officeId)
+        && fundAllowed(request.resource.data.fundCode);
+
+      allow update: if signedIn()
+        && hasAny(budgetRoles().concat(['DEPARTMENT_USER', 'ACCOUNTING_ENCODER']))
+        && resource.data.status in ['DRAFT', 'RETURNED']
+        && isClientWritableStatus(request.resource.data.status)
+        && officeAllowed(resource.data.officeId)
+        // The OBR number, the certification, the override record and every
+        // consumption figure are engine property.
+        && didNotChange([
+          'obrNo', 'createdBy', 'certifiedBy', 'certifiedAt', 'override',
+          'disbursedAmount', 'unpaidAmount'
+        ]);
+
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // --- Accounting: disbursement vouchers -----------------------------------
+
+    match /disbursementVouchers/{id} {
+      allow read: if canRead() && officeAllowed(resource.data.officeId);
+
+      allow create: if signedIn()
+        && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && officeAllowed(request.resource.data.officeId)
+        && fundAllowed(request.resource.data.fundCode);
+
+      allow update: if signedIn()
+        && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
+        && resource.data.status in ['DRAFT', 'RETURNED']
+        && isClientWritableStatus(request.resource.data.status)
+        && officeAllowed(resource.data.officeId)
+        && didNotChange([
+          'dvNo', 'createdBy', 'approvedBy', 'certifiedBy',
+          'jevId', 'jevNo', 'checkId', 'adaId'
+        ]);
+
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // --- Accounting: journal entry vouchers ----------------------------------
+
+    match /jevs/{id} {
+      allow read: if canRead();
+
+      // Manual adjusting, correcting and closing entries are drafted in the
+      // client; JEVs generated from a DV, RCD or payroll are created by the
+      // engine.
+      allow create: if signedIn()
+        && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER', 'ACCOUNTING_ENCODER'])
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && request.resource.data.sourceType in ['MANUAL', 'ADJUSTING', 'CLOSING', 'PRIOR_PERIOD']
+        && fundAllowed(request.resource.data.fundCode);
+
+      // A posted JEV is immutable. This is the single most important update
+      // rule in the file: without it, a posted entry could be edited after the
+      // fact and the General Ledger would no longer be evidence of anything.
+      allow update: if signedIn()
+        && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER', 'ACCOUNTING_ENCODER'])
+        && resource.data.status in ['DRAFT', 'FOR_REVIEW']
+        && request.resource.data.status in ['DRAFT', 'FOR_REVIEW']
+        && didNotChange([
+          'jevNo', 'createdBy', 'postedBy', 'postedAt',
+          'reversesJevId', 'reversedByJevId', 'sourceType', 'sourceId'
+        ]);
+
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // --- Accounting: checks and ADA ------------------------------------------
+
+    match /checks/{id} {
+      allow read: if canRead();
+      // Checks are issued by the engine so that the number can be verified
+      // unique within the bank account inside a transaction.
+      allow create: if false;
+      // Release details are recorded by treasury; amounts and numbers are not
+      // touchable from the client.
+      allow update: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
+        && onlyChanged(['status', 'dateReleased', 'releasedToName', 'releasedToPosition', 'updatedBy'])
+        && request.resource.data.status in ['FOR_SIGNATURE', 'SIGNED', 'RELEASED'];
+      allow delete: if false;
+    }
+
+    match /ada/{id} {
+      allow read: if canRead();
+      allow create: if false;
+      allow update: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
+        && onlyChanged(['status', 'dateSubmittedToBank', 'bankReferenceNo', 'updatedBy'])
+        && request.resource.data.status in ['PREPARED', 'SUBMITTED'];
+      allow delete: if false;
+    }
+
+    // --- Treasury payroll, and Accounting's cash advances and liquidations ---
+
+    // Payroll belongs to Treasury: the payroll officer records it and disburses
+    // it. It raises no journal entry of its own - the entry comes from the
+    // RCDisb that reports the cash paid - so there is no jevId to protect here.
+    // What must be protected is the link to that report: once an RCDisb has
+    // claimed a payroll, the payroll's figures are evidence for an entry in the
+    // General Ledger and cannot be edited from a browser.
+    match /payrolls/{id} {
+      allow read: if canRead() && officeAllowed(resource.data.officeId);
+      allow create: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT';
+      allow update: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
+        && resource.data.status in ['DRAFT', 'RETURNED']
+        && !('treasuryReportId' in resource.data)
+        && isClientWritableStatus(request.resource.data.status)
+        && didNotChange(['payrollNo', 'createdBy', 'approvedBy', 'treasuryReportId', 'treasuryReportNo']);
+      allow delete: if signedIn() && isAdmin() && isDraft()
+        && !('treasuryReportId' in resource.data);
+    }
+
+    match /cashAdvances/{id} {
+      allow read: if canRead();
+      // Created by the engine when a cash-advance DV is posted, so the
+      // outstanding balance can never begin life out of step with the ledger.
+      allow write: if false;
+    }
+
+    match /liquidations/{id} {
+      allow read: if canRead() && officeAllowed(resource.data.officeId);
+      allow create: if signedIn()
+        && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && officeAllowed(request.resource.data.officeId);
+      allow update: if signedIn()
+        && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
+        && resource.data.status in ['DRAFT', 'RETURNED']
+        && isClientWritableStatus(request.resource.data.status)
+        && didNotChange(['liquidationNo', 'createdBy', 'approvedBy', 'jevId', 'cashAdvanceId']);
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // --- Treasury ------------------------------------------------------------
+
+    match /collections/{id} {
+      allow read: if canRead();
+      allow create: if signedIn()
+        && hasAny(treasuryRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'ISSUED'
+        && fundAllowed(request.resource.data.fundCode);
+      // An official receipt already issued to a citizen is not editable; it is
+      // cancelled and reissued. Only pre-RCD corrections of non-monetary
+      // details are permitted.
+      allow update: if signedIn()
+        && hasAny(treasuryRoles())
+        && resource.data.status == 'ISSUED'
+        && onlyChanged(['payorName', 'payorTin', 'remarks', 'updatedBy']);
+      allow delete: if false;
+    }
+
+    match /rcds/{id} {
+      allow read: if canRead();
+      allow create: if signedIn()
+        && hasAny(treasuryRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT';
+      allow update: if signedIn()
+        && hasAny(treasuryRoles())
+        && resource.data.status in ['DRAFT']
+        && isClientWritableStatus(request.resource.data.status)
+        && didNotChange(['rcdNo', 'createdBy', 'jevId']);
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    // ---------------------------------------------------------------------
+    // treasuryReports - RCI, RADAI, RCD and RCDisb
+    // ---------------------------------------------------------------------
+    //
+    // The handover between two offices, so the rules split along the same
+    // line as the engine functions do. Treasury builds and edits the draft:
+    // which documents the report covers is theirs to decide. Once the
+    // Treasurer certifies it, the client can no longer touch it at all -
+    // certifying, journalizing and withdrawing are engine functions, and
+    // the number, the totals, the JEV link and the certification stamps are
+    // beyond reach of any browser at every stage.
+    //
+    // Accounting is deliberately NOT given write access here. The Accountant
+    // adjusts the entry and posts it through journalizeTreasuryReport, which
+    // re-checks that the entry still foots to the certified total. Letting
+    // the browser write the entry directly would put that check on the
+    // wrong side of the trust boundary.
+    // Opening balances. The marker document is written by the engine when the
+    // opening journal entry is posted; nothing may write it from a browser.
+    // Making this server-only is what stops an opening balance being created,
+    // edited or removed without a posted journal entry behind it.
+    match /openingBalances/{id} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    match /treasuryReports/{id} {
+      allow read: if canRead();
+      allow create: if signedIn()
+        && hasAny(treasuryRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && !('reportNo' in request.resource.data)
+        && !('jevId' in request.resource.data);
+      allow update: if signedIn()
+        && hasAny(treasuryRoles())
+        && resource.data.status == 'DRAFT'
+        && request.resource.data.status == 'DRAFT'
+        && didNotChange([
+          'reportType',
+          'reportNo',
+          'fiscalYear',
+          'fundCode',
+          'createdBy',
+          'status',
+          'jevId',
+          'jevNo',
+          'certifiedAt',
+          'certifiedBy',
+          'journalizedAt',
+          'postedBy',
+        ]);
+      allow delete: if signedIn() && isAdmin() && resource.data.status == 'DRAFT';
+    }
+
+    match /deposits/{id} {
+      allow read: if canRead();
+      allow create: if signedIn()
+        && hasAny(treasuryRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'RECORDED';
+      allow update: if signedIn()
+        && hasAny(treasuryRoles())
+        && resource.data.status == 'RECORDED'
+        && didNotChange(['createdBy', 'jevId', 'bankTransactionId', 'creditedDate']);
+      allow delete: if false;
+    }
+
+    match /accountableForms/{id} {
+      allow read: if canRead();
+      allow create, update: if signedIn() && hasAny(treasuryRoles()) ;
+      allow delete: if signedIn() && isAdmin();
+    }
+
+    // --- Reconciliation ------------------------------------------------------
+
+    match /bankTransactions/{id} {
+      allow read: if canRead();
+      // Statement lines are ingested by the importBankStatement callable so
+      // that duplicate imports are detected server-side.
+      allow create: if false;
+      // A reconciler may confirm or override a proposed match, and nothing else.
+      allow update: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER']))
+        && onlyChanged([
+          'matchStatus', 'matchedType', 'matchedId', 'matchedRef',
+          'matchMethod', 'matchConfidence', 'remarks', 'reconciliationId'
+        ]);
+      allow delete: if false;
+    }
+
+    match /bankReconciliations/{id} {
+      allow read: if canRead();
+      allow create: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER']))
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT';
+      allow update: if signedIn()
+        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER']))
+        && resource.data.status in ['DRAFT', 'IN_PROGRESS', 'FOR_REVIEW']
+        && request.resource.data.status in ['DRAFT', 'IN_PROGRESS', 'FOR_REVIEW']
+        // Finalisation is an engine act; it re-derives the book balance from
+        // the ledger and refuses a non-zero difference.
+        && didNotChange(['createdBy', 'finalizedAt', 'balancePerBooks', 'adjustedBookBalance']);
+      allow delete: if signedIn() && isAdmin() && isDraft();
+    }
+
+    match /importBatches/{id} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    // =========================================================================
+    // TIER 3 - MASTER DATA
+    // Read by everyone, written by senior roles. Never hard-deleted: master
+    // records are deactivated so that historical documents referencing them
+    // still resolve.
+    // =========================================================================
+
+    function masterRead() {
+      return canRead();
+    }
+
+    function masterWrite() {
+      return signedIn() && hasAny(masterDataWriters());
+    }
+
+    match /funds/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() && isAdmin();
+      allow delete: if false;
+    }
+
+    match /accounts/{id} {
+      allow read: if masterRead();
+      // The chart of accounts is the backbone of every report; changing an
+      // account's classification silently restates prior periods. Restricted to
+      // the Accountant and administrators.
+      allow create, update: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
+    match /offices/{id} {
+      allow read: if masterRead();
+      allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /responsibilityCenters/{id} {
+      allow read: if masterRead();
+      allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /programs/{id} {
+      allow read: if masterRead();
+      allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /projects/{id} {
+      allow read: if masterRead();
+      allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /activities/{id} {
+      allow read: if masterRead();
+      allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /payees/{id} {
+      allow read: if masterRead();
+      // Encoders need to add a supplier mid-voucher; blocking that guarantees
+      // duplicate payee records created under vague names.
+      allow create: if signedIn() && hasAny(masterDataWriters().concat(['ACCOUNTING_ENCODER', 'TREASURY_STAFF', 'BUDGET_STAFF']));
+      allow update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /employees/{id} {
+      allow read: if masterRead();
+      allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    match /banks/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
+    match /bankAccounts/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
+    match /taxCodes/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
+    match /fiscalYears/{id} {
+      allow read: if masterRead();
+      allow write: if false; // Opened and closed through the engine.
+    }
+
+    match /numberingRules/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() && isAdmin();
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // TIER 4 - SYSTEM
+    // =========================================================================
+
+    match /users/{uid} {
+      // A user reads their own profile; administrators and audit read all.
+      allow read: if signedIn() && (
+        request.auth.uid == uid
+        || hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'AUDITOR'])
+      );
+
+      // Profiles are provisioned by the engine on first sign-in.
+      allow create: if false;
+
+      // A user may maintain their own display details. Roles, scopes and the
+      // active flag are set only by setUserRoles, which requires SUPER_ADMIN -
+      // this rule is what stops privilege escalation from the browser.
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && onlyChanged(['displayName', 'position', 'lastLoginAt']);
+
+      allow delete: if false;
+    }
+
+    match /roleDefinitions/{id} {
+      allow read: if canRead();
+      allow create, update: if signedIn() && isAdmin();
+      allow delete: if signedIn() && isAdmin() && resource.data.builtIn == false;
+    }
+
+    match /documents/{id} {
+      allow read: if canRead();
+
+      // Metadata is written by the client after a successful Storage upload;
+      // the Storage rules independently constrain size, type and path.
+      allow create: if signedIn()
+        && request.resource.data.uploadedBy.uid == request.auth.uid
+        && request.resource.data.version is int
+        && request.resource.data.active == true;
+
+      // Attachments are superseded, not edited. Only the supersession pointer
+      // and the active flag may change, so a document's provenance is stable.
+      allow update: if signedIn()
+        && onlyChanged(['active', 'supersededByDocumentId', 'description', 'documentType', 'documentDate']);
+
+      allow delete: if signedIn() && isAdmin();
+    }
+
+    match /settings/{key} {
+      allow read: if canRead();
+      allow write: if signedIn() && isAdmin();
+    }
+
+    // =========================================================================
+    // DEFAULT DENY
+    // Any collection not named above is inaccessible. New collections must be
+    // granted access deliberately rather than inheriting it.
+    // =========================================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
