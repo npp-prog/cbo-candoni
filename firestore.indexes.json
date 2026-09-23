@@ -2,8 +2,60 @@
   "//": "Composite indexes required by CBO queries. Firestore needs an explicit index for any query combining an equality filter with a range or an orderBy on a different field. Every index below corresponds to a query in src/data/*.ts; if a query is removed, remove its index too - unused indexes cost storage and slow writes.",
   "indexes": [
     {
-      "//": "General Ledger: account ledger for a fund and year, in date order. The single most-run query in the system - every trial balance, GL and financial statement derives from it.",
-      "collectionGroup": "ledgerEntries",
+      "//": "Active accounts in code order - the account picker.",
+      "collectionGroup": "accounts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "postable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "code",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "ada",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "adaDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "ADA register.",
+      "collectionGroup": "ada",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "adaDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Allotment ledger.",
+      "collectionGroup": "allotments",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -19,14 +71,13 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "entryDate",
+          "fieldPath": "allotmentDate",
           "order": "ASCENDING"
         }
       ]
     },
     {
-      "//": "Trial balance: all entries in a fund up to and including a period.",
-      "collectionGroup": "ledgerEntries",
+      "collectionGroup": "allotments",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -38,7 +89,21 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "period",
+          "fieldPath": "allotmentDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "appropriations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
           "order": "ASCENDING"
         },
         {
@@ -48,8 +113,8 @@
       ]
     },
     {
-      "//": "Journal reports: entries by book, in JEV order.",
-      "collectionGroup": "ledgerEntries",
+      "//": "Appropriation ledger.",
+      "collectionGroup": "appropriations",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -58,29 +123,6 @@
         },
         {
           "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "book",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "entryDate",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "jevNo",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Subsidiary ledger: one payee's or one office's movement on a control account.",
-      "collectionGroup": "ledgerEntries",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
           "order": "ASCENDING"
         },
         {
@@ -88,18 +130,81 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "subsidiaryId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "entryDate",
+          "fieldPath": "authorityDate",
           "order": "ASCENDING"
         }
       ]
     },
     {
-      "//": "Cash flow statement: operating/investing/financing totals per period.",
-      "collectionGroup": "ledgerEntries",
+      "//": "Audit trail search: one user's actions, newest first.",
+      "collectionGroup": "auditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Audit trail: everything that happened to one document.",
+      "collectionGroup": "auditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "entityType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entityId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Audit trail by event type within a fiscal year.",
+      "collectionGroup": "auditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "event",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Audit trail: critical events only (overrides, permission changes, period reopenings).",
+      "collectionGroup": "auditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "severity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bankReconciliations",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -111,12 +216,336 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "cashFlowClass",
+          "fieldPath": "statementDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Auto-matching by exact amount within a bank account.",
+      "collectionGroup": "bankTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "period",
+          "fieldPath": "debit",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "transactionDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Unmatched statement lines for the reconciliation workspace.",
+      "collectionGroup": "bankTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matchStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "transactionDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "budgetBalances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Dashboard alert: budget lines with a negative available allotment.",
+      "collectionGroup": "budgetBalances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "availableAllotment",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Budget balances for a fund, ordered for the SAOB.",
+      "collectionGroup": "budgetBalances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "One officer's outstanding advances.",
+      "collectionGroup": "cashAdvances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accountableOfficerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateGranted",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "cashAdvances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateGranted",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Cash advance aging.",
+      "collectionGroup": "cashAdvances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dueDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Check register, and stale-check detection by date.",
+      "collectionGroup": "checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Outstanding checks for a bank reconciliation.",
+      "collectionGroup": "checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "netAmount",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Collections by collecting officer and date - the cashbook.",
+      "collectionGroup": "collections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "collectingOfficerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "collections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Revenue collection report by source.",
+      "collectionGroup": "collections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "revenueSource",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Undeposited collections alert.",
+      "collectionGroup": "collections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "deposits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "depositDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Deposits in transit for a reconciliation.",
+      "collectionGroup": "deposits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "depositDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "disbursementVouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dvDate",
+          "order": "DESCENDING"
         }
       ]
     },
@@ -163,6 +592,21 @@
       ]
     },
     {
+      "//": "Vouchers drawn against one obligation.",
+      "collectionGroup": "disbursementVouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "obligationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dvDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "//": "Index of Payments: everything paid to one payee.",
       "collectionGroup": "disbursementVouchers",
       "queryScope": "COLLECTION",
@@ -201,46 +645,44 @@
       ]
     },
     {
-      "//": "Vouchers drawn against one obligation.",
-      "collectionGroup": "disbursementVouchers",
+      "//": "Attachments filed against one transaction.",
+      "collectionGroup": "documents",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "obligationId",
+          "fieldPath": "entityType",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "dvDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Obligation registry (RAAO) by status and date.",
-      "collectionGroup": "obligations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
+          "fieldPath": "entityId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "fundCode",
+          "fieldPath": "active",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "obrDate",
+          "fieldPath": "version",
           "order": "DESCENDING"
         }
       ]
     },
     {
-      "//": "Obligations by office, for the SAOB by department.",
-      "collectionGroup": "obligations",
+      "collectionGroup": "funds",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sortOrder",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "jevs",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -248,119 +690,12 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "officeId",
+          "fieldPath": "fundCode",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "obrDate",
+          "fieldPath": "jevDate",
           "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Unpaid obligations for accounts payable recognition at year end.",
-      "collectionGroup": "obligations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "unpaidAmount",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Budget balances for a fund, ordered for the SAOB.",
-      "collectionGroup": "budgetBalances",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "officeId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "accountCode",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Dashboard alert: budget lines with a negative available allotment.",
-      "collectionGroup": "budgetBalances",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "availableAllotment",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Appropriation ledger.",
-      "collectionGroup": "appropriations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "accountCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "authorityDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Allotment ledger.",
-      "collectionGroup": "allotments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "accountCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "allotmentDate",
-          "order": "ASCENDING"
         }
       ]
     },
@@ -403,65 +738,8 @@
       ]
     },
     {
-      "//": "Check register, and stale-check detection by date.",
-      "collectionGroup": "checks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "checkDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Outstanding checks for a bank reconciliation.",
-      "collectionGroup": "checks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "netAmount",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "ADA register.",
-      "collectionGroup": "ada",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "adaDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Collections by collecting officer and date - the cashbook.",
-      "collectionGroup": "collections",
+      "//": "Subsidiary ledger: one payee's or one office's movement on a control account.",
+      "collectionGroup": "ledgerEntries",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -469,20 +747,231 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "collectingOfficerId",
+          "fieldPath": "accountCode",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "orDate",
+          "fieldPath": "subsidiaryId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entryDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "General Ledger: account ledger for a fund and year, in date order. The single most-run query in the system - every trial balance, GL and financial statement derives from it.",
+      "collectionGroup": "ledgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entryDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Journal reports: entries by book, in JEV order.",
+      "collectionGroup": "ledgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "book",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entryDate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "jevNo",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Cash flow statement: operating/investing/financing totals per period.",
+      "collectionGroup": "ledgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "cashFlowClass",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "period",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "ledgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entryDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Trial balance: all entries in a fund up to and including a period.",
+      "collectionGroup": "ledgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "period",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "liquidations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "liquidationDate",
           "order": "DESCENDING"
         }
       ]
     },
     {
-      "//": "Undeposited collections alert.",
-      "collectionGroup": "collections",
+      "//": "Liquidation monitoring.",
+      "collectionGroup": "liquidations",
       "queryScope": "COLLECTION",
       "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "liquidationDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Role-addressed notifications.",
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientRole",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "read",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Unread notifications for a user.",
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "read",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "obligations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "obrDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Obligation registry (RAAO) by status and date.",
+      "collectionGroup": "obligations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
         {
           "fieldPath": "fundCode",
           "order": "ASCENDING"
@@ -492,14 +981,14 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "orDate",
-          "order": "ASCENDING"
+          "fieldPath": "obrDate",
+          "order": "DESCENDING"
         }
       ]
     },
     {
-      "//": "Revenue collection report by source.",
-      "collectionGroup": "collections",
+      "//": "Unpaid obligations for accounts payable recognition at year end.",
+      "collectionGroup": "obligations",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -507,12 +996,83 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "revenueSource",
+          "fieldPath": "fundCode",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "orDate",
+          "fieldPath": "unpaidAmount",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Obligations by office, for the SAOB by department.",
+      "collectionGroup": "obligations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "obrDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Active payees by name - the payee picker.",
+      "collectionGroup": "payees",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "name",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "payrolls",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "periodFrom",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Payroll register by type and period.",
+      "collectionGroup": "payrolls",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "payrollType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "periodFrom",
+          "order": "DESCENDING"
         }
       ]
     },
@@ -531,6 +1091,28 @@
         },
         {
           "fieldPath": "rcdDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "treasuryImports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "importType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedAt",
           "order": "DESCENDING"
         }
       ]
@@ -578,229 +1160,6 @@
       ]
     },
     {
-      "collectionGroup": "treasuryImports",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "importType",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "uploadedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Deposits in transit for a reconciliation.",
-      "collectionGroup": "deposits",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "depositDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Unmatched statement lines for the reconciliation workspace.",
-      "collectionGroup": "bankTransactions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "matchStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "transactionDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Auto-matching by exact amount within a bank account.",
-      "collectionGroup": "bankTransactions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "debit",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "transactionDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Cash advance aging.",
-      "collectionGroup": "cashAdvances",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "dueDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "One officer's outstanding advances.",
-      "collectionGroup": "cashAdvances",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "accountableOfficerId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "dateGranted",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Liquidation monitoring.",
-      "collectionGroup": "liquidations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "liquidationDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Payroll register by type and period.",
-      "collectionGroup": "payrolls",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "payrollType",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "periodFrom",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Audit trail search: one user's actions, newest first.",
-      "collectionGroup": "auditLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "actorUid",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "at",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Audit trail: everything that happened to one document.",
-      "collectionGroup": "auditLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "entityType",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "entityId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "at",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Audit trail: critical events only (overrides, permission changes, period reopenings).",
-      "collectionGroup": "auditLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "severity",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "at",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Audit trail by event type within a fiscal year.",
-      "collectionGroup": "auditLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "event",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "at",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "//": "Workflow timeline for one document.",
       "collectionGroup": "workflowHistory",
       "queryScope": "COLLECTION",
@@ -815,101 +1174,6 @@
         },
         {
           "fieldPath": "at",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Attachments filed against one transaction.",
-      "collectionGroup": "documents",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "entityType",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "entityId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "version",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Unread notifications for a user.",
-      "collectionGroup": "notifications",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "recipientUid",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "read",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Role-addressed notifications.",
-      "collectionGroup": "notifications",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "recipientRole",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "read",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Active accounts in code order - the account picker.",
-      "collectionGroup": "accounts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "postable",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "code",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "//": "Active payees by name - the payee picker.",
-      "collectionGroup": "payees",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "name",
           "order": "ASCENDING"
         }
       ]

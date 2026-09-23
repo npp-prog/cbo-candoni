@@ -294,7 +294,7 @@ export default function OpeningBalances() {
       <SectionTabs
         tabs={[
           { label: 'Trial Balance', to: '/reports/trial-balance' },
-          { label: 'Opening balances', to: '/reports/trial-balance/opening' },
+          { label: 'Opening balances', to: '/accounting/opening-balances' },
         ]}
       />
 

@@ -84,6 +84,12 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Others', to: '/accounting/others' },
       { label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
       { label: 'Index of Payment', to: '/accounting/index-of-payments' },
+      // Encoding the balances the books open with is not a report, though it
+      // lived under Reports until somebody went looking for it in Accounting
+      // and could not find it. It is the one-time act that opens the ledger:
+      // the payables, the receivables and the unliquidated cash advances
+      // carried in from whatever the municipality kept before.
+      { label: 'Opening Balances', to: '/accounting/opening-balances' },
     ],
   },
   {
@@ -124,7 +130,6 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Budget Reports', label: 'Registry (RAAO)', to: '/budget/registry' },
 
       { group: 'Accounting Reports', label: 'Trial Balance', to: '/reports/trial-balance' },
-      { group: 'Accounting Reports', label: 'Opening Balances', to: '/reports/trial-balance/opening' },
       { group: 'Accounting Reports', label: 'Financial Statements', to: '/reports/financial-statements' },
       { group: 'Accounting Reports', label: 'General Ledger', to: '/reports/general-ledger' },
       { group: 'Accounting Reports', label: 'Subsidiary Ledger', to: '/reports/subsidiary-ledger' },

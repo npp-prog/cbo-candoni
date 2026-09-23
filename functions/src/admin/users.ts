@@ -1,5 +1,11 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { beforeUserSignedIn } from 'firebase-functions/v2/identity';
+import {
+  beforeUserSignedIn,
+  // A blocking function has its own error type. Throwing the callable
+  // HttpsError here does not deny the sign-in with a reason - it escapes as
+  // an internal error, which reads to the user as a wrong password.
+  HttpsError as AuthBlockingError,
+} from 'firebase-functions/v2/identity';
 import { ENFORCE_APP_CHECK, auth, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, invalid } from '../lib/context';
 import { audit } from '../lib/audit';
@@ -145,6 +151,27 @@ export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_AP
  * an administrator grants access. Defaulting to any role, however limited,
  * would mean anyone who obtains a Firebase account gets a foothold in the
  * municipality's financial records.
+ *
+ * ---------------------------------------------------------------------------
+ * The rule this function is built around
+ * ---------------------------------------------------------------------------
+ *
+ * This code runs BEFORE the sign-in completes, and anything that escapes it
+ * denies that sign-in. There is no retry and no way round it from the browser:
+ * a fault here locks every user out of the municipality's accounting system at
+ * once, including the administrator who would have to fix it.
+ *
+ * So exactly one thing may refuse a sign-in - a deactivated account - and it
+ * says so in as many words. Everything else this function does is bookkeeping:
+ * creating the profile, stamping the login time, writing the audit entry. None
+ * of that is a reason to keep somebody out of the books, so all of it is
+ * wrapped, and a failure is logged for an administrator to find rather than
+ * thrown at the person trying to sign in.
+ *
+ * That is not a safety net over careless code. It is the correct trade. A
+ * missing audit entry is a gap in a record; a denied sign-in is an office that
+ * cannot work, and the deactivation check - the only thing here that protects
+ * anything - still runs first and still refuses.
  */
 export const onBeforeSignIn = beforeUserSignedIn({ region: REGION }, async (event) => {
   const uid = event.data?.uid;
@@ -152,54 +179,78 @@ export const onBeforeSignIn = beforeUserSignedIn({ region: REGION }, async (even
   if (!uid) return;
 
   const ref = db.collection(COL.users).doc(uid);
-  const snap = await ref.get();
   const now = new Date().toISOString();
 
-  if (!snap.exists) {
-    await ref.set({
-      uid,
-      email,
-      displayName: event.data?.displayName ?? email,
-      roles: [],
-      officeScope: [],
-      fundScope: [],
-      active: true,
-      mfaEnrolled: false,
-      createdAt: now,
-      lastLoginAt: now,
-    });
+  // ---- the one check that may refuse -------------------------------------
+  //
+  // Read on its own, so a deactivated account is refused even if every write
+  // below fails. If the read itself fails we cannot know whether the account
+  // is active; the sign-in is allowed, because the security rules and the
+  // engine both check the `active` claim again on every request, and a
+  // Firestore outage must not become a lockout.
 
-    await db.collection(COL.auditLogs).add({
-      at: now,
-      actorUid: uid,
-      actorName: email,
-      actorRoles: [],
-      event: 'LOGIN',
-      entityType: COL.users,
-      entityId: uid,
-      entityRef: email,
-      remarks: 'First sign-in. Profile created with no roles; an administrator must grant access.',
-      severity: 'NOTICE',
-    });
-    return;
+  let profile: FirebaseFirestore.DocumentSnapshot | null = null;
+  try {
+    profile = await ref.get();
+  } catch (err) {
+    console.error('onBeforeSignIn: could not read the user profile', { uid, err });
   }
 
-  if (snap.data()?.active === false) {
-    throw new HttpsError('permission-denied', 'This CBO account has been deactivated.');
+  if (profile?.exists && profile.data()?.active === false) {
+    throw new AuthBlockingError('permission-denied', 'This CBO account has been deactivated.');
   }
 
-  await ref.update({ lastLoginAt: now });
-  await db.collection(COL.auditLogs).add({
-    at: now,
-    actorUid: uid,
-    actorName: snap.data()?.displayName ?? email,
-    actorRoles: (snap.data()?.roles as string[]) ?? [],
-    event: 'LOGIN',
-    entityType: COL.users,
-    entityId: uid,
-    entityRef: email,
-    severity: 'INFO',
-  });
+  // ---- bookkeeping, which may never deny -----------------------------------
+
+  try {
+    if (profile && !profile.exists) {
+      await ref.set({
+        uid,
+        email,
+        displayName: event.data?.displayName ?? email,
+        roles: [],
+        officeScope: [],
+        fundScope: [],
+        active: true,
+        mfaEnrolled: false,
+        createdAt: now,
+        lastLoginAt: now,
+      });
+
+      await db.collection(COL.auditLogs).add({
+        at: now,
+        actorUid: uid,
+        actorName: email,
+        actorRoles: [],
+        event: 'LOGIN',
+        entityType: COL.users,
+        entityId: uid,
+        entityRef: email,
+        remarks:
+          'First sign-in. Profile created with no roles; an administrator must grant access.',
+        severity: 'NOTICE',
+      });
+      return;
+    }
+
+    if (profile?.exists) {
+      await ref.update({ lastLoginAt: now });
+      await db.collection(COL.auditLogs).add({
+        at: now,
+        actorUid: uid,
+        actorName: profile.data()?.displayName ?? email,
+        actorRoles: (profile.data()?.roles as string[]) ?? [],
+        event: 'LOGIN',
+        entityType: COL.users,
+        entityId: uid,
+        entityRef: email,
+        severity: 'INFO',
+      });
+    }
+  } catch (err) {
+    // Logged, not thrown. See the note at the top of this function.
+    console.error('onBeforeSignIn: could not record the sign-in', { uid, email, err });
+  }
 });
 
 /**

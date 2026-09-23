@@ -195,8 +195,14 @@ export default function App() {
           <Route path="/reports/registers" element={<Guard module="reports"><Registers /></Guard>} />
           <Route path="/reports/aging" element={<Guard module="reports"><Aging /></Guard>} />
           <Route
-            path="/reports/trial-balance/opening"
+            path="/accounting/opening-balances"
             element={<Guard module="accounting"><OpeningBalances /></Guard>}
+          />
+          {/* The screen used to live under Reports. Anything already linking
+              there - a bookmark, an older runbook - still arrives. */}
+          <Route
+            path="/reports/trial-balance/opening"
+            element={<Navigate to="/accounting/opening-balances" replace />}
           />
           <Route path="/reports/treasury" element={<Guard module="reports"><TreasuryReports /></Guard>} />
 
