@@ -46,6 +46,7 @@ export const COL = {
 
   // Treasury
   collections: 'collections',
+  revenueCodes: 'revenueCodes',
   rcds: 'rcds',
   treasuryReports: 'treasuryReports',
   treasuryImports: 'treasuryImports',

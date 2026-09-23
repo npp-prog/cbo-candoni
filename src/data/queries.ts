@@ -30,6 +30,7 @@ import type { AuditLog, DocumentAttachment, Notification, UserProfile, WorkflowE
 import type {
   BankReconciliation,
   BankTransaction,
+  RevenueCode,
   TreasuryImport,
   TreasuryReport,
 } from '@/types/treasury';
@@ -75,6 +76,10 @@ export const useBankAccounts = (fundCode?: string) =>
     fundCode ? [ACTIVE, where('fundCode', '==', fundCode)] : [ACTIVE],
     ['bankAccounts', fundCode],
   );
+
+/** The Treasurer's revenue codes and the COA account each one posts to. */
+export const useRevenueCodes = () =>
+  useCollection<RevenueCode>(COL.revenueCodes, [orderBy('code')], ['revenueCodes']);
 
 export const useTaxCodes = () =>
   useCollection<TaxCode>(COL.taxCodes, [ACTIVE, orderBy('code')], ['taxCodes']);

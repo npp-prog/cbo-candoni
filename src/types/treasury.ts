@@ -25,18 +25,40 @@ import type {
 // collections/{id}
 // ---------------------------------------------------------------------------
 
-export type RevenueSource =
-  | 'REAL_PROPERTY_TAX'
-  | 'BUSINESS_TAX'
-  | 'FEES_AND_CHARGES'
-  | 'COMMUNITY_TAX'
-  | 'MARKET'
-  | 'ECONOMIC_ENTERPRISE'
-  | 'OTHER_LOCAL_REVENUE'
-  | 'NATIONAL_TAX_ALLOTMENT'
-  | 'OTHER_NG_TRANSFER'
-  | 'TRUST_RECEIPT'
-  | 'OTHER';
+export const REVENUE_SOURCES = [
+  { value: 'REAL_PROPERTY_TAX', label: 'Real Property Tax' },
+  { value: 'BUSINESS_TAX', label: 'Business Taxes' },
+  { value: 'FEES_AND_CHARGES', label: 'Fees and Charges' },
+  { value: 'COMMUNITY_TAX', label: 'Community Tax' },
+  { value: 'MARKET', label: 'Market Collections' },
+  { value: 'ECONOMIC_ENTERPRISE', label: 'Economic Enterprise' },
+  { value: 'OTHER_LOCAL_REVENUE', label: 'Other Local Revenue' },
+  { value: 'NATIONAL_TAX_ALLOTMENT', label: 'National Tax Allotment' },
+  { value: 'OTHER_NG_TRANSFER', label: 'Other National Government Transfer' },
+  { value: 'TRUST_RECEIPT', label: 'Trust Receipt' },
+  { value: 'OTHER', label: 'Other Collections' },
+] as const;
+
+export type RevenueSource = (typeof REVENUE_SOURCES)[number]['value'];
+
+/**
+ * revenueCodes/{code} - the Treasurer's revenue codes, and where each posts.
+ *
+ * The MTO codes revenue far more finely than the COA chart does. This is the
+ * join between the two, and it carries both halves of the answer: which COA
+ * account the money is credited to, and which heading it appears under on the
+ * collections report.
+ */
+export interface RevenueCode {
+  id: Id;
+  /** As the abstract writes it - 4020214001, 40601010D/S, 40202160-1. */
+  code: string;
+  description: string;
+  /** The Chart of Accounts entry this revenue is credited to. */
+  accountCode: string;
+  revenueSource?: RevenueSource;
+  active?: boolean;
+}
 
 export interface CollectionLine {
   lineNo: number;

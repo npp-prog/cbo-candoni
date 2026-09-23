@@ -12,6 +12,7 @@ import { useCollection } from '@/hooks/useFirestore';
 import { useAuth } from '@/auth/AuthProvider';
 import { upsertMaster, deactivateMaster, reactivateMaster, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
+import { REVENUE_SOURCES } from '@/types/treasury';
 import { formatPeso } from '@/lib/money';
 import {
   ACCOUNT_CLASSES,
@@ -74,6 +75,73 @@ interface EntityConfig {
 }
 
 const CONFIGS: Record<string, EntityConfig> = {
+  /*
+   * The Treasurer's revenue codes, and the COA account each one belongs to.
+   *
+   * The MTO's collection system codes revenue far more finely than the COA
+   * chart does - "Market Fee", "Miscellaneous Income - RPT - BRGY EAST",
+   * "Cemetery Usage Fee" - and it is right to. The collecting officer needs to
+   * know which window the money came through; the Chart of Accounts exists to
+   * produce a financial statement in the form COA requires, and forty-three
+   * revenue lines is not that form.
+   *
+   * So the two are kept apart and joined here. The General Ledger is posted in
+   * COA accounts; the Treasurer's own code stays on the collection line, where
+   * the subsidiary report reads it. Neither office has to adopt the other's
+   * coding, and the mapping is written down where an auditor can see it rather
+   * than living in somebody's head.
+   */
+  'revenue-codes': {
+    slug: 'revenue-codes',
+    collection: COL.revenueCodes,
+    title: 'Revenue Codes',
+    singular: 'revenue code',
+    description:
+      "The collection codes the Treasurer's office uses, and the COA account each one posts to. The Abstract of Collections upload reads this; a code that is not here stops the upload and is named.",
+    idField: 'code',
+    defaultSort: 'code',
+    fields: [
+      {
+        key: 'code',
+        label: 'Treasury revenue code',
+        type: 'text',
+        required: true,
+        inTable: true,
+        mono: true,
+        width: '10rem',
+        hint: 'Exactly as the abstract writes it, including any letters or punctuation - 4020214001, 40601010D/S, 40202160-1.',
+      },
+      {
+        key: 'description',
+        label: 'Description',
+        type: 'text',
+        required: true,
+        inTable: true,
+        hint: 'As it appears on the abstract, e.g. "Market Fee".',
+      },
+      {
+        key: 'accountCode',
+        label: 'COA account code',
+        type: 'text',
+        required: true,
+        inTable: true,
+        mono: true,
+        width: '9rem',
+        hint: 'The account in the Chart of Accounts this revenue is credited to. Several treasury codes may share one COA account - that is the usual case.',
+      },
+      {
+        key: 'revenueSource',
+        label: 'Revenue source',
+        type: 'select',
+        required: true,
+        inTable: true,
+        options: REVENUE_SOURCES.map((s) => ({ value: s.value, label: s.label })),
+        hint: 'The heading this collection appears under on the collections report. Presentation only - the General Ledger follows the COA account above.',
+      },
+    ],
+    note: 'A collection posts to the COA account named here. Changing a mapping does not restate collections already posted; it applies from the next upload.',
+  },
+
   accounts: {
     slug: 'accounts',
     collection: COL.accounts,

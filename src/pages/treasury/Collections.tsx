@@ -15,23 +15,11 @@ import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
+import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
 
-const REVENUE_SOURCES: Array<{ value: RevenueSource; label: string }> = [
-  { value: 'REAL_PROPERTY_TAX', label: 'Real Property Tax' },
-  { value: 'BUSINESS_TAX', label: 'Business Taxes' },
-  { value: 'FEES_AND_CHARGES', label: 'Fees and Charges' },
-  { value: 'COMMUNITY_TAX', label: 'Community Tax' },
-  { value: 'MARKET', label: 'Market Collections' },
-  { value: 'ECONOMIC_ENTERPRISE', label: 'Economic Enterprise' },
-  { value: 'OTHER_LOCAL_REVENUE', label: 'Other Local Revenue' },
-  { value: 'NATIONAL_TAX_ALLOTMENT', label: 'National Tax Allotment' },
-  { value: 'OTHER_NG_TRANSFER', label: 'Other National Government Transfer' },
-  { value: 'TRUST_RECEIPT', label: 'Trust Receipt' },
-  { value: 'OTHER', label: 'Other Collections' },
-];
 
 /**
  * Collections and official receipts.

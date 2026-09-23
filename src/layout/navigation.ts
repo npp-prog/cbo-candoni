@@ -157,6 +157,7 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Budget Structure', to: '/master-data/ppa' },
       { label: 'Banks', to: '/master-data/banks' },
       { label: 'Tax Codes', to: '/master-data/tax-codes' },
+      { label: 'Revenue Codes', to: '/master-data/revenue-codes' },
       { label: 'Funds', to: '/master-data/funds' },
     ],
   },

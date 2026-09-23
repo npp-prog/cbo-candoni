@@ -682,6 +682,24 @@
       ]
     },
     {
+      "collectionGroup": "documents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedBy.at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "funds",
       "queryScope": "COLLECTION",
       "fields": [
@@ -922,6 +940,20 @@
       ]
     },
     {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientRole",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "//": "Role-addressed notifications.",
       "collectionGroup": "notifications",
       "queryScope": "COLLECTION",
@@ -932,6 +964,20 @@
         },
         {
           "fieldPath": "read",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientUid",
           "order": "ASCENDING"
         },
         {

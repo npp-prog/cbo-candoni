@@ -75,6 +75,7 @@ export const COL = {
   liquidations: 'liquidations',
   accountingPeriods: 'accountingPeriods',
   collections: 'collections',
+  revenueCodes: 'revenueCodes',
   rcds: 'rcds',
   treasuryReports: 'treasuryReports',
   treasuryImports: 'treasuryImports',

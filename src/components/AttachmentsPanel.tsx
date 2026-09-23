@@ -58,7 +58,11 @@ export function AttachmentsPanel({
   const { user, profile } = useAuth();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [documentType, setDocumentType] = useState<DocumentType>('INVOICE');
+  // Most attachments are the supporting papers behind a voucher - the invoice,
+  // the inspection report, the certificate - and they are all filed as what
+  // they are: supporting documents. Starting on that means the common case
+  // needs no choice at all.
+  const [documentType, setDocumentType] = useState<DocumentType>('OTHER');
   const [uploading, setUploading] = useState(false);
 
   const upload = async (file: File) => {

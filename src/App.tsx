@@ -36,6 +36,7 @@ const Checks = lazy(() => import('./pages/treasury/Checks'));
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
 const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
 const PaymentUploads = lazy(() => import('./pages/treasury/PaymentUploads'));
+const AbstractUpload = lazy(() => import('./pages/treasury/AbstractUpload'));
 const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJev'));
 const Payroll = lazy(() => import('./pages/treasury/Payroll'));
 const CashAdvances = lazy(() => import('./pages/accounting/CashAdvances'));
@@ -179,6 +180,10 @@ export default function App() {
           {/* Treasury */}
           <Route path="/treasury" element={<Navigate to="/treasury/collections" replace />} />
           <Route path="/treasury/collections" element={<Guard module="treasury"><TreasuryCollections /></Guard>} />
+          <Route
+            path="/treasury/collections/upload"
+            element={<Guard module="treasury"><AbstractUpload /></Guard>}
+          />
           <Route path="/treasury/rcd" element={<Guard module="treasury"><Rcd /></Guard>} />
           <Route path="/treasury/rcd/:id" element={<Guard module="treasury"><Rcd /></Guard>} />
           {/* Deposits sit inside the collections section. The old address is

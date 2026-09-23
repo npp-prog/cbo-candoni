@@ -686,6 +686,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Which COA account each of the Treasurer's revenue codes posts to. This
+    // decides where a collection lands in the General Ledger, so it is the
+    // Accountant's to set - the Treasurer's office owns the codes, Accounting
+    // owns their classification. Never deleted: a mapping that posted last
+    // year's collections has to stay readable to explain them.
+    match /revenueCodes/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
     match /fiscalYears/{id} {
       allow read: if masterRead();
       allow write: if false; // Opened and closed through the engine.

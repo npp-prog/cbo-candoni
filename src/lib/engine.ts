@@ -261,6 +261,43 @@ export const engine = {
     >('importTreasuryPayments', p),
 
   /**
+   * Reads the Abstract of Collections: one official receipt per entry, with a
+   * line per revenue account.
+   *
+   * A revenue code with no COA account mapped against it stops the whole file -
+   * a collection posted to a guessed account misstates the revenue, and the
+   * cash still foots, so nothing later would catch it. A receipt already in the
+   * books is skipped rather than refused, which makes a long upload resumable.
+   */
+  importCollections: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    fileName?: string;
+    receipts: Array<{
+      lineNo: number;
+      date: IsoDate;
+      reportRef: string;
+      accountableForm?: string;
+      orNumber: string;
+      payor?: string;
+      collector?: string;
+      cancelled?: boolean;
+      remarks?: string;
+      lines: Array<{ revenueCode: string; description?: string; amount: Centavos }>;
+    }>;
+  }) =>
+    call<
+      typeof p,
+      {
+        posted: number;
+        skipped: number;
+        cancelled: number;
+        total: Centavos;
+        unknownOfficers: string[];
+      }
+    >('importCollections', p),
+
+  /**
    * Deals with one held row: links it to the voucher it actually paid, or sets
    * it aside with a note saying how it was handled outside CBO.
    */

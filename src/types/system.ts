@@ -204,46 +204,38 @@ export interface AuditLog {
 // documents/{id}   (metadata; the bytes live in Cloud Storage)
 // ---------------------------------------------------------------------------
 
+/**
+ * The documents the municipality actually files.
+ *
+ * Deliberately short. The first version of this list ran to seventeen types -
+ * purchase requests, travel orders, certificates of appearance, BAC documents -
+ * on the reasoning that naming more things makes the register more useful.
+ *
+ * It does the opposite. Every one of those is an attachment TO a voucher, not a
+ * document the office files in its own right, and offering them as choices only
+ * splits the same evidence across a dozen labels according to which clerk
+ * uploaded it. What the office files, and what COA asks for by name, is the
+ * voucher, the liquidation report and the four treasury reports. Everything
+ * else is a supporting document, and that is what it is called.
+ */
 export const DOCUMENT_TYPES = [
-  'PURCHASE_REQUEST',
-  'PURCHASE_ORDER',
-  'INVOICE',
-  'OFFICIAL_RECEIPT',
-  'INSPECTION_ACCEPTANCE_REPORT',
-  'OBR',
   'DV',
-  'PAYROLL',
-  'TRAVEL_ORDER',
-  'ITINERARY_OF_TRAVEL',
-  'CERTIFICATE_OF_APPEARANCE',
   'LIQUIDATION_REPORT',
-  'DEPOSIT_SLIP',
-  'BANK_STATEMENT',
-  'CONTRACT',
-  'BAC_DOCUMENT',
-  'CERTIFICATION',
+  'RCI',
+  'RADAI',
+  'RCD',
+  'RCDISB',
   'OTHER',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  PURCHASE_REQUEST: 'Purchase Request',
-  PURCHASE_ORDER: 'Purchase Order',
-  INVOICE: 'Invoice',
-  OFFICIAL_RECEIPT: 'Official Receipt',
-  INSPECTION_ACCEPTANCE_REPORT: 'Inspection and Acceptance Report',
-  OBR: 'Obligation Request and Status',
   DV: 'Disbursement Voucher',
-  PAYROLL: 'Payroll',
-  TRAVEL_ORDER: 'Travel Order',
-  ITINERARY_OF_TRAVEL: 'Itinerary of Travel',
-  CERTIFICATE_OF_APPEARANCE: 'Certificate of Appearance',
   LIQUIDATION_REPORT: 'Liquidation Report',
-  DEPOSIT_SLIP: 'Bank Deposit Slip',
-  BANK_STATEMENT: 'Bank Statement',
-  CONTRACT: 'Contract',
-  BAC_DOCUMENT: 'BAC Document',
-  CERTIFICATION: 'Certification',
+  RCI: 'Report of Checks Issued (RCI)',
+  RADAI: 'Report of ADA Issued (RADAI)',
+  RCD: 'Report of Collections and Deposits (RCD)',
+  RCDISB: 'Report of Cash Disbursement (RCDisb)',
   OTHER: 'Other Supporting Document',
 };
 

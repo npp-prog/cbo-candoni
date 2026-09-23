@@ -192,6 +192,7 @@ export default function Documents() {
               <option value={COL.jevs}>Journal entries</option>
               <option value={COL.liquidations}>Liquidations</option>
               <option value={COL.payrolls}>Payrolls</option>
+              <option value={COL.treasuryReports}>Treasury reports</option>
             </Select>
           </>
         }

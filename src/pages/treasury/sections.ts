@@ -19,6 +19,9 @@ export const COLLECTION_TABS = [
   { label: 'Collections', to: '/treasury/collections' },
   { label: 'Deposits', to: '/treasury/collections/deposits' },
   { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
+  // Where the collections usually come from: the MTO's own abstract, read
+  // receipt by receipt rather than typed in seven hundred times.
+  { label: 'Upload Abstract', to: '/treasury/collections/upload' },
 ];
 
 export const CHECK_TABS = [
