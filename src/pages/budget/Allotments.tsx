@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -31,6 +32,7 @@ import { fundLabel } from './Obligations';
  */
 export default function Allotments() {
   const { fiscalYear, fundCode } = useFilters();
+  const navigate = useNavigate();
   const { can } = useAuth();
   const toast = useToast();
   const { data, loading, error } = useAllotments(fiscalYear, fundCode);
@@ -152,9 +154,15 @@ export default function Allotments() {
         breadcrumbs={[{ label: 'Budget' }, { label: 'Allotments' }]}
         actions={
           can('budget', 'create') && (
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => navigate('/budget/allotments/upload')}>
+                Upload releases
+              </Button>
+              (
             <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
               Release allotment
             </Button>
+            </div>
           )
         }
       />

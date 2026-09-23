@@ -68,6 +68,45 @@ export const engine = {
       p,
     ),
 
+  /**
+   * Reads the appropriation ordinance, or a batch of allotment releases, into
+   * the budget ledger - already approved, since the Sanggunian enacted the one
+   * and the Budget Officer authorises the other by sending it.
+   *
+   * All of a call posts or none of it does. The `reference` is the ordinance or
+   * release number and doubles as the guard against posting the same file
+   * twice: a second attempt finds its rows already there and is refused before
+   * it writes anything, which matters because appropriations are additive and a
+   * duplicate would quietly double the municipality's spending authority.
+   */
+  importBudgetLines: (p: {
+    kind: 'APPROPRIATION' | 'ALLOTMENT';
+    fiscalYear: number;
+    fundCode: string;
+    appropriationKind?: string;
+    reference: string;
+    date: IsoDate;
+    fileName?: string;
+    rows: Array<{
+      lineNo: number;
+      office: string;
+      accountCode: string;
+      expenseClass?: string;
+      amount: Centavos;
+      particulars?: string;
+    }>;
+  }) =>
+    call<
+      typeof p,
+      {
+        posted: number;
+        budgetLines: number;
+        total: Centavos;
+        allotmentNo: string | null;
+        reference: string;
+      }
+    >('importBudgetLines', p),
+
   cancelObligation: (p: { obligationId: Id; reason: string }) =>
     call<typeof p, { obligationId: Id }>('cancelObligation', p),
 

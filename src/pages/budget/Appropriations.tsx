@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -40,6 +41,7 @@ const KINDS: Array<{ value: AppropriationKind; label: string; hint: string }> = 
 
 export default function Appropriations() {
   const { fiscalYear, fundCode } = useFilters();
+  const navigate = useNavigate();
   const { can, user, profile } = useAuth();
   const toast = useToast();
   const { data, loading, error } = useAppropriations(fiscalYear, fundCode);
@@ -169,9 +171,15 @@ export default function Appropriations() {
         breadcrumbs={[{ label: 'Budget' }, { label: 'Appropriation' }]}
         actions={
           can('budget', 'create') && (
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => navigate('/budget/appropriations/upload')}>
+                Upload ordinance
+              </Button>
+              (
             <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
               Record appropriation
             </Button>
+            </div>
           )
         }
       />
