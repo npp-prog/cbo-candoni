@@ -517,8 +517,29 @@ service cloud.firestore {
           'certifiedBy',
           'journalizedAt',
           'postedBy',
+          // The link to the uploaded file and the count of its rows still held.
+          // certifyTreasuryReport refuses while that count is above zero, so a
+          // browser able to write it could certify a report covering less than
+          // the file it was made from. The control has to sit here, not only in
+          // the function that reads it.
+          'importId',
+          'pendingRowCount',
         ]);
       allow delete: if signedIn() && isAdmin() && resource.data.status == 'DRAFT';
+    }
+
+    // ---------------------------------------------------------------------
+    // treasuryImports - uploaded RCI and RADAI files
+    // ---------------------------------------------------------------------
+    //
+    // Read-only to every browser. The upload decides which vouchers were
+    // paid and raises the checks and ADA against them, and whether a row
+    // matched is the engine's finding, not a field anybody may set. A client
+    // that could write here could mark a held row matched without a payment
+    // behind it, and certify a report on the strength of it.
+    match /treasuryImports/{id} {
+      allow read: if canRead();
+      allow write: if false;
     }
 
     match /deposits/{id} {
@@ -532,12 +553,6 @@ service cloud.firestore {
         && resource.data.status == 'RECORDED'
         && didNotChange(['createdBy', 'jevId', 'bankTransactionId', 'creditedDate']);
       allow delete: if false;
-    }
-
-    match /accountableForms/{id} {
-      allow read: if canRead();
-      allow create, update: if signedIn() && hasAny(treasuryRoles()) ;
-      allow delete: if signedIn() && isAdmin();
     }
 
     // --- Reconciliation ------------------------------------------------------

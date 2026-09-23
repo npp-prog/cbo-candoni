@@ -16,7 +16,6 @@ import type {
   JevStatus,
   JournalBook,
   LiquidationStatus,
-  PaymentMethod,
   PayrollStatus,
   PayrollType,
 } from './enums';
@@ -102,7 +101,12 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
 
   accountLines: DvAccountLine[];
 
-  paymentMethod: PaymentMethod;
+  /**
+   * The bank account the payment is expected to be drawn on, where Accounting
+   * knows it. A hint for the Treasurer, not a decision: the voucher records
+   * that a payable is owed, and which way the money left is established by the
+   * report the payment turns up on - the RCI for a check, the RADAI for an ADA.
+   */
   bankAccountId?: Id;
   checkId?: Id;
   checkNo?: string;
@@ -230,6 +234,13 @@ export interface LedgerEntry {
   subsidiaryId?: Id;
   subsidiaryName?: string;
   cashFlowClass?: CashFlowClass;
+  /**
+   * When this item arose, if that differs from `entryDate`. Set on opening
+   * balances so a payable carried forward from the previous system ages from
+   * the date it was incurred rather than the date the books were converted.
+   * Aging reports read this first and fall back to `entryDate`.
+   */
+  agingDate?: IsoDate;
 
   sourceType: string;
   sourceId?: Id;

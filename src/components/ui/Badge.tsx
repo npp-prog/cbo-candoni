@@ -65,6 +65,10 @@ const STATUS_TONES: Record<string, Tone> = {
   SUGGESTED: 'amber',
   PARTIALLY_MATCHED: 'amber',
   UNMATCHED: 'slate',
+  // Uploaded RCI and RADAI files, and the rows inside them.
+  PENDING: 'amber',
+  COMPLETE: 'emerald',
+  MANUAL: 'violet',
   BANK_CHARGE: 'violet',
   INTEREST_INCOME: 'violet',
   ERROR: 'rose',

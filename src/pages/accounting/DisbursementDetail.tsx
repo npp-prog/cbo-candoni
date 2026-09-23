@@ -33,7 +33,6 @@ import {
   type ObligationLineLite,
 } from './proposeEntry';
 import type { DisbursementVoucher } from '@/types/accounting';
-import { PAYMENT_METHODS, type PaymentMethod } from '@/types/enums';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -93,7 +92,6 @@ export default function DisbursementDetail() {
   const [particulars, setParticulars] = useState('');
   const [grossAmount, setGrossAmount] = useState<number | null>(null);
   const [deductions, setDeductions] = useState<DeductionLite[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CHECK');
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [entryLines, setEntryLines] = useState<GridLine[]>([]);
   const [entryTouched, setEntryTouched] = useState(false);
@@ -120,7 +118,6 @@ export default function DisbursementDetail() {
         amount: d.amount,
       })),
     );
-    setPaymentMethod(existing.paymentMethod as PaymentMethod);
     setBankAccountId(existing.bankAccountId ?? null);
     setEntryLines(
       (existing.accountLines ?? []).map((l) => ({
@@ -234,7 +231,6 @@ export default function DisbursementDetail() {
       officeId: officeId ?? null,
       particulars: l.particulars ?? null,
     })),
-    paymentMethod,
     bankAccountId: bankAccountId ?? null,
     status: 'DRAFT' as const,
     attachmentCount: existing?.attachmentCount ?? 0,
@@ -330,15 +326,26 @@ export default function DisbursementDetail() {
                 Approve
               </Button>
             )}
-            {canPay && !existing?.checkId && paymentMethod === 'CHECK' && (
-              <Button variant="success" onClick={() => setConfirm('check')}>
-                Issue check
-              </Button>
-            )}
-            {canPay && !existing?.adaId && paymentMethod === 'ADA' && (
-              <Button variant="success" onClick={() => setConfirm('ada')}>
-                Prepare ADA
-              </Button>
+            {/*
+              Both are offered, to Treasury, once the voucher is approved and
+              nothing has been paid against it yet. Neither is offered on the
+              strength of a choice made earlier on the voucher, because that
+              choice is no longer made.
+
+              The ordinary way a payment gets recorded is the upload: the
+              Treasurer's RCI or RADAI arrives as a file and CBO raises the
+              checks and advices from it. These two are for the payment that is
+              not on any file - one check drawn on its own, ahead of the report.
+            */}
+            {canPay && !existing?.checkId && !existing?.adaId && (
+              <>
+                <Button variant="success" onClick={() => setConfirm('check')}>
+                  Issue check
+                </Button>
+                <Button variant="success" onClick={() => setConfirm('ada')}>
+                  Prepare ADA
+                </Button>
+              </>
             )}
             {!isNew && can('accounting', 'cancel') && status !== 'CANCELLED' && (
               <Button variant="danger" onClick={() => setConfirm('cancel')}>
@@ -522,32 +529,32 @@ export default function DisbursementDetail() {
               </div>
             </Card>
 
+            {/*
+              How the voucher is paid is not asked here.
+
+              It used to be: Accounting chose "check" or "ADA" on the voucher,
+              and the choice drove which button appeared and which journal the
+              entry went to. But Accounting does not know. The voucher is
+              approved and passed to the Treasurer, and it is the Treasurer who
+              decides whether it goes out as a check or in the next batch of
+              advices to the bank - sometimes days later, and sometimes not the
+              way Accounting had assumed.
+
+              So the voucher now records only that a payable is owed. Which way
+              the money left is established by the report it turns up on: the
+              RCI for a check, the RADAI for an ADA. That is also the document
+              that credits cash, which means the answer is recorded once, by the
+              office that knows it, rather than guessed early and corrected
+              later.
+            */}
             <Card title="Payment">
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Payment method" htmlFor="method">
-                  <Select
-                    id="method"
-                    value={paymentMethod}
-                    onChange={(e) => {
-                      setPaymentMethod(e.target.value as PaymentMethod);
-                      setEntryTouched(false);
-                    }}
-                    disabled={!canEdit}
-                  >
-                    {PAYMENT_METHODS.map((m) => (
-                      <option key={m} value={m}>
-                        {m === 'ADA' ? 'ADA - Advice to Debit Account' : m === 'LDDAP' ? 'LDDAP-ADA' : m}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
                 <Field label="Bank account" htmlFor="bank" className="sm:col-span-2">
                   <BankAccountPicker
                     id="bank"
                     value={bankAccountId}
                     fundCode={fundCode}
-                    disabled={!canEdit || paymentMethod === 'CASH'}
+                    disabled={!canEdit}
                     onChange={setBankAccountId}
                   />
                 </Field>

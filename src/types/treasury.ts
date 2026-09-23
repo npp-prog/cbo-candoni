@@ -157,34 +157,6 @@ export interface Deposit extends Partial<AuditStamps> {
 }
 
 // ---------------------------------------------------------------------------
-// accountableForms/{id}
-// ---------------------------------------------------------------------------
-
-export interface AccountableForm extends Partial<AuditStamps> {
-  id: Id;
-  fiscalYear: FiscalYear;
-  /** e.g. "Official Receipt (Accountable Form 51)" or "Community Tax Certificate". */
-  formType: string;
-  formCode: string;
-  serialFrom: string;
-  serialTo: string;
-
-  accountableOfficerId: Id;
-  accountableOfficerName: string;
-
-  /** Quantities in pieces, not centavos. */
-  beginningBalance: number;
-  received: number;
-  issued: number;
-  cancelled: number;
-  /** beginningBalance + received - issued - cancelled */
-  endingBalance: number;
-
-  asOfDate: IsoDate;
-  remarks?: string;
-}
-
-// ---------------------------------------------------------------------------
 // bankTransactions/{id}   (imported statement lines)
 // ---------------------------------------------------------------------------
 
@@ -405,4 +377,129 @@ export interface TreasuryReport extends Partial<AuditStamps> {
 
   remarks?: string;
   cancelledReason?: string;
+
+  /** The CSV upload this report was built from, when it came from one. */
+  importId?: Id;
+  /**
+   * Rows of that upload still waiting to be dealt with by hand. Kept on the
+   * report itself so certification can refuse in one field read: a report whose
+   * upload still has unmatched rows does not cover everything on the paper it
+   * was made from, and certifying it would forward a report that foots to less
+   * than the Treasurer signed.
+   */
+  pendingRowCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// treasuryImports/{id}
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a row of an uploaded RCI or RADAI could not be turned into a payment.
+ *
+ * Each of these is a real disagreement between the Treasurer's file and the
+ * books, and each has a different answer. They are kept apart rather than
+ * collapsed into one "error" so that the person resolving them is told what is
+ * actually wrong instead of being sent to look.
+ */
+export type ImportRowReason =
+  | 'NO_DV_NUMBER'
+  | 'DV_NOT_FOUND'
+  | 'DV_NOT_APPROVED'
+  | 'DV_ALREADY_PAID'
+  | 'FUND_MISMATCH'
+  | 'AMOUNT_MISMATCH'
+  | 'NO_SERIAL'
+  | 'DUPLICATE_SERIAL';
+
+export const IMPORT_ROW_REASON_LABELS: Record<ImportRowReason, string> = {
+  NO_DV_NUMBER: 'No DV number in the file',
+  DV_NOT_FOUND: 'No such DV in CBO',
+  DV_NOT_APPROVED: 'The DV is not approved',
+  DV_ALREADY_PAID: 'The DV already has a payment',
+  FUND_MISMATCH: 'The DV belongs to another fund',
+  AMOUNT_MISMATCH: 'The amount differs from the DV',
+  NO_SERIAL: 'No check number in the file',
+  DUPLICATE_SERIAL: 'That check number is already used',
+};
+
+/**
+ * MATCHED   Linked to a voucher; a check or ADA was created and it is on the report.
+ * PENDING   Held for manual handling. It is not on the report and not in the books.
+ * MANUAL    Dealt with outside CBO and deliberately set aside, with a reason.
+ */
+export type ImportRowStatus = 'MATCHED' | 'PENDING' | 'MANUAL';
+
+export interface TreasuryImportRow {
+  lineNo: number;
+  /** As read from the file, before any matching. */
+  date: IsoDate;
+  /** Check serial number. Blank on a RADAI, where one ADA covers every row. */
+  serialNo?: string;
+  dvNo: string;
+  /** Obligation Request number. The Treasurer's file may head this "CAFOA". */
+  obrNo?: string;
+  payeeName?: string;
+  particulars?: string;
+  responsibilityCenter?: string;
+  amount: Centavos;
+
+  status: ImportRowStatus;
+  reason?: ImportRowReason;
+  /** What the mismatch actually was, in figures, for the person resolving it. */
+  detail?: string;
+  note?: string;
+
+  /** Set once matched: the voucher, and the check or ADA raised against it. */
+  dvId?: Id;
+  sourceId?: Id;
+  sourceNo?: string;
+
+  resolvedAt?: string;
+  resolvedByName?: string;
+}
+
+/**
+ * treasuryImports/{id} - one uploaded RCI or RADAI file.
+ *
+ * The upload is kept whole, rows that matched beside rows that did not. That is
+ * deliberate: the file is the Treasurer's statement of what was paid, and a
+ * record that silently dropped the rows CBO could not place would leave nobody
+ * able to answer why the report totals less than the paper.
+ *
+ * An unmatched row is held, never rejected. Rejecting the whole file because
+ * one voucher was encoded late means the other forty rows wait on it, and the
+ * office learns to stop uploading.
+ */
+export interface TreasuryImport {
+  id: Id;
+  importType: 'RCI' | 'RADAI';
+  fiscalYear: FiscalYear;
+  period: PeriodNo;
+  fundCode: string;
+  reportDate: IsoDate;
+
+  bankAccountId: Id;
+  bankName: string;
+  bankAccountNumber: string;
+  /** RADAI: the single ADA number the whole batch was sent to the bank under. */
+  adaNo?: string;
+
+  fileName?: string;
+  treasuryReportId: Id;
+  treasuryReportNo?: string;
+
+  rows: TreasuryImportRow[];
+  rowCount: number;
+  matchedCount: number;
+  pendingCount: number;
+
+  /** What the file said, and what CBO was able to place against vouchers. */
+  fileTotal: Centavos;
+  matchedTotal: Centavos;
+  pendingTotal: Centavos;
+
+  status: 'PENDING' | 'COMPLETE' | 'CANCELLED';
+  uploadedAt: string;
+  uploadedByName?: string;
 }

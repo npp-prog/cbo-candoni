@@ -34,7 +34,7 @@ const JevDetail = lazy(() => import('./pages/accounting/JevDetail'));
 const Checks = lazy(() => import('./pages/treasury/Checks'));
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
 const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
-const Raaf = lazy(() => import('./pages/treasury/Raaf'));
+const PaymentUploads = lazy(() => import('./pages/treasury/PaymentUploads'));
 const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJev'));
 const Payroll = lazy(() => import('./pages/treasury/Payroll'));
 const CashAdvances = lazy(() => import('./pages/accounting/CashAdvances'));
@@ -44,7 +44,6 @@ const IndexOfPayments = lazy(() => import('./pages/accounting/IndexOfPayments'))
 const TreasuryCollections = lazy(() => import('./pages/treasury/Collections'));
 const Rcd = lazy(() => import('./pages/treasury/Rcd'));
 const Deposits = lazy(() => import('./pages/treasury/Deposits'));
-const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
@@ -125,6 +124,14 @@ export default function App() {
               type passed in. They are one document with four contents: the
               Treasurer certifies a list, Accounting journalizes it. */}
           <Route
+            path="/treasury/checks/uploads"
+            element={<Guard module="treasury"><PaymentUploads importType="RCI" /></Guard>}
+          />
+          <Route
+            path="/treasury/ada/uploads"
+            element={<Guard module="treasury"><PaymentUploads importType="RADAI" /></Guard>}
+          />
+          <Route
             path="/treasury/checks/rci"
             element={<Guard module="treasury"><TreasuryReportRegister reportType="RCI" /></Guard>}
           />
@@ -135,10 +142,6 @@ export default function App() {
           <Route
             path="/treasury/collections/rcd"
             element={<Guard module="treasury"><TreasuryReportRegister reportType="RCD" /></Guard>}
-          />
-          <Route
-            path="/treasury/accountable-forms/raaf"
-            element={<Guard module="treasury"><Raaf /></Guard>}
           />
           <Route
             path="/treasury/payroll/rcdisb"
@@ -174,7 +177,6 @@ export default function App() {
               land somewhere sensible. */}
           <Route path="/treasury/collections/deposits" element={<Guard module="treasury"><Deposits /></Guard>} />
           <Route path="/treasury/deposits" element={<Navigate to="/treasury/collections/deposits" replace />} />
-          <Route path="/treasury/accountable-forms" element={<Guard module="treasury"><AccountableForms /></Guard>} />
           <Route path="/treasury/cash-position" element={<Guard module="treasury"><CashPosition /></Guard>} />
 
           {/* Reconciliation */}

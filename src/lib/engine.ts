@@ -175,6 +175,70 @@ export const engine = {
     call<typeof p, { reportId: Id }>('cancelTreasuryReport', p),
 
   /**
+   * Reads the Treasurer's own RCI or RADAI file into a draft report.
+   *
+   * The browser splits the file into rows and nothing more. Which voucher each
+   * row paid, whether that voucher is approved, whether the amount agrees and
+   * what is therefore posted are all decided on the server against CBO's own
+   * records - the amount that reaches the books is the voucher's net, never the
+   * figure in the file.
+   *
+   * A row the server cannot place comes back as pending rather than failing the
+   * upload, and the report it produced cannot be certified until every one of
+   * those has been dealt with.
+   */
+  importTreasuryPayments: (p: {
+    importType: 'RCI' | 'RADAI';
+    fiscalYear: number;
+    fundCode: string;
+    reportDate: IsoDate;
+    bankAccountId: Id;
+    /** RADAI: the one ADA number the whole batch went to the bank under. */
+    adaNo?: string;
+    fileName?: string;
+    rows: Array<{
+      lineNo: number;
+      date: IsoDate;
+      serialNo?: string;
+      dvNo: string;
+      obrNo?: string;
+      payeeName?: string;
+      particulars?: string;
+      responsibilityCenter?: string;
+      amount: Centavos;
+    }>;
+  }) =>
+    call<
+      typeof p,
+      {
+        importId: Id;
+        reportId: Id;
+        rowCount: number;
+        matchedCount: number;
+        pendingCount: number;
+        matchedTotal: Centavos;
+        pendingTotal: Centavos;
+      }
+    >('importTreasuryPayments', p),
+
+  /**
+   * Deals with one held row: links it to the voucher it actually paid, or sets
+   * it aside with a note saying how it was handled outside CBO.
+   */
+  resolveImportRow: (p: {
+    importId: Id;
+    lineNo: number;
+    action: 'LINK' | 'SET_ASIDE';
+    dvId?: Id;
+    serialNo?: string;
+    note?: string;
+  }) =>
+    call<typeof p, { importId: Id; lineNo: number; pendingCount: number; totalAmount: Centavos }>(
+      'resolveImportRow',
+      p,
+    ),
+
+  /**
    * Opening balances, posted as a journal entry rather than typed onto a
    * statement. Once per fiscal year and fund; a correction afterwards is an
    * adjusting entry, so the change is visible.

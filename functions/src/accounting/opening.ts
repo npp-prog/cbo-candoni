@@ -52,8 +52,22 @@ interface OpeningLine {
   subsidiaryType?: string | null;
   subsidiaryId?: string | null;
   subsidiaryName?: string | null;
+  /**
+   * The document behind this balance: the voucher still unpaid, the cash
+   * advance not yet liquidated, the assessment not yet collected.
+   */
+  referenceNo?: string | null;
+  /**
+   * When this item arose. For a payable carried forward it is the date the
+   * voucher was approved, not the date of conversion - that is what the aging
+   * report needs, and it is the one fact the previous system holds that cannot
+   * be reconstructed afterwards.
+   */
+  agingDate?: string | null;
   particulars?: string | null;
 }
+
+const SUBSIDIARY_TYPES = ['PAYEE', 'EMPLOYEE', 'OFFICE', 'PROJECT', 'BANK_ACCOUNT'];
 
 export const postOpeningBalances = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
@@ -123,7 +137,12 @@ export const postOpeningBalances = onCall(
             `Account ${line.accountCode} is not in the Chart of Accounts. Add it first, or correct the code.`,
           );
         }
-        const account = snap.data() as { name: string; postable?: boolean; active?: boolean };
+        const account = snap.data() as {
+          name: string;
+          postable?: boolean;
+          active?: boolean;
+          requiresSubsidiary?: boolean;
+        };
 
         if (account.active === false) {
           throw invalid(`Account ${line.accountCode} ${account.name} is deactivated.`);
@@ -144,6 +163,43 @@ export const postOpeningBalances = onCall(
           );
         }
 
+        // ---- subsidiary detail on control accounts -------------------------
+        //
+        // A payable or a receivable carried forward is only useful if it names
+        // the party. "Accounts Payable 4,215,332.10" tells the office nothing it
+        // can act on; "Accounts Payable - Negros Hardware - DV 2025-08-0142 -
+        // 41,200.00, outstanding since 14 August" is something a Treasurer can
+        // settle and an auditor can test. The chart already marks which accounts
+        // are controls; where it does, the party is required rather than
+        // encouraged, because a balance encoded without one can never be split
+        // apart later - the detail is gone.
+        if (account.requiresSubsidiary === true && !line.subsidiaryName) {
+          throw invalid(
+            `Account ${line.accountCode} ${account.name} is a control account and needs the party each balance belongs to. Encode one line per payee, officer or debtor rather than one line for the account.`,
+          );
+        }
+        if (line.subsidiaryType && !SUBSIDIARY_TYPES.includes(line.subsidiaryType)) {
+          throw invalid(
+            `Unknown subsidiary type "${line.subsidiaryType}" on account ${line.accountCode}.`,
+          );
+        }
+
+        // The aging date may precede the conversion, and usually does, but a
+        // balance that arose after the books were struck is a contradiction.
+        const agingDate = line.agingDate?.trim() || null;
+        if (agingDate) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(agingDate)) {
+            throw invalid(
+              `The date on account ${line.accountCode} is "${agingDate}". Dates are written as YYYY-MM-DD.`,
+            );
+          }
+          if (agingDate > asOfDate) {
+            throw invalid(
+              `Account ${line.accountCode} carries a balance dated ${agingDate}, which is after the conversion date ${asOfDate}. An opening balance cannot arise after the books were opened.`,
+            );
+          }
+        }
+
         totalDebit += debit;
         totalCredit += credit;
 
@@ -160,7 +216,16 @@ export const postOpeningBalances = onCall(
           subsidiaryId: line.subsidiaryId ?? null,
           subsidiaryName: line.subsidiaryName ?? null,
           cashFlowClass: 'OPERATING',
-          particulars: line.particulars ?? `Opening balance as at ${asOfDate}`,
+          agingDate,
+          particulars:
+            line.particulars ??
+            [
+              line.subsidiaryName,
+              line.referenceNo,
+              `outstanding as at ${asOfDate}`,
+            ]
+              .filter(Boolean)
+              .join(' - '),
         });
       }
 

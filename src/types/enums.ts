@@ -247,6 +247,15 @@ export const PAYEE_TYPES = [
 ] as const;
 export type PayeeType = (typeof PAYEE_TYPES)[number];
 
+/**
+ * How a payment left the treasury.
+ *
+ * No longer recorded on the disbursement voucher. Accounting does not know
+ * which way the Treasurer will pay, and recording a guess there put payables in
+ * the wrong journal. The answer is established by the report the payment turns
+ * up on - the RCI for a check, the RADAI for an ADA - and the list survives for
+ * bank reconciliation, which has to say what kind of item it matched.
+ */
 export const PAYMENT_METHODS = ['CHECK', 'ADA', 'CASH', 'LDDAP'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 

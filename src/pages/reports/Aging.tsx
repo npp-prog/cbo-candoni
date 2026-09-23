@@ -64,6 +64,20 @@ function daysBetween(from: string, to: string): number {
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
+/**
+ * The date an item is aged from.
+ *
+ * Normally the date of the entry that recorded it. Opening balances are the
+ * exception: a payable carried forward from the previous system is posted on
+ * the day the books were converted, but it has been outstanding since the
+ * voucher was approved. Ageing it from the conversion date would show every
+ * carried-forward supplier as current on the first day, and the report would be
+ * at its least useful exactly when the office most needs it.
+ */
+function ageDate(entry: LedgerEntry): string {
+  return entry.agingDate ?? entry.entryDate;
+}
+
 function addToBucket(bucket: Bucket, date: string, asOf: string, amount: Centavos): void {
   const age = daysBetween(date, asOf);
   if (age <= 30) bucket.current += amount;
@@ -90,10 +104,10 @@ function outstandingPieces(
   const open: Array<{ date: string; amount: Centavos }> = [];
   let settlement = 0;
 
-  for (const entry of [...entries].sort((a, b) => a.entryDate.localeCompare(b.entryDate))) {
+  for (const entry of [...entries].sort((a, b) => ageDate(a).localeCompare(ageDate(b)))) {
     const movement = entry.signedAmount * sign;
     if (movement > 0) {
-      open.push({ date: entry.entryDate, amount: movement });
+      open.push({ date: ageDate(entry), amount: movement });
     } else {
       settlement += -movement;
     }
@@ -151,7 +165,7 @@ export default function Aging() {
 
     for (const entry of ledger.data) {
       if (!codes.has(entry.accountCode)) continue;
-      if (entry.entryDate > asOf) continue;
+      if (ageDate(entry) > asOf) continue;
 
       const partyId = entry.subsidiaryId ?? entry.payeeId ?? '__unidentified__';
       const partyName =

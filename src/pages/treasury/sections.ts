@@ -24,11 +24,15 @@ export const COLLECTION_TABS = [
 export const CHECK_TABS = [
   { label: 'Checks', to: '/treasury/checks' },
   { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
+  // Where the RCI usually comes from. The Treasurer's own system produces the
+  // file; CBO reads it rather than asking for the same rows to be typed again.
+  { label: 'Upload RCI', to: '/treasury/checks/uploads' },
 ];
 
 export const ADA_TABS = [
   { label: 'ADA', to: '/treasury/ada' },
   { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
+  { label: 'Upload RADAI', to: '/treasury/ada/uploads' },
 ];
 
 export const PAYROLL_TABS = [

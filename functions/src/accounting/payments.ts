@@ -42,7 +42,6 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       totalDeductions: number;
       netAmount: number;
       status: string;
-      paymentMethod: string;
       checkId?: string;
       officeId?: string;
       officeName?: string;

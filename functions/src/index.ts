@@ -60,6 +60,7 @@ export {
   journalizeTreasuryReport,
   cancelTreasuryReport,
 } from './treasury/reports';
+export { importTreasuryPayments, resolveImportRow } from './treasury/import';
 
 // --- Reconciliation ----------------------------------------------------------
 export {

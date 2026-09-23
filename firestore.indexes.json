@@ -578,6 +578,28 @@
       ]
     },
     {
+      "collectionGroup": "treasuryImports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "importType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "//": "Deposits in transit for a reconciliation.",
       "collectionGroup": "deposits",
       "queryScope": "COLLECTION",

@@ -143,8 +143,10 @@ export default function Dashboard() {
     obligations: obligations.data.filter((o) => ['DRAFT', 'SUBMITTED', 'BUDGET_REVIEWED'].includes(o.status)).length,
     vouchers: dvs.data.filter((d) => ['SUBMITTED', 'REVIEWED'].includes(d.status)).length,
     jevs: jevs.data.filter((j) => ['DRAFT', 'FOR_REVIEW', 'REVIEWED'].includes(j.status)).length,
-    checks: dvs.data.filter((d) => d.status === 'APPROVED' && !d.checkId && d.paymentMethod === 'CHECK').length,
-    ada: dvs.data.filter((d) => d.status === 'APPROVED' && !d.adaId && d.paymentMethod === 'ADA').length,
+    // Approved and not yet paid, either way. The voucher no longer says
+    // which it will be, so there is one number here rather than two.
+    checks: dvs.data.filter((d) => d.status === 'APPROVED' && !d.checkId && !d.adaId).length,
+    ada: 0,
     missingAttachments: dvs.data.filter((d) => d.status === 'DRAFT' && (d.attachmentCount ?? 0) === 0).length,
   };
 

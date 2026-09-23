@@ -45,12 +45,61 @@ interface Row {
   accountName: string;
   debit: Centavos;
   credit: Centavos;
+  /**
+   * Who the balance belongs to, and what document it came from.
+   *
+   * Blank for an ordinary account - Cash in Bank needs no party. Required for a
+   * control account, because an opening payable encoded without the supplier can
+   * never be split apart afterwards: the detail is simply gone, and the aging
+   * report has nothing to age.
+   */
+  party: string;
+  reference: string;
+  /**
+   * When the item arose - the date the voucher was approved, the cash advance
+   * granted, the assessment raised. Not the conversion date. This is what the
+   * aging report counts from, and it is the one fact only the old system holds.
+   */
+  since: string;
   /** Set when the code is not in the chart of accounts. */
   problem?: string;
 }
 
+/**
+ * Reads whatever the previous system put in a date column.
+ *
+ * Spreadsheets hand back dates as serial numbers, as ISO strings, or as
+ * whatever the encoder typed. A date that cannot be read is dropped rather than
+ * guessed: an item with no date ages from the conversion, which is visibly
+ * wrong on the report, where a date guessed the wrong way round is not.
+ */
+function normaliseDate(value: unknown): string {
+  if (value == null || value === '') return '';
+  if (typeof value === 'number' && value > 20000 && value < 80000) {
+    // Excel serial: days since 1899-12-30.
+    const ms = Date.UTC(1899, 11, 30) + value * 86_400_000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime()) && parsed.getFullYear() > 1990) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
 let nextKey = 1;
-const blankRow = (): Row => ({ key: nextKey++, accountCode: '', accountName: '', debit: 0, credit: 0 });
+const blankRow = (): Row => ({
+  key: nextKey++,
+  accountCode: '',
+  accountName: '',
+  debit: 0,
+  credit: 0,
+  party: '',
+  reference: '',
+  since: '',
+});
 
 export default function OpeningBalances() {
   const { fiscalYear, fundCode } = useFilters();
@@ -154,12 +203,24 @@ export default function OpeningBalances() {
         if (!debit && !credit) continue;
 
         const account = byCode.get(code);
+        const party = String(
+          find(raw, [/payee/i, /supplier/i, /vendor/i, /officer/i, /employee/i,
+                     /debtor/i, /party/i, /^name$/i, /subsidiary/i]) ?? '',
+        ).trim();
+        const reference = String(
+          find(raw, [/reference/i, /^ref/i, /dv\s*no/i, /voucher/i, /^document/i]) ?? '',
+        ).trim();
+        const since = normaliseDate(find(raw, [/date/i, /since/i, /granted/i, /incurred/i]));
+
         imported.push({
           key: nextKey++,
           accountCode: code,
           accountName: account?.name ?? '',
           debit,
           credit,
+          party,
+          reference,
+          since,
           problem: !account
             ? 'Not in the Chart of Accounts'
             : account.postable === false
@@ -204,6 +265,11 @@ export default function OpeningBalances() {
           accountName: r.accountName,
           debit: r.debit,
           credit: r.credit,
+          subsidiaryType: r.party ? 'PAYEE' : null,
+          subsidiaryId: r.party ? r.party.toUpperCase() : null,
+          subsidiaryName: r.party || null,
+          referenceNo: r.reference || null,
+          agingDate: r.since || null,
         })),
       });
       toast.success(
@@ -285,7 +351,10 @@ export default function OpeningBalances() {
               </Button>
               <span className="text-xs text-slate-500">
                 The sheet needs a column for the account code and one each for debit and credit.
-                Other columns are ignored.
+                For payables, receivables and cash advances, add a column naming the party, one for
+                the reference document, and one for the date it arose - that date is what the aging
+                report counts from, and it is the one thing the old system knows that cannot be
+                worked out later. Other columns are ignored.
               </span>
             </div>
           </Card>
@@ -298,6 +367,15 @@ export default function OpeningBalances() {
                     Account code
                   </th>
                   <th className="px-2 py-2 text-left">Account</th>
+                  <th className="px-2 py-2 text-left" style={{ width: '13rem' }}>
+                    Party
+                  </th>
+                  <th className="px-2 py-2 text-left" style={{ width: '9rem' }}>
+                    Reference
+                  </th>
+                  <th className="px-2 py-2 text-left" style={{ width: '9rem' }}>
+                    Outstanding since
+                  </th>
                   <th className="px-2 py-2 text-right" style={{ width: '11rem' }}>
                     Debit
                   </th>
@@ -326,6 +404,30 @@ export default function OpeningBalances() {
                       ) : (
                         <span className="text-xs text-slate-400">—</span>
                       )}
+                    </td>
+                    <td className="px-2 py-1">
+                      <TextInput
+                        value={row.party}
+                        onChange={(e) => setRow(row.key, { party: e.target.value })}
+                        placeholder="Supplier or officer"
+                        className="text-xs"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <TextInput
+                        value={row.reference}
+                        onChange={(e) => setRow(row.key, { reference: e.target.value })}
+                        placeholder="DV 2025-08-0142"
+                        className="font-mono text-xs"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <TextInput
+                        type="date"
+                        value={row.since}
+                        onChange={(e) => setRow(row.key, { since: e.target.value })}
+                        className="text-xs"
+                      />
                     </td>
                     <td className="px-2 py-1">
                       <TextInput
@@ -358,7 +460,7 @@ export default function OpeningBalances() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-300 font-semibold">
-                  <td className="px-2 py-2" colSpan={2}>
+                  <td className="px-2 py-2" colSpan={5}>
                     {filled.length} account{filled.length === 1 ? '' : 's'}
                   </td>
                   <td className="px-2 py-2 text-right">

@@ -27,7 +27,12 @@ import type {
   TaxCode,
 } from '@/types';
 import type { AuditLog, DocumentAttachment, Notification, UserProfile, WorkflowEvent } from '@/types/system';
-import type { BankReconciliation, BankTransaction, TreasuryReport } from '@/types/treasury';
+import type {
+  BankReconciliation,
+  BankTransaction,
+  TreasuryImport,
+  TreasuryReport,
+} from '@/types/treasury';
 import type { TreasuryReportType } from '@/types/enums';
 
 /**
@@ -325,6 +330,50 @@ export const useReportsAwaitingJev = (fiscalYear: number) =>
       orderBy('reportDate', 'asc'),
     ],
     ['treasuryReportsAwaitingJev', fiscalYear],
+  );
+
+/**
+ * The uploaded RCI and RADAI files for a fiscal year and fund, newest first.
+ *
+ * Kept as a list rather than folded into the report screen because an upload
+ * outlives the report it made: rows that were set aside by hand are read back
+ * months later, when somebody asks why the books show one payment fewer than
+ * the Treasurer's file did. Index: importType, fiscalYear, fundCode,
+ * uploadedAt desc.
+ */
+export const useTreasuryImports = (
+  importType: 'RCI' | 'RADAI',
+  fiscalYear: number,
+  fundCode: string,
+) =>
+  useCollection<TreasuryImport>(
+    COL.treasuryImports,
+    [
+      where('importType', '==', importType),
+      where('fiscalYear', '==', fiscalYear),
+      where('fundCode', '==', fundCode),
+      orderBy('uploadedAt', 'desc'),
+    ],
+    ['treasuryImports', importType, fiscalYear, fundCode],
+  );
+
+/**
+ * Vouchers a payment can still be drawn against: approved, in this fund, with
+ * no check or ADA recorded yet. Used when a held upload row is linked by hand.
+ * The "no payment yet" part is filtered in the browser - Firestore cannot ask
+ * for the absence of two different fields in one query - so this is a
+ * convenience, and the engine checks it again before it writes anything.
+ */
+export const useUnpaidVouchers = (fiscalYear: number, fundCode: string) =>
+  useCollection<DisbursementVoucher>(
+    COL.disbursementVouchers,
+    [
+      where('fiscalYear', '==', fiscalYear),
+      where('fundCode', '==', fundCode),
+      where('status', '==', 'APPROVED'),
+      orderBy('dvDate', 'desc'),
+    ],
+    ['unpaidVouchers', fiscalYear, fundCode],
   );
 
 export const useDeposits = (bankAccountId?: string, status?: string) => {

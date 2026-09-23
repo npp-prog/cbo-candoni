@@ -56,7 +56,6 @@ interface DvDoc {
     subsidiaryName?: string;
     particulars?: string;
   }>;
-  paymentMethod: string;
   status: string;
   attachmentCount: number;
   createdBy?: { uid: string };
@@ -89,12 +88,16 @@ interface ObligationDoc {
  * calling the function directly - a voucher with no supporting documents is
  * the most common audit finding there is.
  */
-const REQUIRED_ATTACHMENTS_BY_METHOD: Record<string, string[]> = {
-  CHECK: [],
-  ADA: [],
-  CASH: [],
-  LDDAP: [],
-};
+/**
+ * Document types a voucher must carry before it may be submitted.
+ *
+ * Empty for now - the office has not settled which attachments it will enforce,
+ * and enforcing a guess would only teach people to attach something named
+ * correctly. It was previously keyed by payment method, which no longer exists
+ * on the voucher; the requirement belongs to what is being bought, not to how
+ * it is paid.
+ */
+const REQUIRED_ATTACHMENTS: string[] = [];
 
 export const submitDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, ENCODERS);
@@ -142,7 +145,7 @@ export const submitDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       );
     }
 
-    const required = REQUIRED_ATTACHMENTS_BY_METHOD[dv.paymentMethod] ?? [];
+    const required = REQUIRED_ATTACHMENTS;
     if (required.length > 0) {
       const docs = await tx.get(
         db
@@ -424,12 +427,22 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       fiscalYear: dv.fiscalYear,
       period,
       fundCode: dv.fundCode,
-      book:
-        dv.paymentMethod === 'CHECK'
-          ? 'CHECK_DISBURSEMENTS_JOURNAL'
-          : dv.paymentMethod === 'ADA'
-            ? 'ADA_DISBURSEMENTS_JOURNAL'
-            : 'CASH_DISBURSEMENTS_JOURNAL',
+      /*
+       * The General Journal, whatever the voucher is eventually paid with.
+       *
+       * This entry recognises a liability - the expense is debited and Accounts
+       * Payable credited - and no cash moves in it. The disbursement journals
+       * are for the entries that credit cash, and those are raised from the
+       * Treasurer's reports: the Check Disbursements Journal from the RCI, the
+       * ADA Disbursements Journal from the RADAI.
+       *
+       * It used to be chosen from a payment method recorded on the voucher.
+       * That put a payable in the Check Disbursements Journal on the strength
+       * of a guess made in Accounting days before the Treasurer decided how to
+       * pay it - and when the guess was wrong, the check register and the
+       * journal that was supposed to agree with it did not.
+       */
+      book: 'GENERAL_JOURNAL',
       sourceType: 'DV',
       sourceId: dvId,
       referenceNo: dvNo,

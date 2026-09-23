@@ -102,6 +102,9 @@ interface ReportDoc {
   entry?: EntryLine[];
   status: string;
   jevId?: string;
+  /** Set when the report was built from an uploaded RCI or RADAI file. */
+  importId?: string;
+  pendingRowCount?: number;
 }
 
 /** Which collection each report type draws its documents from. */
@@ -184,6 +187,29 @@ export const certifyTreasuryReport = onCall(
       }
 
       assertFundInScope(caller, report.fundCode);
+
+      /**
+       * A report built from an upload cannot be certified while rows of that
+       * upload are still held.
+       *
+       * The upload is deliberately lenient - a row naming a voucher CBO cannot
+       * find is held rather than rejecting the whole file - and this is what
+       * keeps that leniency honest. The report is a signed statement of what the
+       * office paid, and it is made from a file that said so. Certifying it with
+       * rows still unplaced would forward a report footing to less than the
+       * paper it was made from, with the difference recorded nowhere anybody
+       * would look.
+       *
+       * Each held row is either linked to its voucher or set aside with a note
+       * saying how it was handled. Both are answers; leaving it is not.
+       */
+      const pending = report.pendingRowCount ?? 0;
+      if (pending > 0) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${pending} row${pending === 1 ? '' : 's'} of the uploaded file could not be matched to a voucher and ${pending === 1 ? 'is' : 'are'} still waiting. Open the upload, and for each one either link it to the voucher it paid or set it aside with a note saying how it was handled. This ${label} covers the whole file or it covers nothing.`,
+        );
+      }
 
       const period = periodOf(report.reportDate);
       await assertFiscalYearOpen(report.fiscalYear, tx);
@@ -613,6 +639,15 @@ export const cancelTreasuryReport = onCall(
           [SOURCE_REPORT_FIELD]: null,
           treasuryReportNo: null,
           treasuryReportType: null,
+        });
+      }
+
+      // The upload the report was built from goes with it. The rows stay
+      // readable - what was paid, and what could not be placed - but the batch
+      // is no longer an open piece of work waiting on somebody.
+      if (report.importId) {
+        tx.update(db.collection(COL.treasuryImports).doc(report.importId), {
+          status: 'CANCELLED',
         });
       }
 

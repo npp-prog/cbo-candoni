@@ -48,9 +48,9 @@ export const COL = {
   collections: 'collections',
   rcds: 'rcds',
   treasuryReports: 'treasuryReports',
+  treasuryImports: 'treasuryImports',
   openingBalances: 'openingBalances',
   deposits: 'deposits',
-  accountableForms: 'accountableForms',
   cashPositions: 'cashPositions',
 
   // Reconciliation
@@ -85,4 +85,5 @@ export const SERVER_ONLY_COLLECTIONS: CollectionName[] = [
   COL.cashPositions,
   COL.accountingPeriods,
   COL.workflowHistory,
+  COL.treasuryImports,
 ];

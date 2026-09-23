@@ -91,10 +91,10 @@ export const NAVIGATION: NavItem[] = [
     to: '/treasury',
     module: 'treasury',
     icon: 'treasury',
-    // Seven items, one for each thing the office does. Each report lives inside
-    // the item it reports on - the RCI inside Checks, the RAAF inside
-    // Accountable Forms - rather than beside it, so the menu names the work and
-    // not the paperwork.
+    // One item for each thing the office does. Each report lives inside the item
+    // it reports on - the RCI inside Checks, the RCD inside Collections and
+    // Deposits - rather than beside it, so the menu names the work and not the
+    // paperwork.
     children: [
       { label: 'Checks', to: '/treasury/checks' },
       { label: 'ADA', to: '/treasury/ada' },
@@ -103,7 +103,6 @@ export const NAVIGATION: NavItem[] = [
       // pair. The deposits register is a tab inside it.
       { label: 'Collections and Deposits', to: '/treasury/collections' },
       { label: 'Payroll', to: '/treasury/payroll' },
-      { label: 'Accountable Forms', to: '/treasury/accountable-forms' },
       { label: 'Cash Position', to: '/treasury/cash-position' },
     ],
   },
@@ -138,7 +137,6 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
       { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
       { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
-      { group: 'Treasury Reports', label: 'Report of Accountability (RAAF)', to: '/treasury/accountable-forms/raaf' },
     ],
   },
   {

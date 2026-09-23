@@ -39,6 +39,19 @@ export interface JevLineData {
   subsidiaryName?: string | null;
   cashFlowClass?: string | null;
   particulars?: string | null;
+  /**
+   * The date this item actually arose, when that differs from the date of the
+   * entry that recorded it.
+   *
+   * Only opening balances use it, and they are exactly the case that needs it.
+   * A payable carried forward from the previous system is posted on the day the
+   * books were converted, but it has been outstanding since the voucher was
+   * approved months earlier. Ageing it from the conversion date would show a
+   * year of unpaid suppliers as current, which is the opposite of what an aging
+   * report is for. The General Ledger still dates the entry honestly; this is
+   * the age, kept beside it.
+   */
+  agingDate?: string | null;
 }
 
 export interface JevData {
@@ -192,6 +205,7 @@ export function postJevInTransaction(
       subsidiaryId: line.subsidiaryId ?? null,
       subsidiaryName: line.subsidiaryName ?? null,
       cashFlowClass: line.cashFlowClass ?? null,
+      agingDate: line.agingDate ?? null,
 
       sourceType: jev.sourceType,
       sourceId: jev.sourceId ?? null,

@@ -137,10 +137,10 @@ export default function Disbursements() {
       key: 'payment',
       header: 'Payment',
       width: '9rem',
-      value: (d) => d.checkNo ?? d.adaNo ?? d.paymentMethod,
+      value: (d) => d.checkNo ?? d.adaNo ?? '',
       cell: (d) => (
         <div className="text-xs">
-          <span className="text-slate-500">{d.paymentMethod}</span>
+          <span className="text-slate-500">Not yet paid</span>
           {(d.checkNo || d.adaNo) && (
             <span className="block font-mono text-navy-800">{d.checkNo ?? d.adaNo}</span>
           )}
