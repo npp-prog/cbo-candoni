@@ -53,15 +53,46 @@ const SEGREGATION_CONFLICTS: Array<[string, string, string]> = [
  */
 export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, ['SUPER_ADMIN']);
-  const { uid, roles, officeScope, fundScope, active } = (request.data ?? {}) as {
+  const { uid: uidIn, email, roles, officeScope, fundScope, active } = (request.data ?? {}) as {
     uid?: string;
+    email?: string;
     roles?: string[];
     officeScope?: string[];
     fundScope?: string[];
     active?: boolean;
   };
 
-  if (!uid) throw invalid('A user id is required.');
+  /*
+   * A user may be named by id or by email address, and the email is what an
+   * administrator actually has.
+   *
+   * Roles used to be grantable only to somebody already in the `users`
+   * collection, which meant only to somebody who had signed in at least once,
+   * because the profile was created by the sign-in hook. That put the
+   * municipality one broken hook away from nobody being able to grant access to
+   * anybody - including to a new administrator, with the old one gone. The
+   * administration screen would simply be empty, with no way to act.
+   *
+   * Looking the account up here removes that. The account must still exist in
+   * Firebase Authentication; this does not create one, because creating
+   * credentials is not a thing a role-granting function should be able to do.
+   */
+  let uid = uidIn;
+  if (!uid) {
+    const address = String(email ?? '').trim().toLowerCase();
+    if (!address) throw invalid('A user id or an email address is required.');
+    const found = await auth.getUserByEmail(address).catch((err: { code?: string }) => {
+      if (err?.code === 'auth/user-not-found') return null;
+      throw err;
+    });
+    if (!found) {
+      throw new HttpsError(
+        'not-found',
+        `No Firebase Authentication account exists for ${address}. Create the account first - Firebase console, Authentication, Add user - then grant the role here.`,
+      );
+    }
+    uid = found.uid;
+  }
   if (!Array.isArray(roles)) throw invalid('Roles must be provided as a list.');
 
   const invalidRoles = roles.filter((r) => !VALID_ROLES.includes(r));
@@ -107,6 +138,8 @@ export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_AP
   await auth.revokeRefreshTokens(uid);
 
   const now = new Date().toISOString();
+  // `set` with merge, not `update`: this both maintains an existing profile and
+  // provisions one that the sign-in hook never got to create.
   await db.collection(COL.users).doc(uid).set(
     {
       uid,

@@ -382,7 +382,21 @@ export const engine = {
   lockPeriod: (p: { fiscalYear: number; period: number; fundCode: string; locked: boolean }) =>
     call<typeof p, { periodId: Id }>('lockPeriod', p),
 
-  setUserRoles: (p: { uid: Id; roles: string[]; officeScope?: Id[]; fundScope?: string[] }) =>
+  /**
+   * Grants roles. The user may be named by `uid` - the usual case, from the
+   * administration table - or by `email`, which is how an administrator adds
+   * somebody who has not signed in yet and so has no profile to click on.
+   *
+   * The Firebase Authentication account must already exist. This grants access;
+   * it does not create credentials.
+   */
+  setUserRoles: (p: {
+    uid?: Id;
+    email?: string;
+    roles: string[];
+    officeScope?: Id[];
+    fundScope?: string[];
+  }) =>
     call<typeof p, { uid: Id; roles: string[]; segregationWarnings?: string[] }>('setUserRoles', p),
 
   recordExport: (p: { report: string; format: string; filters?: Record<string, unknown> }) =>

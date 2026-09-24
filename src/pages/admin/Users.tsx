@@ -4,7 +4,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Checkbox, Select } from '@/components/ui/Field';
+import { Field, Checkbox, Select, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthProvider';
 import { useUsers, useOffices } from '@/data/queries';
@@ -33,6 +33,7 @@ export default function Users() {
   const { user: currentUser } = useAuth();
   const toast = useToast();
   const [editing, setEditing] = useState<UserProfile | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const activeAdmins = data.filter((u) => u.active && u.roles?.includes('SUPER_ADMIN')).length;
   const noRoles = data.filter((u) => u.active && (u.roles?.length ?? 0) === 0);
@@ -122,6 +123,11 @@ export default function Users() {
         title="Users and Roles"
         subtitle="Access to CBO is granted role by role. A new account can see nothing until a role is assigned."
         breadcrumbs={[{ label: 'Administration' }, { label: 'Users and Roles' }]}
+        actions={
+          <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
+            Add user
+          </Button>
+        }
       />
 
       {activeAdmins <= 1 && (
@@ -147,9 +153,23 @@ export default function Users() {
         error={error}
         searchPlaceholder="Name, email or role"
         emptyTitle="No users"
-        emptyMessage="Users appear here after they first sign in with a Firebase account."
+        emptyMessage="Add a user by the email address of their Firebase Authentication account, or wait for them to sign in once."
         exportMeta={{ title: 'CBO User Access Report' }}
       />
+
+      {adding && (
+        <AddUserDialog
+          offices={offices.data}
+          onClose={() => setAdding(false)}
+          onAdded={(email) => {
+            setAdding(false);
+            toast.success(
+              'Access granted',
+              `${email} can use CBO from their next sign-in. They appear in the list now.`,
+            );
+          }}
+        />
+      )}
 
       {editing && (
         <AccessDialog
@@ -171,6 +191,123 @@ export default function Users() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Granting access to somebody who has not signed in yet.
+ *
+ * The table can only offer a user it already knows about, and CBO learns about
+ * a user when they first sign in. That is the wrong way round for an office:
+ * the administrator wants to prepare an account before handing it over, and if
+ * the sign-in hook ever stops provisioning profiles, the table stays empty and
+ * nobody can be granted anything at all - including a replacement
+ * administrator.
+ *
+ * So access can also be granted by email. The Firebase Authentication account
+ * has to exist first; this screen does not create credentials, and should not
+ * be able to.
+ */
+function AddUserDialog({
+  offices,
+  onClose,
+  onAdded,
+}: {
+  offices: Array<{ id: string; name: string }>;
+  onClose: () => void;
+  onAdded: (email: string) => void;
+}) {
+  const toast = useToast();
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<Role | ''>('');
+  const [officeId, setOfficeId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!email.trim() || !role) return;
+    setBusy(true);
+    try {
+      await engine.setUserRoles({
+        email: email.trim(),
+        roles: [role],
+        officeScope: officeId ? [officeId] : [],
+      });
+      onAdded(email.trim());
+    } catch (err) {
+      toast.error('Could not grant access', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title="Add a user"
+      description="Grants access to an existing Firebase Authentication account."
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={busy || !email.trim() || !role}
+            onClick={() => void submit()}
+          >
+            Grant access
+          </Button>
+        </>
+      }
+    >
+      <Field
+        label="Email address"
+        required
+        htmlFor="newUserEmail"
+        hint="The account must already exist in Firebase Authentication. Create it there first if it does not."
+      >
+        <TextInput
+          id="newUserEmail"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="name@mgocandoniaccounting.org"
+        />
+      </Field>
+
+      <Field label="Role" required htmlFor="newUserRole" className="mt-4">
+        <Select id="newUserRole" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+          <option value="">Choose a role</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABELS[r]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field
+        label="Restrict to one office"
+        htmlFor="newUserOffice"
+        className="mt-4"
+        hint="Leave blank for accounting, budget and treasury staff, who work across every office."
+      >
+        <Select id="newUserOffice" value={officeId} onChange={(e) => setOfficeId(e.target.value)}>
+          <option value="">Every office</option>
+          {offices.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Alert tone="info" className="mt-4">
+        More roles, and the segregation of duties check, are available from Manage access once the
+        user is in the list.
+      </Alert>
+    </Modal>
   );
 }
 
