@@ -162,3 +162,30 @@ export function invalid(message: string, details?: unknown): HttpsError {
 export function conflict(message: string, details?: unknown): HttpsError {
   return new HttpsError('aborted', message, details);
 }
+
+/**
+ * Turns an unexpected failure into something the person at the screen can act
+ * on.
+ *
+ * A callable that throws anything other than an HttpsError reaches the browser
+ * as the single word "internal". That is the correct default for a public API -
+ * it leaks nothing - but CBO is not a public API. Every caller here is an
+ * authenticated municipal officer, and "internal" tells them nothing except
+ * that something broke, which costs a round trip to the Cloud Functions log
+ * before anybody can even begin.
+ *
+ * So an unexpected error is logged in full, with a stack, and the caller is
+ * told what operation failed and what the underlying message said. An
+ * HttpsError raised deliberately is passed through untouched - those already
+ * say what they mean.
+ */
+export async function reporting<T>(what: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error(`${what} failed`, err);
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new HttpsError('internal', `${what} could not be completed. ${detail}`);
+  }
+}

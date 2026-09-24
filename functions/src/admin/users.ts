@@ -7,7 +7,7 @@ import {
   HttpsError as AuthBlockingError,
 } from 'firebase-functions/v2/identity';
 import { ENFORCE_APP_CHECK, auth, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, invalid } from '../lib/context';
+import { requireCaller, invalid, reporting } from '../lib/context';
 import { audit } from '../lib/audit';
 
 const VALID_ROLES = [
@@ -53,6 +53,7 @@ const SEGREGATION_CONFLICTS: Array<[string, string, string]> = [
  */
 export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, ['SUPER_ADMIN']);
+  return reporting('Granting access', async () => {
   const { uid: uidIn, email, roles, officeScope, fundScope, active } = (request.data ?? {}) as {
     uid?: string;
     email?: string;
@@ -175,6 +176,7 @@ export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_AP
   });
 
   return { uid, roles, segregationWarnings: conflicts.map((c) => c[2]) };
+  });
 });
 
 /**
