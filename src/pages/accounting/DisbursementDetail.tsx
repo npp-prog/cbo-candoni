@@ -19,7 +19,7 @@ import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useTaxCodes, useDisbursementVouchers } from '@/data/queries';
+import { useTaxCodes, useDisbursementVouchers, useAdaNumbers } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
@@ -77,6 +77,19 @@ export default function DisbursementDetail() {
   const [confirm, setConfirm] = useState<
     null | 'submit' | 'approve' | 'return' | 'cancel' | 'check' | 'ada'
   >(null);
+
+  /**
+   * A reserved ADA number chosen for this voucher.
+   *
+   * Empty means draw the next one. Choosing a reservation is what stops it
+   * being left behind as a hole in the series that somebody has to explain.
+   */
+  const [adaReservationId, setAdaReservationId] = useState('');
+  const adaNumbers = useAdaNumbers(fiscalYear, fundCode);
+  const reservedAdaNumbers = useMemo(
+    () => adaNumbers.data.filter((r) => r.state === 'RESERVED'),
+    [adaNumbers.data],
+  );
 
   // --- Form state ----------------------------------------------------------
 
@@ -757,11 +770,20 @@ export default function DisbursementDetail() {
 
       <ConfirmDialog
         open={confirm === 'ada'}
-        onCancel={() => setConfirm(null)}
+        onCancel={() => {
+          setConfirm(null);
+          setAdaReservationId('');
+        }}
         onConfirm={() =>
           void run(async () => {
             if (!bankAccountId) throw new Error('Select the bank account the ADA is drawn on.');
-            const result = await engine.issueAda({ dvId: id!, bankAccountId, adaDate: todayPh() });
+            const result = await engine.issueAda({
+              dvId: id!,
+              bankAccountId,
+              adaDate: todayPh(),
+              reservationId: adaReservationId || undefined,
+            });
+            setAdaReservationId('');
             toast.success(`ADA ${result.adaNo} prepared`, 'Submit it to the bank to have the account debited.');
           }, 'Could not prepare the ADA')
         }
@@ -770,10 +792,32 @@ export default function DisbursementDetail() {
         confirmLabel="Prepare ADA"
         variant="success"
         message={
-          <p>
-            An ADA for {formatPeso(netAmount)} in favour of {payeeName} will be prepared against the
-            selected bank account.
-          </p>
+          <>
+            <p>
+              An ADA for {formatPeso(netAmount)} in favour of {payeeName} will be prepared against
+              the selected bank account.
+            </p>
+            {reservedAdaNumbers.length > 0 && (
+              <Field
+                label="Use a reserved number"
+                className="mt-3"
+                hint="Leave this as the next number unless the office reserved one for this batch. Using a reservation is the only thing that stops it becoming a gap to explain later."
+              >
+                <Select
+                  value={adaReservationId}
+                  onChange={(e) => setAdaReservationId(e.target.value)}
+                >
+                  <option value="">Draw the next number</option>
+                  {reservedAdaNumbers.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.adaNo}
+                      {r.note ? ` — ${r.note}` : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </>
         }
       />
     </div>

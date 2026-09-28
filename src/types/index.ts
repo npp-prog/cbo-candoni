@@ -6,4 +6,5 @@ export * from './accounting';
 export * from './treasury';
 export * from './accountableForms';
 export * from './primaryReports';
+export * from './adaNumbers';
 export * from './system';

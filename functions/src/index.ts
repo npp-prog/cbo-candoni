@@ -64,6 +64,11 @@ export {
 export { importTreasuryPayments, resolveImportRow } from './treasury/import';
 export { importCollections } from './treasury/collectionsImport';
 export {
+  reserveAdaNumbers,
+  retireAdaReservation,
+  voidSkippedAdaNumber,
+} from './accounting/adaNumbers';
+export {
   savePrimaryReport,
   closePrimaryReport,
   reopenPrimaryReport,

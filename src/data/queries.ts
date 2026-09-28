@@ -28,6 +28,7 @@ import type {
 } from '@/types';
 import type { AuditLog, DocumentAttachment, Notification, UserProfile, WorkflowEvent } from '@/types/system';
 import type { PrimaryReport } from '@/types/primaryReports';
+import type { AdaNumberRecord } from '@/types/adaNumbers';
 import type {
   AccountableFormMovement,
   AccountableFormType,
@@ -296,6 +297,21 @@ export const useUndepositedCollections = (fundCode: string) =>
     COL.collections,
     [where('fundCode', '==', fundCode), where('status', 'in', ['ISSUED', 'IN_RCD']), orderBy('orDate')],
     ['undeposited', fundCode],
+  );
+
+/**
+ * Every ADA number whose fate is not an ordinary issue, for one fund and year.
+ * Index: fiscalYear, fundCode, adaNo asc.
+ */
+export const useAdaNumbers = (fiscalYear: number, fundCode: string) =>
+  useCollection<AdaNumberRecord>(
+    COL.adaNumbers,
+    [
+      where('fiscalYear', '==', fiscalYear),
+      where('fundCode', '==', fundCode),
+      orderBy('adaNo'),
+    ],
+    ['adaNumbers', fiscalYear, fundCode],
   );
 
 /**

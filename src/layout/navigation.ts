@@ -104,6 +104,7 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { label: 'Checks', to: '/treasury/checks' },
       { label: 'ADA', to: '/treasury/ada' },
+      { label: 'ADA Numbers', to: '/treasury/ada/numbers' },
       // Collections and deposits are one item: the receipt and the deposit slip
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.

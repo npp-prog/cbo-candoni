@@ -76,6 +76,7 @@ export const COL = {
   accountingPeriods: 'accountingPeriods',
   collections: 'collections',
   revenueCodes: 'revenueCodes',
+  adaNumbers: 'adaNumbers',
   primaryReports: 'primaryReports',
   accountableFormTypes: 'accountableFormTypes',
   accountableFormMovements: 'accountableFormMovements',

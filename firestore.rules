@@ -467,6 +467,15 @@ service cloud.firestore {
     // secondary may be gathered into it, and whether a collection day has
     // already been banked, both depend on every other report for the fund -
     // which a rule cannot read. So the engine is the only writer.
+    // The ADA series and the explanations for the holes in it. Reserving a
+    // number means drawing it from the same counter issueAda draws from, so
+    // only the engine may write here - a client that could reserve without
+    // advancing the counter would hand the same number to two officers.
+    match /adaNumbers/{id} {
+      allow read: if canRead();
+      allow write: if false; // reserveAdaNumbers / retire / voidSkipped only.
+    }
+
     match /primaryReports/{id} {
       allow read: if canRead();
       allow write: if false; // savePrimaryReport / close / reopen / cancel only.

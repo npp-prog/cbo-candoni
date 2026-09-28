@@ -160,7 +160,36 @@ export const engine = {
   cancelCheck: (p: { checkId: Id; reason: string }) =>
     call<typeof p, { checkId: Id; jevId?: Id }>('cancelCheck', p),
 
-  issueAda: (p: { dvId: Id; bankAccountId: Id; adaDate: IsoDate }) =>
+  // --- ADA number governance -----------------------------------------------
+  //
+  // A number, once drawn, is never returned to the pool: the bank may already
+  // hold it against an instruction the office withdrew.
+
+  reserveAdaNumbers: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    slotDate: IsoDate;
+    count?: number;
+    withRadai?: boolean;
+    note?: string;
+  }) =>
+    call<typeof p, { reserved: Array<{ id: Id; adaNo: string; radaiNo: string | null }> }>(
+      'reserveAdaNumbers',
+      p,
+    ),
+
+  retireAdaReservation: (p: { recordId: Id; reason: string }) =>
+    call<typeof p, { recordId: Id }>('retireAdaReservation', p),
+
+  voidSkippedAdaNumber: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    adaNo: string;
+    slotDate: IsoDate;
+    reason: string;
+  }) => call<typeof p, { recordId: Id; adaNo: string }>('voidSkippedAdaNumber', p),
+
+  issueAda: (p: { dvId: Id; bankAccountId: Id; adaDate: IsoDate; reservationId?: Id }) =>
     call<typeof p, { adaId: Id; adaNo: string }>('issueAda', p),
 
   cancelAda: (p: { adaId: Id; reason: string }) => call<typeof p, { adaId: Id }>('cancelAda', p),

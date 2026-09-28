@@ -56,6 +56,7 @@ const SummaryOfCollections = lazy(() => import('./pages/reports/SummaryOfCollect
 const RcdTransmittal = lazy(() => import('./pages/reports/RcdTransmittal'));
 const CancelledChecks = lazy(() => import('./pages/reports/CancelledChecks'));
 const ClaimSheet = lazy(() => import('./pages/treasury/ClaimSheet'));
+const AdaNumbers = lazy(() => import('./pages/treasury/AdaNumbers'));
 const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
@@ -139,6 +140,9 @@ export default function App() {
           <Route path="/treasury/checks" element={<Guard module="treasury"><Checks /></Guard>} />
           <Route path="/treasury/checks/:id" element={<Guard module="treasury"><Checks /></Guard>} />
           <Route path="/treasury/ada" element={<Guard module="treasury"><AdaPage /></Guard>} />
+          {/* The series and the holes in it. A number, once drawn, is never
+              returned to the pool - so every hole needs an explanation. */}
+          <Route path="/treasury/ada/numbers" element={<Guard module="treasury"><AdaNumbers /></Guard>} />
           <Route path="/treasury/ada/:id" element={<Guard module="treasury"><AdaPage /></Guard>} />
           {/* The four treasury reports share one screen, distinguished by the
               type passed in. They are one document with four contents: the

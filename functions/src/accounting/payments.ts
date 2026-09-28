@@ -331,10 +331,16 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
 /** issueAda - Advice to Debit Account, the electronic counterpart of a check. */
 export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, TREASURY);
-  const { dvId, bankAccountId, adaDate } = (request.data ?? {}) as {
+  const { dvId, bankAccountId, adaDate, reservationId } = (request.data ?? {}) as {
     dvId?: string;
     bankAccountId?: string;
     adaDate?: string;
+    /**
+     * A number reserved earlier, to be consumed instead of drawing a new one.
+     * Without this the counter advances and the reserved number is left behind
+     * as a hole nobody can explain.
+     */
+    reservationId?: string;
   };
   if (!dvId || !bankAccountId || !adaDate) {
     throw invalid('A voucher, bank account and ADA date are required.');
@@ -396,12 +402,43 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     }
 
     const bookCode = await bookCodeForFund(dv.fundCode);
-    const adaNo = await issueNumber(tx, adaConfig, {
-      bookCode,
-      fundCode: dv.fundCode,
-      fiscalYear: dv.fiscalYear,
-      month: periodOf(adaDate),
-    });
+
+    /**
+     * Consume a reserved number where one was chosen, otherwise draw the next.
+     *
+     * The reservation was created by drawing from this same counter, so using
+     * it here must NOT advance the counter again - doing so would leave the
+     * reserved number issued and the next one skipped, which is precisely the
+     * kind of hole this whole mechanism exists to prevent.
+     */
+    let adaNo: string;
+    let reservationRef = null;
+    if (reservationId) {
+      reservationRef = db.collection(COL.adaNumbers).doc(String(reservationId));
+      const rSnap = await tx.get(reservationRef);
+      if (!rSnap.exists) throw notFound('That reserved ADA number');
+      const r = rSnap.data() as { state: string; adaNo: string; fundCode: string };
+      if (r.state !== 'RESERVED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `ADA ${r.adaNo} is ${r.state.toLowerCase()} and cannot be issued.`,
+        );
+      }
+      if (r.fundCode !== dv.fundCode) {
+        throw new HttpsError(
+          'failed-precondition',
+          `ADA ${r.adaNo} was reserved on the ${r.fundCode} fund, and DV ${dv.dvNo} is drawn on ${dv.fundCode}.`,
+        );
+      }
+      adaNo = r.adaNo;
+    } else {
+      adaNo = await issueNumber(tx, adaConfig, {
+        bookCode,
+        fundCode: dv.fundCode,
+        fiscalYear: dv.fiscalYear,
+        month: periodOf(adaDate),
+      });
+    }
     const adaJevNo = await issueNumber(tx, adaJevConfig, {
       bookCode,
       fundCode: dv.fundCode,
@@ -434,6 +471,14 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     });
 
     tx.update(dvRef, { adaId: adaRef.id, adaNo, bankAccountId });
+
+    if (reservationRef) {
+      tx.update(reservationRef, {
+        state: 'USED',
+        usedByAdaId: adaRef.id,
+        usedAt: new Date().toISOString(),
+      });
+    }
 
     recordTransition(tx, {
       caller,
