@@ -43,12 +43,8 @@ const BUDGET: ReportLink[] = [
     description: 'Appropriations, allotments, obligations, disbursements and the balances remaining.',
     available: true,
   },
-  {
-    to: '/budget/registry',
-    title: 'Registry of Appropriations, Allotments and Obligations',
-    description: 'The full budget registry, by office, programme and account.',
-    available: true,
-  },
+  // The RAAO is not a card here either. It is in the Budget menu, beside the
+  // appropriations, allotments and obligations it registers.
   {
     to: '/budget/appropriations',
     title: 'Appropriation Ledger',

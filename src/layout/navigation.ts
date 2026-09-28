@@ -198,8 +198,11 @@ export const NAVIGATION: NavItem[] = [
     // output of Budget and Accounting, which have no such register menu of
     // their own.
     children: [
+      // The RAAO is not listed here. It lives in the Budget menu, next to the
+      // appropriations, allotments and obligations it registers - the same
+      // reasoning as the treasury reports above, and for the same reason: it
+      // was the only remaining screen with two menu entries pointing at it.
       { group: 'Budget Reports', label: 'SAOB', to: '/reports/saob' },
-      { group: 'Budget Reports', label: 'Registry (RAAO)', to: '/budget/registry' },
 
       { group: 'Accounting Reports', label: 'Trial Balance', to: '/reports/trial-balance' },
       { group: 'Accounting Reports', label: 'Financial Statements', to: '/reports/financial-statements' },
