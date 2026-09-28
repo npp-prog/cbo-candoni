@@ -58,7 +58,7 @@ export default function RcdTransmittal() {
         fundLabel: fundLabel(fundCode),
         periodLabel: `For collection / deposit dated ${formatShortDate(from)} to ${formatShortDate(to)}`,
       }}
-      breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'RCD Transmittal' }]}
+      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'RCD Transmittal' }]}
       filters={
         <>
           <Field label="From" className="w-40">

@@ -182,7 +182,7 @@ export default function AbstractOfCollections() {
         preparedBy: 'Municipal Treasurer’s Office',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Abstract of Collections' }]}
+      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Abstract of Collections' }]}
       filters={
         <>
           <Field label="From" className="w-40">

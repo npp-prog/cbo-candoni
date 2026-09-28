@@ -109,30 +109,73 @@ export const NAVIGATION: NavItem[] = [
     to: '/treasury',
     module: 'treasury',
     icon: 'treasury',
-    // One item for each thing the office does. Each report lives inside the item
-    // it reports on - the RCI inside Checks, the RCD inside Collections and
-    // Deposits - rather than beside it, so the menu names the work and not the
-    // paperwork.
+    // Four groups, in the order the office works: the registers where the day's
+    // transactions are kept, the cash books those registers foot into, the
+    // reports drawn off them, and the printing that is always last.
+    //
+    // The treasury reports used to live under Reports, beside the Budget and
+    // Accounting ones. That grouped them by FORMAT - "things that are reports" -
+    // when the only question the Treasurer's clerk actually asks is "where is my
+    // RCD". A report belongs with the register it is drawn from, in the menu of
+    // the office that prepares it.
     children: [
-      { label: 'Checks', to: '/treasury/checks' },
-      { label: 'ADA', to: '/treasury/ada' },
-      { label: 'ADA Numbers', to: '/treasury/ada/numbers' },
+      // ----------------------------------------------------------------
+      // Registers: where the day's transactions are kept.
+      // ----------------------------------------------------------------
+      { group: 'Registers', label: 'Checks', to: '/treasury/checks' },
+      { group: 'Registers', label: 'ADA', to: '/treasury/ada' },
+      { group: 'Registers', label: 'ADA Numbers', to: '/treasury/ada/numbers' },
       // Collections and deposits are one item: the receipt and the deposit slip
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.
-      { label: 'Collections and Deposits', to: '/treasury/collections' },
-      { label: 'Primary Reports', to: '/treasury/collections/primary' },
-      { label: 'Accountable Forms', to: '/treasury/accountable-forms' },
-      { label: 'RAAF', to: '/treasury/raaf' },
-      { label: 'Payroll', to: '/treasury/payroll' },
-      { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
-      { label: 'Cash in Bank', to: '/treasury/cash-in-bank' },
-      { label: 'Cash Position', to: '/treasury/cash-position' },
-      // The two screens that put ink on paper somebody else printed. They sit
-      // at the end because they are the last thing done, after the check is
-      // signed and the collection is recorded - never before.
-      { label: 'Print Checks', to: '/treasury/print/checks' },
-      { label: 'Print Receipts', to: '/treasury/print/receipts' },
+      { group: 'Registers', label: 'Collections and Deposits', to: '/treasury/collections' },
+      { group: 'Registers', label: 'Primary Reports', to: '/treasury/collections/primary' },
+      { group: 'Registers', label: 'Payroll', to: '/treasury/payroll' },
+      { group: 'Registers', label: 'Claim Sheet', to: '/treasury/claim-sheet' },
+      { group: 'Registers', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
+
+      // ----------------------------------------------------------------
+      // Cash books: the running balances the registers foot into. Cash in
+      // Local Treasury sits here rather than among the reports because it is
+      // the same kind of thing as the other two - a running book, read down a
+      // column - and an officer who wants to know what is in their hands looks
+      // in one place for all three.
+      // ----------------------------------------------------------------
+      { group: 'Cash Books', label: 'Cash in Bank', to: '/treasury/cash-in-bank' },
+      { group: 'Cash Books', label: 'Cash in Local Treasury', to: '/reports/cash-in-local-treasury' },
+      { group: 'Cash Books', label: 'Cash Position', to: '/treasury/cash-position' },
+
+      // ----------------------------------------------------------------
+      // Treasury reports, in the order of the registers above: collections
+      // first, then disbursements, then accountability for the forms.
+      //
+      // RAAF appears once. It used to be listed twice - plainly as "RAAF" here
+      // and again under Reports with its full name - both pointing at the same
+      // screen. Two menu entries for one screen is how an office comes to
+      // believe there are two reports.
+      // ----------------------------------------------------------------
+      // Six collection reports behind one screen: daily, monthly, the cashbook,
+      // the deposit register, revenue collections and undeposited collections.
+      // It was called "Cash Position and Collections", which named a screen it
+      // is not - the cash position is its own item above.
+      { group: 'Treasury Reports', label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
+      { group: 'Treasury Reports', label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
+      { group: 'Treasury Reports', label: 'Summary of Collections', to: '/reports/summary-of-collections' },
+      { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
+      { group: 'Treasury Reports', label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
+      { group: 'Treasury Reports', label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
+      { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
+      { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
+      { group: 'Treasury Reports', label: 'Report of Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+      { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
+
+      // ----------------------------------------------------------------
+      // The two screens that put ink on paper somebody else printed. Last,
+      // because they are the last thing done - after the check is signed and
+      // the collection is recorded, never before.
+      // ----------------------------------------------------------------
+      { group: 'Printing', label: 'Print Checks', to: '/treasury/print/checks' },
+      { group: 'Printing', label: 'Print Receipts', to: '/treasury/print/receipts' },
     ],
   },
   {
@@ -148,6 +191,12 @@ export const NAVIGATION: NavItem[] = [
     module: 'reports',
     icon: 'reports',
     // Grouped by the office whose work the report presents, not by format.
+    //
+    // The treasury reports are deliberately NOT here. They moved into the
+    // Treasury menu beside the registers they are drawn from, because that is
+    // where the person preparing them is already standing. What remains is the
+    // output of Budget and Accounting, which have no such register menu of
+    // their own.
     children: [
       { group: 'Budget Reports', label: 'SAOB', to: '/reports/saob' },
       { group: 'Budget Reports', label: 'Registry (RAAO)', to: '/budget/registry' },
@@ -159,18 +208,6 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Accounting Reports', label: 'Journals', to: '/reports/journals' },
       { group: 'Accounting Reports', label: 'Aging Reports', to: '/reports/aging' },
       { group: 'Accounting Reports', label: 'Registers', to: '/reports/registers' },
-
-      { group: 'Treasury Reports', label: 'Cash Position and Collections', to: '/reports/treasury' },
-      { group: 'Treasury Reports', label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
-      { group: 'Treasury Reports', label: 'Summary of Collections', to: '/reports/summary-of-collections' },
-      { group: 'Treasury Reports', label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
-      { group: 'Treasury Reports', label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
-      { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
-      { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
-      { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
-      { group: 'Treasury Reports', label: 'Report of Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
-      { group: 'Treasury Reports', label: 'Cash in Local Treasury', to: '/reports/cash-in-local-treasury' },
-      { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
     ],
   },
   {

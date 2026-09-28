@@ -109,24 +109,23 @@ const ACCOUNTING: ReportLink[] = [
   },
 ];
 
+/**
+ * One signpost rather than a second copy of the treasury list.
+ *
+ * The treasury reports now live in the Treasury menu, beside the registers
+ * they are drawn from. Listing them here as well would put two doors on every
+ * report, and the two lists would drift apart the first time one of them was
+ * added to. But removing them with nothing in their place would leave whoever
+ * has been finding the RCD here for months with no idea where it went, so the
+ * section stays and says so.
+ */
 const TREASURY: ReportLink[] = [
   {
-    to: '/reports/treasury',
-    title: 'Treasury Reports',
+    to: '/treasury',
+    title: 'The treasury reports are in the Treasury menu',
     description:
-      'Collections by day and month, cashbook, deposit register, revenue collection report and undeposited collections.',
-    available: true,
-  },
-  {
-    to: '/treasury/cash-position',
-    title: 'Cash Position Report',
-    description: 'Book balance, deposits in transit and outstanding checks per bank account.',
-    available: true,
-  },
-  {
-    to: '/treasury/accountable-forms',
-    title: 'Statement of Accountability for Accountable Forms',
-    description: 'Official receipts and other controlled forms by accountable officer.',
+      'RCD, RCI, RADAI, RCDisb, cancelled checks, the abstract and summary of collections, the cashbook, ' +
+      'cash in local treasury and the RAAF are grouped there beside the registers they come from.',
     available: true,
   },
 ];

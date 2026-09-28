@@ -56,7 +56,7 @@ export default function TreasuryReports() {
         preparedBy: 'Municipal Treasurer',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Treasury Reports' }]}
+      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Collection Reports and Cashbook' }]}
       filters={
         <>
           <Field label="Report" className="min-w-[20rem]">

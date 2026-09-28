@@ -68,7 +68,7 @@ export default function CancelledChecks() {
         preparedBy: 'Municipal Treasurer’s Office',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Cancelled Checks' }]}
+      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Cancelled Checks' }]}
       rows={rows}
       exportColumns={[
         { key: 'checkNo', header: 'Check Serial No.', value: (c) => c.checkNo },

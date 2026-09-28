@@ -126,7 +126,7 @@ export default function CashInLocalTreasury() {
         preparedBy: 'Municipal Treasurer’s Office',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Cash in Local Treasury' }]}
+      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Cash in Local Treasury' }]}
       filters={
         <>
           <Field label="From" className="w-40">
