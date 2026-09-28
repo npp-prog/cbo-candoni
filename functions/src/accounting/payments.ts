@@ -1,8 +1,9 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
+import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '../lib/clearing';
 import type { Transaction } from 'firebase-admin/firestore';
-import { recordTransition } from '../lib/audit';
+import { recordTransition, auditInTransaction } from '../lib/audit';
 import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { periodOf } from '../lib/period';
 
@@ -10,11 +11,17 @@ const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF'
 
 export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, TREASURY);
-  const { dvId, bankAccountId, checkNo, checkDate } = (request.data ?? {}) as {
+  const { dvId, bankAccountId, checkNo, checkDate, payeeAcknowledgement } = (request.data ?? {}) as {
     dvId?: string;
     bankAccountId?: string;
     checkNo?: string;
     checkDate?: string;
+    /**
+     * A written decision to draw a check the clearing house will refuse. It is
+     * an escape hatch, not a formality: it is recorded as a critical audit
+     * event against the check.
+     */
+    payeeAcknowledgement?: string;
   };
 
   if (!dvId || !bankAccountId || !checkNo?.trim() || !checkDate) {
@@ -58,6 +65,21 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       throw new HttpsError(
         'failed-precondition',
         `DV ${dv.dvNo} already has a check drawn against it. Cancel that check before issuing a replacement.`,
+      );
+    }
+
+    // The clearing house refuses "CASH" and "and/or" payees outright. Caught
+    // here, it costs a retype; caught by the bank, it costs three offices a
+    // morning each, weeks later, with the RCI already certified.
+    const objection = clearingObjection(dv.payeeName);
+    const acknowledgement = String(payeeAcknowledgement ?? '').trim();
+    if (objection && acknowledgement.length < CLEARING_OVERRIDE_MIN_LENGTH) {
+      throw new HttpsError(
+        'failed-precondition',
+        `The payee on DV ${dv.dvNo} is "${dv.payeeName}". ${objection.message} ` +
+          'If the office has decided to draw it anyway, say so in writing and it will be ' +
+          'recorded on the check.',
+        { clearingObjection: objection.found, payeeName: dv.payeeName },
       );
     }
 
@@ -120,6 +142,10 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       grossAmount: dv.grossAmount,
       totalDeductions: dv.totalDeductions,
       netAmount: dv.netAmount,
+      // Kept on the check itself so the register can mark it, and so the
+      // decision travels with the document rather than only with the log.
+      clearingObjection: objection ? objection.found : null,
+      clearingAcknowledgement: objection ? acknowledgement : null,
       status: 'PREPARED',
       createdBy: {
         uid: caller.uid,
@@ -130,6 +156,24 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
     });
 
     tx.update(dvRef, { checkId: checkDocId, checkNo: normalisedCheckNo, bankAccountId });
+
+    if (objection) {
+      // A decision this deliberate belongs in the audit trail at the level an
+      // auditor filters on, not buried in the check's remarks.
+      auditInTransaction(tx, {
+        caller,
+        event: 'CREATE',
+        entityType: COL.checks,
+        entityId: checkDocId,
+        entityRef: `Check ${normalisedCheckNo}`,
+        fiscalYear: dv.fiscalYear,
+        fundCode: dv.fundCode,
+        severity: 'CRITICAL',
+        remarks:
+          `Drawn to "${dv.payeeName}", which the clearing house refuses ` +
+          `(${objection.found}). Reason given: ${acknowledgement}`,
+      });
+    }
 
     recordTransition(tx, {
       caller,
@@ -223,7 +267,36 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
     // updates below even though it reads as part of the cancellation.
     await assertNotReported(tx, check.treasuryReportId, `Check ${check.checkNo}`);
 
+    /**
+     * A cancelled check stays on its draft report, at nil.
+     *
+     * The instinct is to take the line off, and it is the wrong one. The RCI
+     * reports a run of check serials, and a serial that simply vanishes from
+     * it is the one thing an auditor cannot let pass: it looks identical to a
+     * check drawn and never reported. So the line is kept, marked excluded so
+     * the report still foots, and the replacement check is added to the SAME
+     * report - which is why the serial run has no hole in it.
+     */
+    let reportRef = null;
+    let remainingLines: Array<{ sourceId: string; amount: number; excluded?: boolean }> = [];
+    if (check.treasuryReportId) {
+      const rSnap = await tx.get(db.collection(COL.treasuryReports).doc(check.treasuryReportId));
+      if (rSnap.exists && (rSnap.data() as { status?: string }).status === 'DRAFT') {
+        reportRef = rSnap.ref;
+        remainingLines = ((rSnap.data()?.lines ?? []) as typeof remainingLines).map((l) =>
+          l.sourceId === checkId ? { ...l, excluded: true } : l,
+        );
+      }
+    }
+
     const now = new Date().toISOString();
+
+    if (reportRef) {
+      tx.update(reportRef, {
+        lines: remainingLines,
+        totalAmount: remainingLines.reduce((s, l) => (l.excluded ? s : s + l.amount), 0),
+      });
+    }
     tx.update(ref, {
       status: 'CANCELLED',
       cancelledReason: reason.trim(),

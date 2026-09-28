@@ -35,6 +35,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PAIRS = [
   { source: 'src/lib/accounting-rules.ts', target: 'functions/src/lib/rules.ts' },
   { source: 'src/lib/serials.ts', target: 'functions/src/lib/serials.ts' },
+  { source: 'src/lib/clearing.ts', target: 'functions/src/lib/clearing.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

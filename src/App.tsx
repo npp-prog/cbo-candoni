@@ -54,6 +54,8 @@ const PrimaryAppendix34 = lazy(() => import('./pages/treasury/PrimaryAppendix34'
 const AbstractOfCollections = lazy(() => import('./pages/reports/AbstractOfCollections'));
 const SummaryOfCollections = lazy(() => import('./pages/reports/SummaryOfCollections'));
 const RcdTransmittal = lazy(() => import('./pages/reports/RcdTransmittal'));
+const CancelledChecks = lazy(() => import('./pages/reports/CancelledChecks'));
+const ClaimSheet = lazy(() => import('./pages/treasury/ClaimSheet'));
 const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
@@ -217,6 +219,9 @@ export default function App() {
           <Route path="/treasury/collections/deposits" element={<Guard module="treasury"><Deposits /></Guard>} />
           <Route path="/treasury/deposits" element={<Navigate to="/treasury/collections/deposits" replace />} />
           <Route path="/treasury/cash-position" element={<Guard module="treasury"><CashPosition /></Guard>} />
+          {/* Printed empty and filled in at the counter: the signature is the
+              document. */}
+          <Route path="/treasury/claim-sheet" element={<Guard module="treasury"><ClaimSheet /></Guard>} />
           {/* Custody of the municipality's numbered paper, and the monthly
               report that proves it. The RAAF is reachable from Reports as well,
               because COA reads it as a report even though the Treasurer's
@@ -264,6 +269,10 @@ export default function App() {
           <Route
             path="/reports/rcd-transmittal"
             element={<Guard module="reports"><RcdTransmittal /></Guard>}
+          />
+          <Route
+            path="/reports/cancelled-checks"
+            element={<Guard module="reports"><CancelledChecks /></Guard>}
           />
 
           {/* Master data */}

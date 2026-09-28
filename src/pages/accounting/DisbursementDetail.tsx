@@ -24,6 +24,7 @@ import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
 import { formatPeso, amountInWords } from '@/lib/money';
+import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '@/lib/clearing';
 import { formatLongDate, todayPh } from '@/lib/dates';
 import { checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
 import {
@@ -744,6 +745,7 @@ export default function DisbursementDetail() {
           dvId={id!}
           fundCode={fundCode}
           netAmount={netAmount}
+          payeeName={existing?.payeeName ?? ''}
           defaultBankAccountId={bankAccountId}
           onClose={() => setConfirm(null)}
           onIssued={(checkNo) => {
@@ -943,6 +945,7 @@ function IssueCheckDialog({
   dvId,
   fundCode,
   netAmount,
+  payeeName,
   defaultBankAccountId,
   onClose,
   onIssued,
@@ -950,6 +953,7 @@ function IssueCheckDialog({
   dvId: string;
   fundCode: string;
   netAmount: number;
+  payeeName: string;
   defaultBankAccountId: string | null;
   onClose: () => void;
   onIssued: (checkNo: string) => void;
@@ -958,11 +962,24 @@ function IssueCheckDialog({
   const [bankAccountId, setBankAccountId] = useState(defaultBankAccountId);
   const [checkNo, setCheckNo] = useState('');
   const [checkDate, setCheckDate] = useState(todayPh());
+  const [acknowledgement, setAcknowledgement] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // The same rule the server decides with, so the warning and the refusal
+  // cannot disagree. See src/lib/clearing.ts.
+  const objection = clearingObjection(payeeName);
+  const acknowledged = acknowledgement.trim().length >= CLEARING_OVERRIDE_MIN_LENGTH;
 
   const issue = async () => {
     if (!bankAccountId || !checkNo.trim()) {
       toast.error('Incomplete', 'A bank account and check number are required.');
+      return;
+    }
+    if (objection && !acknowledged) {
+      toast.error(
+        'The bank will return this check',
+        'Say in writing why the office is drawing it anyway.',
+      );
       return;
     }
     setBusy(true);
@@ -972,6 +989,7 @@ function IssueCheckDialog({
         bankAccountId,
         checkNo: checkNo.trim(),
         checkDate,
+        payeeAcknowledgement: objection ? acknowledgement.trim() : undefined,
       });
       onIssued(result.checkNo);
     } catch (err) {
@@ -993,13 +1011,37 @@ function IssueCheckDialog({
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="success" loading={busy} onClick={() => void issue()}>
-            Issue check
+          <Button
+            variant={objection ? 'danger' : 'success'}
+            loading={busy}
+            disabled={Boolean(objection) && !acknowledged}
+            onClick={() => void issue()}
+          >
+            {objection ? 'Issue anyway' : 'Issue check'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        {objection && (
+          <Alert tone="error" title="The clearing house will refuse this payee">
+            <p>
+              The payee is <strong>{payeeName}</strong>. {objection.message}
+            </p>
+            <Field
+              label="Why the office is drawing it anyway"
+              className="mt-3"
+              hint="At least fifteen characters. Recorded against the check as a critical audit event."
+            >
+              <TextInput
+                value={acknowledgement}
+                onChange={(e) => setAcknowledgement(e.target.value)}
+                placeholder="Approved by the Treasurer for petty cash replenishment"
+              />
+            </Field>
+          </Alert>
+        )}
+
         <Field label="Bank account" required htmlFor="checkBank">
           <BankAccountPicker id="checkBank" value={bankAccountId} fundCode={fundCode} onChange={setBankAccountId} />
         </Field>

@@ -301,6 +301,13 @@ export interface Check extends Partial<AuditStamps> {
   clearedDate?: IsoDate;
   bankTransactionId?: Id;
 
+  /**
+   * Set when the check was drawn to a payee the clearing house refuses, with
+   * the written decision to draw it anyway. The register marks these.
+   */
+  clearingObjection?: string | null;
+  clearingAcknowledgement?: string | null;
+
   cancelledReason?: string;
   replacedByCheckId?: Id;
   replacesCheckId?: Id;

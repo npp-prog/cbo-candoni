@@ -147,7 +147,14 @@ export const engine = {
       p,
     ),
 
-  issueCheck: (p: { dvId: Id; bankAccountId: Id; checkNo: string; checkDate: IsoDate }) =>
+  issueCheck: (p: {
+    dvId: Id;
+    bankAccountId: Id;
+    checkNo: string;
+    checkDate: IsoDate;
+    /** Required only when the payee is one the clearing house refuses. */
+    payeeAcknowledgement?: string;
+  }) =>
     call<typeof p, { checkId: Id; checkNo: string }>('issueCheck', p),
 
   cancelCheck: (p: { checkId: Id; reason: string }) =>
