@@ -64,6 +64,12 @@ export {
 export { importTreasuryPayments, resolveImportRow } from './treasury/import';
 export { importCollections } from './treasury/collectionsImport';
 export {
+  savePrimaryReport,
+  closePrimaryReport,
+  reopenPrimaryReport,
+  cancelPrimaryReport,
+} from './treasury/primaryReports';
+export {
   recordFormMovement,
   voidFormMovement,
   prepareRaaf,

@@ -402,6 +402,43 @@ export const engine = {
   recordExport: (p: { report: string; format: string; filters?: Record<string, unknown> }) =>
     call<typeof p, { logged: true }>('recordExport', p),
 
+  // --- Primary reports -----------------------------------------------------
+  //
+  // A secondary belongs to one primary, and a collection day is banked once.
+  // Neither check can be a security rule - both have to read every other
+  // report for the fund first - so both live in the engine.
+
+  savePrimaryReport: (p: {
+    primaryId?: Id;
+    fiscalYear: number;
+    fundCode: string;
+    reportDate: IsoDate;
+    reportType: 'COLLECTION' | 'CONSOLIDATED' | 'DEPOSIT';
+    accountableOfficerId: Id;
+    accountableOfficerName: string;
+    accountableOfficerPosition?: string;
+    rcdIds?: Id[];
+    coveredPrimaryIds?: Id[];
+    deposit?: {
+      bankAccountId: Id;
+      bankName: string;
+      bankAccountNumber: string;
+      cash: Centavos;
+      checks: Array<{ checkNo: string; payor: string; amount: Centavos }>;
+      online: Array<{ referenceNo: string; particulars: string; amount: Centavos }>;
+    } | null;
+    remarks?: string;
+  }) => call<typeof p, { primaryId: Id; totalAmount: Centavos }>('savePrimaryReport', p),
+
+  closePrimaryReport: (p: { primaryId: Id }) =>
+    call<typeof p, { primaryId: Id; primaryNo: string }>('closePrimaryReport', p),
+
+  reopenPrimaryReport: (p: { primaryId: Id; reason: string }) =>
+    call<typeof p, { primaryId: Id }>('reopenPrimaryReport', p),
+
+  cancelPrimaryReport: (p: { primaryId: Id; reason: string }) =>
+    call<typeof p, { primaryId: Id }>('cancelPrimaryReport', p),
+
   // --- Accountable forms ---------------------------------------------------
   //
   // Custody moves in serial ranges, never in quantities, and every one of these

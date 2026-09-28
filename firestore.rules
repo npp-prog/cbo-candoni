@@ -463,6 +463,15 @@ service cloud.firestore {
     // is the only writer, a client that bypasses the screens changes nothing.
     // =========================================================================
 
+    // The primary report is the layer above a collector's own RCD. Whether a
+    // secondary may be gathered into it, and whether a collection day has
+    // already been banked, both depend on every other report for the fund -
+    // which a rule cannot read. So the engine is the only writer.
+    match /primaryReports/{id} {
+      allow read: if canRead();
+      allow write: if false; // savePrimaryReport / close / reopen / cancel only.
+    }
+
     match /accountableFormMovements/{id} {
       allow read: if canRead();
       allow write: if false; // recordFormMovement / voidFormMovement only.

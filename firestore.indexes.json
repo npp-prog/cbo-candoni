@@ -1349,6 +1349,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "primaryReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reportDate",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

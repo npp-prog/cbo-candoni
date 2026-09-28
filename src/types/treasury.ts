@@ -140,6 +140,14 @@ export interface Rcd extends Partial<AuditStamps> {
 
   depositIds: Id[];
 
+  /**
+   * The primary report that gathered this one, set when that primary is
+   * closed and cleared if it is reopened or cancelled. While it is set, this
+   * report is accounted for by another document and must not be altered.
+   */
+  primaryReportId?: Id | null;
+  primaryReportNo?: string | null;
+
   status: RcdStatus;
   jevId?: Id;
   remarks?: string;

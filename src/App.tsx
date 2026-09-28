@@ -49,6 +49,8 @@ const Deposits = lazy(() => import('./pages/treasury/Deposits'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
 const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
 const RcdAppendix34 = lazy(() => import('./pages/treasury/RcdAppendix34'));
+const PrimaryReports = lazy(() => import('./pages/treasury/PrimaryReports'));
+const PrimaryAppendix34 = lazy(() => import('./pages/treasury/PrimaryAppendix34'));
 const AbstractOfCollections = lazy(() => import('./pages/reports/AbstractOfCollections'));
 const SummaryOfCollections = lazy(() => import('./pages/reports/SummaryOfCollections'));
 const RcdTransmittal = lazy(() => import('./pages/reports/RcdTransmittal'));
@@ -197,6 +199,17 @@ export default function App() {
           <Route
             path="/treasury/collections/rcd/:id/form"
             element={<Guard module="treasury"><RcdAppendix34 /></Guard>}
+          />
+          {/* The layer above the collector's own report: the Liquidating
+              Officer gathers several secondaries into one primary, and
+              closing it is what freezes them. */}
+          <Route
+            path="/treasury/collections/primary"
+            element={<Guard module="treasury"><PrimaryReports /></Guard>}
+          />
+          <Route
+            path="/treasury/collections/primary/:id/form"
+            element={<Guard module="treasury"><PrimaryAppendix34 /></Guard>}
           />
           {/* Deposits sit inside the collections section. The old address is
               kept as a redirect so bookmarks and older notifications still

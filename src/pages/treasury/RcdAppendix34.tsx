@@ -16,6 +16,13 @@ import {
   type NumericRange,
   type SerialRange,
 } from '@/lib/serials';
+import {
+  Letterhead,
+  SectionTitle,
+  SignatureLine,
+  SummaryLine,
+  blankRows,
+} from '@/components/print/formParts';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -46,18 +53,6 @@ const FORM_CODE = (c: { accountableForm?: string; accountableFormId?: string }) 
   String(c.accountableForm ?? c.accountableFormId ?? '')
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
-
-function blanks(count: number, columns: number, keyPrefix: string) {
-  return Array.from({ length: Math.max(0, count) }, (_, i) => (
-    <tr key={`${keyPrefix}-${i}`}>
-      {Array.from({ length: columns }, (_, j) => (
-        <td key={j} className="border border-slate-400 px-1.5 py-[7px]">
-          &nbsp;
-        </td>
-      ))}
-    </tr>
-  ));
-}
 
 export default function RcdAppendix34() {
   const { id } = useParams<{ id: string }>();
@@ -225,17 +220,7 @@ export default function RcdAppendix34() {
       />
 
       <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        {/* --- Letterhead ------------------------------------------------ */}
-        <div className="relative mb-4 text-center">
-          <span className="absolute right-0 top-0 text-2xs italic text-slate-500">Appendix 34</span>
-          <p className="text-2xs">Republic of the Philippines</p>
-          <p className="text-2xs">Province of Negros Occidental</p>
-          <p className="text-sm font-bold uppercase tracking-wide">Municipality of Candoni</p>
-          <p className="text-2xs">Office of the Municipal Treasurer</p>
-          <h2 className="mt-3 text-sm font-bold uppercase tracking-wide">
-            Report of Collections and Deposits
-          </h2>
-        </div>
+        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" />
 
         <table className="mb-4 w-full text-2xs">
           <tbody>
@@ -257,6 +242,12 @@ export default function RcdAppendix34() {
               <td className="py-0.5">
                 <span className="text-slate-500">Date: </span>
                 <span className="font-semibold">{formatShortDate(rcd.rcdDate)}</span>
+                {rcd.primaryReportNo && (
+                  <span className="ml-3 text-slate-500">
+                    Gathered into primary{' '}
+                    <span className="font-mono font-semibold">{rcd.primaryReportNo}</span>
+                  </span>
+                )}
               </td>
             </tr>
           </tbody>
@@ -294,7 +285,7 @@ export default function RcdAppendix34() {
                 </td>
               </tr>
             ))}
-            {blanks(BLANK_ROWS.a1 - a1Rows.length, 4, 'a1')}
+            {blankRows(BLANK_ROWS.a1 - a1Rows.length, 4, 'a1')}
             <tr className="font-bold">
               <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={3}>
                 TOTAL
@@ -322,7 +313,7 @@ export default function RcdAppendix34() {
             </tr>
           </thead>
           <tbody>
-            {blanks(BLANK_ROWS.a2, 3, 'a2')}
+            {blankRows(BLANK_ROWS.a2, 3, 'a2')}
             <tr className="font-bold">
               <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={2}>
                 TOTAL
@@ -362,7 +353,7 @@ export default function RcdAppendix34() {
                 </td>
               </tr>
             ))}
-            {blanks(BLANK_ROWS.b - coveredDeposits.length, 3, 'b')}
+            {blankRows(BLANK_ROWS.b - coveredDeposits.length, 3, 'b')}
             <tr className="font-bold">
               <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={2}>
                 TOTAL
@@ -417,7 +408,7 @@ export default function RcdAppendix34() {
                 ))}
               </tr>
             ))}
-            {blanks(BLANK_ROWS.c - accountabilityLines.length, 13, 'c')}
+            {blankRows(BLANK_ROWS.c - accountabilityLines.length, 13, 'c')}
           </tbody>
         </table>
 
@@ -433,18 +424,18 @@ export default function RcdAppendix34() {
         <div className="mb-4 grid gap-4 sm:grid-cols-2">
           <table className="w-full border-collapse text-2xs">
             <tbody>
-              <Line label="Beginning Balance" value={0} />
+              <SummaryLine label="Beginning Balance" value={0} />
               <tr>
                 <td className="border border-slate-400 px-1.5 py-1 font-semibold" colSpan={2}>
                   Add: Collections
                 </td>
               </tr>
-              <Line label="Cash" value={tender.cash} indent />
-              <Line label="Online Payment" value={tender.online} indent />
-              <Line label="Check/s" value={tender.check} indent />
-              <Line label="Total" value={totalCollections} bold />
-              <Line label="Less: Remittance / Deposit to Depository Bank" value={totalDeposits} />
-              <Line label="Balance" value={balance} bold double />
+              <SummaryLine label="Cash" value={tender.cash} indent />
+              <SummaryLine label="Online Payment" value={tender.online} indent />
+              <SummaryLine label="Check/s" value={tender.check} indent />
+              <SummaryLine label="Total" value={totalCollections} bold />
+              <SummaryLine label="Less: Remittance / Deposit to Depository Bank" value={totalDeposits} />
+              <SummaryLine label="Balance" value={balance} bold double />
             </tbody>
           </table>
 
@@ -471,7 +462,7 @@ export default function RcdAppendix34() {
                   </td>
                 </tr>
               ))}
-              {blanks(BLANK_ROWS.checks - checks.length, 3, 'ck')}
+              {blankRows(BLANK_ROWS.checks - checks.length, 3, 'ck')}
               <tr className="font-bold">
                 <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={2}>
                   Total
@@ -554,57 +545,12 @@ export default function RcdAppendix34() {
         </table>
 
         <div className="grid gap-8 sm:grid-cols-3">
-          <Signature label="Encoded by" />
-          <Signature label="Prepared by" />
-          <Signature label="Certified Correct" name="Municipal Accountant" />
+          <SignatureLine label="Encoded by" />
+          <SignatureLine label="Prepared by" />
+          <SignatureLine label="Certified Correct" role="Municipal Accountant" />
         </div>
       </div>
     </div>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="mb-1.5 mt-4 border-b border-slate-400 pb-0.5 text-2xs font-bold uppercase tracking-wide">
-      {children}
-    </h3>
-  );
-}
-
-function Line({
-  label,
-  value,
-  indent,
-  bold,
-  double,
-}: {
-  label: string;
-  value: number;
-  indent?: boolean;
-  bold?: boolean;
-  double?: boolean;
-}) {
-  return (
-    <tr className={bold ? 'font-bold' : undefined}>
-      <td className={`border border-slate-400 px-1.5 py-1 ${indent ? 'pl-6' : ''}`}>{label}</td>
-      <td
-        className={`border border-slate-400 px-1.5 py-1 text-right tabular-nums ${
-          double ? 'border-b-4 border-double' : ''
-        }`}
-        style={{ width: '8rem' }}
-      >
-        {formatAmount(value, false)}
-      </td>
-    </tr>
-  );
-}
-
-function Signature({ label, name }: { label: string; name?: string }) {
-  return (
-    <div>
-      <p className="text-[9px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-8 border-t border-slate-500 pt-1 text-center text-2xs font-semibold">&nbsp;</p>
-      {name && <p className="text-center text-[9px] text-slate-500">{name}</p>}
-    </div>
-  );
-}

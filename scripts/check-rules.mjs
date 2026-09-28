@@ -33,6 +33,7 @@ const SERVER_ONLY = [
   'accountingPeriods',
   'workflowHistory',
   'treasuryImports',
+  'primaryReports',
   'accountableFormMovements',
   'raafReports',
 ];

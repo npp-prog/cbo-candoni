@@ -108,6 +108,7 @@ export const NAVIGATION: NavItem[] = [
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.
       { label: 'Collections and Deposits', to: '/treasury/collections' },
+      { label: 'Primary Reports', to: '/treasury/collections/primary' },
       { label: 'Accountable Forms', to: '/treasury/accountable-forms' },
       { label: 'RAAF', to: '/treasury/raaf' },
       { label: 'Payroll', to: '/treasury/payroll' },

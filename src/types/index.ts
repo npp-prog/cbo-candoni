@@ -5,4 +5,5 @@ export * from './budget';
 export * from './accounting';
 export * from './treasury';
 export * from './accountableForms';
+export * from './primaryReports';
 export * from './system';

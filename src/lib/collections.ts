@@ -47,6 +47,7 @@ export const COL = {
   // Treasury
   collections: 'collections',
   revenueCodes: 'revenueCodes',
+  primaryReports: 'primaryReports',
   accountableFormTypes: 'accountableFormTypes',
   accountableFormMovements: 'accountableFormMovements',
   raafReports: 'raafReports',
@@ -90,6 +91,7 @@ export const SERVER_ONLY_COLLECTIONS: CollectionName[] = [
   COL.accountingPeriods,
   COL.workflowHistory,
   COL.treasuryImports,
+  COL.primaryReports,
   COL.accountableFormMovements,
   COL.raafReports,
 ];

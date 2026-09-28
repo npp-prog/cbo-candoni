@@ -38,6 +38,9 @@ const DEFAULTS: Record<string, NumberingConfig> = {
   RCI: { docType: 'RCI', pattern: '{BOOK}-{YY}-{MM}-{SEQ}', sequenceLength: 4, resetOn: 'MONTH', perFund: true },
   RADAI: { docType: 'RADAI', pattern: '{BOOK}-{YY}-{MM}-{SEQ}', sequenceLength: 4, resetOn: 'MONTH', perFund: true },
   RCDISB: { docType: 'RCDISB', pattern: '{BOOK}-{YY}-{MM}-{SEQ}', sequenceLength: 4, resetOn: 'MONTH', perFund: true },
+  // The Liquidating Officer's own series, one per fund, continuing through
+  // the year so a gap in it is a question rather than a month boundary.
+  PRN: { docType: 'PRN', pattern: '{BOOK}-{YY}-{MM}-{SEQ}', sequenceLength: 4, resetOn: 'MONTH', perFund: true },
   // An officer's accountability for paper is not kept fund by fund: one
   // booklet of receipts collects into whichever fund the payor is paying.
   RAAF: { docType: 'RAAF', pattern: 'RAAF-{YY}-{MM}-{SEQ}', sequenceLength: 4, resetOn: 'MONTH', perFund: false },
