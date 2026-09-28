@@ -47,6 +47,8 @@ const TreasuryCollections = lazy(() => import('./pages/treasury/Collections'));
 const Rcd = lazy(() => import('./pages/treasury/Rcd'));
 const Deposits = lazy(() => import('./pages/treasury/Deposits'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
+const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
+const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
 
@@ -192,6 +194,15 @@ export default function App() {
           <Route path="/treasury/collections/deposits" element={<Guard module="treasury"><Deposits /></Guard>} />
           <Route path="/treasury/deposits" element={<Navigate to="/treasury/collections/deposits" replace />} />
           <Route path="/treasury/cash-position" element={<Guard module="treasury"><CashPosition /></Guard>} />
+          {/* Custody of the municipality's numbered paper, and the monthly
+              report that proves it. The RAAF is reachable from Reports as well,
+              because COA reads it as a report even though the Treasurer's
+              office works on it as a register. */}
+          <Route
+            path="/treasury/accountable-forms"
+            element={<Guard module="treasury"><AccountableForms /></Guard>}
+          />
+          <Route path="/treasury/raaf" element={<Guard module="treasury"><Raaf /></Guard>} />
 
           {/* Reconciliation */}
           <Route path="/reconciliation" element={<Navigate to="/reconciliation/bank" replace />} />

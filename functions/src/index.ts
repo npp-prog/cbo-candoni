@@ -63,6 +63,13 @@ export {
 } from './treasury/reports';
 export { importTreasuryPayments, resolveImportRow } from './treasury/import';
 export { importCollections } from './treasury/collectionsImport';
+export {
+  recordFormMovement,
+  voidFormMovement,
+  prepareRaaf,
+  certifyRaaf,
+  cancelRaaf,
+} from './treasury/accountableForms';
 
 // --- Reconciliation ----------------------------------------------------------
 export {

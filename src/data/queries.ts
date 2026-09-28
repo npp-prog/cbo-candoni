@@ -28,6 +28,11 @@ import type {
 } from '@/types';
 import type { AuditLog, DocumentAttachment, Notification, UserProfile, WorkflowEvent } from '@/types/system';
 import type {
+  AccountableFormMovement,
+  AccountableFormType,
+  Raaf,
+} from '@/types/accountableForms';
+import type {
   BankReconciliation,
   BankTransaction,
   RevenueCode,
@@ -290,6 +295,37 @@ export const useUndepositedCollections = (fundCode: string) =>
     COL.collections,
     [where('fundCode', '==', fundCode), where('status', 'in', ['ISSUED', 'IN_RCD']), orderBy('orDate')],
     ['undeposited', fundCode],
+  );
+
+/**
+ * The stock ledger for one fiscal year, newest movement first.
+ *
+ * Not filtered by fund: a booklet of receipts is not bought for the General
+ * Fund, it is bought for the office, and the same booklet collects into
+ * whichever fund the payor happens to be paying.
+ * Index: fiscalYear, movementDate desc.
+ */
+export const useFormMovements = (fiscalYear: number) =>
+  useCollection<AccountableFormMovement>(
+    COL.accountableFormMovements,
+    [where('fiscalYear', '==', fiscalYear), orderBy('movementDate', 'desc')],
+    ['formMovements', fiscalYear],
+  );
+
+/** The accountable form types, as master data. */
+export const useAccountableFormTypes = () =>
+  useCollection<AccountableFormType>(
+    COL.accountableFormTypes,
+    [ACTIVE, orderBy('sortOrder')],
+    ['accountableFormTypes'],
+  );
+
+/** Reports of accountability for a fiscal year. Index: fiscalYear, periodTo desc. */
+export const useRaafReports = (fiscalYear: number) =>
+  useCollection<Raaf>(
+    COL.raafReports,
+    [where('fiscalYear', '==', fiscalYear), orderBy('periodTo', 'desc')],
+    ['raafReports', fiscalYear],
   );
 
 export const useRcds = (fiscalYear: number, fundCode: string) =>

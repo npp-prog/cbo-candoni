@@ -1,0 +1,118 @@
+CBO PATCH 13 — ACCOUNTABLE FORMS AND RAAF
+=========================================
+Municipal Government of Candoni · 28 September 2026
+
+Phase 1 of bringing the MTO systems into CBO. Nothing existing was rewritten:
+every file below is either new, or had lines added to it.
+
+
+WHAT TO DO
+----------
+
+1. Drag the contents of this folder into your cbo-candoni folder and let
+   Windows replace the files when it asks. Nothing needs deleting this time.
+
+2. Open a terminal in the project folder and run, in order:
+
+       npm --prefix functions run build
+       npx tsc -b
+       npm test
+
+   All three must be silent or say "passed". If any of them complains, stop and
+   send me what it said.
+
+3. Deploy the rules and indexes first. The indexes take a few minutes to build
+   and the screens will show a failed-precondition error until they are ready:
+
+       firebase deploy --only firestore:rules,firestore:indexes
+
+4. Deploy the five new functions:
+
+       firebase deploy --only functions:recordFormMovement,functions:voidFormMovement,functions:prepareRaaf,functions:certifyRaaf,functions:cancelRaaf
+
+5. Push to GitHub. Netlify rebuilds the site by itself.
+
+6. Grant the new functions their Cloud Run invoker, the same way as before.
+   They are brand new services, so they will not have it:
+
+       $P = gcloud projects describe cbo-candoni-dev --format="value(projectNumber)"
+       gcloud run services add-iam-policy-binding recordformmovement --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
+       gcloud run services add-iam-policy-binding voidformmovement   --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
+       gcloud run services add-iam-policy-binding preparerraaf       --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
+       gcloud run services add-iam-policy-binding certifyraaf        --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
+       gcloud run services add-iam-policy-binding cancelraaf         --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
+
+   (Check the service names in the Cloud Run console if one is refused —
+   Firebase lowercases them and occasionally shortens a long one.)
+
+
+THEN, BEFORE ANYTHING WILL WORK
+-------------------------------
+
+Open  Master Data › Accountable Forms  and add the seven forms the office uses.
+Nothing can be received or issued until they exist. The MTO system's own list:
+
+  Code     Name                                          Printed as             Booklet  Serial
+  AF51     Accountable Form No. 51 — Official Receipt    ACCT. FORM NO. 51      50       10
+  AF52     Accountable Form No. 52                       ACCT. FORM NO. 52      50       10
+  AF53     Accountable Form No. 53                       ACCT. FORM NO. 53      50       10
+  AF54     Accountable Form No. 54                       ACCT. FORM NO. 54      50       10
+  AF56     Accountable Form No. 56 — Cash Ticket         ACCT. FORM NO. 56      50       10
+  AF58     Accountable Form No. 58                       ACCT. FORM NO. 58      50       10
+  BIR0016  BIR Form No. 0016                             BIR FORM NO. 0016      50       10
+
+Give AF56 a face value if the office issues cash tickets of a fixed amount;
+leave it blank for everything else.
+
+
+HOW TO TRY IT
+-------------
+
+  1. Treasury › Accountable Forms › Record movement
+     Movement: "Received into stock". Form: AF51. Serials 0007705351 to
+     0007705500. Reference: whatever the RIS says. → 150 forms in stock.
+
+  2. Record movement again. Movement: "Issued to an officer". Same form,
+     serials 0007705351 to 0007705400, and pick the collecting officer.
+     → the card at the top now shows 50 with her and 100 in stock.
+
+  3. Try to issue 0007705380 to 0007705420 to somebody else. It will refuse and
+     name the serials that are already in her hands. That refusal is the
+     module.
+
+  4. Treasury › RAAF › Prepare RAAF. Pick her, "Collecting officer", and the
+     month. The report builds itself from the ledger and from the receipts
+     encoded in Collections.
+
+  5. If she has encoded receipts out of serials she was never issued, the
+     report says so and cannot be certified until a movement explains it.
+
+
+WHAT CHANGED IN FILES YOU ALREADY HAD
+-------------------------------------
+
+  src/lib/collections.ts          3 collection names, 2 server-only entries
+  src/lib/engine.ts               5 callables appended
+  src/data/queries.ts             3 hooks and their imports
+  src/types/index.ts              1 export line
+  src/layout/navigation.ts        3 menu entries
+  src/App.tsx                     2 lazy imports, 2 routes
+  src/pages/masterdata/MasterData.tsx   1 new entity, above "accounts"
+  functions/src/lib/firebase.ts   the same 3 collection names
+  functions/src/lib/numbering.ts  the RAAF number format
+  functions/src/index.ts          5 exports
+  scripts/sync-rules.mjs          now syncs serials.ts as well as the rules
+  scripts/check-rules.mjs         the two new ledgers added to the CI guard
+  firestore.rules                 3 new blocks
+  firestore.indexes.json          5 new indexes (66 → 71)
+
+Nothing else was touched.
+
+
+WHAT IS DELIBERATELY NOT IN THIS PATCH
+--------------------------------------
+
+Printing an OR onto a pre-printed AF 51, the Appendix 34 RCD with its Section C,
+the Abstract with pivoted account columns, and the Primary/Secondary RCD
+hierarchy. Those are the next phase, and the engine underneath them is the
+serial arithmetic this patch installs.

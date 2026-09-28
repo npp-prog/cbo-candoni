@@ -4,4 +4,5 @@ export * from './master';
 export * from './budget';
 export * from './accounting';
 export * from './treasury';
+export * from './accountableForms';
 export * from './system';

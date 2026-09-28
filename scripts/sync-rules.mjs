@@ -22,12 +22,24 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const source = resolve(root, 'src/lib/accounting-rules.ts');
-const target = resolve(root, 'functions/src/lib/rules.ts');
 
-const BANNER = `// =============================================================================
+/**
+ * Every file the browser and the engine must agree about, letter for letter.
+ *
+ * `accounting-rules` came first and is the reason this script exists.
+ * `serials` joined it when accountable forms arrived: the browser shows an
+ * officer what their ending balance will be, the engine decides whether the
+ * report may be filed, and a difference of one serial between the two copies
+ * would be a custody finding nobody could explain.
+ */
+const PAIRS = [
+  { source: 'src/lib/accounting-rules.ts', target: 'functions/src/lib/rules.ts' },
+  { source: 'src/lib/serials.ts', target: 'functions/src/lib/serials.ts' },
+];
+
+const bannerFor = (sourcePath) => `// =============================================================================
 // GENERATED FILE - DO NOT EDIT.
-// Copied verbatim from src/lib/accounting-rules.ts by scripts/sync-rules.mjs.
+// Copied verbatim from ${sourcePath} by scripts/sync-rules.mjs.
 // Edit the canonical file and run \`npm run functions:build\` (or \`npm --prefix
 // functions run sync:rules\`) to regenerate. CI fails if the two diverge.
 // =============================================================================
@@ -35,32 +47,38 @@ const BANNER = `// =============================================================
 
 const checkOnly = process.argv.includes('--check');
 
-if (!existsSync(source)) {
-  console.error(`sync-rules: canonical file not found at ${source}`);
-  process.exit(1);
-}
+for (const pair of PAIRS) {
+  const source = resolve(root, pair.source);
+  const target = resolve(root, pair.target);
 
-const body = readFileSync(source, 'utf8');
-const expected = BANNER + body;
+  if (!existsSync(source)) {
+    console.error(`sync-rules: canonical file not found at ${source}`);
+    process.exit(1);
+  }
+
+  const expected = bannerFor(pair.source) + readFileSync(source, 'utf8');
+
+  if (checkOnly) {
+    if (!existsSync(target)) {
+      console.error(`sync-rules: ${pair.target} is missing. Run \`npm run functions:build\`.`);
+      process.exit(1);
+    }
+    if (readFileSync(target, 'utf8') !== expected) {
+      console.error(
+        `sync-rules: ${pair.target} has drifted from ${pair.source}.\n` +
+          'The browser and the accounting engine would disagree about the invariants.\n' +
+          'Run `npm --prefix functions run sync:rules` and commit the result.',
+      );
+      process.exit(1);
+    }
+    continue;
+  }
+
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, expected, 'utf8');
+  console.log(`sync-rules: wrote ${target}`);
+}
 
 if (checkOnly) {
-  if (!existsSync(target)) {
-    console.error('sync-rules: functions/src/lib/rules.ts is missing. Run `npm run functions:build`.');
-    process.exit(1);
-  }
-  const actual = readFileSync(target, 'utf8');
-  if (actual !== expected) {
-    console.error(
-      'sync-rules: functions/src/lib/rules.ts has drifted from src/lib/accounting-rules.ts.\n' +
-        'The browser and the accounting engine would disagree about the invariants.\n' +
-        'Run `npm --prefix functions run sync:rules` and commit the result.',
-    );
-    process.exit(1);
-  }
-  console.log('sync-rules: accounting invariants are in sync.');
-  process.exit(0);
+  console.log('sync-rules: shared invariants are in sync.');
 }
-
-mkdirSync(dirname(target), { recursive: true });
-writeFileSync(target, expected, 'utf8');
-console.log(`sync-rules: wrote ${target}`);

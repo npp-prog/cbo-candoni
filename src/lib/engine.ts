@@ -401,4 +401,43 @@ export const engine = {
 
   recordExport: (p: { report: string; format: string; filters?: Record<string, unknown> }) =>
     call<typeof p, { logged: true }>('recordExport', p),
+
+  // --- Accountable forms ---------------------------------------------------
+  //
+  // Custody moves in serial ranges, never in quantities, and every one of these
+  // is refused by the server when the range is not where the caller thinks it
+  // is. The browser's copy of the arithmetic (src/lib/serials.ts) exists to
+  // show the officer the answer before they press the button, not to decide it.
+
+  recordFormMovement: (p: {
+    fiscalYear: number;
+    formCode: string;
+    kind: 'RECEIPT' | 'ISSUE' | 'RETURN' | 'SPOILED' | 'CANCELLED';
+    movementDate: IsoDate;
+    serialFrom: string;
+    serialTo: string;
+    custodianId?: Id;
+    custodianName?: string;
+    sourceRef?: string;
+    remarks?: string;
+  }) => call<typeof p, { movementId: Id; quantity: number }>('recordFormMovement', p),
+
+  voidFormMovement: (p: { movementId: Id; reason: string }) =>
+    call<typeof p, { movementId: Id }>('voidFormMovement', p),
+
+  prepareRaaf: (p: {
+    fiscalYear: number;
+    officerId: Id;
+    officerName: string;
+    officerPosition?: string;
+    basis: 'CUSTODIAN' | 'COLLECTING_OFFICER';
+    periodFrom: IsoDate;
+    periodTo: IsoDate;
+  }) => call<typeof p, { raafId: Id; lines: number; hasDiscrepancy: boolean }>('prepareRaaf', p),
+
+  certifyRaaf: (p: { raafId: Id }) =>
+    call<typeof p, { raafId: Id; raafNo: string }>('certifyRaaf', p),
+
+  cancelRaaf: (p: { raafId: Id; reason: string }) =>
+    call<typeof p, { raafId: Id }>('cancelRaaf', p),
 };

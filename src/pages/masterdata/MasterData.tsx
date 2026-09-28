@@ -142,6 +142,68 @@ const CONFIGS: Record<string, EntityConfig> = {
     note: 'A collection posts to the COA account named here. Changing a mapping does not restate collections already posted; it applies from the next upload.',
   },
 
+  'accountable-forms': {
+    slug: 'accountable-forms',
+    collection: COL.accountableFormTypes,
+    title: 'Accountable Forms',
+    singular: 'accountable form',
+    description:
+      'The kinds of numbered form the office is accountable for. The booklet size matters: the RCD and the RAAF break serial ranges where the paper actually breaks, so a form bound in fifties reports differently from one that is not.',
+    idField: 'code',
+    defaultSort: 'sortOrder',
+    fields: [
+      {
+        key: 'code',
+        label: 'Form code',
+        type: 'text',
+        required: true,
+        inTable: true,
+        mono: true,
+        width: '7rem',
+        hint: 'Short and without spaces, e.g. AF51. Receipts encoded as "AF 51" or "af-51" are matched to this.',
+      },
+      {
+        key: 'name',
+        label: 'Name',
+        type: 'text',
+        required: true,
+        inTable: true,
+        hint: 'e.g. "Accountable Form No. 51 - Official Receipt".',
+      },
+      {
+        key: 'printedAs',
+        label: 'Printed on COA reports as',
+        type: 'text',
+        inTable: true,
+        hint: 'How the form is named on the face of a printed report, e.g. "ACCT. FORM NO. 51".',
+      },
+      {
+        key: 'bookletSize',
+        label: 'Serials per booklet',
+        type: 'number',
+        required: true,
+        inTable: true,
+        width: '8rem',
+        hint: 'Fifty for the Official Receipt. Issuances that cross a booklet boundary are reported as separate lines.',
+      },
+      {
+        key: 'serialLength',
+        label: 'Serial length',
+        type: 'number',
+        width: '7rem',
+        hint: 'How many digits the office writes, so computed serials are padded to match, e.g. 10 for 0007705351.',
+      },
+      {
+        key: 'unitValue',
+        label: 'Face value',
+        type: 'amount',
+        hint: 'Only for forms that carry a value of their own, such as a cash ticket, where the officer is accountable for money as well as paper. Leave blank for the Official Receipt.',
+      },
+      { key: 'sortOrder', label: 'Sort order', type: 'number', width: '7rem' },
+    ],
+    note: 'Changing the booklet size does not restate reports already certified; it applies to reports prepared from now on.',
+  },
+
   accounts: {
     slug: 'accounts',
     collection: COL.accounts,

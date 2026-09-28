@@ -32,6 +32,9 @@ const SERVER_ONLY = [
   'cashPositions',
   'accountingPeriods',
   'workflowHistory',
+  'treasuryImports',
+  'accountableFormMovements',
+  'raafReports',
 ];
 
 const failures = [];

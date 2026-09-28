@@ -452,6 +452,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // =========================================================================
+    // ACCOUNTABLE FORMS
+    //
+    // Neither of these is writable from a browser, and that is the point of the
+    // module. Whether a serial may be issued depends on every movement that has
+    // ever touched it, and whether a report may be certified depends on the
+    // receipts actually encoded against those serials. A rule cannot read a
+    // whole ledger, so the decision belongs to the engine - and if the engine
+    // is the only writer, a client that bypasses the screens changes nothing.
+    // =========================================================================
+
+    match /accountableFormMovements/{id} {
+      allow read: if canRead();
+      allow write: if false; // recordFormMovement / voidFormMovement only.
+    }
+
+    match /raafReports/{id} {
+      allow read: if canRead();
+      allow write: if false; // prepareRaaf / certifyRaaf / cancelRaaf only.
+    }
+
     match /rcds/{id} {
       allow read: if canRead();
       allow create: if signedIn()
@@ -694,6 +715,13 @@ service cloud.firestore {
     match /revenueCodes/{id} {
       allow read: if masterRead();
       allow create, update: if signedIn() && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
+    match /accountableFormTypes/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn()
+        && hasAny(['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT']);
       allow delete: if false;
     }
 

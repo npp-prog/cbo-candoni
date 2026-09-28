@@ -108,6 +108,8 @@ export const NAVIGATION: NavItem[] = [
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.
       { label: 'Collections and Deposits', to: '/treasury/collections' },
+      { label: 'Accountable Forms', to: '/treasury/accountable-forms' },
+      { label: 'RAAF', to: '/treasury/raaf' },
       { label: 'Payroll', to: '/treasury/payroll' },
       { label: 'Cash Position', to: '/treasury/cash-position' },
     ],
@@ -142,6 +144,7 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
       { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
       { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
+      { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
     ],
   },
   {
@@ -158,6 +161,7 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Banks', to: '/master-data/banks' },
       { label: 'Tax Codes', to: '/master-data/tax-codes' },
       { label: 'Revenue Codes', to: '/master-data/revenue-codes' },
+      { label: 'Accountable Forms', to: '/master-data/accountable-forms' },
       { label: 'Funds', to: '/master-data/funds' },
     ],
   },
