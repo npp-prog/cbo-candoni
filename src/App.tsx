@@ -58,6 +58,8 @@ const CancelledChecks = lazy(() => import('./pages/reports/CancelledChecks'));
 const ClaimSheet = lazy(() => import('./pages/treasury/ClaimSheet'));
 const AdaNumbers = lazy(() => import('./pages/treasury/AdaNumbers'));
 const CashInBank = lazy(() => import('./pages/treasury/CashInBank'));
+const PrintChecks = lazy(() => import('./pages/treasury/PrintChecks'));
+const PrintReceipt = lazy(() => import('./pages/treasury/PrintReceipt'));
 const CashInLocalTreasury = lazy(() => import('./pages/reports/CashInLocalTreasury'));
 const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
@@ -228,6 +230,8 @@ export default function App() {
           {/* The running book for one account, as against the Cash Position
               screen, which is a snapshot across all of them. */}
           <Route path="/treasury/cash-in-bank" element={<Guard module="treasury"><CashInBank /></Guard>} />
+          <Route path="/treasury/print/checks" element={<Guard module="treasury"><PrintChecks /></Guard>} />
+          <Route path="/treasury/print/receipts" element={<Guard module="treasury"><PrintReceipt /></Guard>} />
           {/* Printed empty and filled in at the counter: the signature is the
               document. */}
           <Route path="/treasury/claim-sheet" element={<Guard module="treasury"><ClaimSheet /></Guard>} />

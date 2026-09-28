@@ -114,7 +114,7 @@ export default function Jevs() {
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}${period ? `, ${monthName(period)}` : ''}${
           unposted.length ? ` - ${unposted.length} awaiting posting` : ''
         }`}
-        breadcrumbs={[{ label: 'Accounting' }, { label: 'Others' }]}
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Other Transactions' }]}
         actions={
           can('accounting', 'create') && (
             <Button variant="primary" size="sm" onClick={() => navigate('/accounting/others/new')}>

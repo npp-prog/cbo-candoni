@@ -178,7 +178,7 @@ export default function JevDetail() {
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
         breadcrumbs={[
           { label: 'Accounting' },
-          { label: 'Others', to: '/accounting/others' },
+          { label: 'Other Transactions', to: '/accounting/others' },
           { label: existing?.jevNo ?? 'New' },
         ]}
         actions={

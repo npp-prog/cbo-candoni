@@ -68,28 +68,40 @@ export const NAVIGATION: NavItem[] = [
     to: '/accounting',
     module: 'accounting',
     icon: 'accounting',
-    // The order a transaction travels, not the alphabet. The voucher is raised,
-    // the treasury reports arrive and are journalized, liquidations settle the
-    // advances, and "Others" carries the entries that begin in Accounting
-    // itself.
+    // Four of these seven are the same act: each one ends in a Journal Entry
+    // Voucher that posts to the General Ledger. Grouping them says so on the
+    // menu, so an accountant looking for "where do I journalize this" sees the
+    // four doors into the ledger together instead of finding them scattered
+    // among registers and setup.
+    //
+    // The order inside the group is the order the paper reaches Accounting,
+    // not the alphabet: the voucher is raised first, the liquidation settles
+    // an advance already given, the treasury reports arrive from the
+    // Treasurer, and Other Transactions carries what begins in Accounting
+    // itself and has no source document at all.
     children: [
-      { label: 'Disbursement Voucher', to: '/accounting/disbursements' },
-      { label: 'Treasury Reports', to: '/accounting/treasury-reports' },
-      { label: 'Liquidation', to: '/accounting/liquidation' },
-      // Deliberately not called "Journal Entry Voucher". Every transaction in
-      // CBO produces a JEV - the voucher does, each treasury report does - so a
-      // menu item by that name reads as though it were the only place JEVs are
-      // made. This screen is for the entries that have no source document of
-      // their own: manual, adjusting, closing and prior-period adjustments.
-      { label: 'Others', to: '/accounting/others' },
-      { label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
-      { label: 'Index of Payment', to: '/accounting/index-of-payments' },
+      { group: 'Journal Entry Transactions', label: 'Disbursement Voucher', to: '/accounting/disbursements' },
+      { group: 'Journal Entry Transactions', label: 'Liquidation Report', to: '/accounting/liquidation' },
+      { group: 'Journal Entry Transactions', label: 'Treasury Reports', to: '/accounting/treasury-reports' },
+      // Deliberately not called "Journal Entry Voucher". Every item in this
+      // group produces a JEV - the voucher does, each treasury report does -
+      // so a menu item by that name would read as though it were the only
+      // place JEVs are made. This screen is for the entries that have no
+      // source document of their own: manual, adjusting, closing and
+      // prior-period adjustments.
+      { group: 'Journal Entry Transactions', label: 'Other Transactions', to: '/accounting/others' },
+
+      // Everything below is looked at rather than posted. The heading is not
+      // decoration: without it these three would sit directly under the group
+      // above and read as though they too journalized something.
+      { group: 'Records and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
+      { group: 'Records and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },
       // Encoding the balances the books open with is not a report, though it
       // lived under Reports until somebody went looking for it in Accounting
       // and could not find it. It is the one-time act that opens the ledger:
       // the payables, the receivables and the unliquidated cash advances
       // carried in from whatever the municipality kept before.
-      { label: 'Opening Balances', to: '/accounting/opening-balances' },
+      { group: 'Records and Setup', label: 'Opening Balances', to: '/accounting/opening-balances' },
     ],
   },
   {
@@ -116,6 +128,11 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
       { label: 'Cash in Bank', to: '/treasury/cash-in-bank' },
       { label: 'Cash Position', to: '/treasury/cash-position' },
+      // The two screens that put ink on paper somebody else printed. They sit
+      // at the end because they are the last thing done, after the check is
+      // signed and the collection is recorded - never before.
+      { label: 'Print Checks', to: '/treasury/print/checks' },
+      { label: 'Print Receipts', to: '/treasury/print/receipts' },
     ],
   },
   {

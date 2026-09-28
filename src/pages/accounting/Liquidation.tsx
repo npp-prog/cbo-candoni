@@ -142,9 +142,9 @@ export default function Liquidation() {
   return (
     <div>
       <PageHeader
-        title="Liquidation"
+        title="Liquidation Report"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
-        breadcrumbs={[{ label: 'Accounting' }, { label: 'Liquidation' }]}
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Liquidation Report' }]}
         actions={
           can('accounting', 'create') && (
             <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
