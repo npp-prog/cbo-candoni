@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, OfficePicker, PayeePicker } from '@/components/pickers';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
+import { obligationForm } from '@/lib/obligationForm';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
@@ -47,6 +48,10 @@ export default function ObligationDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
+  // OBR in the General and Special Education Funds; FURS in the Trust Fund,
+  // where the money is held for somebody else and is not the municipality's
+  // own appropriation to obligate.
+  const form = obligationForm(fundCode);
   const { user, profile, can, hasRole, officeScope } = useAuth();
 
   const { data: existing, loading } = useDocument<Obligation>(isNew ? null : COL.obligations, id);
@@ -88,6 +93,18 @@ export default function ObligationDetail() {
   const canEdit = can('budget', 'edit') && editable;
   const canCertify = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER') && !isNew &&
     ['DRAFT', 'SUBMITTED', 'BUDGET_REVIEWED', 'RETURNED'].includes(existing?.status ?? '');
+
+  /**
+   * The signed form has to be on file before the number is issued.
+   *
+   * What CBO holds is an encoding of a document the office prepared and had
+   * approved on paper. Certifying without that document attached creates a
+   * numbered commitment in the books whose authority exists only in somebody's
+   * memory - and the number cannot be reused afterwards, so the gap it leaves
+   * in the series is permanent. The server refuses it too; this is only so the
+   * reason is visible before the button is pressed.
+   */
+  const hasSupportingDocument = (existing?.attachmentCount ?? 0) > 0;
 
   const totalAmount = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
 
@@ -202,7 +219,7 @@ export default function ObligationDetail() {
 
       if (isNew) {
         const newId = await createDraft(COL.obligations, buildPayload(), actor);
-        toast.success('Obligation saved as a draft', 'It has no OBR number until it is certified.');
+        toast.success('Obligation saved as a draft', `It has no ${form.short} number until it is certified.`);
         navigate(`/budget/obligations/${newId}`, { replace: true });
       } else {
         await updateDraft(COL.obligations, id!, buildPayload(), actor);
@@ -224,7 +241,7 @@ export default function ObligationDetail() {
         ...(overrideReason ? { override: { reason: overrideReason } } : {}),
       });
       toast.success(
-        `Certified as OBR ${result.obrNo}`,
+        `Certified as ${form.short} ${result.obrNo}`,
         'The allotment has been committed and the obligation can now be drawn against by a disbursement voucher.',
       );
       setConfirmCertify(false);
@@ -258,7 +275,13 @@ export default function ObligationDetail() {
   return (
     <div>
       <PageHeader
-        title={existing?.obrNo ? `OBR ${existing.obrNo}` : isNew ? 'New obligation' : 'Obligation (draft)'}
+        title={
+          existing?.obrNo
+            ? `${form.short} ${existing.obrNo}`
+            : isNew
+              ? `New ${form.short}`
+              : `${form.short} (draft)`
+        }
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
         breadcrumbs={[
           { label: 'Budget' },
@@ -276,6 +299,12 @@ export default function ObligationDetail() {
             {canCertify && (
               <Button
                 variant="primary"
+                disabled={!hasSupportingDocument}
+                title={
+                  hasSupportingDocument
+                    ? undefined
+                    : `Attach the approved ${form.short} under Supporting documents first.`
+                }
                 onClick={() => (hasShortfall ? setConfirmOverride(true) : setConfirmCertify(true))}
               >
                 Certify
@@ -283,7 +312,7 @@ export default function ObligationDetail() {
             )}
             {!isNew && can('budget', 'cancel') && status !== 'CANCELLED' && (
               <Button variant="danger" onClick={() => setConfirmCancel(true)}>
-                Cancel OBR
+                Cancel {form.short}
               </Button>
             )}
           </>
@@ -320,7 +349,7 @@ export default function ObligationDetail() {
           <div className="space-y-4">
             <Card title="Obligation request">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="OBR date" required htmlFor="obrDate">
+                <Field label={`${form.short} date`} required htmlFor="obrDate">
                   <DateInput id="obrDate" value={obrDate} onChange={setObrDate} disabled={!canEdit} />
                 </Field>
 
@@ -546,13 +575,25 @@ export default function ObligationDetail() {
 
         {tab === 'attachments' && (
           <Card title="Supporting documents">
+            <Alert
+              tone={hasSupportingDocument ? 'success' : 'warning'}
+              title={`The approved ${form.long} (${form.short})`}
+              className="mb-3"
+            >
+              {hasSupportingDocument
+                ? `The ${form.short} is on file. This obligation can be certified.`
+                : `Attach the signed and approved ${form.short} before certifying. ` +
+                  `What CBO holds is an encoding of that document; a certified number with no ` +
+                  `approved form behind it is a commitment in the books whose authority is in ` +
+                  `nobody's file, and the number cannot be given back.`}
+            </Alert>
             <AttachmentsPanel
               entityType={COL.obligations}
               entityId={id ?? null}
               entityRef={existing?.obrNo ?? 'Obligation draft'}
               fiscalYear={fiscalYear}
               fundCode={fundCode}
-              storageDocType="OBR"
+              storageDocType={form.short}
               storageDocId={existing?.obrNo ?? id ?? 'draft'}
               readOnly={!canEdit}
             />
@@ -578,7 +619,7 @@ export default function ObligationDetail() {
           <>
             <p>
               Certifying commits <strong>{formatPeso(totalAmount)}</strong> of allotment to{' '}
-              {payeeName}, assigns the OBR number, and makes this obligation available for a
+              {payeeName}, assigns the {form.short} number, and makes this obligation available for a
               disbursement voucher.
             </p>
             <p className="mt-2 text-xs text-slate-500">
@@ -600,7 +641,7 @@ export default function ObligationDetail() {
         requireReason
         minReasonLength={20}
         reasonLabel="Reason for exceeding the available allotment"
-        reasonHint="This is written on the face of the OBR, recorded as a critical audit event, and notified to the Municipal Accountant."
+        reasonHint={`This is written on the face of the ${form.short}, recorded as a critical audit event, and notified to the Municipal Accountant.`}
         message={
           <>
             <p>
@@ -620,7 +661,7 @@ export default function ObligationDetail() {
         open={confirmCancel}
         onCancel={() => setConfirmCancel(false)}
         onConfirm={(reason) => void cancel(reason)}
-        title={`Cancel OBR ${existing?.obrNo ?? ''}`}
+        title={`Cancel ${form.short} ${existing?.obrNo ?? ''}`}
         confirmLabel="Cancel obligation"
         variant="danger"
         requireReason

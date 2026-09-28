@@ -228,6 +228,72 @@ export function checkObligationAgainstAllotment(input: ObligationCheckInput): Ch
 }
 
 // ---------------------------------------------------------------------------
+// 2b. Realignment
+// ---------------------------------------------------------------------------
+
+export interface RealignmentLine {
+  lineNo: number;
+  /** Signed: negative takes authority away, positive gives it. */
+  amount: Centavos;
+}
+
+/**
+ * A realignment moves authority; it never creates or destroys any.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE WHOLE SET IS CHECKED AND NOT EACH LINE
+ * ---------------------------------------------------------------------------
+ * A realignment line on its own is meaningless: minus two hundred thousand
+ * from Travelling is not a budget act, it is half of one. The act is the pair,
+ * or the several lines that between them take from some places and give to
+ * others, and what makes it lawful is that the two sides are equal.
+ *
+ * Checked one line at a time, the rule cannot be expressed at all. So the rule
+ * takes the SET, and a realignment can only be posted as a set - which is also
+ * why the upload sends a realignment in one call rather than in chunks. Half a
+ * realignment committed and the other half refused would silently change the
+ * total appropriation of the municipality, which is the one thing a
+ * realignment must never do.
+ *
+ * Two lines that both take, or both give, are refused for the same reason: the
+ * set nets to something other than zero, so authority was created or lost.
+ * ---------------------------------------------------------------------------
+ */
+export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
+  if (lines.length < 2) {
+    return fail(
+      'REALIGNMENT_NEEDS_TWO_LINES',
+      'A realignment needs at least two lines: one the authority comes from, one it goes to.',
+      { lineCount: lines.length },
+    );
+  }
+
+  const net = lines.reduce((sum, l) => sum + l.amount, 0);
+  if (net !== 0) {
+    const taken = lines.filter((l) => l.amount < 0).reduce((s, l) => s + l.amount, 0);
+    const given = lines.filter((l) => l.amount > 0).reduce((s, l) => s + l.amount, 0);
+    return fail(
+      'REALIGNMENT_NOT_BALANCED',
+      `A realignment must come to zero. This one is out by ${(net / 100).toFixed(2)}: ` +
+        `${(given / 100).toFixed(2)} given against ${(Math.abs(taken) / 100).toFixed(2)} taken.`,
+      { net, taken, given },
+    );
+  }
+
+  // Once the set nets to zero, "nothing on one side" can only mean every line
+  // is zero - a set of non-negative amounts summing to zero is all zeroes - so
+  // that is the only remaining shape to refuse, and there is deliberately no
+  // separate one-sided check. A realignment of nothing is a row somebody began
+  // and did not finish.
+  const moved = lines.reduce((s, l) => s + Math.abs(l.amount), 0);
+  if (moved === 0) {
+    return fail('REALIGNMENT_MOVES_NOTHING', 'Every line of this realignment is zero.');
+  }
+
+  return ok;
+}
+
+// ---------------------------------------------------------------------------
 // 3. Disbursement voucher arithmetic
 // ---------------------------------------------------------------------------
 

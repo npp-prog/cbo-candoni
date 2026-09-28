@@ -89,6 +89,7 @@ export const certifyObligation = onCall(
       const obr = obrSnap.data() as {
         obrNo?: string;
         obrDate: string;
+        attachmentCount?: number;
         fiscalYear: number;
         fundCode: string;
         officeId: string;
@@ -116,6 +117,29 @@ export const certifyObligation = onCall(
       }
 
       assertFundInScope(caller, obr.fundCode);
+
+      /**
+       * The approved form has to be on file before the number is issued.
+       *
+       * The form is the Obligation Request and Status in the General and
+       * Special Education Funds, and the Funding Utilization Request and
+       * Status in the Trust Fund - where the money is held for somebody else
+       * and is not the municipality's own appropriation to obligate.
+       *
+       * Certifying consumes a serial from a gapless series. A number issued
+       * against a commitment whose approved form is in nobody's file leaves a
+       * permanent entry that the RAAO foots and the auditor cannot trace, and
+       * cancelling it afterwards does not give the number back. The browser
+       * disables the button for the same reason, but the browser is not the
+       * authority: this is.
+       */
+      if (!(obr.attachmentCount ?? 0)) {
+        const formName = obr.fundCode?.trim().toUpperCase() === 'TF' ? 'FURS' : 'OBR';
+        throw new HttpsError(
+          'failed-precondition',
+          `Attach the approved ${formName} before certifying. Certifying consumes a number from a gapless series, and a numbered commitment with no approved form behind it cannot be traced or given back.`,
+        );
+      }
 
       const period = periodOf(obr.obrDate);
       await assertFiscalYearOpen(obr.fiscalYear, tx);

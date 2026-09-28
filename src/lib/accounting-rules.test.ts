@@ -4,6 +4,7 @@ import {
   checkAllotmentAgainstAppropriation,
   checkAllotmentWithdrawal,
   checkObligationAgainstAllotment,
+  checkRealignmentSet,
   checkDvMath,
   checkLiquidation,
   computeReconciliation,
@@ -487,5 +488,83 @@ describe('document numbering', () => {
     expect(
       counterId({ docType: 'ALLOT', fundCode: 'GF', fiscalYear: 2026, month: 9, resetOn: 'YEAR', perFund: true }),
     ).toBe('ALLOT__GF__2026');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Realignment
+// ---------------------------------------------------------------------------
+
+describe('checkRealignmentSet', () => {
+  it('accepts a balanced pair', () => {
+    expect(
+      checkRealignmentSet([
+        { lineNo: 1, amount: -20000000 },
+        { lineNo: 2, amount: 20000000 },
+      ]).ok,
+    ).toBe(true);
+  });
+
+  it('accepts one source split across several destinations', () => {
+    expect(
+      checkRealignmentSet([
+        { lineNo: 1, amount: -50000000 },
+        { lineNo: 2, amount: 30000000 },
+        { lineNo: 3, amount: 15000000 },
+        { lineNo: 4, amount: 5000000 },
+      ]).ok,
+    ).toBe(true);
+  });
+
+  it('refuses a single line, which is half a budget act', () => {
+    const result = checkRealignmentSet([{ lineNo: 1, amount: -20000000 }]);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('REALIGNMENT_NEEDS_TWO_LINES');
+  });
+
+  it('refuses a set that does not come to zero, and says by how much', () => {
+    const result = checkRealignmentSet([
+      { lineNo: 1, amount: -20000000 },
+      { lineNo: 2, amount: 25000000 },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('REALIGNMENT_NOT_BALANCED');
+    expect(result.violations[0].details?.net).toBe(5000000);
+    expect(result.violations[0].message).toContain('50000.00');
+  });
+
+  it('refuses a set that is all zeroes', () => {
+    const result = checkRealignmentSet([
+      { lineNo: 1, amount: 0 },
+      { lineNo: 2, amount: 0 },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('REALIGNMENT_MOVES_NOTHING');
+  });
+
+  it('tolerates a zero line alongside a real pair', () => {
+    expect(
+      checkRealignmentSet([
+        { lineNo: 1, amount: 20000000 },
+        { lineNo: 2, amount: -20000000 },
+        { lineNo: 3, amount: 0 },
+      ]).ok,
+    ).toBe(true);
+  });
+
+  /**
+   * There is no separate "one-sided" violation, and this is why: a set of
+   * non-negative amounts that sums to zero is a set of zeroes. Any all-gives
+   * or all-takes set therefore fails on the balance check first, and only the
+   * all-zero case reaches the last rule. A one-sided check would be a branch
+   * no input could ever take.
+   */
+  it('refuses an all-gives set on the balance rule, not a one-sided rule', () => {
+    const result = checkRealignmentSet([
+      { lineNo: 1, amount: 20000000 },
+      { lineNo: 2, amount: 30000000 },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('REALIGNMENT_NOT_BALANCED');
   });
 });

@@ -30,12 +30,41 @@ import { fundLabel } from './Obligations';
  * that created it.
  */
 
+/**
+ * Every kind that can appear in the table, including the two that can no
+ * longer be created.
+ *
+ * Kept separate from the list offered in the form on purpose: withdrawing a
+ * choice must not turn the appropriations already recorded under it into rows
+ * labelled with a raw code. History keeps its name.
+ */
+const KIND_LABELS: Record<AppropriationKind, string> = {
+  ORIGINAL: 'Original',
+  SUPPLEMENTAL: 'Supplemental',
+  CONTINUING: 'Continuing',
+  REALIGNMENT: 'Realignment',
+  TRANSFER: 'Transfer',
+  ADJUSTMENT: 'Adjustment',
+};
+
+/**
+ * What this screen offers.
+ *
+ * TRANSFER is gone: a movement of authority between offices is a realignment,
+ * and two names for one act meant the SAOB had to add them together to answer
+ * a simple question.
+ *
+ * REALIGNMENT is gone from THIS screen, which is a different reason. A
+ * realignment is at least two lines that come to zero, and this form records
+ * one line at a time - so a realignment entered here could only ever be half
+ * of one, sitting in the books until somebody remembered to enter the other
+ * half. It is posted on the upload screen instead, where the whole set is
+ * checked before any of it lands.
+ */
 const KINDS: Array<{ value: AppropriationKind; label: string; hint: string }> = [
   { value: 'ORIGINAL', label: 'Original', hint: 'The annual budget as enacted.' },
   { value: 'SUPPLEMENTAL', label: 'Supplemental', hint: 'Additional authority enacted during the year.' },
   { value: 'CONTINUING', label: 'Continuing', hint: 'Prior-year authority carried forward.' },
-  { value: 'REALIGNMENT', label: 'Realignment', hint: 'Moves authority between lines. Enter as a pair: negative on the source, positive on the destination.' },
-  { value: 'TRANSFER', label: 'Transfer', hint: 'Transfer between offices or funds, also entered as a pair.' },
   { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. May be negative.' },
 ];
 
@@ -85,7 +114,7 @@ export default function Appropriations() {
       header: 'Type',
       width: '8rem',
       value: (a) => a.kind,
-      cell: (a) => <span className="text-xs">{KINDS.find((k) => k.value === a.kind)?.label ?? a.kind}</span>,
+      cell: (a) => <span className="text-xs">{KIND_LABELS[a.kind] ?? a.kind}</span>,
     },
     {
       key: 'authority',
@@ -299,7 +328,7 @@ function AppropriationForm({
   const [particulars, setParticulars] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const allowsNegative = ['REALIGNMENT', 'TRANSFER', 'ADJUSTMENT'].includes(kind);
+  const allowsNegative = kind === 'ADJUSTMENT';
   const selectedKind = KINDS.find((k) => k.value === kind)!;
 
   const save = async () => {
@@ -352,6 +381,13 @@ function AppropriationForm({
         </>
       }
     >
+      <Alert tone="info" title="Realignments are posted on the upload screen" className="mb-4">
+        A realignment is at least two lines that come to zero — what the authority is taken from
+        and what it goes to. This form records one line at a time, so a realignment entered here
+        could only ever be half of one. Budget &rsaquo; Appropriation &rsaquo; Upload has a
+        realignment template and checks the whole set balances before any of it is posted.
+      </Alert>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Type" required htmlFor="kind" hint={selectedKind.hint}>
           <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as AppropriationKind)}>

@@ -9,6 +9,8 @@ import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
+import { checkRealignmentSet } from '@/lib/accounting-rules';
+import { TEMPLATE_COLUMNS, downloadBudgetTemplate } from '@/lib/budgetTemplate';
 import { fundLabel } from './Obligations';
 import { parseBudgetFile, type ParsedBudgetRow } from './parseBudget';
 
@@ -31,8 +33,11 @@ const KINDS = [
   { value: 'ORIGINAL', label: 'Original appropriation', hint: 'The annual budget as enacted.' },
   { value: 'SUPPLEMENTAL', label: 'Supplemental', hint: 'Additional authority enacted during the year.' },
   { value: 'CONTINUING', label: 'Continuing', hint: 'Authority carried forward from the previous year.' },
-  { value: 'REALIGNMENT', label: 'Realignment', hint: 'Moves authority between lines. Amounts may be negative.' },
-  { value: 'TRANSFER', label: 'Transfer', hint: 'Moves authority between offices. Amounts may be negative.' },
+  {
+    value: 'REALIGNMENT',
+    label: 'Realignment',
+    hint: 'Moves authority between lines. Take away with a negative amount, give with a positive one; the file must come to zero.',
+  },
   { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. Amounts may be negative.' },
 ];
 
@@ -56,8 +61,10 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   const [rows, setRows] = useState<ParsedBudgetRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  const [showFormat, setShowFormat] = useState(false);
 
-  const signed = ['REALIGNMENT', 'TRANSFER', 'ADJUSTMENT'].includes(appropriationKind);
+  const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
+  const isRealignment = isAppropriation && appropriationKind === 'REALIGNMENT';
 
   /**
    * The same checks the engine makes, run here so the whole list of problems is
@@ -101,6 +108,31 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   const total = checked.reduce((s, r) => s + r.amount, 0);
   const lineCount = new Set(checked.map((r) => `${r.office}__${r.accountCode}`)).size;
 
+  /**
+   * A realignment is judged as a whole file, never row by row.
+   *
+   * The same rule runs on the server, which is the authority. Running it here
+   * as well means the Budget Officer sees the figure it is out by while the
+   * file is still on screen, instead of after a round trip that posts nothing.
+   */
+  const realignment = useMemo(() => {
+    if (!isRealignment || checked.length === 0) return null;
+    // `amount` is already integer centavos: parseBudgetFile reads it with
+    // parsePeso, which never hands back pesos as a float.
+    return checkRealignmentSet(checked.map((r) => ({ lineNo: r.lineNo, amount: r.amount })));
+  }, [isRealignment, checked]);
+
+  // A realignment goes in ONE call so the server can see the whole set. Half a
+  // realignment posted and half refused would change the municipality's total
+  // appropriation, which is the one thing a realignment must never do.
+  const tooManyForOneCall = isRealignment && checked.length > CHUNK;
+
+  const blocked =
+    bad.length > 0 ||
+    tooManyForOneCall ||
+    (realignment !== null && !realignment.ok) ||
+    !reference.trim();
+
   const read = async (file: File) => {
     try {
       const parsed = await parseBudgetFile(file);
@@ -116,14 +148,17 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   };
 
   const post = async () => {
-    if (bad.length || !checked.length || !reference.trim()) return;
+    if (blocked || !checked.length) return;
     setBusy(true);
     let posted = 0;
     let amount = 0;
 
+    // A realignment is one call; everything else is chunked.
+    const step = isRealignment ? checked.length : CHUNK;
+
     try {
-      for (let i = 0; i < checked.length; i += CHUNK) {
-        const chunk = checked.slice(i, i + CHUNK);
+      for (let i = 0; i < checked.length; i += step) {
+        const chunk = checked.slice(i, i + step);
         setProgress(`Posting ${i + 1} to ${i + chunk.length} of ${checked.length}`);
 
         const res = await engine.importBudgetLines({
@@ -222,6 +257,73 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
           </Field>
         </div>
 
+        <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-navy-900">The format</p>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Start from the template if you are building a new file. If you already keep the
+                annex as a spreadsheet, upload it as it is — the headings below each have several
+                accepted spellings, and the order of the columns does not matter.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                downloadBudgetTemplate(
+                  isRealignment ? 'REALIGNMENT' : isAppropriation ? 'APPROPRIATION' : 'ALLOTMENT',
+                  fiscalYear,
+                  fundCode,
+                )
+              }
+            >
+              Download the CSV template
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFormat((v) => !v)}
+            className="mt-2 text-xs font-medium text-brand-700 hover:text-brand-900"
+          >
+            {showFormat ? 'Hide the columns' : 'What the columns are'}
+          </button>
+
+          {showFormat && (
+            <div className="mt-2 overflow-x-auto rounded border border-slate-200 bg-white">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-left text-slate-600">
+                  <tr>
+                    <th className="px-2 py-1.5 font-medium">Heading</th>
+                    <th className="px-2 py-1.5 font-medium">Also accepted</th>
+                    <th className="px-2 py-1.5 font-medium">What goes in it</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {TEMPLATE_COLUMNS.map((c) => (
+                    <tr key={c.header}>
+                      <td className="whitespace-nowrap px-2 py-1.5">
+                        <span className="font-medium text-navy-900">{c.header}</span>
+                        {c.required && <span className="ml-1 text-rose-600">*</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-slate-500">
+                        {c.alsoAccepts?.join(', ') ?? '-'}
+                      </td>
+                      <td className="px-2 py-1.5 text-slate-600">{c.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="border-t border-slate-200 px-2 py-1.5 text-[11px] text-slate-500">
+                <span className="text-rose-600">*</span> required. Rows with neither an office nor
+                an account code are skipped, which is how the sub-total lines an annex prints under
+                each office are ignored rather than doubling that office&rsquo;s budget.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="mt-4">
           <Field
             label="The file"
@@ -242,6 +344,44 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
 
         {checked.length > 0 && (
           <div className="mt-4">
+            {tooManyForOneCall && (
+              <Alert tone="error" title="This realignment is too long to post in one go" className="mb-3">
+                A realignment must be sent whole so the server can see that it comes to zero, and
+                one call takes at most {CHUNK} rows. This file has {checked.length}. Split it into
+                separate realignments, each balanced on its own, and give each its own ordinance
+                reference.
+              </Alert>
+            )}
+
+            {realignment && !realignment.ok && !tooManyForOneCall && (
+              <Alert
+                tone="error"
+                title={
+                  realignment.violations[0].code === 'REALIGNMENT_NEEDS_TWO_LINES'
+                    ? 'A realignment needs at least two lines'
+                    : 'This realignment does not come to zero'
+                }
+                className="mb-3"
+              >
+                {realignment.violations[0].message} A realignment moves authority; it never creates
+                or destroys any. Take away with a negative amount and give with a positive one, and
+                the file must net to nothing.
+              </Alert>
+            )}
+
+            {realignment?.ok && (
+              <Alert tone="success" title="This realignment balances" className="mb-3">
+                {checked.filter((r) => r.amount < 0).length} line
+                {checked.filter((r) => r.amount < 0).length === 1 ? '' : 's'} give up{' '}
+                <strong className="cbo-amount">
+                  {formatPeso(Math.abs(checked.filter((r) => r.amount < 0).reduce((s, r) => s + r.amount, 0)))}
+                </strong>
+                , and {checked.filter((r) => r.amount > 0).length} line
+                {checked.filter((r) => r.amount > 0).length === 1 ? '' : 's'} take it up. The total
+                appropriation of the fund does not change.
+              </Alert>
+            )}
+
             {bad.length > 0 ? (
               <Alert tone="error" title={`${bad.length} of ${checked.length} rows cannot be posted`} className="mb-3">
                 Nothing will be sent until these are fixed. An ordinance goes into the books whole or
@@ -252,8 +392,12 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
             ) : (
               <Alert tone="info" className="mb-3">
                 {checked.length} rows falling on {lineCount} budget line
-                {lineCount === 1 ? '' : 's'}, totalling{' '}
-                <strong className="cbo-amount">{formatPeso(total)}</strong>.{' '}
+                {lineCount === 1 ? '' : 's'}
+                {isRealignment ? '.' : (
+                  <>
+                    , totalling <strong className="cbo-amount">{formatPeso(total)}</strong>.
+                  </>
+                )}{' '}
                 {isAppropriation
                   ? 'Posting records this as enacted authority; it becomes available for allotment straight away.'
                   : 'Each line is checked against its appropriation before anything is released.'}
@@ -269,7 +413,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
               <Button
                 variant="primary"
                 loading={busy}
-                disabled={busy || bad.length > 0 || !reference.trim()}
+                disabled={busy || blocked}
                 onClick={() => void post()}
               >
                 Post {checked.length} line{checked.length === 1 ? '' : 's'}

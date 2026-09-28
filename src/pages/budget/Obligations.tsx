@@ -6,6 +6,7 @@ import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
+import { obligationForm } from '@/lib/obligationForm';
 import { useAuth } from '@/auth/AuthProvider';
 import { useObligations } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
@@ -22,6 +23,7 @@ import type { Obligation } from '@/types/budget';
  */
 export default function Obligations() {
   const { fiscalYear, fundCode, period } = useFilters();
+  const form = obligationForm(fundCode);
   const { can } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState<string>('');
@@ -51,7 +53,7 @@ export default function Obligations() {
   const columns: Column<Obligation>[] = [
     {
       key: 'obrNo',
-      header: 'OBR No.',
+      header: `${form.short} No.`,
       width: '10rem',
       value: (o) => o.obrNo ?? '',
       cell: (o) =>
@@ -158,7 +160,7 @@ export default function Obligations() {
         loading={loading}
         error={error}
         onRowClick={(o) => navigate(`/budget/obligations/${o.id}`)}
-        searchPlaceholder="OBR number, payee or particulars"
+        searchPlaceholder={`${form.short} number, payee or particulars`}
         emptyTitle="No obligations recorded"
         emptyMessage={`Nothing has been obligated against the ${fundCode} fund for fiscal year ${fiscalYear} yet.`}
         emptyAction={

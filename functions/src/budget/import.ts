@@ -11,7 +11,7 @@ import {
   type BudgetKey,
   type BudgetBalanceData,
 } from '../lib/budget';
-import { checkAllotmentAgainstAppropriation } from '../lib/rules';
+import { checkAllotmentAgainstAppropriation, checkRealignmentSet } from '../lib/rules';
 
 /**
  * Uploading the appropriation ordinance and allotment releases.
@@ -145,18 +145,32 @@ export const importBudgetLines = onCall(
     const appropriationKind = String(data.appropriationKind ?? 'ORIGINAL').toUpperCase();
     if (
       kind === 'APPROPRIATION' &&
-      !['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT', 'TRANSFER', 'ADJUSTMENT'].includes(
+      !['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT', 'ADJUSTMENT'].includes(
         appropriationKind,
       )
     ) {
-      throw invalid(`Unknown appropriation type ${appropriationKind}.`);
+      // TRANSFER is deliberately absent. It was withdrawn from the screen as a
+      // choice, and a kind the office cannot pick but the server still accepts
+      // is a restriction that only looks like one. Appropriations already
+      // recorded as transfers are untouched and still approve normally: this
+      // guards new uploads, not history.
+      throw invalid(
+        appropriationKind === 'TRANSFER'
+          ? 'Transfers are no longer recorded as an appropriation type. A movement of authority between offices is a realignment, which must come to zero.'
+          : `Unknown appropriation type ${appropriationKind}.`,
+      );
     }
-    const signed = ['REALIGNMENT', 'TRANSFER', 'ADJUSTMENT'].includes(appropriationKind);
+    const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
+    const isRealignment = kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT';
 
     const raw = data.rows;
     if (!Array.isArray(raw) || raw.length === 0) throw invalid('The file has no rows to post.');
     if (raw.length > MAX_ROWS) {
-      throw invalid(`One call takes at most ${MAX_ROWS} rows; this one carried ${raw.length}.`);
+      throw invalid(
+        isRealignment
+          ? `A realignment must be sent whole so that it can be checked as one set, and one call takes at most ${MAX_ROWS} rows; this one carried ${raw.length}. Split it into separate balanced realignments.`
+          : `One call takes at most ${MAX_ROWS} rows; this one carried ${raw.length}.`,
+      );
     }
 
     assertFundInScope(caller, fundCode);
@@ -282,6 +296,30 @@ export const importBudgetLines = onCall(
           (problems.length > 12 ? `; and ${problems.length - 12} more.` : '.'),
         { problems },
       );
+    }
+
+    /**
+     * A realignment is judged as a set, and this is the only place that can do
+     * it honestly.
+     *
+     * The browser runs the same rule so the Budget Officer sees the figure it
+     * is out by, but the browser is not the authority: a call assembled by
+     * hand could carry one side of a realignment and nothing else. Because the
+     * whole set arrives in one call - the client is not allowed to chunk a
+     * realignment, and a file too long for one call is refused above - the sum
+     * seen here IS the sum of the realignment.
+     */
+    if (isRealignment) {
+      const balanced = checkRealignmentSet(
+        resolved.map((r) => ({ lineNo: r.lineNo, amount: r.amount })),
+      );
+      if (!balanced.ok) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${balanced.violations[0].message} A realignment moves authority between lines; it never creates or destroys any, so none of this file was posted.`,
+          { violations: balanced.violations },
+        );
+      }
     }
 
     const numberingConfig =
