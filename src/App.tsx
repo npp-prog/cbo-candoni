@@ -57,6 +57,8 @@ const RcdTransmittal = lazy(() => import('./pages/reports/RcdTransmittal'));
 const CancelledChecks = lazy(() => import('./pages/reports/CancelledChecks'));
 const ClaimSheet = lazy(() => import('./pages/treasury/ClaimSheet'));
 const AdaNumbers = lazy(() => import('./pages/treasury/AdaNumbers'));
+const CashInBank = lazy(() => import('./pages/treasury/CashInBank'));
+const CashInLocalTreasury = lazy(() => import('./pages/reports/CashInLocalTreasury'));
 const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
@@ -223,6 +225,9 @@ export default function App() {
           <Route path="/treasury/collections/deposits" element={<Guard module="treasury"><Deposits /></Guard>} />
           <Route path="/treasury/deposits" element={<Navigate to="/treasury/collections/deposits" replace />} />
           <Route path="/treasury/cash-position" element={<Guard module="treasury"><CashPosition /></Guard>} />
+          {/* The running book for one account, as against the Cash Position
+              screen, which is a snapshot across all of them. */}
+          <Route path="/treasury/cash-in-bank" element={<Guard module="treasury"><CashInBank /></Guard>} />
           {/* Printed empty and filled in at the counter: the signature is the
               document. */}
           <Route path="/treasury/claim-sheet" element={<Guard module="treasury"><ClaimSheet /></Guard>} />
@@ -277,6 +282,10 @@ export default function App() {
           <Route
             path="/reports/cancelled-checks"
             element={<Guard module="reports"><CancelledChecks /></Guard>}
+          />
+          <Route
+            path="/reports/cash-in-local-treasury"
+            element={<Guard module="reports"><CashInLocalTreasury /></Guard>}
           />
 
           {/* Master data */}

@@ -33,6 +33,8 @@ const SERVER_ONLY = [
   'accountingPeriods',
   'workflowHistory',
   'treasuryImports',
+  'bankLedgers',
+  'bankLedgerEntries',
   'adaNumbers',
   'primaryReports',
   'accountableFormMovements',

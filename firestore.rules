@@ -471,6 +471,20 @@ service cloud.firestore {
     // number means drawing it from the same counter issueAda draws from, so
     // only the engine may write here - a client that could reserve without
     // advancing the counter would hand the same number to two officers.
+    // Cash in Bank. Only what the bank originates is held here; checks, ADA
+    // and deposits are read from their own registers, so a client that could
+    // write a movement straight into this book would be creating a second,
+    // silently disagreeing copy of a payment.
+    match /bankLedgers/{id} {
+      allow read: if canRead();
+      allow write: if false; // setBankLedgerOpening only.
+    }
+
+    match /bankLedgerEntries/{id} {
+      allow read: if canRead();
+      allow write: if false; // recordBankLedgerEntry / voidBankLedgerEntry only.
+    }
+
     match /adaNumbers/{id} {
       allow read: if canRead();
       allow write: if false; // reserveAdaNumbers / retire / voidSkipped only.

@@ -160,6 +160,40 @@ export const engine = {
   cancelCheck: (p: { checkId: Id; reason: string }) =>
     call<typeof p, { checkId: Id; jevId?: Id }>('cancelCheck', p),
 
+  // --- Cash in Bank --------------------------------------------------------
+  //
+  // Only what the bank originates is keyed. Checks, ADA and deposits are read
+  // from their own registers; a second copy typed into a bank book is how two
+  // records of one payment come to disagree.
+
+  setBankLedgerOpening: (p: {
+    fiscalYear: number;
+    bankAccountId: Id;
+    beginningBalance: Centavos;
+    buffer: Centavos;
+  }) => call<typeof p, { ledgerId: Id }>('setBankLedgerOpening', p),
+
+  recordBankLedgerEntry: (p: {
+    fiscalYear: number;
+    bankAccountId: Id;
+    entryDate: IsoDate;
+    kind:
+      | 'DEPOSIT'
+      | 'INTEREST'
+      | 'NTA'
+      | 'BANK_CHARGE'
+      | 'INTEREST_WITHHELD'
+      | 'ADJUSTMENT_IN'
+      | 'ADJUSTMENT_OUT';
+    referenceNo?: string;
+    particulars: string;
+    amount: Centavos;
+    remarks?: string;
+  }) => call<typeof p, { entryId: Id }>('recordBankLedgerEntry', p),
+
+  voidBankLedgerEntry: (p: { entryId: Id; reason: string }) =>
+    call<typeof p, { entryId: Id }>('voidBankLedgerEntry', p),
+
   // --- ADA number governance -----------------------------------------------
   //
   // A number, once drawn, is never returned to the pool: the bank may already

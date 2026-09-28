@@ -64,6 +64,11 @@ export {
 export { importTreasuryPayments, resolveImportRow } from './treasury/import';
 export { importCollections } from './treasury/collectionsImport';
 export {
+  setBankLedgerOpening,
+  recordBankLedgerEntry,
+  voidBankLedgerEntry,
+} from './treasury/bankLedger';
+export {
   reserveAdaNumbers,
   retireAdaReservation,
   voidSkippedAdaNumber,

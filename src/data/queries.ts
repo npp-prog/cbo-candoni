@@ -1,6 +1,6 @@
 import { orderBy, where, limit, type QueryConstraint } from 'firebase/firestore';
 import { COL } from '@/lib/collections';
-import { useCollection } from '@/hooks/useFirestore';
+import { useCollection, useDocument } from '@/hooks/useFirestore';
 import type {
   Account,
   Allotment,
@@ -29,6 +29,7 @@ import type {
 import type { AuditLog, DocumentAttachment, Notification, UserProfile, WorkflowEvent } from '@/types/system';
 import type { PrimaryReport } from '@/types/primaryReports';
 import type { AdaNumberRecord } from '@/types/adaNumbers';
+import type { BankLedger, BankLedgerEntry } from '@/types/bankLedger';
 import type {
   AccountableFormMovement,
   AccountableFormType,
@@ -297,6 +298,30 @@ export const useUndepositedCollections = (fundCode: string) =>
     COL.collections,
     [where('fundCode', '==', fundCode), where('status', 'in', ['ISSUED', 'IN_RCD']), orderBy('orDate')],
     ['undeposited', fundCode],
+  );
+
+/** The opening balance and buffer for one bank account and year. */
+export const useBankLedger = (fiscalYear: number, bankAccountId: string | null) =>
+  useDocument<BankLedger>(
+    COL.bankLedgers,
+    bankAccountId ? `${fiscalYear}__${bankAccountId}` : null,
+  );
+
+/**
+ * The entries only the bank originates, for one account and year.
+ * Index: bankAccountId, fiscalYear, entryDate asc.
+ */
+export const useBankLedgerEntries = (fiscalYear: number, bankAccountId: string | null) =>
+  useCollection<BankLedgerEntry>(
+    COL.bankLedgerEntries,
+    bankAccountId
+      ? [
+          where('bankAccountId', '==', bankAccountId),
+          where('fiscalYear', '==', fiscalYear),
+          orderBy('entryDate'),
+        ]
+      : [where('bankAccountId', '==', '__none__')],
+    ['bankLedgerEntries', fiscalYear, bankAccountId],
   );
 
 /**

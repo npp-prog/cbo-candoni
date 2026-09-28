@@ -1399,6 +1399,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "bankLedgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entryDate",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
