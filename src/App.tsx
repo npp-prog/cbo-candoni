@@ -48,6 +48,10 @@ const Rcd = lazy(() => import('./pages/treasury/Rcd'));
 const Deposits = lazy(() => import('./pages/treasury/Deposits'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
 const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
+const RcdAppendix34 = lazy(() => import('./pages/treasury/RcdAppendix34'));
+const AbstractOfCollections = lazy(() => import('./pages/reports/AbstractOfCollections'));
+const SummaryOfCollections = lazy(() => import('./pages/reports/SummaryOfCollections'));
+const RcdTransmittal = lazy(() => import('./pages/reports/RcdTransmittal'));
 const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
@@ -188,6 +192,12 @@ export default function App() {
           />
           <Route path="/treasury/rcd" element={<Guard module="treasury"><Rcd /></Guard>} />
           <Route path="/treasury/rcd/:id" element={<Guard module="treasury"><Rcd /></Guard>} />
+          {/* The RCD as COA prints it. Separate from the register because the
+              register is how the office works and this is what it signs. */}
+          <Route
+            path="/treasury/collections/rcd/:id/form"
+            element={<Guard module="treasury"><RcdAppendix34 /></Guard>}
+          />
           {/* Deposits sit inside the collections section. The old address is
               kept as a redirect so bookmarks and older notifications still
               land somewhere sensible. */}
@@ -230,6 +240,18 @@ export default function App() {
             element={<Navigate to="/accounting/opening-balances" replace />}
           />
           <Route path="/reports/treasury" element={<Guard module="reports"><TreasuryReports /></Guard>} />
+          <Route
+            path="/reports/abstract-of-collections"
+            element={<Guard module="reports"><AbstractOfCollections /></Guard>}
+          />
+          <Route
+            path="/reports/summary-of-collections"
+            element={<Guard module="reports"><SummaryOfCollections /></Guard>}
+          />
+          <Route
+            path="/reports/rcd-transmittal"
+            element={<Guard module="reports"><RcdTransmittal /></Guard>}
+          />
 
           {/* Master data */}
           <Route path="/master-data" element={<Navigate to="/master-data/accounts" replace />} />

@@ -140,6 +140,9 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Accounting Reports', label: 'Registers', to: '/reports/registers' },
 
       { group: 'Treasury Reports', label: 'Cash Position and Collections', to: '/reports/treasury' },
+      { group: 'Treasury Reports', label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
+      { group: 'Treasury Reports', label: 'Summary of Collections', to: '/reports/summary-of-collections' },
+      { group: 'Treasury Reports', label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
       { group: 'Treasury Reports', label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
       { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
       { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },

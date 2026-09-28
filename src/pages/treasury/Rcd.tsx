@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -116,13 +117,21 @@ export default function Rcd() {
     {
       key: 'status',
       header: 'Status',
-      width: '9rem',
+      width: '13rem',
       value: (r) => r.status,
       fixed: true,
       sortable: false,
       cell: (r) => (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
+          {/* The register is how the office works; Appendix 34 is what it
+              signs. Both read the same record. */}
+          <Link
+            to={`/treasury/collections/rcd/${r.id}/form`}
+            className="rounded px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+          >
+            Appendix 34
+          </Link>
           {canPost && ['DRAFT', 'SUBMITTED', 'VERIFIED'].includes(r.status) && (
             <Button size="sm" variant="primary" onClick={() => setPosting(r)}>
               Post
