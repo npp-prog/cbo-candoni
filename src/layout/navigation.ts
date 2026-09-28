@@ -246,3 +246,58 @@ export const NAVIGATION: NavItem[] = [
   },
   { label: 'Audit Trail', to: '/audit-trail', module: 'auditTrail', icon: 'auditTrail' },
 ];
+
+// ---------------------------------------------------------------------------
+// Reading the tree
+// ---------------------------------------------------------------------------
+
+export type NavChild = NonNullable<NavItem['children']>[number];
+
+/** A run of consecutive children sharing one heading. */
+export interface ChildBlock {
+  group?: string;
+  items: NavChild[];
+}
+
+/**
+ * Cuts a section's children into runs of the same heading, so the sidebar can
+ * fold each run away.
+ *
+ * Consecutive, deliberately. A heading is where it is in this file, and two
+ * separated runs carrying the same name would be two headings on screen -
+ * which is a mistake in this file worth seeing rather than one the renderer
+ * quietly tidies away by merging items that were written apart.
+ *
+ * Children with no `group` form their own run with no heading. Such a run is
+ * never folded: there would be nothing to label the fold with.
+ */
+export function toBlocks(children: readonly NavChild[]): ChildBlock[] {
+  const blocks: ChildBlock[] = [];
+  for (const child of children) {
+    const last = blocks[blocks.length - 1];
+    if (last && last.group === child.group) last.items.push(child);
+    else blocks.push({ group: child.group, items: [child] });
+  }
+  return blocks;
+}
+
+/**
+ * The heading holding a path, as `section.to` and the group name.
+ *
+ * The LONGEST matching target wins: /treasury/checks and /treasury/checks/rci
+ * are both real menu items and both match the second path, and opening the
+ * wrong heading would leave the highlighted item hidden inside a folded one.
+ */
+export function groupForPath(pathname: string): { sectionTo: string; group: string } | null {
+  let best: { sectionTo: string; group: string; length: number } | null = null;
+  for (const item of NAVIGATION) {
+    for (const child of item.children ?? []) {
+      if (!child.group) continue;
+      if (pathname !== child.to && !pathname.startsWith(`${child.to}/`)) continue;
+      if (!best || child.to.length > best.length) {
+        best = { sectionTo: item.to, group: child.group, length: child.to.length };
+      }
+    }
+  }
+  return best ? { sectionTo: best.sectionTo, group: best.group } : null;
+}

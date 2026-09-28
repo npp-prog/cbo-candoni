@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
-import { NAVIGATION, ICONS } from './navigation';
+import { NAVIGATION, ICONS, toBlocks, groupForPath, type NavChild } from './navigation';
 import { useAuth } from '@/auth/AuthProvider';
 
 /**
@@ -14,7 +14,51 @@ import { useAuth } from '@/auth/AuthProvider';
  * Sections the signed-in user has no permission to view are not rendered at
  * all. Rendering them disabled would only invite requests for access to
  * screens that person's role is deliberately kept away from.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE GROUPS FOLD
+ * ---------------------------------------------------------------------------
+ * Treasury has twenty-three items under four headings. Opened all at once they
+ * are longer than the screen, so the person who wants Print Receipts scrolls
+ * past everything the office does to reach it - and the four headings, which
+ * exist precisely to say what kind of thing each item is, scroll away with it.
+ *
+ * Folded, the same section is four lines. The headings become the menu, and
+ * the items appear when one is asked for.
+ *
+ * Three decisions make that safe rather than merely smaller:
+ *
+ *   The group holding the CURRENT screen is always opened. Hiding where the
+ *   user is standing is disorienting in a way that saving four lines does not
+ *   repay.
+ *
+ *   A folded heading carries the number of items inside it. A heading with no
+ *   hint that anything is behind it reads as a label, not a door, and the
+ *   office would conclude the screens had been taken away.
+ *
+ *   What the user opens is remembered on that workstation. A clerk who works
+ *   in Collections all day should not re-open Registers every morning.
+ * ---------------------------------------------------------------------------
  */
+
+const GROUPS_KEY = 'cbo.nav.openGroups';
+
+/** A group's identity has to include its section: two sections may both have "Reports". */
+const groupKey = (sectionTo: string, group: string) => `${sectionTo}::${group}`;
+
+function readOpenGroups(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(GROUPS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((v) => typeof v === 'string')) : new Set();
+  } catch {
+    // A locked-down profile must not stop the menu rendering. Nothing opens
+    // by default, which is the same as a first visit.
+    return new Set();
+  }
+}
+
 export function Sidebar({
   collapsed,
   onToggle,
@@ -29,6 +73,9 @@ export function Sidebar({
   const { can } = useAuth();
   const location = useLocation();
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [openGroups, setOpenGroups] = useState<Set<string>>(readOpenGroups);
+
+  const visible = useMemo(() => NAVIGATION.filter((item) => can(item.module, 'view')), [can]);
 
   // Keep the section containing the current route open.
   useEffect(() => {
@@ -40,7 +87,47 @@ export function Sidebar({
     }
   }, [location.pathname]);
 
-  const visible = NAVIGATION.filter((item) => can(item.module, 'view'));
+  // Open the heading holding the current screen, so the user can always see
+  // where they are standing.
+  useEffect(() => {
+    const found = groupForPath(location.pathname);
+    if (!found) return;
+    const key = groupKey(found.sectionTo, found.group);
+    setOpenGroups((s) => (s.has(key) ? s : new Set(s).add(key)));
+  }, [location.pathname]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setOpenGroups((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        window.localStorage.setItem(GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // The fold still works for this visit; it just will not be remembered.
+      }
+      return next;
+    });
+  }, []);
+
+  const renderChild = (child: NavChild) => (
+    <li key={child.to}>
+      <NavLink
+        to={child.to}
+        onClick={onMobileClose}
+        className={({ isActive: active }) =>
+          clsx(
+            'block rounded px-2.5 py-1.5 text-xs transition-colors',
+            active
+              ? 'bg-brand-600/20 text-white font-medium'
+              : 'text-slate-400 hover:bg-navy-800/60 hover:text-white',
+          )
+        }
+      >
+        {child.label}
+      </NavLink>
+    </li>
+  );
 
   return (
     <>
@@ -125,31 +212,66 @@ export function Sidebar({
 
                       {!collapsed && isOpen && (
                         <ul className="mb-1 mt-0.5 space-y-0.5 border-l border-navy-800 pl-3 ml-4">
-                          {item.children.map((child, index) => (
-                            <li key={child.to}>
-                              {/* A group heading appears once, above the first
-                                  child that carries it. */}
-                              {child.group && child.group !== item.children?.[index - 1]?.group && (
-                                <div className="mt-2.5 px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 first:mt-0">
-                                  {child.group}
-                                </div>
-                              )}
-                              <NavLink
-                                to={child.to}
-                                onClick={onMobileClose}
-                                className={({ isActive: active }) =>
-                                  clsx(
-                                    'block rounded px-2.5 py-1.5 text-xs transition-colors',
-                                    active
-                                      ? 'bg-brand-600/20 text-white font-medium'
-                                      : 'text-slate-400 hover:bg-navy-800/60 hover:text-white',
-                                  )
-                                }
-                              >
-                                {child.label}
-                              </NavLink>
-                            </li>
-                          ))}
+                          {toBlocks(item.children).map((block, blockIndex) => {
+                            // A run with no heading has nothing to fold under,
+                            // so it is simply listed.
+                            if (!block.group) {
+                              return (
+                                <li key={`plain-${blockIndex}`}>
+                                  <ul className="space-y-0.5">{block.items.map(renderChild)}</ul>
+                                </li>
+                              );
+                            }
+
+                            const key = groupKey(item.to, block.group);
+                            const groupOpen = openGroups.has(key);
+
+                            return (
+                              <li key={key}>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroup(key)}
+                                  aria-expanded={groupOpen}
+                                  className={clsx(
+                                    'flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[10px]',
+                                    'font-semibold uppercase tracking-wide transition-colors',
+                                    groupOpen
+                                      ? 'text-slate-400 hover:text-slate-200'
+                                      : 'text-slate-500 hover:bg-navy-800/60 hover:text-slate-200',
+                                    blockIndex === 0 ? 'mt-0' : 'mt-2',
+                                  )}
+                                >
+                                  <svg
+                                    className={clsx(
+                                      'h-3 w-3 shrink-0 transition-transform',
+                                      groupOpen && 'rotate-90',
+                                    )}
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  <span className="min-w-0 flex-1 truncate">{block.group}</span>
+                                  {/* The count is the only sign that a folded
+                                      heading is a door rather than a label. */}
+                                  {!groupOpen && (
+                                    <span className="shrink-0 rounded bg-navy-800 px-1.5 py-px text-[9px] font-medium tabular-nums text-slate-400">
+                                      {block.items.length}
+                                    </span>
+                                  )}
+                                </button>
+
+                                {groupOpen && (
+                                  <ul className="mt-0.5 space-y-0.5">{block.items.map(renderChild)}</ul>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </>
