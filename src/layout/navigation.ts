@@ -233,6 +233,9 @@ export const NAVIGATION: NavItem[] = [
       // The one report that covers all three funds at once, because that is
       // what is submitted to BLGF.
       { label: 'Receipts and Expenditures (SRE)', to: '/reports/sre' },
+      // The Local Budget Officer's own quarterly submission to the Local
+      // Finance Committee, in the Budget Operations Manual's own columns.
+      { label: 'Quarterly Financial Report (LBAc 2)', to: '/reports/quarterly-financial' },
       { label: 'Trial Balance', to: '/reports/trial-balance' },
       { label: 'Financial Statements', to: '/reports/financial-statements' },
       { label: 'General Ledger', to: '/reports/general-ledger' },

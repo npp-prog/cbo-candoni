@@ -4,7 +4,14 @@ import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { OfficePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
-import { useBudgetBalances } from '@/data/queries';
+import { useAllotments, useBudgetBalances, useObligations } from '@/data/queries';
+import {
+  QUARTER_LABELS,
+  figuresForPeriod,
+  lineKey,
+  quarterRange,
+  type Quarter,
+} from '@/lib/budgetPeriods';
 import { formatPeso } from '@/lib/money';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { ExportColumn } from '@/lib/export';
@@ -23,17 +30,79 @@ import { fundLabel } from './Obligations';
  * Functions write, and which a nightly job rebuilds from the underlying
  * appropriations, allotments and obligations to prove it has not drifted.
  */
+/**
+ * The period the registry covers.
+ *
+ * "Whole year to date" is the registry as the running balances hold it, and it
+ * is what every other screen in CBO shows. A quarter is computed from the
+ * allotments and obligations by their own dates, which is the only way to
+ * answer "what was released and committed BETWEEN these dates" - a
+ * year-to-date total cannot be split after the fact.
+ *
+ * The two agree at the end of the year, and they are maintained by different
+ * code on different occasions, so where they do not agree something is wrong.
+ * LBAc Form No. 2 says so; this screen simply shows what was asked for.
+ */
+type Period = 'YEAR' | '1' | '2' | '3' | '4';
+
 export default function Registry() {
   const { fiscalYear, fundCode } = useFilters();
   const [officeId, setOfficeId] = useState<string | null>(null);
   const [expenseClass, setExpenseClass] = useState<string>('');
+  const [period, setPeriod] = useState<Period>('YEAR');
 
   const { data, loading, error } = useBudgetBalances(fiscalYear, fundCode, officeId);
+  const allotments = useAllotments(fiscalYear, fundCode);
+  const obligations = useObligations(fiscalYear, fundCode);
 
+  /**
+   * For a quarter: the released and committed figures for that quarter alone,
+   * keyed the same way the balances are, so the row can show them beside the
+   * year-to-date appropriation.
+   */
+  const inPeriod = useMemo(() => {
+    if (period === 'YEAR') return null;
+    const range = quarterRange(fiscalYear, Number(period) as Quarter);
+    const figures = figuresForPeriod(allotments.data, obligations.data, range.from, range.to);
+    // Keyed the way a BALANCE identifies itself, not the way figuresForPeriod
+    // does: the balance document id carries the fiscal year, the fund and the
+    // unused programme dimensions as well, so the two strings do not match and
+    // looking one up with the other would silently find nothing - every row
+    // would read zero for the quarter and the registry would look empty.
+    return new Map(figures.map((f) => [lineKey(f), f]));
+  }, [period, fiscalYear, allotments.data, obligations.data]);
+
+  /**
+   * The rows, with the released and committed figures cut to the period.
+   *
+   * The appropriation columns are NOT cut. An appropriation is authority that
+   * stands until it is changed, not a thing that happened in a quarter, and a
+   * registry showing a quarter's releases against a quarter's share of the
+   * appropriation would invent a denominator the ordinance never set.
+   */
   const rows = useMemo(
     () =>
       data
         .filter((b) => !expenseClass || b.expenseClass === expenseClass)
+        .map((b) => {
+          if (!inPeriod) return b;
+          const f = inPeriod.get(lineKey({ officeId: b.officeId, fppCode: b.fppCode, accountCode: b.accountCode }));
+          const allotmentReleased = f?.allotmentThisPeriod ?? 0;
+          const obligated = f?.obligationThisPeriod ?? 0;
+          return {
+            ...b,
+            allotmentReleased,
+            obligated,
+            availableAppropriation: b.appropriationRevised - allotmentReleased,
+            availableAllotment: allotmentReleased - obligated,
+            // Disbursements are not cut to the period. They are dated on the
+            // voucher, which this computation does not read, and showing a
+            // year's payments beside a quarter's obligations would read as an
+            // office that had paid more than it committed.
+            disbursed: 0,
+            unpaidObligations: 0,
+          };
+        })
         .filter(
           (b) =>
             b.appropriationRevised !== 0 || b.allotmentReleased !== 0 || b.obligated !== 0,
@@ -43,7 +112,7 @@ export default function Registry() {
             a.officeName.localeCompare(b.officeName) ||
             (a.fppCode ?? '').localeCompare(b.fppCode ?? ''),
         ),
-    [data, expenseClass],
+    [data, expenseClass, inPeriod],
   );
 
   const totals = useMemo(
@@ -108,6 +177,20 @@ export default function Registry() {
           <Field label="Office" className="min-w-[16rem]">
             <OfficePicker value={officeId} onChange={(v) => setOfficeId(v)} />
           </Field>
+          <Field
+            label="Period covered"
+            className="min-w-[14rem]"
+            hint={period === 'YEAR' ? undefined : 'Released and obligated in that quarter alone.'}
+          >
+            <Select value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
+              <option value="YEAR">Whole year to date</option>
+              {([1, 2, 3, 4] as Quarter[]).map((q) => (
+                <option key={q} value={String(q)}>
+                  {QUARTER_LABELS[q]}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Expense classification">
             <Select value={expenseClass} onChange={(e) => setExpenseClass(e.target.value)}>
               <option value="">All classifications</option>
@@ -125,6 +208,17 @@ export default function Registry() {
           Available appropriation is the revised appropriation less allotments released. Available
           allotment is allotments released less obligations incurred. Both are computed from the
           source documents and cannot be edited.
+          {period !== 'YEAR' && (
+            <>
+              {' '}
+              For a quarter, the appropriation columns are the authority as it stands — an
+              appropriation is not something that happened in a quarter — while the allotment and
+              obligation columns are that quarter alone. The disbursement columns are blank: a
+              payment is dated on its voucher, which this cut does not read, and a year of payments
+              beside a quarter of commitments would read as an office that had paid more than it
+              committed.
+            </>
+          )}
         </>
       }
     >
