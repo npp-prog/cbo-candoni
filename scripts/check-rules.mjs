@@ -112,6 +112,49 @@ try {
   failures.push(`firestore.indexes.json: ${err instanceof Error ? err.message : err}`);
 }
 
+// --- 5. The budget key is computed identically on both sides -----------------
+//
+// `budgetKeyId` exists twice - in src/types/budget.ts for the browser and in
+// functions/src/lib/budget.ts for the server - because each carries its own
+// types and neither can import the other's. They are not vendored.
+//
+// If they ever disagree, nothing fails. The browser reads one balance document
+// and the server writes another, both succeed, and the budget control silently
+// stops controlling anything: every obligation sees a fresh line with no
+// allotment drawn against it. That is the worst shape a bug can take in this
+// system, so the two are compared here on every build.
+
+const KEY_BODY = /export function budgetKeyId\([^)]*\)[^{]*\{([\s\S]*?)\n\}/;
+
+function keyBody(file) {
+  const match = KEY_BODY.exec(readFileSync(resolve(root, file), 'utf8'));
+  if (!match) return null;
+  // Compare the segments the id is built from, not the whitespace or the
+  // comments around them.
+  return match[1]
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\s+/g, '');
+}
+
+const clientKey = keyBody('src/types/budget.ts');
+const serverKey = keyBody('functions/src/lib/budget.ts');
+
+if (!clientKey || !serverKey) {
+  failures.push(
+    'budgetKeyId: could not find it in src/types/budget.ts and functions/src/lib/budget.ts. ' +
+      'Both must define it, and they must define it identically.',
+  );
+} else if (clientKey !== serverKey) {
+  failures.push(
+    'budgetKeyId differs between src/types/budget.ts and functions/src/lib/budget.ts. ' +
+      'The browser and the server would read and write different balance documents for the ' +
+      'same budget line, and every obligation would see an untouched allotment.',
+  );
+} else {
+  console.log('budgetKeyId: client and server agree');
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

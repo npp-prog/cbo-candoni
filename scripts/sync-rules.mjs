@@ -36,6 +36,7 @@ const PAIRS = [
   { source: 'src/lib/accounting-rules.ts', target: 'functions/src/lib/rules.ts' },
   { source: 'src/lib/serials.ts', target: 'functions/src/lib/serials.ts' },
   { source: 'src/lib/clearing.ts', target: 'functions/src/lib/clearing.ts' },
+  { source: 'src/lib/sectors.ts', target: 'functions/src/lib/sectors.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

@@ -12,6 +12,7 @@ import {
   type BudgetBalanceData,
 } from '../lib/budget';
 import { checkAllotmentAgainstAppropriation, checkRealignmentSet } from '../lib/rules';
+import { findSector } from '../lib/sectors';
 
 /**
  * Uploading the appropriation ordinance and allotment releases.
@@ -77,6 +78,11 @@ const MAX_ROWS = 150;
 interface RawRow {
   lineNo?: number;
   office?: string;
+  /** The FPP as the ordinance writes it: an object code, or a project name. */
+  fpp?: string;
+  fppName?: string;
+  sector?: string;
+  serviceSector?: string;
   accountCode?: string;
   expenseClass?: string;
   amount?: number;
@@ -87,12 +93,22 @@ interface Resolved {
   lineNo: number;
   officeId: string;
   officeName: string;
+  fppCode: string;
+  fppName: string;
+  sector: string;
+  serviceSector: string | null;
+  /** Empty on a project line: the ordinance named no object of expenditure. */
   accountCode: string;
   accountName: string;
   expenseClass: string;
   amount: number;
   particulars: string | null;
+  /** True when the FPP is a programme rather than an object code. */
+  isProgramme: boolean;
 }
+
+/** An object code of the Revised Chart of Accounts, e.g. 5-02-03-010. */
+const OBJECT_CODE = /^\d-\d\d-\d\d-\d\d\d$/;
 
 const peso = (c: number) => (c / 100).toFixed(2);
 
@@ -242,44 +258,120 @@ export const importBudgetLines = onCall(
         return;
       }
 
-      const accountCode = String(row.accountCode ?? '').trim();
-      if (!accountCode) {
-        add('no account code');
+      /**
+       * The FPP, and what kind of FPP it is.
+       *
+       * An object code from the Revised Chart of Accounts means the ordinance
+       * appropriated by object of expenditure, and the object IS the budget
+       * line. Anything else means it appropriated by project, and there is no
+       * object of expenditure until an obligation is raised.
+       *
+       * Both are FPPs. Which kind it is decides only where the name comes from
+       * and whether an account code is required.
+       */
+      const fppCode = String(row.fpp ?? '').trim();
+      if (!fppCode) {
+        add('no FPP');
         return;
       }
-      const account = accounts.get(accountCode);
-      if (!account) {
-        add(`account ${accountCode} is not in the Chart of Accounts`);
-        return;
-      }
-      if (account.postable === false) {
-        add(`account ${accountCode} is a grouping account and cannot carry a budget`);
-        return;
-      }
-      if (account.active === false) {
-        add(`account ${accountCode} has been deactivated`);
-        return;
+      const isObjectCode = OBJECT_CODE.test(fppCode);
+
+      // An explicit account code column wins; otherwise the FPP is the object
+      // code when it looks like one, and there is none when it does not.
+      const accountCode = String(row.accountCode ?? '').trim() || (isObjectCode ? fppCode : '');
+
+      let account: { name?: string; postable?: boolean; active?: boolean; expenseClass?: string } | undefined;
+      if (accountCode) {
+        account = accounts.get(accountCode);
+        if (!account) {
+          add(`account ${accountCode} is not in the Chart of Accounts`);
+          return;
+        }
+        if (account.postable === false) {
+          add(`account ${accountCode} is a grouping account and cannot carry a budget`);
+          return;
+        }
+        if (account.active === false) {
+          add(`account ${accountCode} has been deactivated`);
+          return;
+        }
       }
 
-      const expenseClass = String(row.expenseClass ?? account.expenseClass ?? '')
+      const expenseClass = String(row.expenseClass ?? account?.expenseClass ?? '')
         .trim()
         .toUpperCase();
       if (!['PS', 'MOOE', 'FE', 'CO'].includes(expenseClass)) {
         add(
-          `no expense classification - the file does not say and account ${accountCode} has none recorded against it`,
+          `no expense classification - the file does not say and there is no account code to take one from`,
         );
         return;
+      }
+
+      /**
+       * Personnel services are appropriated by object of expenditure. Always.
+       *
+       * Nineteen lines of the FY2025 ordinance carry the FPP "Year End" and two
+       * carry "V/L Leave Benefit/Monetization of Leave Credits" - personnel
+       * objects whose codes exist in the Revised Chart of Accounts and were
+       * simply left out of the spreadsheet. Accepting them as projects would
+       * put the year-end bonus in the SRE among the capital projects, and by
+       * the time an obligation had been raised against it, moving it would mean
+       * unwinding the obligation as well.
+       */
+      if (expenseClass === 'PS' && !accountCode) {
+        add(
+          `"${fppCode}" has no account code, and personnel services are appropriated by object of expenditure - give this line its code from the Revised Chart of Accounts`,
+        );
+        return;
+      }
+
+      /**
+       * The sector, and the two that are not sectors.
+       *
+       * The SRE has four expenditure buckets and the 20% Development Fund and
+       * the LDRRMF are neither of them - they are where the money came from,
+       * not what it bought. A project under one of those must say which
+       * service it delivers, or it cannot be reported at all.
+       */
+      const sector = String(row.sector ?? '').trim();
+      if (!sector) {
+        add('no sector');
+        return;
+      }
+      const sectorDef = findSector(sector);
+      if (!sectorDef) {
+        add(`sector "${sector}" is not one CBO knows`);
+        return;
+      }
+      const serviceSector = String(row.serviceSector ?? '').trim() || null;
+      if (sectorDef.fundingSource) {
+        if (!serviceSector) {
+          add(
+            `"${sector}" is a funding source, not a service - this line must also name the service sector it delivers`,
+          );
+          return;
+        }
+        const service = findSector(serviceSector);
+        if (!service || service.fundingSource) {
+          add(`"${serviceSector}" is not a service sector`);
+          return;
+        }
       }
 
       resolved.push({
         lineNo,
         officeId: office.id,
         officeName: office.name,
+        fppCode,
+        fppName: String(row.fppName ?? '').trim() || account?.name || fppCode,
+        sector: sectorDef.name,
+        serviceSector: sectorDef.fundingSource ? serviceSector : null,
         accountCode,
-        accountName: account.name ?? accountCode,
+        accountName: account?.name ?? '',
         expenseClass,
         amount,
         particulars: String(row.particulars ?? '').trim() || null,
+        isProgramme: !accountCode,
       });
     });
 
@@ -358,9 +450,13 @@ export const importBudgetLines = onCall(
           programId: null,
           projectId: null,
           activityId: null,
+          fppCode: r.fppCode,
           accountCode: r.accountCode,
         };
-        const id = `${r.officeId}__${r.accountCode}`;
+        // Two rows of one ordinance fall on the same line when they share the
+        // office, the FPP and the object code. The FPP is part of that: two
+        // projects in one office are two lines however alike their objects.
+        const id = `${r.officeId}__${r.fppCode}__${r.accountCode}`;
         const entry = byLine.get(id) ?? { key, rows: [], amount: 0 };
         entry.rows.push(r);
         entry.amount += r.amount;
@@ -472,8 +568,43 @@ export const importBudgetLines = onCall(
         applyBudgetDelta(tx, line.key, balances[i], delta, {
           officeName: first.officeName,
           accountName: first.accountName,
+          fppName: first.fppName,
+          sector: first.sector,
+          serviceSector: first.serviceSector,
           expenseClass: first.expenseClass,
         });
+      }
+
+      /**
+       * Programme FPPs go onto the masterlist as they are encountered.
+       *
+       * The ordinance is the authority that creates a programme, so the act of
+       * loading the ordinance is the right moment for the programme to exist.
+       * Requiring the Budget Office to type two hundred programme names into
+       * master data first, exactly as they appear in the annex, and then
+       * upload the annex, would be asking for the same list twice and would
+       * fail on the first spelling difference.
+       *
+       * `merge` so that a name edited by hand afterwards is not overwritten by
+       * a later upload of the same ordinance.
+       */
+      if (kind === 'APPROPRIATION') {
+        const seen = new Set<string>();
+        for (const r of resolved) {
+          if (!r.isProgramme || seen.has(r.fppCode)) continue;
+          seen.add(r.fppCode);
+          tx.set(
+            db.collection(COL.programs).doc(slug(r.fppCode)),
+            {
+              code: r.fppCode,
+              name: r.fppName,
+              active: true,
+              sourceReference: reference,
+              updatedAt: now,
+            },
+            { merge: true },
+          );
+        }
       }
 
       for (const r of resolved) {
@@ -487,6 +618,10 @@ export const importBudgetLines = onCall(
           programId: null,
           projectId: null,
           activityId: null,
+          fppCode: r.fppCode,
+          fppName: r.fppName,
+          sector: r.sector,
+          serviceSector: r.serviceSector,
           accountCode: r.accountCode,
           accountName: r.accountName,
           expenseClass: r.expenseClass,

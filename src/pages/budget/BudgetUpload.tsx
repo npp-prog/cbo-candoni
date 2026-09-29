@@ -10,6 +10,7 @@ import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import { checkRealignmentSet } from '@/lib/accounting-rules';
+import { findSector } from '@/lib/sectors';
 import { TEMPLATE_COLUMNS, downloadBudgetTemplate } from '@/lib/budgetTemplate';
 import { fundLabel } from './Obligations';
 import { parseBudgetFile, type ParsedBudgetRow } from './parseBudget';
@@ -87,15 +88,44 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
       if (!officeKeys.has(row.office.trim().toUpperCase())) {
         problems.push(`office "${row.office}" is not in Master Data`);
       }
-      const account = byCode.get(row.accountCode);
-      if (!account) problems.push(`account ${row.accountCode} is not in the Chart of Accounts`);
-      else if (account.postable === false) problems.push('that account is a grouping account');
-      else if (account.active === false) problems.push('that account has been deactivated');
+
+      // An account code is checked only where there is one. A project line
+      // carries none, and that is how the ordinance enacted it.
+      const account = row.accountCode ? byCode.get(row.accountCode) : undefined;
+      if (row.accountCode && !account) {
+        problems.push(`account ${row.accountCode} is not in the Chart of Accounts`);
+      } else if (account?.postable === false) problems.push('that account is a grouping account');
+      else if (account?.active === false) problems.push('that account has been deactivated');
 
       const ec = row.expenseClass || account?.expenseClass || '';
       if (!['PS', 'MOOE', 'FE', 'CO'].includes(ec)) {
         problems.push('no expense classification');
       }
+
+      // Personnel services are appropriated by object of expenditure, always.
+      // A PS line whose FPP is a name rather than a code is a code left out of
+      // the spreadsheet, and posting it as a project would put the year-end
+      // bonus in the SRE among the capital projects.
+      if (ec === 'PS' && !row.accountCode) {
+        problems.push(
+          `"${row.fpp}" has no account code, and personnel services are appropriated by object of expenditure`,
+        );
+      }
+
+      const sector = findSector(row.sector);
+      if (!row.sector) problems.push('no sector');
+      else if (!sector) problems.push(`sector "${row.sector}" is not one CBO knows`);
+      else if (sector.fundingSource) {
+        const service = findSector(row.serviceSector);
+        if (!row.serviceSector) {
+          problems.push(
+            `"${sector.name}" is a funding source, not a service - name the service sector this line delivers`,
+          );
+        } else if (!service || service.fundingSource) {
+          problems.push(`"${row.serviceSector}" is not a service sector`);
+        }
+      }
+
       if (row.amount < 0 && !(isAppropriation && signed)) {
         problems.push('a negative amount');
       }
@@ -106,7 +136,9 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
 
   const bad = checked.filter((r) => r.problem);
   const total = checked.reduce((s, r) => s + r.amount, 0);
-  const lineCount = new Set(checked.map((r) => `${r.office}__${r.accountCode}`)).size;
+  // A budget line is the office, the FPP and the object code together. Two
+  // projects in one office are two lines however alike their objects.
+  const lineCount = new Set(checked.map((r) => `${r.office}__${r.fpp}__${r.accountCode}`)).size;
 
   /**
    * A realignment is judged as a whole file, never row by row.
@@ -172,7 +204,11 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
           rows: chunk.map((r) => ({
             lineNo: r.lineNo,
             office: r.office,
-            accountCode: r.accountCode,
+            fpp: r.fpp,
+            fppName: r.fppName || undefined,
+            sector: r.sector,
+            serviceSector: r.serviceSector || undefined,
+            accountCode: r.accountCode || undefined,
             expenseClass: r.expenseClass || undefined,
             amount: r.amount,
             particulars: r.particulars || undefined,

@@ -8,6 +8,7 @@ import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, OfficePicker, PayeePicker } from '@/components/pickers';
+import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { obligationForm } from '@/lib/obligationForm';
@@ -110,8 +111,17 @@ export default function ObligationDetail() {
 
   // --- Live budget availability -------------------------------------------
 
+  /**
+   * The budget line an obligation line draws on.
+   *
+   * Keyed on the FPP, not on the account code. A third of the FY2025 ordinance
+   * was appropriated by project with no object of expenditure named, so the
+   * account code on THIS line - which the JEV will need - is frequently not
+   * the account code the appropriation carries. Matching on it would find no
+   * balance for exactly the project lines that have one.
+   */
   const balanceFor = (line: Partial<ObligationLine>) => {
-    if (!line.officeId || !line.accountCode) return null;
+    if (!line.officeId || !line.fppCode) return null;
     const key = budgetKeyId({
       fiscalYear,
       fundCode,
@@ -120,7 +130,10 @@ export default function ObligationDetail() {
       programId: line.programId,
       projectId: line.projectId,
       activityId: line.activityId,
-      accountCode: line.accountCode,
+      fppCode: line.fppCode,
+      // The appropriated line's own object code, which is empty on a project
+      // line - never this obligation line's account code.
+      accountCode: line.appropriatedAccountCode ?? '',
     });
     return balances.data.find((b) => b.id === key) ?? null;
   };
@@ -189,6 +202,11 @@ export default function ObligationDetail() {
       programId: l.programId ?? null,
       projectId: l.projectId ?? null,
       activityId: l.activityId ?? null,
+      fppCode: l.fppCode!,
+      fppName: l.fppName ?? '',
+      sector: l.sector ?? null,
+      serviceSector: l.serviceSector ?? null,
+      appropriatedAccountCode: l.appropriatedAccountCode ?? '',
       accountCode: l.accountCode!,
       accountName: l.accountName!,
       expenseClass: l.expenseClass ?? 'MOOE',
@@ -417,7 +435,8 @@ export default function ObligationDetail() {
                     <tr>
                       <th className="cbo-th w-10">#</th>
                       <th className="cbo-th min-w-[13rem]">Office</th>
-                      <th className="cbo-th min-w-[16rem]">Account</th>
+                      <th className="cbo-th min-w-[18rem]">Budget line (FPP)</th>
+                      <th className="cbo-th min-w-[16rem]">Object of expenditure</th>
                       <th className="cbo-th w-36 text-right">Amount</th>
                       <th className="cbo-th w-44 text-right">Available allotment</th>
                       {canEdit && <th className="cbo-th w-10" />}
@@ -439,6 +458,47 @@ export default function ObligationDetail() {
                                 setLines((ls) =>
                                   ls.map((l, i) =>
                                     i === index ? { ...l, officeId: v ?? undefined, officeName: o?.name } : l,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+
+                          <td className="cbo-td">
+                            <BudgetLinePicker
+                              balances={balances.data}
+                              officeId={line.officeId ?? null}
+                              disabled={!canEdit}
+                              value={
+                                balances.data.find(
+                                  (b) =>
+                                    b.officeId === line.officeId &&
+                                    b.fppCode === line.fppCode &&
+                                    (b.accountCode || '') === (line.appropriatedAccountCode || ''),
+                                )?.id ?? null
+                              }
+                              onChange={(_, chosen) =>
+                                setLines((ls) =>
+                                  ls.map((l, i) =>
+                                    i === index
+                                      ? {
+                                          ...l,
+                                          fppCode: chosen?.fppCode,
+                                          fppName: chosen?.fppName,
+                                          sector: chosen?.sector,
+                                          serviceSector: chosen?.serviceSector,
+                                          appropriatedAccountCode: chosen?.accountCode ?? '',
+                                          expenseClass: chosen?.expenseClass ?? l.expenseClass,
+                                          // Where the ordinance named the object
+                                          // itself, it is also the object being
+                                          // committed - so it is filled in, and
+                                          // can still be changed.
+                                          accountCode: chosen?.accountCode || l.accountCode,
+                                          accountName: chosen?.accountCode
+                                            ? chosen.accountName
+                                            : l.accountName,
+                                        }
+                                      : l,
                                   ),
                                 )
                               }
@@ -477,7 +537,7 @@ export default function ObligationDetail() {
                             <AvailabilityCell
                               balance={check.balance}
                               shortfall={check.shortfall}
-                              ready={Boolean(line.officeId && line.accountCode)}
+                              ready={Boolean(line.officeId && line.fppCode)}
                             />
                           </td>
 

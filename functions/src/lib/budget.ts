@@ -25,9 +25,29 @@ export interface BudgetKey {
   programId?: string | null;
   projectId?: string | null;
   activityId?: string | null;
+  /**
+   * The Function, Programme or Project the Sanggunian appropriated to. An
+   * object code from the Revised Chart of Accounts where the appropriation was
+   * made by object of expenditure, a programme code from the FPP masterlist
+   * where it was made by project.
+   */
+  fppCode: string;
+  /**
+   * The object of expenditure. EMPTY on a project line - a third of the FY2025
+   * ordinance was appropriated by project with no object code at all, and the
+   * object only becomes known when the obligation is raised.
+   */
   accountCode: string;
 }
 
+/**
+ * MUST stay identical to budgetKeyId in src/types/budget.ts.
+ *
+ * The two are not vendored from one file because the client's version carries
+ * the client's types. If they ever disagree, the browser and the server would
+ * read and write different balance documents for the same budget line, and the
+ * control would silently stop controlling anything.
+ */
 export function budgetKeyId(k: BudgetKey): string {
   return [
     k.fiscalYear,
@@ -37,7 +57,8 @@ export function budgetKeyId(k: BudgetKey): string {
     k.programId ?? '-',
     k.projectId ?? '-',
     k.activityId ?? '-',
-    k.accountCode,
+    k.fppCode || '-',
+    k.accountCode || '-',
   ].join('__');
 }
 
@@ -111,6 +132,13 @@ export function deriveBalance(b: BudgetBalanceData): BudgetBalanceData {
 export interface BudgetLabels {
   officeName: string;
   accountName: string;
+  /**
+   * Denormalised onto the balance so a registry or an SRE can be cut by FPP
+   * and by sector without reading the appropriations back.
+   */
+  fppName?: string;
+  sector?: string | null;
+  serviceSector?: string | null;
   expenseClass: string;
 }
 

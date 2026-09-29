@@ -40,7 +40,8 @@ export default function Registry() {
         )
         .sort(
           (a, b) =>
-            a.officeName.localeCompare(b.officeName) || a.accountCode.localeCompare(b.accountCode),
+            a.officeName.localeCompare(b.officeName) ||
+            (a.fppCode ?? '').localeCompare(b.fppCode ?? ''),
         ),
     [data, expenseClass],
   );
@@ -75,6 +76,11 @@ export default function Registry() {
 
   const exportColumns: ExportColumn<BudgetBalance>[] = [
     { key: 'office', header: 'Office', value: (r) => r.officeName },
+    { key: 'fpp', header: 'FPP', value: (r) => r.fppCode },
+    { key: 'fppName', header: 'FPP Name', value: (r) => r.fppName ?? '' },
+    { key: 'sector', header: 'Sector', value: (r) => r.sector ?? '' },
+    // Empty on a project line, and that is the honest export: the ordinance
+    // named no object of expenditure there.
     { key: 'code', header: 'Account Code', value: (r) => r.accountCode },
     { key: 'name', header: 'Account', value: (r) => r.accountName },
     { key: 'class', header: 'Class', value: (r) => r.expenseClass },
@@ -154,7 +160,7 @@ export default function Registry() {
             <thead>
               <tr>
                 <th className="cbo-th">Office</th>
-                <th className="cbo-th">Account</th>
+                <th className="cbo-th">Budget line (FPP)</th>
                 <th className="cbo-th w-14">Class</th>
                 <th className="cbo-th text-right">Appropriation</th>
                 <th className="cbo-th text-right">Allotment</th>
@@ -170,8 +176,22 @@ export default function Registry() {
                 <tr key={r.id}>
                   <td className="cbo-td text-xs text-slate-600">{r.officeName}</td>
                   <td className="cbo-td">
-                    <span className="font-mono text-xs text-slate-500">{r.accountCode}</span>{' '}
-                    <span className="text-sm">{r.accountName}</span>
+                    <span className="font-mono text-xs text-slate-500">{r.fppCode}</span>{' '}
+                    <span className="text-sm">{r.fppName || r.accountName}</span>
+                    {/* A project line has no object of expenditure until an
+                        obligation is raised, so nothing is shown rather than
+                        an empty code that looks like missing data. */}
+                    {r.accountCode && r.accountCode !== r.fppCode && (
+                      <span className="block text-2xs text-slate-400">
+                        object {r.accountCode} {r.accountName}
+                      </span>
+                    )}
+                    {r.sector && (
+                      <span className="block text-2xs text-slate-400">
+                        {r.sector}
+                        {r.serviceSector ? ` · ${r.serviceSector}` : ''}
+                      </span>
+                    )}
                   </td>
                   <td className="cbo-td text-xs">{r.expenseClass}</td>
                   <td className="cbo-td cbo-amount">{formatPeso(r.appropriationRevised, { symbol: false, dash: true })}</td>

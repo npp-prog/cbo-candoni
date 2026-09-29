@@ -36,6 +36,33 @@ export interface BudgetKey {
   programId?: Id;
   projectId?: Id;
   activityId?: Id;
+  /**
+   * The Function, Programme or Project the Sanggunian appropriated to.
+   *
+   * This is what the budget is actually charged against, and it is the key
+   * that lets one line be followed from the ordinance through the obligation
+   * and the JEV to the Statement of Comparison of Budget and Actual Amounts.
+   *
+   * It is an object code from the Revised Chart of Accounts when the
+   * appropriation was made by object of expenditure - which is how personnel
+   * services and routine maintenance are enacted - and a programme code from
+   * the FPP masterlist when it was made by project. Both are codes; which kind
+   * it is decides only where the name comes from.
+   */
+  fppCode: string;
+  /**
+   * The object of expenditure, where the ordinance named one.
+   *
+   * EMPTY on a project line, and that is not a gap to be filled in later.
+   * A third of the lines of the FY2025 ordinance - every capital outlay and
+   * every special programme - were appropriated by project, with no object
+   * code at all. The object becomes known when the obligation is raised, which
+   * is the right time to know it and is how the appropriation was enacted.
+   *
+   * Budget control therefore operates at the level the appropriation was made
+   * at: an obligation against a project draws down the project, an obligation
+   * against an object code draws down that object.
+   */
   accountCode: string;
 }
 
@@ -53,7 +80,12 @@ export function budgetKeyId(k: BudgetKey): string {
     k.programId ?? '-',
     k.projectId ?? '-',
     k.activityId ?? '-',
-    k.accountCode,
+    k.fppCode || '-',
+    // A project line has no object code. It takes the same placeholder as the
+    // other absent dimensions rather than an empty segment, so that the id
+    // stays readable and two adjacent separators never mean two different
+    // things.
+    k.accountCode || '-',
   ].join('__');
 }
 
@@ -73,7 +105,29 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
   id: Id;
   /** Denormalised for display and export. */
   officeName: string;
+  /** The office or function code as the ordinance writes it, e.g. 1011. */
+  officeCode?: string;
+  /** Empty on a project line, where the ordinance named no object. */
   accountName: string;
+  /** Denormalised so a report can be cut by FPP without reading master data. */
+  fppName: string;
+  /**
+   * The sector as the ordinance writes it - one of the nine in the FY2025
+   * appropriation, from "General Public Services" to "Allocation for Senior
+   * Citizens and PWD".
+   */
+  sector: string;
+  /**
+   * The sector whose service this line actually delivers.
+   *
+   * Set only where `sector` names a funding source rather than a service: the
+   * 20% Development Fund and the LDRRMF are a quarter of the municipality's
+   * budget between them, and a road built out of the 20% fund is economic
+   * services however it was paid for. The SRE has four expenditure buckets and
+   * neither of those two is one of them, so a project under either must say
+   * which service it delivers or it cannot be reported.
+   */
+  serviceSector?: string;
   programName?: string;
   projectName?: string;
   activityName?: string;
@@ -104,6 +158,9 @@ export interface Allotment extends BudgetKey, Partial<AuditStamps> {
   allotmentDate: IsoDate;
   officeName: string;
   accountName: string;
+  fppName: string;
+  sector?: string;
+  serviceSector?: string;
   expenseClass: ExpenseClass;
   /** Positive for a release, negative for a withdrawal of allotment. */
   amount: Centavos;
@@ -119,7 +176,26 @@ export interface Allotment extends BudgetKey, Partial<AuditStamps> {
 export interface ObligationLine extends BudgetKey {
   lineNo: number;
   officeName: string;
+  /**
+   * The object of expenditure being committed.
+   *
+   * Required here even when the appropriation was made by project and carries
+   * none. This is the moment the object becomes known, and the JEV raised from
+   * this obligation needs it: the account code says what kind of expense it
+   * is, the FPP says which line of the budget it was charged to, and on a
+   * project line those are not the same question.
+   */
   accountName: string;
+  fppName: string;
+  /**
+   * The object code the APPROPRIATION carries, which is empty on a project
+   * line. Held separately from `accountCode` above - the object being
+   * committed now - because the two differ on every project line, and the
+   * budget balance is keyed on this one.
+   */
+  appropriatedAccountCode?: string;
+  sector?: string;
+  serviceSector?: string;
   expenseClass: ExpenseClass;
   programName?: string;
   projectName?: string;
@@ -193,6 +269,9 @@ export interface BudgetBalance extends BudgetKey {
   id: Id;
   officeName: string;
   accountName: string;
+  fppName: string;
+  sector?: string;
+  serviceSector?: string;
   expenseClass: ExpenseClass;
 
   appropriationOriginal: Centavos;

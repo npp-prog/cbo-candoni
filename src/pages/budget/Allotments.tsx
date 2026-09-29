@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
 import { Field, Select, DateInput, AmountInput, TextArea } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
-import { AccountPicker, OfficePicker } from '@/components/pickers';
+import { OfficePicker } from '@/components/pickers';
+import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAllotments, useBudgetBalances } from '@/data/queries';
@@ -238,18 +239,26 @@ function AllotmentForm({
   const [allotmentDate, setAllotmentDate] = useState(todayPh());
   const [officeId, setOfficeId] = useState<string | null>(null);
   const [officeName, setOfficeName] = useState('');
-  const [accountCode, setAccountCode] = useState<string | null>(null);
-  const [accountName, setAccountName] = useState('');
   const [expenseClass, setExpenseClass] = useState<ExpenseClass>('MOOE');
   const [amount, setAmount] = useState<number | null>(null);
   const [particulars, setParticulars] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const balance = useMemo(() => {
-    if (!officeId || !accountCode) return null;
-    const key = budgetKeyId({ fiscalYear, fundCode, officeId, accountCode });
-    return balances.data.find((b) => b.id === key) ?? null;
-  }, [officeId, accountCode, balances.data, fiscalYear, fundCode]);
+  /**
+   * The appropriated line being drawn on, by its balance document id.
+   *
+   * The office and the account used to be typed separately, which let a
+   * combination that was never appropriated be built - and it failed with
+   * "insufficient allotment", which reads as a budget problem rather than as
+   * "there is no such line". Now the line is chosen from the ones that exist.
+   */
+  const [lineId, setLineId] = useState<string | null>(null);
+  const balance = useMemo(
+    () => balances.data.find((b) => b.id === lineId) ?? null,
+    [lineId, balances.data],
+  );
+  const accountCode = balance?.accountCode ?? null;
+  const accountName = balance?.accountName ?? '';
 
   const check = useMemo(() => {
     if (!balance || !amount || amount <= 0) return null;
@@ -261,8 +270,8 @@ function AllotmentForm({
   }, [balance, amount]);
 
   const save = async () => {
-    if (!officeId || !accountCode || !amount || !user) {
-      toast.error('Incomplete', 'Office, account and amount are all required.');
+    if (!officeId || !balance || !amount || !user) {
+      toast.error('Incomplete', 'An office, a budget line and an amount are all required.');
       return;
     }
     setSaving(true);
@@ -275,7 +284,11 @@ function AllotmentForm({
           allotmentDate,
           officeId,
           officeName,
-          accountCode,
+          fppCode: balance.fppCode,
+          fppName: balance.fppName ?? '',
+          sector: balance.sector ?? null,
+          serviceSector: balance.serviceSector ?? null,
+          accountCode: accountCode ?? '',
           accountName,
           expenseClass,
           amount,
@@ -334,17 +347,28 @@ function AllotmentForm({
             onChange={(v, o) => {
               setOfficeId(v);
               setOfficeName(o?.name ?? '');
+              // A budget line belongs to one office. Keeping the old choice
+              // would leave another office's line selected under this one's
+              // name, and the save would post it against the wrong office.
+              setLineId(null);
             }}
           />
         </Field>
 
-        <Field label="Account" required htmlFor="account">
-          <AccountPicker
-            id="account"
-            value={accountCode}
-            onChange={(code, account) => {
-              setAccountCode(code);
-              setAccountName(account?.name ?? '');
+        <Field
+          label="Budget line"
+          required
+          htmlFor="line"
+          hint="Only lines this office was appropriated. A project line shows its FPP and no object code, which is how it was enacted."
+        >
+          <BudgetLinePicker
+            id="line"
+            balances={balances.data}
+            officeId={officeId}
+            value={lineId}
+            onChange={(id, line) => {
+              setLineId(id);
+              if (line) setExpenseClass(line.expenseClass);
             }}
           />
         </Field>
@@ -387,11 +411,10 @@ function AllotmentForm({
         </div>
       )}
 
-      {officeId && accountCode && !balance && (
+      {officeId && balances.data.filter((b) => b.officeId === officeId && b.appropriationRevised !== 0).length === 0 && (
         <Alert tone="warning" className="mt-4">
-          No approved appropriation exists for this office and account. Record and approve the
-          appropriation before releasing an allotment against it - the release will be refused
-          otherwise.
+          This office has no approved appropriation for {fiscalYear}. Record and approve the
+          appropriation before releasing an allotment against it.
         </Alert>
       )}
 

@@ -46,6 +46,10 @@ export const approveAppropriation = onCall(
         status: string;
         officeName: string;
         accountName: string;
+        fppCode: string;
+        fppName?: string;
+        sector?: string;
+        serviceSector?: string;
         expenseClass: string;
         authorityReference?: string;
       };
@@ -68,6 +72,7 @@ export const approveAppropriation = onCall(
         programId: a.programId ?? null,
         projectId: a.projectId ?? null,
         activityId: a.activityId ?? null,
+        fppCode: a.fppCode,
         accountCode: a.accountCode,
       };
 
@@ -111,6 +116,9 @@ export const approveAppropriation = onCall(
       applyBudgetDelta(tx, key, balance, delta, {
         officeName: a.officeName,
         accountName: a.accountName,
+        fppName: a.fppName ?? '',
+        sector: a.sector ?? null,
+        serviceSector: a.serviceSector ?? null,
         expenseClass: a.expenseClass,
       });
 
@@ -173,6 +181,9 @@ export const releaseAllotment = onCall(
         status: string;
         officeName: string;
         accountName: string;
+        fppName?: string;
+        sector?: string;
+        serviceSector?: string;
         expenseClass: string;
       };
 
@@ -194,6 +205,7 @@ export const releaseAllotment = onCall(
         programId: al.programId ?? null,
         projectId: al.projectId ?? null,
         activityId: al.activityId ?? null,
+        fppCode: al.fppCode,
         accountCode: al.accountCode,
       };
 

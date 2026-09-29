@@ -33,16 +33,49 @@ export interface TemplateColumn {
 
 export const TEMPLATE_COLUMNS: TemplateColumn[] = [
   {
-    header: 'Office',
+    header: 'Office/Function Name',
     required: true,
     note: 'The office code, the full name or the short name — whichever your annex already uses.',
-    alsoAccepts: ['Department', 'Dept', 'Cost Center'],
+    alsoAccepts: ['Office/Function Code', 'Office', 'Department', 'Cost Center'],
+  },
+  {
+    header: 'FPP',
+    required: true,
+    note:
+      'The Function, Programme or Project this line is appropriated to. An object code from the ' +
+      'Chart of Accounts (5-02-03-010) where the ordinance appropriates by object, or the project ' +
+      'name where it appropriates by project.',
+    alsoAccepts: ['FPP Code'],
+  },
+  {
+    header: 'FPP Name',
+    required: false,
+    note: 'The name of the project, or of the object. Taken from the Chart of Accounts if left blank and the FPP is a code.',
+  },
+  {
+    header: 'Sector',
+    required: true,
+    note:
+      'One of the nine in the ordinance. It decides which of the four SRE expenditure buckets ' +
+      'this line is reported in.',
+  },
+  {
+    header: 'Service Sector',
+    required: false,
+    note:
+      'REQUIRED on a line whose Sector is a funding source — the 20% Development Fund, the LDRRMF ' +
+      'or Others. A road built out of the 20% fund is economic services however it was paid for, ' +
+      'and without this the line cannot be placed on the SRE at all.',
+    alsoAccepts: ['Sector Served'],
   },
   {
     header: 'Account Code',
-    required: true,
-    note: 'Must exist in the Chart of Accounts and must be a postable account, not a heading.',
-    alsoAccepts: ['UACS', 'Code', 'Object Code'],
+    required: false,
+    note:
+      'Only where the FPP is a project AND the object is already known. Left blank on a project ' +
+      'line, which is how the ordinance enacted it: the object becomes known when the obligation ' +
+      'is raised. Required on a personnel services line.',
+    alsoAccepts: ['UACS', 'Object Code'],
   },
   {
     header: 'Account Name',
@@ -51,16 +84,21 @@ export const TEMPLATE_COLUMNS: TemplateColumn[] = [
     alsoAccepts: ['Account Title', 'Object of Expenditure'],
   },
   {
-    header: 'Expense Class',
-    required: false,
-    note: 'PS, MOOE, FE or CO. Left blank, the class on the account is used.',
-    alsoAccepts: ['Allotment Class', 'Class', 'EC'],
+    header: 'Allotment Class',
+    required: true,
+    note:
+      'PS, MOOE, FE or CO. Taken from the account where there is one, so it may be left blank on ' +
+      'an object-code line — but never on a project line, which has no account to take it from.',
+    alsoAccepts: ['Expense Class', 'Class', 'EC'],
   },
   {
-    header: 'Amount',
+    header: 'Annual Appropriation Amount',
     required: true,
-    note: 'Pesos and centavos. Commas and a peso sign are fine. Negative only on a realignment or an adjustment.',
-    alsoAccepts: ['Appropriation', 'Allotment', 'Budget', 'Total'],
+    note:
+      'Pesos and centavos. Commas and a peso sign are fine. Negative only on a realignment or an ' +
+      'adjustment. A "Continuing Appropriations Amount" column beside it is ignored — post ' +
+      'continuing appropriations as their own upload.',
+    alsoAccepts: ['Amount', 'Appropriation', 'Allotment', 'Budget'],
   },
   {
     header: 'Particulars',
@@ -87,18 +125,23 @@ function cell(value: string): string {
 export function budgetTemplateCsv(kind: TemplateKind): string {
   const headers = TEMPLATE_COLUMNS.map((c) => c.header);
 
+  // Office, FPP, FPP Name, Sector, Service Sector, Account Code, Class, Amount, Particulars
   const examples: string[][] =
     kind === 'REALIGNMENT'
       ? [
-          // The template for a realignment shows the shape the rule requires:
-          // what is taken, then what is given, coming to zero.
-          ['OFFICE CODE HERE', 'ACCOUNT CODE HERE', 'Travelling Expenses', 'MOOE', '-50000.00', 'Realigned to supplies'],
-          ['OFFICE CODE HERE', 'ACCOUNT CODE HERE', 'Office Supplies Expenses', 'MOOE', '30000.00', 'From travelling'],
-          ['OFFICE CODE HERE', 'ACCOUNT CODE HERE', 'Fuel, Oil and Lubricants', 'MOOE', '20000.00', 'From travelling'],
+          // The realignment template shows the shape the rule requires: what is
+          // taken, then what is given, coming to zero.
+          ['OFFICE NAME HERE', '5-02-01-010', 'Travelling Expenses - Local', 'General Public Services', '', '5-02-01-010', 'MOOE', '-50000.00', 'Realigned to supplies'],
+          ['OFFICE NAME HERE', '5-02-03-010', 'Office Supplies Expenses', 'General Public Services', '', '5-02-03-010', 'MOOE', '30000.00', 'From travelling'],
+          ['OFFICE NAME HERE', '5-02-03-090', 'Fuel, Oil and Lubricants', 'General Public Services', '', '5-02-03-090', 'MOOE', '20000.00', 'From travelling'],
         ]
       : [
-          ['OFFICE CODE HERE', 'ACCOUNT CODE HERE', 'Office Supplies Expenses', 'MOOE', '250000.00', ''],
-          ['OFFICE CODE HERE', 'ACCOUNT CODE HERE', 'Travelling Expenses - Local', 'MOOE', '120000.00', ''],
+          // An object-code line: the FPP is the account code.
+          ['OFFICE NAME HERE', '5-02-03-010', 'Office Supplies Expenses', 'General Public Services', '', '5-02-03-010', 'MOOE', '250000.00', ''],
+          // A project line: an FPP with no account code at all.
+          ['OFFICE NAME HERE', 'PROJECT NAME HERE', 'Concreting of Barangay Road', 'Economic Services', '', '', 'CO', '1500000.00', ''],
+          // A project under a funding source, which must name its service.
+          ['OFFICE NAME HERE', 'PROJECT NAME HERE', 'Rehabilitation of Health Centre', '20% Development Fund', 'Health, Nutrition and Population Control', '', 'CO', '2000000.00', ''],
         ];
 
   return [headers, ...examples].map((row) => row.map(cell).join(',')).join('\r\n') + '\r\n';

@@ -90,7 +90,14 @@ export const engine = {
     rows: Array<{
       lineNo: number;
       office: string;
-      accountCode: string;
+      /** The FPP as the ordinance writes it: an object code, or a project name. */
+      fpp: string;
+      fppName?: string;
+      sector: string;
+      /** Named only where the sector is a funding source rather than a service. */
+      serviceSector?: string;
+      /** Absent on a project line: the ordinance named no object of expenditure. */
+      accountCode?: string;
       expenseClass?: string;
       amount: Centavos;
       particulars?: string;

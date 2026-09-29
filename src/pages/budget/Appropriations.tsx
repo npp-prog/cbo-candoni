@@ -8,14 +8,16 @@ import { Modal, ConfirmDialog } from '@/components/ui/Modal';
 import { Field, TextInput, Select, DateInput, AmountInput, TextArea } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, OfficePicker } from '@/components/pickers';
+import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAppropriations } from '@/data/queries';
+import { useAppropriations, useBudgetBalances } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { checkRealignmentSet } from '@/lib/accounting-rules';
+import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Appropriation, AppropriationKind } from '@/types/budget';
@@ -74,13 +76,26 @@ const KINDS: Array<{ value: AppropriationKind; label: string; hint: string }> = 
   { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. May be negative.' },
 ];
 
-/** One row of a realignment being built on screen. */
+/**
+ * One row of a realignment being built on screen.
+ *
+ * The line is CHOSEN, not described. A realignment moves authority between
+ * lines that already exist - it cannot take from a line that was never
+ * appropriated, and it cannot give to one either without first creating it,
+ * which is a supplemental appropriation and a different act.
+ */
 interface RealignLine {
   id: number;
   officeId: string | null;
   /** The office NAME is what is sent: the import resolves by code, name or short name. */
   officeName: string;
-  accountCode: string | null;
+  /** The chosen budget line's balance document id. */
+  lineId: string | null;
+  fppCode: string;
+  fppName: string;
+  sector: string;
+  serviceSector: string;
+  accountCode: string;
   accountName: string;
   expenseClass: ExpenseClass;
   amount: number | null;
@@ -92,7 +107,12 @@ const blankLine = (): RealignLine => ({
   id: nextLineId++,
   officeId: null,
   officeName: '',
-  accountCode: null,
+  lineId: null,
+  fppCode: '',
+  fppName: '',
+  sector: '',
+  serviceSector: '',
+  accountCode: '',
   accountName: '',
   expenseClass: 'MOOE',
   amount: null,
@@ -355,10 +375,14 @@ function AppropriationForm({
   const [accountCode, setAccountCode] = useState<string | null>(null);
   const [accountName, setAccountName] = useState('');
   const [expenseClass, setExpenseClass] = useState<ExpenseClass>('MOOE');
+  const [sector, setSector] = useState('');
+  const [serviceSector, setServiceSector] = useState('');
   const [amount, setAmount] = useState<number | null>(null);
   const [particulars, setParticulars] = useState('');
   const [saving, setSaving] = useState(false);
   const [realignLines, setRealignLines] = useState<RealignLine[]>(() => [blankLine(), blankLine()]);
+  // The lines a realignment may move authority between: the ones that exist.
+  const balances = useBudgetBalances(fiscalYear, fundCode);
 
   const isRealignment = kind === 'REALIGNMENT';
   const allowsNegative = kind === 'ADJUSTMENT' || isRealignment;
@@ -368,9 +392,9 @@ function AppropriationForm({
     setRealignLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
   /** Lines with something on them. A blank row the user never filled is not an error. */
-  const filledLines = realignLines.filter((l) => l.officeId || l.accountCode || l.amount);
+  const filledLines = realignLines.filter((l) => l.officeId || l.lineId || l.amount);
 
-  const incomplete = filledLines.filter((l) => !l.officeId || !l.accountCode || !l.amount);
+  const incomplete = filledLines.filter((l) => !l.officeId || !l.lineId || !l.amount);
 
   /**
    * The same rule the upload screen and the server both run.
@@ -427,7 +451,11 @@ function AppropriationForm({
         rows: filledLines.map((l, i) => ({
           lineNo: i + 1,
           office: l.officeName,
-          accountCode: l.accountCode as string,
+          fpp: l.fppCode,
+          fppName: l.fppName || undefined,
+          sector: l.sector,
+          serviceSector: l.serviceSector || undefined,
+          accountCode: l.accountCode || undefined,
           expenseClass: l.expenseClass,
           amount: l.amount as number,
           particulars: l.particulars.trim() || undefined,
@@ -451,6 +479,21 @@ function AppropriationForm({
       toast.error('Incomplete', 'Office, account and amount are all required.');
       return;
     }
+    const chosenSector = findSector(sector);
+    if (!chosenSector) {
+      toast.error('A sector is required', 'It is what decides where this line appears on the SRE.');
+      return;
+    }
+    if (chosenSector.fundingSource) {
+      const service = findSector(serviceSector);
+      if (!service || service.fundingSource) {
+        toast.error(
+          `"${chosenSector.name}" is a funding source, not a service`,
+          'Name the service sector this line delivers, or it cannot be placed on the SRE at all.',
+        );
+        return;
+      }
+    }
     setSaving(true);
     try {
       await createDraft(
@@ -460,6 +503,14 @@ function AppropriationForm({
           fundCode,
           officeId,
           officeName,
+          // Recorded one line at a time, this form appropriates by object of
+          // expenditure, so the object code IS the FPP. A project-level
+          // appropriation has no object code and is loaded from the annex,
+          // where the FPP is the project.
+          fppCode: accountCode,
+          fppName: accountName,
+          sector: chosenSector.name,
+          serviceSector: chosenSector.fundingSource ? serviceSector : null,
           accountCode,
           accountName,
           expenseClass,
@@ -584,6 +635,45 @@ function AppropriationForm({
               <AmountInput id="amount" value={amount} onChange={setAmount} allowNegative={allowsNegative} />
             </Field>
 
+            <Field
+              label="Sector"
+              required
+              htmlFor="sector"
+              hint="Decides which of the four SRE expenditure buckets this line is reported in."
+            >
+              <Select id="sector" value={sector} onChange={(e) => setSector(e.target.value)}>
+                <option value="">Choose a sector&hellip;</option>
+                {SECTORS.map((sec) => (
+                  <option key={sec.name} value={sec.name}>
+                    {sec.name}
+                    {sec.fundingSource ? ' (funding source)' : ''}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {findSector(sector)?.fundingSource && (
+              <Field
+                label="Service sector"
+                required
+                htmlFor="serviceSector"
+                hint="A funding source is not a service. Name what this line actually delivers."
+              >
+                <Select
+                  id="serviceSector"
+                  value={serviceSector}
+                  onChange={(e) => setServiceSector(e.target.value)}
+                >
+                  <option value="">Choose a service sector&hellip;</option>
+                  {SERVICE_SECTORS.map((sec) => (
+                    <option key={sec.name} value={sec.name}>
+                      {sec.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+
             <Field label="Particulars" htmlFor="particulars" className="sm:col-span-2">
               <TextArea
                 id="particulars"
@@ -618,8 +708,8 @@ function AppropriationForm({
                   <th className="px-2 py-1.5 font-medium" style={{ minWidth: '12rem' }}>
                     Office
                   </th>
-                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '14rem' }}>
-                    Account
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '18rem' }}>
+                    Budget line (FPP)
                   </th>
                   <th className="px-2 py-1.5 font-medium" style={{ width: '6rem' }}>
                     Class
@@ -640,17 +730,34 @@ function AppropriationForm({
                       <OfficePicker
                         value={line.officeId}
                         onChange={(v, o) =>
-                          patchLine(line.id, { officeId: v, officeName: o?.name ?? '' })
+                          // A budget line belongs to one office, so changing
+                          // the office clears the line rather than leaving
+                          // another office's line selected under this name.
+                          patchLine(line.id, {
+                            officeId: v,
+                            officeName: o?.name ?? '',
+                            lineId: null,
+                            fppCode: '',
+                            accountCode: '',
+                          })
                         }
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      <AccountPicker
-                        value={line.accountCode}
-                        onChange={(code, account) =>
+                      <BudgetLinePicker
+                        balances={balances.data}
+                        officeId={line.officeId}
+                        value={line.lineId}
+                        onChange={(id, chosen) =>
                           patchLine(line.id, {
-                            accountCode: code,
-                            accountName: account?.name ?? '',
+                            lineId: id,
+                            fppCode: chosen?.fppCode ?? '',
+                            fppName: chosen?.fppName ?? '',
+                            sector: chosen?.sector ?? '',
+                            serviceSector: chosen?.serviceSector ?? '',
+                            accountCode: chosen?.accountCode ?? '',
+                            accountName: chosen?.accountName ?? '',
+                            expenseClass: chosen?.expenseClass ?? line.expenseClass,
                           })
                         }
                       />

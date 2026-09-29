@@ -103,6 +103,8 @@ export const certifyObligation = onCall(
             lineNo: number;
             officeName: string;
             accountName: string;
+            /** The object code the appropriation carried; empty on a project line. */
+            appropriatedAccountCode?: string;
             expenseClass: string;
             amount: number;
           }
@@ -184,7 +186,12 @@ export const certifyObligation = onCall(
           programId: line.programId ?? null,
           projectId: line.projectId ?? null,
           activityId: line.activityId ?? null,
-          accountCode: line.accountCode,
+          fppCode: line.fppCode,
+          // The object code the APPROPRIATION carried, which is empty on a
+          // project line - never the object this line commits. On a third of
+          // the FY2025 ordinance those differ, and keying on the wrong one
+          // would look for a balance that does not exist.
+          accountCode: line.appropriatedAccountCode ?? '',
         };
 
         const balance = await readBudgetBalance(tx, key);
@@ -249,7 +256,12 @@ export const certifyObligation = onCall(
           programId: line.programId ?? null,
           projectId: line.projectId ?? null,
           activityId: line.activityId ?? null,
-          accountCode: line.accountCode,
+          fppCode: line.fppCode,
+          // The object code the APPROPRIATION carried, which is empty on a
+          // project line - never the object this line commits. On a third of
+          // the FY2025 ordinance those differ, and keying on the wrong one
+          // would look for a balance that does not exist.
+          accountCode: line.appropriatedAccountCode ?? '',
         };
 
         applyBudgetDelta(
@@ -392,7 +404,17 @@ export const cancelObligation = onCall(
         status: string;
         totalAmount: number;
         disbursedAmount: number;
-        lines: Array<BudgetKey & { lineNo: number; officeName: string; accountName: string; expenseClass: string; amount: number }>;
+        lines: Array<
+          BudgetKey & {
+            lineNo: number;
+            officeName: string;
+            accountName: string;
+            /** The object code the appropriation carried; empty on a project line. */
+            appropriatedAccountCode?: string;
+            expenseClass: string;
+            amount: number;
+          }
+        >;
       };
 
       if (obr.status === 'CANCELLED') {
@@ -418,7 +440,12 @@ export const cancelObligation = onCall(
             programId: line.programId ?? null,
             projectId: line.projectId ?? null,
             activityId: line.activityId ?? null,
-            accountCode: line.accountCode,
+            fppCode: line.fppCode,
+            // The object code the APPROPRIATION carried, which is empty on a
+            // project line - never the object this line commits. On a third of
+            // the FY2025 ordinance those differ, and keying on the wrong one
+            // would look for a balance that does not exist.
+            accountCode: line.appropriatedAccountCode ?? '',
           };
           balances.set(line.lineNo, await readBudgetBalance(tx, key));
         }
@@ -434,7 +461,12 @@ export const cancelObligation = onCall(
             programId: line.programId ?? null,
             projectId: line.projectId ?? null,
             activityId: line.activityId ?? null,
-            accountCode: line.accountCode,
+            fppCode: line.fppCode,
+            // The object code the APPROPRIATION carried, which is empty on a
+            // project line - never the object this line commits. On a third of
+            // the FY2025 ordinance those differ, and keying on the wrong one
+            // would look for a balance that does not exist.
+            accountCode: line.appropriatedAccountCode ?? '',
           };
           applyBudgetDelta(
             tx,
