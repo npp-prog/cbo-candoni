@@ -818,7 +818,26 @@ service cloud.firestore {
 
     match /settings/{key} {
       allow read: if canRead();
-      allow write: if signedIn() && isAdmin();
+
+      /*
+       * Administrators write any setting. The statutory-limit figures are the
+       * one exception, and they are not really a system setting: the regular
+       * income realised last year, the estimated income this year and the
+       * National Tax Allotment are figures the Treasurer states and the Budget
+       * Officer works to. Requiring an administrator to type them in on their
+       * behalf puts the decision in one office and the knowledge in another,
+       * which is how an administrator account ends up shared around.
+       *
+       * The key pattern is exact - statutoryLimits-2026 and nothing else - so
+       * this widens one document per fiscal year and no other setting.
+       */
+      allow write: if signedIn() && (
+        isAdmin() ||
+        (
+          key.matches('^statutoryLimits-[0-9]{4}$') &&
+          hasAny(['BUDGET_OFFICER', 'MUNICIPAL_TREASURER'])
+        )
+      );
     }
 
     /*

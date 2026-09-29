@@ -26,6 +26,7 @@ const Allotments = lazy(() => import('./pages/budget/Allotments'));
 const Obligations = lazy(() => import('./pages/budget/Obligations'));
 const ObligationDetail = lazy(() => import('./pages/budget/ObligationDetail'));
 const BudgetRegistry = lazy(() => import('./pages/budget/Registry'));
+const StatutoryLimits = lazy(() => import('./pages/budget/StatutoryLimits'));
 const BudgetUpload = lazy(() => import('./pages/budget/BudgetUpload'));
 
 const Disbursements = lazy(() => import('./pages/accounting/Disbursements'));
@@ -125,6 +126,10 @@ export default function App() {
           <Route path="/budget/obligations/new" element={<Guard module="budget" action="create"><ObligationDetail /></Guard>} />
           <Route path="/budget/obligations/:id" element={<Guard module="budget"><ObligationDetail /></Guard>} />
           <Route path="/budget/registry" element={<Guard module="budget"><BudgetRegistry /></Guard>} />
+          <Route
+            path="/budget/statutory-limits"
+            element={<Guard module="budget"><StatutoryLimits /></Guard>}
+          />
 
           {/* Accounting */}
           <Route path="/accounting" element={<Navigate to="/accounting/disbursements" replace />} />

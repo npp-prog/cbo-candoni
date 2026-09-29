@@ -61,6 +61,9 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Allotments', to: '/budget/allotments' },
       { label: 'Obligations', to: '/budget/obligations' },
       { label: 'Registry (RAAO)', to: '/budget/registry' },
+      // The tests the reviewing authority applies after enactment, run while
+      // the budget is still being drafted.
+      { label: 'Statutory Limits', to: '/budget/statutory-limits' },
     ],
   },
   {
