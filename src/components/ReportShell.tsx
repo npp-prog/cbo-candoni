@@ -26,6 +26,7 @@ import { formatLongDate, todayPh } from '@/lib/dates';
 export function ReportShell<T>({
   meta,
   breadcrumbs,
+  tabs,
   filters,
   rows,
   exportColumns,
@@ -35,6 +36,14 @@ export function ReportShell<T>({
 }: {
   meta: ReportMeta;
   breadcrumbs?: Array<{ label: string; to?: string }>;
+  /**
+   * The tab strip of the section this report belongs to.
+   *
+   * A report that lives inside a section needs the strip for the same reason
+   * its register does: without it the report is a dead end, and the only way
+   * back to the collections it was drawn from is the browser's back button.
+   */
+  tabs?: ReactNode;
   filters?: ReactNode;
   /** Rows and columns for export; omit to hide the export buttons. */
   rows?: T[];
@@ -70,6 +79,8 @@ export function ReportShell<T>({
           </>
         }
       />
+
+      {tabs}
 
       {filters && (
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 no-print">

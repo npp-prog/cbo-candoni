@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Checkbox } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -7,6 +8,7 @@ import { useAccounts, useCollections } from '@/data/queries';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
+import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
 
 /**
  * Summary of Collections.
@@ -120,7 +122,8 @@ export default function SummaryOfCollections() {
         preparedBy: 'Municipal Treasurer’s Office',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Summary of Collections' }]}
+      breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Summary of Collections' }]}
+      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
       filters={
         <>
           <Field label="From" className="w-40">

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { NAVIGATION, groupForPath, toBlocks, type NavChild } from './navigation';
+import {
+  ADA_TABS,
+  CHECK_TABS,
+  COLLECTION_TABS,
+  PAYROLL_TABS,
+} from '@/pages/treasury/sections';
 
 /**
  * The menu is data, and these are the properties of that data the sidebar
@@ -118,8 +124,11 @@ describe('the menu itself', () => {
    * heading came to hold eight items and stopped answering "which book am I
    * working in today". A new screen goes in a tab on the book it belongs to,
    * or under a heading that fits, and this test is the thing that says so.
+   *
+   * These five are books the office WRITES IN. A document drawn off one of
+   * them is a tab on it, however much it looks like a register from outside.
    */
-  it('keeps the Treasury registers to the four books the office keeps', () => {
+  it('keeps the Treasury registers to the books the office writes in', () => {
     const treasury = NAVIGATION.find((i) => i.to === '/treasury');
     const registers = (treasury?.children ?? []).filter((c) => c.group === 'Registers');
     expect(registers.map((r) => r.label)).toEqual([
@@ -127,6 +136,7 @@ describe('the menu itself', () => {
       'ADA',
       'Collections and Deposits',
       'Payroll',
+      'Accountable Forms',
     ]);
   });
 
@@ -144,6 +154,45 @@ describe('the menu itself', () => {
         );
       }
     }
+  });
+
+  /**
+   * A screen reached by a tab is not also a sidebar item.
+   *
+   * Both doors lead to the same place, so nothing breaks - which is exactly
+   * why it goes unnoticed. What it costs is the meaning of the sidebar: four
+   * documents about collections listed beside Collections say they are
+   * separate activities, and the clerk who has just recorded the day's
+   * receipts goes back out to the menu to report on them.
+   *
+   * The four section reports the municipality submits - RCD, RCI, RADAI,
+   * RCDisb - are the deliberate exception. They are listed in Treasury Reports
+   * as well, because "where do I find the RCD" is asked by people who are not
+   * in the collections screen at the time.
+   */
+  it('does not list a tab screen in the sidebar as well, except the submitted reports', () => {
+    const tabTargets = new Set(
+      [...COLLECTION_TABS, ...CHECK_TABS, ...ADA_TABS, ...PAYROLL_TABS].map((t) => t.to),
+    );
+    const submitted = new Set([
+      '/treasury/collections/rcd',
+      '/treasury/checks/rci',
+      '/treasury/ada/radai',
+      '/treasury/payroll/rcdisb',
+    ]);
+    // The register each strip hangs off is itself a sidebar item, by design.
+    const registers = new Set([
+      '/treasury/checks',
+      '/treasury/ada',
+      '/treasury/collections',
+      '/treasury/payroll',
+    ]);
+
+    const menuTargets = NAVIGATION.flatMap((i) => (i.children ?? []).map((c) => c.to));
+    const both = menuTargets.filter(
+      (t) => tabTargets.has(t) && !submitted.has(t) && !registers.has(t),
+    );
+    expect(both).toEqual([]);
   });
 
   it('every heading holds at least one item', () => {

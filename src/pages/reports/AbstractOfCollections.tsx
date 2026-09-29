@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -10,6 +11,7 @@ import { formatShortDate } from '@/lib/dates';
 import { analyzeContinuity, toNumber } from '@/lib/serials';
 import type { Collection } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
+import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
 
 /**
  * Abstract of General Collection.
@@ -182,7 +184,8 @@ export default function AbstractOfCollections() {
         preparedBy: 'Municipal Treasurer’s Office',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Abstract of Collections' }]}
+      breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Abstract of Collections' }]}
+      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
       filters={
         <>
           <Field label="From" className="w-40">

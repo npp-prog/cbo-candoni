@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -9,6 +10,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { toNumber } from '@/lib/serials';
 import { fundLabel } from '../budget/Obligations';
+import { CHECK_TABS, CHECK_CRUMBS } from './sections';
 
 /**
  * Check Release / Claim Sheet.
@@ -78,7 +80,8 @@ export default function ClaimSheet() {
         fundLabel: fundLabel(fundCode),
         periodLabel: `Checks dated ${formatShortDate(from)} to ${formatShortDate(to)}`,
       }}
-      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Claim Sheet' }]}
+      breadcrumbs={[...CHECK_CRUMBS, { label: 'Claim Sheet' }]}
+      tabs={<SectionTabs tabs={CHECK_TABS} />}
       filters={
         <>
           <Field label="Bank account" className="w-64">

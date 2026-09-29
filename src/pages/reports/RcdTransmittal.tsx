@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, TextInput } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -7,6 +8,7 @@ import { useRcds } from '@/data/queries';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
+import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
 
 /**
  * Summary of Reports of Collection and Deposit - the transmittal.
@@ -58,7 +60,8 @@ export default function RcdTransmittal() {
         fundLabel: fundLabel(fundCode),
         periodLabel: `For collection / deposit dated ${formatShortDate(from)} to ${formatShortDate(to)}`,
       }}
-      breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'RCD Transmittal' }]}
+      breadcrumbs={[...COLLECTION_CRUMBS, { label: 'RCD Transmittal' }]}
+      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
       filters={
         <>
           <Field label="From" className="w-40">

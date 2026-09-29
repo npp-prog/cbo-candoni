@@ -134,9 +134,13 @@ export const NAVIGATION: NavItem[] = [
       // somebody already doing that work rather than by somebody reading a
       // list.
       //
-      //   ADA Numbers      -> a tab on ADA
-      //   Primary Reports  -> a tab on Collections and Deposits
-      //   Claim Sheet      -> moved to Treasury Reports below
+      //   ADA Numbers                    -> a tab on ADA
+      //   Primary Reports                -> a tab on Collections and Deposits
+      //   Claim Sheet                    -> a tab on Checks
+      //   Collection Reports and Cashbook \
+      //   Abstract of General Collection   > tabs on Collections and Deposits
+      //   Summary of Collections           |
+      //   Summary of RCDs (Transmittal)  /
       // ----------------------------------------------------------------
       { group: 'Registers', label: 'Checks', to: '/treasury/checks' },
       { group: 'Registers', label: 'ADA', to: '/treasury/ada' },
@@ -145,6 +149,10 @@ export const NAVIGATION: NavItem[] = [
       // pair. The deposits register is a tab inside it.
       { group: 'Registers', label: 'Collections and Deposits', to: '/treasury/collections' },
       { group: 'Registers', label: 'Payroll', to: '/treasury/payroll' },
+      // The stock book: which booklets of which form each accountable officer
+      // holds. It is a register the office writes in, not a report it draws -
+      // the report drawn from it is the RAAF, below.
+      { group: 'Registers', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
 
       // ----------------------------------------------------------------
       // Cash books: the running balances the registers foot into. Cash in
@@ -166,26 +174,15 @@ export const NAVIGATION: NavItem[] = [
       // screen. Two menu entries for one screen is how an office comes to
       // believe there are two reports.
       // ----------------------------------------------------------------
-      // Six collection reports behind one screen: daily, monthly, the cashbook,
-      // the deposit register, revenue collections and undeposited collections.
-      // It was called "Cash Position and Collections", which named a screen it
-      // is not - the cash position is its own item above.
-      { group: 'Treasury Reports', label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
-      { group: 'Treasury Reports', label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
-      { group: 'Treasury Reports', label: 'Summary of Collections', to: '/reports/summary-of-collections' },
+      // What is left here is the six reports the municipality submits, one per
+      // register. Everything else drawn off the collections moved inside
+      // Collections and Deposits, where the clerk who recorded the receipts is
+      // already standing.
       { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
-      { group: 'Treasury Reports', label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
       { group: 'Treasury Reports', label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
       { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
       { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
-      // The claim sheet is what the payroll is paid against, so it reads with
-      // the cash disbursement report rather than with the registers.
-      { group: 'Treasury Reports', label: 'Claim Sheet', to: '/treasury/claim-sheet' },
       { group: 'Treasury Reports', label: 'Report of Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
-      // The stock register and the report of accountability for that stock,
-      // together. Asking what forms an officer holds and what they have
-      // accounted for is one question asked twice.
-      { group: 'Treasury Reports', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
       { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
 
       // ----------------------------------------------------------------

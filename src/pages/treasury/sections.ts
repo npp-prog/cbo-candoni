@@ -19,21 +19,24 @@ export const COLLECTION_TABS = [
   { label: 'Collections', to: '/treasury/collections' },
   { label: 'Deposits', to: '/treasury/collections/deposits' },
   // The primary reports a collecting officer closes before the RCD is drawn.
-  // They were a sidebar item of their own, which put them beside the section
-  // they belong to rather than in it.
   { label: 'Primary Reports', to: '/treasury/collections/primary' },
   { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
-  // Where the collections usually come from: the MTO's own abstract, read
-  // receipt by receipt rather than typed in seven hundred times.
-  { label: 'Upload Abstract', to: '/treasury/collections/upload' },
+  // Everything else drawn off the same collections. Each of these was a menu
+  // item of its own, which put four documents about collections beside the
+  // collections rather than in them - so the clerk who had just recorded the
+  // day's receipts had to go back out to the sidebar to report on them.
+  { label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
+  { label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
+  { label: 'Summary of Collections', to: '/reports/summary-of-collections' },
+  { label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
 ];
 
 export const CHECK_TABS = [
   { label: 'Checks', to: '/treasury/checks' },
   { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
-  // Where the RCI usually comes from. The Treasurer's own system produces the
-  // file; CBO reads it rather than asking for the same rows to be typed again.
-  { label: 'Upload RCI', to: '/treasury/checks/uploads' },
+  // The claim sheet is the list of who is being paid out of the checks drawn,
+  // so it reads with the check register rather than beside it.
+  { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
 ];
 
 export const ADA_TABS = [
@@ -42,7 +45,6 @@ export const ADA_TABS = [
   // register read a different way, so it is a tab on it and not a menu item.
   { label: 'ADA Numbers', to: '/treasury/ada/numbers' },
   { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
-  { label: 'Upload RADAI', to: '/treasury/ada/uploads' },
 ];
 
 export const PAYROLL_TABS = [
@@ -58,4 +60,10 @@ export const SECTION_TABS: Record<TreasuryReportType, Array<{ label: string; to:
 };
 
 /** The breadcrumb trail shared by every page in the collections section. */
-export const COLLECTION_CRUMBS = [{ label: 'Treasury' }, { label: 'Collections and Deposits' }];
+export const COLLECTION_CRUMBS = [
+  { label: 'Treasury' },
+  { label: 'Collections and Deposits', to: '/treasury/collections' },
+];
+
+/** The same, for the check section. */
+export const CHECK_CRUMBS = [{ label: 'Treasury' }, { label: 'Checks', to: '/treasury/checks' }];
