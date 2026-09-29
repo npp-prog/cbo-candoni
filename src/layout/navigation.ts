@@ -230,6 +230,9 @@ export const NAVIGATION: NavItem[] = [
       // budget beside the General Ledger, which is the only way a disagreement
       // between the two can show at all.
       { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
+      // The one report that covers all three funds at once, because that is
+      // what is submitted to BLGF.
+      { label: 'Receipts and Expenditures (SRE)', to: '/reports/sre' },
       { label: 'Trial Balance', to: '/reports/trial-balance' },
       { label: 'Financial Statements', to: '/reports/financial-statements' },
       { label: 'General Ledger', to: '/reports/general-ledger' },

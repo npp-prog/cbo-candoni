@@ -821,6 +821,28 @@ service cloud.firestore {
       allow write: if signedIn() && isAdmin();
     }
 
+    /*
+     * The SRE revenue mapping is an accounting classification, not a system
+     * setting.
+     *
+     * Which revenue account belongs on "Regulatory Fees" rather than
+     * "Service/User Charges" is a judgement the Municipal Accountant and the
+     * Municipal Treasurer make and answer to COA for. Requiring a system
+     * administrator to type it in on their behalf would put the decision in
+     * one office and the knowledge in another, and the usual result of that is
+     * an administrator account shared around.
+     *
+     * A separate match rather than a change to the one above, so the widening
+     * is visibly one document and not every setting in the system. Firestore
+     * grants access when ANY matching rule allows it, so administrators keep
+     * their write through the block above.
+     */
+    match /settings/sreMapping {
+      allow read: if canRead();
+      allow write: if signedIn() &&
+        hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'MUNICIPAL_TREASURER']);
+    }
+
     // =========================================================================
     // DEFAULT DENY
     // Any collection not named above is inaccessible. New collections must be

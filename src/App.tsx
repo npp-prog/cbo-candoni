@@ -75,6 +75,7 @@ const Journals = lazy(() => import('./pages/reports/Journals'));
 const Registers = lazy(() => import('./pages/reports/Registers'));
 const Aging = lazy(() => import('./pages/reports/Aging'));
 const BudgetVsActual = lazy(() => import('./pages/reports/BudgetVsActual'));
+const Sre = lazy(() => import('./pages/reports/Sre'));
 const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
@@ -265,6 +266,7 @@ export default function App() {
             path="/reports/budget-vs-actual"
             element={<Guard module="reports"><BudgetVsActual /></Guard>}
           />
+          <Route path="/reports/sre" element={<Guard module="reports"><Sre /></Guard>} />
           <Route
             path="/accounting/opening-balances"
             element={<Guard module="accounting"><OpeningBalances /></Guard>}
