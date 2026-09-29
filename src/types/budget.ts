@@ -7,6 +7,7 @@ import type {
   IsoDate,
 } from './common';
 import type { ExpenseClass, ObligationStatus } from './enums';
+import type { RealignmentInstrument } from '@/lib/accounting-rules';
 
 /**
  * Budget module documents.
@@ -134,6 +135,21 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
   expenseClass: ExpenseClass;
 
   kind: AppropriationKind;
+  /**
+   * Which instrument a REALIGNMENT was made under. Meaningless on any other
+   * kind.
+   *
+   * SUPPLEMENTAL is a re-appropriation of savings through a supplemental
+   * budget, Section 321 of the Local Government Code: an ordinance of the
+   * Sanggunian, which may move authority across expense classes.
+   *
+   * AUGMENTATION is Section 336: no supplemental budget is needed where the
+   * annual budget's General Provisions carry the omnibus authority, and the
+   * price of that is that it may only move savings within the same expense
+   * class. The two are identical in the books and are not the same act in law,
+   * which is why the instrument is recorded rather than inferred.
+   */
+  instrument?: RealignmentInstrument;
   /** Ordinance or authority that enacted this appropriation. */
   authorityReference?: string;
   authorityDate?: IsoDate;

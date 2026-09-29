@@ -311,6 +311,65 @@ export interface RealignmentLine {
  * set nets to something other than zero, so authority was created or lost.
  * ---------------------------------------------------------------------------
  */
+/**
+ * The two instruments that move authority between budget lines.
+ *
+ * They look identical in the books and are not the same act in law.
+ *
+ * SUPPLEMENTAL - re-appropriation of savings through a supplemental budget,
+ * Section 321 of the Local Government Code. It needs an appropriation
+ * ordinance of its own, and because the Sanggunian is enacting it, it may move
+ * authority across expense classes.
+ *
+ * AUGMENTATION - Section 336. It needs NO supplemental budget where the annual
+ * budget's General Provisions carry the omnibus authority, which is why it is
+ * the instrument an office reaches for. The price of that convenience is that
+ * the Local Chief Executive or the Presiding Officer may only augment "from
+ * savings in other items WITHIN THE SAME EXPENSE CLASS of their respective
+ * appropriations".
+ */
+export type RealignmentInstrument = 'SUPPLEMENTAL' | 'AUGMENTATION';
+
+export interface AugmentationLine {
+  lineNo: number;
+  expenseClass: string;
+  amount: Centavos;
+}
+
+/**
+ * An augmentation may not cross an expense class.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A REFUSAL AND NOT A WARNING
+ * ---------------------------------------------------------------------------
+ * An augmentation that moves MOOE savings into Capital Outlay is not a
+ * borderline case. It is spending the Sanggunian never authorised, made under
+ * an omnibus authority that does not reach it - and the correct instrument for
+ * it, a supplemental budget, exists and is one ordinance away.
+ *
+ * Posted, it is indistinguishable in the books from a lawful one, and a
+ * reviewer finding it months later disallows it after the money is spent. So
+ * CBO refuses it and names the other instrument.
+ *
+ * Nothing is checked for a SUPPLEMENTAL: the Sanggunian enacting a
+ * supplemental budget may move authority wherever the ordinance says.
+ * ---------------------------------------------------------------------------
+ */
+export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckResult {
+  const classes = [...new Set(lines.filter((l) => l.amount !== 0).map((l) => l.expenseClass))];
+  if (classes.length <= 1) return ok;
+
+  return fail(
+    'AUGMENTATION_CROSSES_EXPENSE_CLASS',
+    `An augmentation may only move savings within one expense class, and this one spans ${classes
+      .sort()
+      .join(', ')}. Section 336 of the Local Government Code limits the omnibus authority to items ` +
+      `"within the same expense class". Moving authority between classes needs a supplemental ` +
+      `budget, which is an ordinance of the Sanggunian.`,
+    { expenseClasses: classes.sort() },
+  );
+}
+
 export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
   if (lines.length < 2) {
     return fail(

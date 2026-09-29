@@ -84,6 +84,8 @@ export const engine = {
     fiscalYear: number;
     fundCode: string;
     appropriationKind?: string;
+    /** Required on a realignment: 'SUPPLEMENTAL' or 'AUGMENTATION'. */
+    instrument?: string;
     reference: string;
     date: IsoDate;
     fileName?: string;

@@ -11,7 +11,11 @@ import {
   type BudgetKey,
   type BudgetBalanceData,
 } from '../lib/budget';
-import { checkAllotmentAgainstAppropriation, checkRealignmentSet } from '../lib/rules';
+import {
+  checkAllotmentAgainstAppropriation,
+  checkAugmentationExpenseClass,
+  checkRealignmentSet,
+} from '../lib/rules';
 import { findSector } from '../lib/sectors';
 
 /**
@@ -129,6 +133,8 @@ export const importBudgetLines = onCall(
       reference?: string;
       date?: string;
       fileName?: string;
+      /** For a realignment: which instrument it was made under. */
+      instrument?: string;
       rows?: unknown;
     };
 
@@ -178,6 +184,25 @@ export const importBudgetLines = onCall(
     }
     const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
     const isRealignment = kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT';
+
+    /**
+     * Which instrument the realignment was made under.
+     *
+     * Defaulting to SUPPLEMENTAL would be the permissive choice - a
+     * supplemental budget may cross expense classes - and it would let a call
+     * that simply omitted the field escape the augmentation rule. So a
+     * realignment must SAY, and an unrecognised value is refused rather than
+     * falling back to the one that checks less.
+     */
+    const instrument = String(data.instrument ?? '').trim().toUpperCase();
+    if (isRealignment && !['SUPPLEMENTAL', 'AUGMENTATION'].includes(instrument)) {
+      throw invalid(
+        'A realignment must say which instrument it was made under: a supplemental budget under ' +
+          'Section 321, which is an ordinance of the Sanggunian, or an augmentation under ' +
+          'Section 336, which needs no ordinance where the annual budget carries the omnibus ' +
+          'authority but may only move savings within one expense class.',
+      );
+    }
 
     const raw = data.rows;
     if (!Array.isArray(raw) || raw.length === 0) throw invalid('The file has no rows to post.');
@@ -412,6 +437,30 @@ export const importBudgetLines = onCall(
           { violations: balanced.violations },
         );
       }
+
+      /*
+       * An augmentation may not cross an expense class.
+       *
+       * Checked here for the same reason the balance is: the browser runs the
+       * same rule so the Budget Officer sees it before sending, but a call
+       * assembled by hand could carry any instrument it liked. The whole set
+       * arrives in one call, so the classes seen here are the classes of the
+       * augmentation.
+       */
+      if (instrument === 'AUGMENTATION') {
+        const withinClass = checkAugmentationExpenseClass(
+          resolved.map((r) => ({
+            lineNo: r.lineNo,
+            expenseClass: r.expenseClass,
+            amount: r.amount,
+          })),
+        );
+        if (!withinClass.ok) {
+          throw new HttpsError('failed-precondition', withinClass.violations[0].message, {
+            violations: withinClass.violations,
+          });
+        }
+      }
     }
 
     const numberingConfig =
@@ -618,6 +667,7 @@ export const importBudgetLines = onCall(
           programId: null,
           projectId: null,
           activityId: null,
+          instrument: isRealignment ? instrument : null,
           fppCode: r.fppCode,
           fppName: r.fppName,
           sector: r.sector,

@@ -9,7 +9,11 @@ import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
-import { checkRealignmentSet } from '@/lib/accounting-rules';
+import {
+  checkAugmentationExpenseClass,
+  checkRealignmentSet,
+  type RealignmentInstrument,
+} from '@/lib/accounting-rules';
 import { findSector } from '@/lib/sectors';
 import { TEMPLATE_COLUMNS, downloadBudgetTemplate } from '@/lib/budgetTemplate';
 import { fundLabel } from './Obligations';
@@ -63,6 +67,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [showFormat, setShowFormat] = useState(false);
+  const [instrument, setInstrument] = useState<RealignmentInstrument>('AUGMENTATION');
 
   const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
   const isRealignment = isAppropriation && appropriationKind === 'REALIGNMENT';
@@ -154,6 +159,25 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
     return checkRealignmentSet(checked.map((r) => ({ lineNo: r.lineNo, amount: r.amount })));
   }, [isRealignment, checked]);
 
+  /**
+   * An augmentation may only move savings within one expense class. Section 336
+   * limits the omnibus authority to items "within the same expense class"; a
+   * supplemental budget, being an ordinance, may cross them.
+   */
+  const classCheck = useMemo(
+    () =>
+      isRealignment && instrument === 'AUGMENTATION' && checked.length > 0
+        ? checkAugmentationExpenseClass(
+            checked.map((r) => ({
+              lineNo: r.lineNo,
+              expenseClass: r.expenseClass,
+              amount: r.amount,
+            })),
+          )
+        : null,
+    [isRealignment, instrument, checked],
+  );
+
   // A realignment goes in ONE call so the server can see the whole set. Half a
   // realignment posted and half refused would change the municipality's total
   // appropriation, which is the one thing a realignment must never do.
@@ -163,6 +187,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
     bad.length > 0 ||
     tooManyForOneCall ||
     (realignment !== null && !realignment.ok) ||
+    (classCheck !== null && !classCheck.ok) ||
     !reference.trim();
 
   const read = async (file: File) => {
@@ -198,6 +223,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
           fiscalYear,
           fundCode,
           appropriationKind: isAppropriation ? appropriationKind : undefined,
+          instrument: isRealignment ? instrument : undefined,
           reference: reference.trim(),
           date,
           fileName,
@@ -268,6 +294,26 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
                     {k.label}
                   </option>
                 ))}
+              </Select>
+            </Field>
+          )}
+
+          {isRealignment && (
+            <Field
+              label="Under which instrument"
+              required
+              hint={
+                instrument === 'AUGMENTATION'
+                  ? 'Section 336. No ordinance where the annual budget carries the omnibus authority — and only within ONE expense class.'
+                  : 'Section 321. An ordinance of the Sanggunian, which may cross expense classes.'
+              }
+            >
+              <Select
+                value={instrument}
+                onChange={(e) => setInstrument(e.target.value as RealignmentInstrument)}
+              >
+                <option value="AUGMENTATION">Augmentation, under the omnibus authority</option>
+                <option value="SUPPLEMENTAL">Supplemental budget, by ordinance</option>
               </Select>
             </Field>
           )}
@@ -386,6 +432,16 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
                 one call takes at most {CHUNK} rows. This file has {checked.length}. Split it into
                 separate realignments, each balanced on its own, and give each its own ordinance
                 reference.
+              </Alert>
+            )}
+
+            {classCheck && !classCheck.ok && (
+              <Alert
+                tone="error"
+                title="An augmentation cannot cross an expense class"
+                className="mb-3"
+              >
+                {classCheck.violations[0].message}
               </Alert>
             )}
 

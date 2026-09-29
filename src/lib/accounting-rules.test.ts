@@ -4,6 +4,7 @@ import {
   checkAllotmentAgainstAppropriation,
   checkAllotmentWithdrawal,
   checkObligationAgainstAllotment,
+  checkAugmentationExpenseClass,
   checkExpenseDebitsHaveFpp,
   checkRealignmentSet,
   checkDvMath,
@@ -650,5 +651,61 @@ describe('checkExpenseDebitsHaveFpp', () => {
       isExpense,
     );
     expect(result.violations[0].details?.lineNos).toEqual([1, 2]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Augmentation
+// ---------------------------------------------------------------------------
+
+describe('checkAugmentationExpenseClass', () => {
+  it('accepts a move within one expense class', () => {
+    expect(
+      checkAugmentationExpenseClass([
+        { lineNo: 1, expenseClass: 'MOOE', amount: -50_000_00 },
+        { lineNo: 2, expenseClass: 'MOOE', amount: 50_000_00 },
+      ]).ok,
+    ).toBe(true);
+  });
+
+  /**
+   * MOOE savings moved into Capital Outlay is not a borderline case: it is
+   * spending the Sanggunian never authorised, made under an omnibus authority
+   * that does not reach it. The right instrument exists and is one ordinance
+   * away, so the message names it.
+   */
+  it('refuses a move across expense classes and names the other instrument', () => {
+    const result = checkAugmentationExpenseClass([
+      { lineNo: 1, expenseClass: 'MOOE', amount: -50_000_00 },
+      { lineNo: 2, expenseClass: 'CO', amount: 50_000_00 },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('AUGMENTATION_CROSSES_EXPENSE_CLASS');
+    expect(result.violations[0].message).toContain('supplemental budget');
+    expect(result.violations[0].details?.expenseClasses).toEqual(['CO', 'MOOE']);
+  });
+
+  /**
+   * A zero line is a row somebody began and did not finish. Letting its class
+   * fail the set would refuse a lawful augmentation over a blank row.
+   */
+  it('ignores the class of a zero line', () => {
+    expect(
+      checkAugmentationExpenseClass([
+        { lineNo: 1, expenseClass: 'MOOE', amount: -50_000_00 },
+        { lineNo: 2, expenseClass: 'MOOE', amount: 50_000_00 },
+        { lineNo: 3, expenseClass: 'CO', amount: 0 },
+      ]).ok,
+    ).toBe(true);
+  });
+
+  it('accepts a single line, which the balance rule refuses on its own grounds', () => {
+    expect(
+      checkAugmentationExpenseClass([{ lineNo: 1, expenseClass: 'PS', amount: -1_000_00 }]).ok,
+    ).toBe(true);
+  });
+
+  it('accepts an empty set rather than inventing a violation', () => {
+    expect(checkAugmentationExpenseClass([]).ok).toBe(true);
   });
 });

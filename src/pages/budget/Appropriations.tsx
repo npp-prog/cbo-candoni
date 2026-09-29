@@ -16,7 +16,11 @@ import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
-import { checkRealignmentSet } from '@/lib/accounting-rules';
+import {
+  checkAugmentationExpenseClass,
+  checkRealignmentSet,
+  type RealignmentInstrument,
+} from '@/lib/accounting-rules';
 import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
@@ -165,7 +169,19 @@ export default function Appropriations() {
       header: 'Type',
       width: '8rem',
       value: (a) => a.kind,
-      cell: (a) => <span className="text-xs">{KIND_LABELS[a.kind] ?? a.kind}</span>,
+      cell: (a) => (
+        <div>
+          <span className="text-xs">{KIND_LABELS[a.kind] ?? a.kind}</span>
+          {/* Which instrument a realignment was made under. Two acts that look
+              identical in the books and are not the same in law, so the table
+              says which one this was. */}
+          {a.instrument && (
+            <span className="block text-2xs text-slate-500">
+              {a.instrument === 'AUGMENTATION' ? 'Augmentation (Sec. 336)' : 'Supplemental (Sec. 321)'}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'authority',
@@ -381,6 +397,7 @@ function AppropriationForm({
   const [particulars, setParticulars] = useState('');
   const [saving, setSaving] = useState(false);
   const [realignLines, setRealignLines] = useState<RealignLine[]>(() => [blankLine(), blankLine()]);
+  const [instrument, setInstrument] = useState<RealignmentInstrument>('AUGMENTATION');
   // The lines a realignment may move authority between: the ones that exist.
   const balances = useBudgetBalances(fiscalYear, fundCode);
 
@@ -414,11 +431,31 @@ function AppropriationForm({
   const takenUp = filledLines.filter((l) => (l.amount ?? 0) > 0).reduce((s2, l) => s2 + (l.amount ?? 0), 0);
   const givenUp = filledLines.filter((l) => (l.amount ?? 0) < 0).reduce((s2, l) => s2 + (l.amount ?? 0), 0);
 
+  /**
+   * An augmentation may only move savings within one expense class. The same
+   * rule the server runs, shown here so the Budget Officer sees which classes
+   * the set spans before sending rather than after.
+   */
+  const classCheck = useMemo(
+    () =>
+      isRealignment && instrument === 'AUGMENTATION' && filledLines.length > 0
+        ? checkAugmentationExpenseClass(
+            filledLines.map((l, i) => ({
+              lineNo: i + 1,
+              expenseClass: l.expenseClass,
+              amount: l.amount ?? 0,
+            })),
+          )
+        : null,
+    [isRealignment, instrument, filledLines],
+  );
+
   const realignmentReady =
     isRealignment &&
     incomplete.length === 0 &&
     balance !== null &&
     balance.ok &&
+    (classCheck === null || classCheck.ok) &&
     authorityReference.trim().length > 0;
 
   /**
@@ -445,6 +482,7 @@ function AppropriationForm({
         fiscalYear,
         fundCode,
         appropriationKind: 'REALIGNMENT',
+        instrument,
         reference: authorityReference.trim(),
         date: authorityDate,
         fileName: 'Recorded on screen',
@@ -688,6 +726,33 @@ function AppropriationForm({
 
       {isRealignment && (
         <div className="mt-5">
+          <Field
+            label="Under which instrument"
+            required
+            htmlFor="instrument"
+            className="mb-4 max-w-xl"
+            hint={
+              instrument === 'AUGMENTATION'
+                ? 'Section 336. No ordinance is needed where the annual budget carries the omnibus authority — and it may only move savings within ONE expense class.'
+                : 'Section 321. An ordinance of the Sanggunian, which may move authority across expense classes.'
+            }
+          >
+            <Select
+              id="instrument"
+              value={instrument}
+              onChange={(e) => setInstrument(e.target.value as RealignmentInstrument)}
+            >
+              <option value="AUGMENTATION">Augmentation, under the omnibus authority</option>
+              <option value="SUPPLEMENTAL">Supplemental budget, by ordinance</option>
+            </Select>
+          </Field>
+
+          {classCheck && !classCheck.ok && (
+            <Alert tone="error" title="An augmentation cannot cross an expense class" className="mb-4">
+              {classCheck.violations[0].message}
+            </Alert>
+          )}
+
           <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
             <div>
               <p className="text-sm font-medium text-navy-900">The lines</p>
