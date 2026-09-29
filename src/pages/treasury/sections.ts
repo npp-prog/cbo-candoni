@@ -18,6 +18,10 @@ import type { TreasuryReportType } from '@/types/enums';
 export const COLLECTION_TABS = [
   { label: 'Collections', to: '/treasury/collections' },
   { label: 'Deposits', to: '/treasury/collections/deposits' },
+  // The primary reports a collecting officer closes before the RCD is drawn.
+  // They were a sidebar item of their own, which put them beside the section
+  // they belong to rather than in it.
+  { label: 'Primary Reports', to: '/treasury/collections/primary' },
   { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
   // Where the collections usually come from: the MTO's own abstract, read
   // receipt by receipt rather than typed in seven hundred times.
@@ -34,6 +38,9 @@ export const CHECK_TABS = [
 
 export const ADA_TABS = [
   { label: 'ADA', to: '/treasury/ada' },
+  // The number series and every hole in it. It is the same book as the ADA
+  // register read a different way, so it is a tab on it and not a menu item.
+  { label: 'ADA Numbers', to: '/treasury/ada/numbers' },
   { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
   { label: 'Upload RADAI', to: '/treasury/ada/uploads' },
 ];

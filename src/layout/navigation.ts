@@ -91,17 +91,21 @@ export const NAVIGATION: NavItem[] = [
       // prior-period adjustments.
       { group: 'Journal Entry Transactions', label: 'Other Transactions', to: '/accounting/others' },
 
-      // Everything below is looked at rather than posted. The heading is not
-      // decoration: without it these three would sit directly under the group
+      // Everything below is looked at or set up, never posted. The heading is
+      // not decoration: without it these would sit directly under the group
       // above and read as though they too journalized something.
-      { group: 'Records and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
-      { group: 'Records and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },
+      { group: 'Monitoring and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
+      { group: 'Monitoring and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },
+      // The ageing of receivables, payables and unliquidated advances. It was
+      // filed under Reports, where it was the only screen anybody opened to act
+      // on rather than to submit: an overdue advance is chased, not filed.
+      { group: 'Monitoring and Setup', label: 'Aging Reports', to: '/reports/aging' },
       // Encoding the balances the books open with is not a report, though it
       // lived under Reports until somebody went looking for it in Accounting
       // and could not find it. It is the one-time act that opens the ledger:
       // the payables, the receivables and the unliquidated cash advances
       // carried in from whatever the municipality kept before.
-      { group: 'Records and Setup', label: 'Opening Balances', to: '/accounting/opening-balances' },
+      { group: 'Monitoring and Setup', label: 'Opening Balances', to: '/accounting/opening-balances' },
     ],
   },
   {
@@ -120,19 +124,27 @@ export const NAVIGATION: NavItem[] = [
     // the office that prepares it.
     children: [
       // ----------------------------------------------------------------
-      // Registers: where the day's transactions are kept.
+      // Registers: the four books the office keeps, and nothing else.
+      //
+      // Four, not eight. ADA Numbers, Primary Reports and the Claim Sheet were
+      // listed here beside them, which made the menu answer a question nobody
+      // asks - "how many treasury screens are there" - instead of the one
+      // everybody asks: "which book am I working in today". Each of them now
+      // sits as a tab inside the register it belongs to, where it is found by
+      // somebody already doing that work rather than by somebody reading a
+      // list.
+      //
+      //   ADA Numbers      -> a tab on ADA
+      //   Primary Reports  -> a tab on Collections and Deposits
+      //   Claim Sheet      -> moved to Treasury Reports below
       // ----------------------------------------------------------------
       { group: 'Registers', label: 'Checks', to: '/treasury/checks' },
       { group: 'Registers', label: 'ADA', to: '/treasury/ada' },
-      { group: 'Registers', label: 'ADA Numbers', to: '/treasury/ada/numbers' },
       // Collections and deposits are one item: the receipt and the deposit slip
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.
       { group: 'Registers', label: 'Collections and Deposits', to: '/treasury/collections' },
-      { group: 'Registers', label: 'Primary Reports', to: '/treasury/collections/primary' },
       { group: 'Registers', label: 'Payroll', to: '/treasury/payroll' },
-      { group: 'Registers', label: 'Claim Sheet', to: '/treasury/claim-sheet' },
-      { group: 'Registers', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
 
       // ----------------------------------------------------------------
       // Cash books: the running balances the registers foot into. Cash in
@@ -166,7 +178,14 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Treasury Reports', label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
       { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
       { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
+      // The claim sheet is what the payroll is paid against, so it reads with
+      // the cash disbursement report rather than with the registers.
+      { group: 'Treasury Reports', label: 'Claim Sheet', to: '/treasury/claim-sheet' },
       { group: 'Treasury Reports', label: 'Report of Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+      // The stock register and the report of accountability for that stock,
+      // together. Asking what forms an officer holds and what they have
+      // accounted for is one question asked twice.
+      { group: 'Treasury Reports', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
       { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
 
       // ----------------------------------------------------------------
@@ -190,27 +209,32 @@ export const NAVIGATION: NavItem[] = [
     to: '/reports',
     module: 'reports',
     icon: 'reports',
-    // Grouped by the office whose work the report presents, not by format.
-    //
-    // The treasury reports are deliberately NOT here. They moved into the
-    // Treasury menu beside the registers they are drawn from, because that is
-    // where the person preparing them is already standing. What remains is the
-    // output of Budget and Accounting, which have no such register menu of
-    // their own.
+    /**
+     * One list, no headings.
+     *
+     * There were two - Budget Reports and Accounting Reports - and once the
+     * treasury reports left for the Treasury menu, they were a heading over one
+     * item and a heading over six. A fold that saves nothing and a label that
+     * groups nothing are both just something else to read on the way to the
+     * Trial Balance.
+     *
+     * The RAAO is not here: it is in the Budget menu, beside the
+     * appropriations, allotments and obligations it registers. Nor are the
+     * treasury reports, nor the ageing - the ageing moved to Accounting, under
+     * Monitoring and Setup, because it is the one report in this list nobody
+     * submits. An overdue advance is chased, not filed.
+     *
+     * What is left is what the municipality actually presents: the statement of
+     * its budget, and its books.
+     */
     children: [
-      // The RAAO is not listed here. It lives in the Budget menu, next to the
-      // appropriations, allotments and obligations it registers - the same
-      // reasoning as the treasury reports above, and for the same reason: it
-      // was the only remaining screen with two menu entries pointing at it.
-      { group: 'Budget Reports', label: 'SAOB', to: '/reports/saob' },
-
-      { group: 'Accounting Reports', label: 'Trial Balance', to: '/reports/trial-balance' },
-      { group: 'Accounting Reports', label: 'Financial Statements', to: '/reports/financial-statements' },
-      { group: 'Accounting Reports', label: 'General Ledger', to: '/reports/general-ledger' },
-      { group: 'Accounting Reports', label: 'Subsidiary Ledger', to: '/reports/subsidiary-ledger' },
-      { group: 'Accounting Reports', label: 'Journals', to: '/reports/journals' },
-      { group: 'Accounting Reports', label: 'Aging Reports', to: '/reports/aging' },
-      { group: 'Accounting Reports', label: 'Registers', to: '/reports/registers' },
+      { label: 'SAOB', to: '/reports/saob' },
+      { label: 'Trial Balance', to: '/reports/trial-balance' },
+      { label: 'Financial Statements', to: '/reports/financial-statements' },
+      { label: 'General Ledger', to: '/reports/general-ledger' },
+      { label: 'Subsidiary Ledger', to: '/reports/subsidiary-ledger' },
+      { label: 'Journals', to: '/reports/journals' },
+      { label: 'Registers', to: '/reports/registers' },
     ],
   },
   {

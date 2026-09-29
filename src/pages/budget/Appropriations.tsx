@@ -15,6 +15,7 @@ import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
+import { checkRealignmentSet } from '@/lib/accounting-rules';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Appropriation, AppropriationKind } from '@/types/budget';
@@ -54,19 +55,49 @@ const KIND_LABELS: Record<AppropriationKind, string> = {
  * and two names for one act meant the SAOB had to add them together to answer
  * a simple question.
  *
- * REALIGNMENT is gone from THIS screen, which is a different reason. A
- * realignment is at least two lines that come to zero, and this form records
- * one line at a time - so a realignment entered here could only ever be half
- * of one, sitting in the books until somebody remembered to enter the other
- * half. It is posted on the upload screen instead, where the whole set is
- * checked before any of it lands.
+ * REALIGNMENT is here, and it is the one type this form does not record a
+ * single line of. Choosing it turns the form into a small table, because a
+ * realignment IS a table: what the authority is taken from and what it goes
+ * to, coming to zero. One line of it is not a smaller realignment, it is half
+ * a budget act - and half of one sitting in the books until somebody remembers
+ * the other half is exactly the state the rule exists to prevent.
  */
 const KINDS: Array<{ value: AppropriationKind; label: string; hint: string }> = [
   { value: 'ORIGINAL', label: 'Original', hint: 'The annual budget as enacted.' },
   { value: 'SUPPLEMENTAL', label: 'Supplemental', hint: 'Additional authority enacted during the year.' },
   { value: 'CONTINUING', label: 'Continuing', hint: 'Prior-year authority carried forward.' },
+  {
+    value: 'REALIGNMENT',
+    label: 'Realignment',
+    hint: 'Two or more lines that come to zero. Take away with a negative amount, give with a positive one.',
+  },
   { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. May be negative.' },
 ];
+
+/** One row of a realignment being built on screen. */
+interface RealignLine {
+  id: number;
+  officeId: string | null;
+  /** The office NAME is what is sent: the import resolves by code, name or short name. */
+  officeName: string;
+  accountCode: string | null;
+  accountName: string;
+  expenseClass: ExpenseClass;
+  amount: number | null;
+  particulars: string;
+}
+
+let nextLineId = 1;
+const blankLine = (): RealignLine => ({
+  id: nextLineId++,
+  officeId: null,
+  officeName: '',
+  accountCode: null,
+  accountName: '',
+  expenseClass: 'MOOE',
+  amount: null,
+  particulars: '',
+});
 
 export default function Appropriations() {
   const { fiscalYear, fundCode } = useFilters();
@@ -327,11 +358,95 @@ function AppropriationForm({
   const [amount, setAmount] = useState<number | null>(null);
   const [particulars, setParticulars] = useState('');
   const [saving, setSaving] = useState(false);
+  const [realignLines, setRealignLines] = useState<RealignLine[]>(() => [blankLine(), blankLine()]);
 
-  const allowsNegative = kind === 'ADJUSTMENT';
+  const isRealignment = kind === 'REALIGNMENT';
+  const allowsNegative = kind === 'ADJUSTMENT' || isRealignment;
   const selectedKind = KINDS.find((k) => k.value === kind)!;
 
+  const patchLine = (id: number, patch: Partial<RealignLine>) =>
+    setRealignLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+
+  /** Lines with something on them. A blank row the user never filled is not an error. */
+  const filledLines = realignLines.filter((l) => l.officeId || l.accountCode || l.amount);
+
+  const incomplete = filledLines.filter((l) => !l.officeId || !l.accountCode || !l.amount);
+
+  /**
+   * The same rule the upload screen and the server both run.
+   *
+   * It is evaluated on every keystroke so the figure the set is out by is on
+   * screen while the amounts are being typed - which is when it can still be
+   * fixed cheaply - rather than after a save that posts nothing.
+   */
+  const balance = useMemo(
+    () =>
+      filledLines.length === 0
+        ? null
+        : checkRealignmentSet(filledLines.map((l, i) => ({ lineNo: i + 1, amount: l.amount ?? 0 }))),
+    [filledLines],
+  );
+
+  const takenUp = filledLines.filter((l) => (l.amount ?? 0) > 0).reduce((s2, l) => s2 + (l.amount ?? 0), 0);
+  const givenUp = filledLines.filter((l) => (l.amount ?? 0) < 0).reduce((s2, l) => s2 + (l.amount ?? 0), 0);
+
+  const realignmentReady =
+    isRealignment &&
+    incomplete.length === 0 &&
+    balance !== null &&
+    balance.ok &&
+    authorityReference.trim().length > 0;
+
+  /**
+   * Posting a realignment.
+   *
+   * It goes through the same server call the upload screen uses, and that is
+   * the point rather than a shortcut. That call already resolves every office
+   * and account against master data, sums two rows that fall on the same
+   * budget line, refuses to drive any line negative or below the allotments
+   * already released, checks the set comes to zero, and writes the whole thing
+   * in one transaction. A second path that did nine-tenths of that would be a
+   * second set of rules to keep in step, and the tenth would be the one that
+   * mattered.
+   *
+   * A realignment is therefore posted, not saved as a draft. There is no
+   * half-way state to leave it in: the lines land together or none of them
+   * does.
+   */
+  const postRealignment = async () => {
+    setSaving(true);
+    try {
+      const res = await engine.importBudgetLines({
+        kind: 'APPROPRIATION',
+        fiscalYear,
+        fundCode,
+        appropriationKind: 'REALIGNMENT',
+        reference: authorityReference.trim(),
+        date: authorityDate,
+        fileName: 'Recorded on screen',
+        rows: filledLines.map((l, i) => ({
+          lineNo: i + 1,
+          office: l.officeName,
+          accountCode: l.accountCode as string,
+          expenseClass: l.expenseClass,
+          amount: l.amount as number,
+          particulars: l.particulars.trim() || undefined,
+        })),
+      });
+      toast.success(
+        'Realignment posted',
+        `${res.posted} line${res.posted === 1 ? '' : 's'}. The total appropriation of the fund is unchanged.`,
+      );
+      onSaved();
+    } catch (err) {
+      toast.error('Nothing was posted', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async () => {
+    if (isRealignment) return postRealignment();
     if (!officeId || !accountCode || !amount || !actor) {
       toast.error('Incomplete', 'Office, account and amount are all required.');
       return;
@@ -369,25 +484,27 @@ function AppropriationForm({
     <Modal
       open
       onClose={onClose}
-      title="Record an appropriation"
-      description="Saved as a draft. Approving it makes the authority available for allotment."
-      size="lg"
+      title={isRealignment ? 'Record a realignment' : 'Record an appropriation'}
+      description={
+        isRealignment
+          ? 'Posted whole, not saved as a draft. There is no half-way state for a realignment to sit in.'
+          : 'Saved as a draft. Approving it makes the authority available for allotment.'
+      }
+      size={isRealignment ? 'xl' : 'lg'}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={saving} onClick={() => void save()}>
-            Save draft
+          <Button
+            variant="primary"
+            loading={saving}
+            disabled={isRealignment && !realignmentReady}
+            onClick={() => void save()}
+          >
+            {isRealignment ? 'Post realignment' : 'Save draft'}
           </Button>
         </>
       }
     >
-      <Alert tone="info" title="Realignments are posted on the upload screen" className="mb-4">
-        A realignment is at least two lines that come to zero — what the authority is taken from
-        and what it goes to. This form records one line at a time, so a realignment entered here
-        could only ever be half of one. Budget &rsaquo; Appropriation &rsaquo; Upload has a
-        realignment template and checks the whole set balances before any of it is posted.
-      </Alert>
-
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Type" required htmlFor="kind" hint={selectedKind.hint}>
           <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as AppropriationKind)}>
@@ -400,7 +517,12 @@ function AppropriationForm({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Authority reference" htmlFor="authority" hint="Ordinance or resolution number">
+          <Field
+            label="Authority reference"
+            htmlFor="authority"
+            required={isRealignment}
+            hint="Ordinance or resolution number"
+          >
             <TextInput
               id="authority"
               value={authorityReference}
@@ -413,60 +535,212 @@ function AppropriationForm({
           </Field>
         </div>
 
-        <Field label="Office" required htmlFor="office">
-          <OfficePicker
-            id="office"
-            value={officeId}
-            onChange={(v, o) => {
-              setOfficeId(v);
-              setOfficeName(o?.name ?? '');
-            }}
-          />
-        </Field>
+        {!isRealignment && (
+          <Field label="Office" required htmlFor="office">
+            <OfficePicker
+              id="office"
+              value={officeId}
+              onChange={(v, o) => {
+                setOfficeId(v);
+                setOfficeName(o?.name ?? '');
+              }}
+            />
+          </Field>
+        )}
 
-        <Field label="Account" required htmlFor="account">
-          <AccountPicker
-            id="account"
-            value={accountCode}
-            onChange={(code, account) => {
-              setAccountCode(code);
-              setAccountName(account?.name ?? '');
-            }}
-          />
-        </Field>
+        {!isRealignment && (
+          <>
+            <Field label="Account" required htmlFor="account">
+              <AccountPicker
+                id="account"
+                value={accountCode}
+                onChange={(code, account) => {
+                  setAccountCode(code);
+                  setAccountName(account?.name ?? '');
+                }}
+              />
+            </Field>
 
-        <Field label="Expense classification" htmlFor="expenseClass">
-          <Select
-            id="expenseClass"
-            value={expenseClass}
-            onChange={(e) => setExpenseClass(e.target.value as ExpenseClass)}
-          >
-            {(Object.keys(EXPENSE_CLASS_LABELS) as ExpenseClass[]).map((c) => (
-              <option key={c} value={c}>
-                {c} - {EXPENSE_CLASS_LABELS[c]}
-              </option>
-            ))}
-          </Select>
-        </Field>
+            <Field label="Expense classification" htmlFor="expenseClass">
+              <Select
+                id="expenseClass"
+                value={expenseClass}
+                onChange={(e) => setExpenseClass(e.target.value as ExpenseClass)}
+              >
+                {(Object.keys(EXPENSE_CLASS_LABELS) as ExpenseClass[]).map((c) => (
+                  <option key={c} value={c}>
+                    {c} - {EXPENSE_CLASS_LABELS[c]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-        <Field
-          label="Amount"
-          required
-          htmlFor="amount"
-          hint={allowsNegative ? 'May be negative for the source side of a realignment.' : undefined}
-        >
-          <AmountInput id="amount" value={amount} onChange={setAmount} allowNegative={allowsNegative} />
-        </Field>
+            <Field
+              label="Amount"
+              required
+              htmlFor="amount"
+              hint={allowsNegative ? 'May be negative.' : undefined}
+            >
+              <AmountInput id="amount" value={amount} onChange={setAmount} allowNegative={allowsNegative} />
+            </Field>
 
-        <Field label="Particulars" htmlFor="particulars" className="sm:col-span-2">
-          <TextArea
-            id="particulars"
-            rows={2}
-            value={particulars}
-            onChange={(e) => setParticulars(e.target.value)}
-          />
-        </Field>
+            <Field label="Particulars" htmlFor="particulars" className="sm:col-span-2">
+              <TextArea
+                id="particulars"
+                rows={2}
+                value={particulars}
+                onChange={(e) => setParticulars(e.target.value)}
+              />
+            </Field>
+          </>
+        )}
       </div>
+
+      {isRealignment && (
+        <div className="mt-5">
+          <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-navy-900">The lines</p>
+              <p className="text-xs text-slate-500">
+                Take away with a negative amount, give with a positive one. The set must come to
+                zero before it can be posted.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => setRealignLines((ls) => [...ls, blankLine()])}>
+              Add a line
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto rounded border border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-left text-slate-600">
+                <tr>
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '12rem' }}>
+                    Office
+                  </th>
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '14rem' }}>
+                    Account
+                  </th>
+                  <th className="px-2 py-1.5 font-medium" style={{ width: '6rem' }}>
+                    Class
+                  </th>
+                  <th className="px-2 py-1.5 text-right font-medium" style={{ minWidth: '9rem' }}>
+                    Amount
+                  </th>
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '10rem' }}>
+                    Particulars
+                  </th>
+                  <th className="w-8 px-2 py-1.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {realignLines.map((line) => (
+                  <tr key={line.id} className="align-top">
+                    <td className="px-2 py-1.5">
+                      <OfficePicker
+                        value={line.officeId}
+                        onChange={(v, o) =>
+                          patchLine(line.id, { officeId: v, officeName: o?.name ?? '' })
+                        }
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <AccountPicker
+                        value={line.accountCode}
+                        onChange={(code, account) =>
+                          patchLine(line.id, {
+                            accountCode: code,
+                            accountName: account?.name ?? '',
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Select
+                        value={line.expenseClass}
+                        onChange={(e) =>
+                          patchLine(line.id, { expenseClass: e.target.value as ExpenseClass })
+                        }
+                      >
+                        {(Object.keys(EXPENSE_CLASS_LABELS) as ExpenseClass[]).map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <AmountInput
+                        value={line.amount}
+                        onChange={(v) => patchLine(line.id, { amount: v })}
+                        allowNegative
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <TextInput
+                        value={line.particulars}
+                        onChange={(e) => patchLine(line.id, { particulars: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        // Two is the floor, not a convenience: a realignment
+                        // with one line left on screen is the shape the rule
+                        // exists to refuse, and letting it be built invites
+                        // the question of why it will not post.
+                        disabled={realignLines.length <= 2}
+                        onClick={() =>
+                          setRealignLines((ls) => ls.filter((l) => l.id !== line.id))
+                        }
+                        title={
+                          realignLines.length <= 2
+                            ? 'A realignment needs at least two lines.'
+                            : 'Remove this line'
+                        }
+                      >
+                        &times;
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+            <span className="text-slate-600">
+              Given up{' '}
+              <strong className="cbo-amount">{formatPeso(Math.abs(givenUp))}</strong> &middot; taken
+              up <strong className="cbo-amount">{formatPeso(takenUp)}</strong>
+            </span>
+            {balance?.ok ? (
+              <span className="font-medium text-emerald-700">
+                Balanced. The total appropriation of the fund does not change.
+              </span>
+            ) : balance ? (
+              <span className="font-medium text-rose-700">{balance.violations[0].message}</span>
+            ) : (
+              <span className="text-slate-500">Nothing entered yet.</span>
+            )}
+          </div>
+
+          {incomplete.length > 0 && (
+            <Alert tone="warning" className="mt-2">
+              {incomplete.length} line{incomplete.length === 1 ? '' : 's'} still{' '}
+              {incomplete.length === 1 ? 'needs' : 'need'} an office, an account and an amount.
+            </Alert>
+          )}
+
+          {!authorityReference.trim() && (
+            <Alert tone="warning" className="mt-2">
+              The authority reference is required for a realignment. It is what stops the same
+              ordinance being posted twice.
+            </Alert>
+          )}
+        </div>
+      )}
 
       {allowsNegative && (
         <Alert tone="info" className="mt-4">

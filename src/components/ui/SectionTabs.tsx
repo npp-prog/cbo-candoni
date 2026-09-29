@@ -3,12 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 /**
  * Tabs within one area of work.
  *
- * The sidebar names the seven things the Treasurer's office does - checks, ADA,
- * collections, deposits, payroll, accountable forms, cash position - and each
- * report lives inside the item it reports on rather than beside it. The Report
- * of Checks Issued belongs with the checks; putting it in the sidebar as a
- * peer of "Check" doubles the length of the menu and separates a document from
- * the thing it summarises.
+ * The sidebar names the four books the Treasurer's office keeps - checks, ADA,
+ * collections and deposits, payroll - and everything drawn from one of them
+ * lives inside it rather than beside it. The Report of Checks Issued belongs
+ * with the checks; listing it in the sidebar as a peer of "Checks" lengthens
+ * the menu and separates a document from the thing it summarises.
+ *
+ * The same reasoning brought the ADA number control and the primary reports in
+ * here: each is the register it sits on, read a different way.
  *
  * Rendered as links rather than local state so that a report can be opened
  * directly, bookmarked, and linked to from a notification.

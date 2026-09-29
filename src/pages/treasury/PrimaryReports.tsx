@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -23,6 +24,7 @@ import {
   type PrimaryReportType,
 } from '@/types/primaryReports';
 import { fundLabel } from '../budget/Obligations';
+import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
 
 /**
  * Primary reports - the Liquidating Officer's and the Treasurer's layer.
@@ -159,7 +161,7 @@ export default function PrimaryReports() {
       <PageHeader
         title="Primary Reports"
         subtitle={`${fundLabel(fundCode)} — fiscal year ${fiscalYear}`}
-        breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Primary Reports' }]}
+        breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Primary Reports' }]}
         actions={
           canCreate ? (
             <Button variant="primary" onClick={() => setEditing('new')}>
@@ -168,6 +170,8 @@ export default function PrimaryReports() {
           ) : null
         }
       />
+
+      <SectionTabs tabs={COLLECTION_TABS} />
 
       {reopenedTotal > 0 && (
         <Alert tone="warning" title="Closed reports have been reopened" className="mb-4">

@@ -233,8 +233,13 @@ export function Sidebar({
                                   onClick={() => toggleGroup(key)}
                                   aria-expanded={groupOpen}
                                   className={clsx(
-                                    'flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[10px]',
-                                    'font-semibold uppercase tracking-wide transition-colors',
+                                    // Sentence case, as written in navigation.ts.
+                                    // Capitals shouted at every heading make the
+                                    // menu harder to skim, not easier, and they
+                                    // take the shape off a word - "ADA Numbers"
+                                    // and "Ada numbers" stop looking different.
+                                    'flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[11px]',
+                                    'font-semibold tracking-normal transition-colors',
                                     groupOpen
                                       ? 'text-slate-400 hover:text-slate-200'
                                       : 'text-slate-500 hover:bg-navy-800/60 hover:text-slate-200',

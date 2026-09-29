@@ -111,6 +111,41 @@ describe('the menu itself', () => {
     }
   });
 
+  /**
+   * Four registers: Checks, ADA, Collections and Deposits, Payroll. The
+   * temptation, every time a screen is added, is to put it here - it is the
+   * first heading and everything is arguably a register. That is how the
+   * heading came to hold eight items and stopped answering "which book am I
+   * working in today". A new screen goes in a tab on the book it belongs to,
+   * or under a heading that fits, and this test is the thing that says so.
+   */
+  it('keeps the Treasury registers to the four books the office keeps', () => {
+    const treasury = NAVIGATION.find((i) => i.to === '/treasury');
+    const registers = (treasury?.children ?? []).filter((c) => c.group === 'Registers');
+    expect(registers.map((r) => r.label)).toEqual([
+      'Checks',
+      'ADA',
+      'Collections and Deposits',
+      'Payroll',
+    ]);
+  });
+
+  /**
+   * A heading is written as a person would say it. The sidebar no longer
+   * shouts it in capitals, so a heading typed in capitals here would be the
+   * only one on screen that shouts.
+   */
+  it('writes every heading in sentence case', () => {
+    for (const item of NAVIGATION) {
+      for (const child of item.children ?? []) {
+        if (!child.group) continue;
+        expect(child.group, `${child.group} is written in capitals`).not.toBe(
+          child.group.toUpperCase(),
+        );
+      }
+    }
+  });
+
   it('every heading holds at least one item', () => {
     for (const item of NAVIGATION) {
       for (const block of toBlocks(item.children ?? [])) {

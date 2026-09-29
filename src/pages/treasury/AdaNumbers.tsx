@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -19,6 +20,7 @@ import {
   type AdaSeriesGap,
 } from '@/types/adaNumbers';
 import { fundLabel } from '../budget/Obligations';
+import { ADA_TABS } from './sections';
 
 /**
  * The ADA number series, and every hole in it.
@@ -183,7 +185,11 @@ export default function AdaNumbers() {
       <PageHeader
         title="ADA Number Control"
         subtitle={`${fundLabel(fundCode)} — fiscal year ${fiscalYear}`}
-        breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'ADA Numbers' }]}
+        breadcrumbs={[
+          { label: 'Treasury', to: '/treasury' },
+          { label: 'ADA', to: '/treasury/ada' },
+          { label: 'Numbers' },
+        ]}
         actions={
           canReserve ? (
             <Button variant="primary" onClick={() => setReserving(true)}>
@@ -192,6 +198,8 @@ export default function AdaNumbers() {
           ) : null
         }
       />
+
+      <SectionTabs tabs={ADA_TABS} />
 
       {unexplained.length > 0 ? (
         <Alert
