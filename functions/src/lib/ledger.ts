@@ -31,6 +31,20 @@ export interface JevLineData {
   accountName: string;
   debit: number;
   credit: number;
+  /**
+   * The budget line this entry is charged to.
+   *
+   * Different from the account code, and on a project line a different value:
+   * the account code says what kind of expense it is, the FPP says which line
+   * of the budget it was charged to. The Statement of Comparison of Budget and
+   * Actual Amounts is built by matching on this.
+   *
+   * Null on an entry with no budget line behind it - a collection, a deposit, a
+   * bank charge, an opening balance. An FPP invented for those would foot into
+   * the comparison as spending that never happened.
+   */
+  fppCode?: string | null;
+  fppName?: string | null;
   officeId?: string | null;
   officeName?: string | null;
   responsibilityCenterId?: string | null;
@@ -193,6 +207,8 @@ export function postJevInTransaction(
 
       accountCode: line.accountCode,
       accountName: line.accountName,
+      fppCode: line.fppCode ?? null,
+      fppName: line.fppName ?? null,
       // Signed amount makes a trial balance a single sum rather than two.
       signedAmount: line.debit - line.credit,
       debit: line.debit,

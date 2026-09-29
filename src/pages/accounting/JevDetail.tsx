@@ -19,6 +19,7 @@ import { formatInstant, formatLongDate, todayPh } from '@/lib/dates';
 import { checkDoubleEntry } from '@/lib/accounting-rules';
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
+import { useFppOptions } from '@/data/useFppOptions';
 
 /**
  * The Journal Entry Voucher.
@@ -43,6 +44,9 @@ export default function JevDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
+  // The budget lines this entry may be charged to, and which accounts are
+  // expenses and therefore need one.
+  const { fppOptions, expenseCodes } = useFppOptions(fiscalYear, fundCode);
   const { user, profile, can, hasRole } = useAuth();
 
   const { data: existing, loading } = useDocument<JournalEntryVoucher>(isNew ? null : COL.jevs, id);
@@ -70,6 +74,8 @@ export default function JevDetail() {
         lineNo: l.lineNo,
         accountCode: l.accountCode,
         accountName: l.accountName,
+        fppCode: l.fppCode ?? undefined,
+        fppName: l.fppName ?? undefined,
         debit: l.debit,
         credit: l.credit,
         particulars: l.particulars ?? undefined,
@@ -131,6 +137,8 @@ export default function JevDetail() {
           lineNo: i + 1,
           accountCode: l.accountCode,
           accountName: l.accountName,
+          fppCode: l.fppCode ?? null,
+          fppName: l.fppName ?? null,
           debit: l.debit,
           credit: l.credit,
           particulars: l.particulars ?? null,
@@ -290,7 +298,13 @@ export default function JevDetail() {
             </Card>
 
             <Card title="Entry">
-              <JournalEntryGrid lines={lines} onChange={setLines} readOnly={!canEdit} />
+              <JournalEntryGrid
+                lines={lines}
+                onChange={setLines}
+                fppOptions={fppOptions}
+                expenseCodes={expenseCodes}
+                readOnly={!canEdit}
+              />
             </Card>
 
             {(existing?.createdBy || existing?.postedBy) && (

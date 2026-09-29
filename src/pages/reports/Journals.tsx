@@ -53,10 +53,16 @@ export default function Journals() {
   const exportColumns: ExportColumn<LedgerEntry>[] = [
     { key: 'date', header: 'Date', kind: 'date', value: (r) => r.entryDate },
     { key: 'jev', header: 'JEV No.', value: (r) => r.jevNo },
-    { key: 'ref', header: 'Reference', value: (r) => r.referenceNo ?? '' },
+    // The transaction type and the reference together say where the entry came
+    // from: "DV 2026-09-0123" rather than a number with no kind attached.
+    { key: 'type', header: 'Transaction Type', value: (r) => r.sourceType ?? '' },
+    { key: 'ref', header: 'Source Reference No.', value: (r) => r.referenceNo ?? '' },
     { key: 'payee', header: 'Payee', value: (r) => r.payeeName ?? '' },
     { key: 'code', header: 'Account Code', value: (r) => r.accountCode },
     { key: 'account', header: 'Account Title', value: (r) => r.accountName },
+    { key: 'fpp', header: 'FPP Code', value: (r) => r.fppCode ?? '' },
+    { key: 'fppName', header: 'FPP Name', value: (r) => r.fppName ?? '' },
+    { key: 'subsidiary', header: 'Subsidiary', value: (r) => r.subsidiaryName ?? '' },
     { key: 'particulars', header: 'Particulars', value: (r) => r.particulars ?? '' },
     { key: 'debit', header: 'Debit', kind: 'amount', value: (r) => r.debit },
     { key: 'credit', header: 'Credit', kind: 'amount', value: (r) => r.credit },
@@ -115,7 +121,7 @@ export default function Journals() {
               <tr>
                 <th className="cbo-th w-24">Date</th>
                 <th className="cbo-th w-32">JEV No.</th>
-                <th className="cbo-th w-28">Reference</th>
+                <th className="cbo-th w-28">Type / Reference</th>
                 <th className="cbo-th">Account and particulars</th>
                 <th className="cbo-th w-36 text-right">Debit</th>
                 <th className="cbo-th w-36 text-right">Credit</th>
@@ -130,12 +136,22 @@ export default function Journals() {
                       {r.jevNo}
                     </Link>
                   </td>
-                  <td className="cbo-td font-mono text-xs text-slate-500">{r.referenceNo ?? '-'}</td>
+                  <td className="cbo-td">
+                    <span className="block text-2xs uppercase tracking-wide text-slate-400">
+                      {r.sourceType}
+                    </span>
+                    <span className="font-mono text-xs text-slate-500">{r.referenceNo ?? '-'}</span>
+                  </td>
                   <td className="cbo-td">
                     <span className="font-mono text-2xs text-slate-400">{r.accountCode}</span>{' '}
                     <span className="text-sm">{r.accountName}</span>
+                    {r.fppCode && (
+                      <span className="block text-2xs text-slate-500">
+                        FPP {r.fppCode} {r.fppName}
+                      </span>
+                    )}
                     <span className="block text-2xs text-slate-500">
-                      {[r.payeeName, r.particulars].filter(Boolean).join(' - ')}
+                      {[r.subsidiaryName, r.payeeName, r.particulars].filter(Boolean).join(' - ')}
                     </span>
                   </td>
                   <td className="cbo-td cbo-amount">{formatPeso(r.debit, { symbol: false, dash: true })}</td>

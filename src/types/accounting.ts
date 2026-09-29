@@ -38,6 +38,16 @@ export interface DvAccountLine {
   lineNo: number;
   accountCode: string;
   accountName: string;
+  /**
+   * The budget line this expense is charged to, carried from the obligation.
+   *
+   * A voucher that draws on an obligation inherits the FPP of the obligation
+   * line it draws on, and this is where it comes from. Empty on a voucher with
+   * no obligation behind it - a refund, a trust disbursement - which is the
+   * honest answer rather than an FPP chosen to fill the column.
+   */
+  fppCode?: string;
+  fppName?: string;
   /** Exactly one of debit/credit is non-zero on any given line. */
   debit: Centavos;
   credit: Centavos;
@@ -139,6 +149,33 @@ export interface JevLine {
   accountName: string;
   debit: Centavos;
   credit: Centavos;
+  /**
+   * The Function, Programme or Project this line is charged to.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THE LEDGER CARRIES IT AS WELL AS THE ACCOUNT CODE
+   * ---------------------------------------------------------------------------
+   * They answer different questions, and on a third of the FY2025 ordinance
+   * they are different values. The account code says what KIND of expense this
+   * is - fuel, supplies, salaries - and it is what the Trial Balance and the
+   * financial statements are built from. The FPP says which LINE OF THE BUDGET
+   * it was charged to, and it is what the Statement of Comparison of Budget and
+   * Actual Amounts and the SRE are built from.
+   *
+   * On a line appropriated by object of expenditure the two coincide. On a
+   * project line the appropriation names the project and the voucher names the
+   * fuel, and matching actual against appropriation by account code would find
+   * nothing for exactly the project lines the Sanggunian and the public ask
+   * about.
+   *
+   * Empty on an entry that is not budget expenditure at all: a collection, a
+   * deposit, a bank charge, an opening balance. Those are real entries with no
+   * budget line behind them, and an FPP invented for them would foot into the
+   * SCBAA as spending that never happened.
+   * ---------------------------------------------------------------------------
+   */
+  fppCode?: string;
+  fppName?: string;
   officeId?: Id;
   officeName?: string;
   responsibilityCenterId?: Id;
@@ -221,6 +258,9 @@ export interface LedgerEntry {
 
   accountCode: string;
   accountName: string;
+  /** The budget line this entry is charged to; empty where there is none. */
+  fppCode?: string;
+  fppName?: string;
   /** Signed amount in centavos: positive = debit, negative = credit. Storing a
    *  single signed figure makes trial-balance aggregation a single sum. */
   signedAmount: Centavos;

@@ -228,6 +228,64 @@ export function checkObligationAgainstAllotment(input: ObligationCheckInput): Ch
 }
 
 // ---------------------------------------------------------------------------
+// 1b. An expense must say which budget line it is charged to
+// ---------------------------------------------------------------------------
+
+export interface FppCheckLine {
+  lineNo: number;
+  accountCode: string;
+  debit: Centavos;
+  credit: Centavos;
+  fppCode?: string | null;
+}
+
+/**
+ * Every debit to an expense account names the budget line it is charged to.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS MATTERS MORE THAN IT LOOKS
+ * ---------------------------------------------------------------------------
+ * The Statement of Comparison of Budget and Actual Amounts is built by matching
+ * the General Ledger against the appropriations, on the FPP. An expense posted
+ * without one appears in neither column: it is spent money that no
+ * appropriation accounts for, and because the statement still foots to its own
+ * totals, nothing looks wrong. It would be found by somebody adding the ledger
+ * up by hand, which is the thing this system exists to stop.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY ONLY THE DEBIT
+ * ---------------------------------------------------------------------------
+ * A credit to an expense account undoes something already charged, and it
+ * carries the FPP of whatever it undoes - which the person entering it
+ * supplies. Requiring one on the credit as well would be requiring the same
+ * answer twice, and the second time from somebody who may not know it.
+ *
+ * Every other line is untouched: the credit to Accounts Payable, the cash
+ * line, the opening balance. None of them is budget expenditure, and an FPP
+ * invented for them would foot into the comparison as spending that never
+ * happened.
+ */
+export function checkExpenseDebitsHaveFpp(
+  lines: FppCheckLine[],
+  isExpenseAccount: (accountCode: string) => boolean,
+): CheckResult {
+  const offending = lines.filter(
+    (l) => l.debit > 0 && !l.fppCode && isExpenseAccount(String(l.accountCode).trim()),
+  );
+  if (offending.length === 0) return ok;
+
+  return fail(
+    'EXPENSE_WITHOUT_FPP',
+    `Line${offending.length === 1 ? '' : 's'} ${offending.map((l) => l.lineNo).join(', ')} ` +
+      `debit${offending.length === 1 ? 's' : ''} an expense with no budget line named ` +
+      `(${offending.map((l) => l.accountCode).join(', ')}). An expense posted without an FPP ` +
+      `never appears in the comparison of budget against actual, and the statement still foots, ` +
+      `so nothing looks wrong.`,
+    { lineNos: offending.map((l) => l.lineNo), accountCodes: offending.map((l) => l.accountCode) },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 2b. Realignment
 // ---------------------------------------------------------------------------
 

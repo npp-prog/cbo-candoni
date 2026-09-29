@@ -4,6 +4,7 @@ import {
   checkAllotmentAgainstAppropriation,
   checkAllotmentWithdrawal,
   checkObligationAgainstAllotment,
+  checkExpenseDebitsHaveFpp,
   checkRealignmentSet,
   checkDvMath,
   checkLiquidation,
@@ -566,5 +567,88 @@ describe('checkRealignmentSet', () => {
     ]);
     expect(result.ok).toBe(false);
     expect(result.violations[0].code).toBe('REALIGNMENT_NOT_BALANCED');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An expense must name its budget line
+// ---------------------------------------------------------------------------
+
+describe('checkExpenseDebitsHaveFpp', () => {
+  const isExpense = (code: string) => code.startsWith('5-');
+
+  it('accepts an expense debit that names a budget line', () => {
+    expect(
+      checkExpenseDebitsHaveFpp(
+        [{ lineNo: 1, accountCode: '5-02-03-010', debit: 100000, credit: 0, fppCode: '5-02-03-010' }],
+        isExpense,
+      ).ok,
+    ).toBe(true);
+  });
+
+  it('refuses an expense debit with no budget line, and names the line', () => {
+    const result = checkExpenseDebitsHaveFpp(
+      [
+        { lineNo: 1, accountCode: '5-02-03-010', debit: 100000, credit: 0 },
+        { lineNo: 2, accountCode: '2-01-01-010', debit: 0, credit: 100000 },
+      ],
+      isExpense,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('EXPENSE_WITHOUT_FPP');
+    expect(result.violations[0].details?.lineNos).toEqual([1]);
+  });
+
+  /**
+   * The credit to Accounts Payable, the cash line, the opening balance. None
+   * of them is budget expenditure, and an FPP put on one would foot into the
+   * comparison of budget against actual as spending that never happened.
+   */
+  it('leaves every line that is not an expense debit alone', () => {
+    expect(
+      checkExpenseDebitsHaveFpp(
+        [
+          { lineNo: 1, accountCode: '1-01-01-010', debit: 500000, credit: 0 },
+          { lineNo: 2, accountCode: '2-01-01-010', debit: 0, credit: 500000 },
+          { lineNo: 3, accountCode: '4-01-02-040', debit: 0, credit: 250000 },
+        ],
+        isExpense,
+      ).ok,
+    ).toBe(true);
+  });
+
+  /**
+   * A credit to an expense account undoes something already charged and
+   * carries the FPP of whatever it undoes. Requiring one here would be asking
+   * the same question twice, the second time of somebody who may not know.
+   */
+  it('does not require a budget line on a credit to an expense', () => {
+    expect(
+      checkExpenseDebitsHaveFpp(
+        [{ lineNo: 1, accountCode: '5-02-03-010', debit: 0, credit: 100000 }],
+        isExpense,
+      ).ok,
+    ).toBe(true);
+  });
+
+  it('ignores stray spacing around an account code', () => {
+    expect(
+      checkExpenseDebitsHaveFpp(
+        [{ lineNo: 1, accountCode: ' 5-02-03-010 ', debit: 100000, credit: 0 }],
+        isExpense,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it('names every offending line, not only the first', () => {
+    const result = checkExpenseDebitsHaveFpp(
+      [
+        { lineNo: 1, accountCode: '5-02-03-010', debit: 100000, credit: 0 },
+        { lineNo: 2, accountCode: '5-02-01-010', debit: 50000, credit: 0 },
+        { lineNo: 3, accountCode: '2-01-01-010', debit: 0, credit: 150000 },
+      ],
+      isExpense,
+    );
+    expect(result.violations[0].details?.lineNos).toEqual([1, 2]);
   });
 });

@@ -47,6 +47,9 @@ interface DvDoc {
     lineNo: number;
     accountCode: string;
     accountName: string;
+    /** The budget line this expense is charged to, carried from the obligation. */
+    fppCode?: string;
+    fppName?: string;
     debit: number;
     credit: number;
     officeId?: string;
@@ -416,6 +419,13 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       lineNo: l.lineNo,
       accountCode: l.accountCode,
       accountName: l.accountName,
+      // Carried from the voucher line, which carried it from the obligation.
+      // Not derived here from the obligation: a voucher may draw on an
+      // obligation with several lines, and guessing which one this expense
+      // belongs to would put the spending against the wrong budget line in the
+      // one report built to compare them.
+      fppCode: l.fppCode ?? null,
+      fppName: l.fppName ?? null,
       debit: l.debit,
       credit: l.credit,
       officeId: l.officeId ?? dv.officeId,

@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import clsx from 'clsx';
 import { AccountPicker } from '@/components/pickers';
-import { AmountInput, TextInput } from '@/components/ui/Field';
+import { AmountInput, Select, TextInput } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { formatPeso } from '@/lib/money';
-import { checkDoubleEntry } from '@/lib/accounting-rules';
+import { checkDoubleEntry, checkExpenseDebitsHaveFpp } from '@/lib/accounting-rules';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -25,10 +25,27 @@ export interface GridLine {
   lineNo: number;
   accountCode: string;
   accountName: string;
+  /**
+   * The budget line this charge is against. Chosen, never typed.
+   *
+   * Required on a line that debits an expense, and empty everywhere else -
+   * a credit to Accounts Payable, a cash line, an opening balance. An FPP put
+   * on one of those would foot into the Statement of Comparison of Budget and
+   * Actual Amounts as spending that never happened.
+   */
+  fppCode?: string;
+  fppName?: string;
   debit: Centavos;
   credit: Centavos;
   particulars?: string;
   subsidiaryName?: string;
+}
+
+/** One FPP a line may be charged to, as the picker offers it. */
+export interface FppOption {
+  fppCode: string;
+  fppName: string;
+  officeName?: string;
 }
 
 export function JournalEntryGrid({
@@ -36,11 +53,24 @@ export function JournalEntryGrid({
   onChange,
   readOnly,
   showParticulars = true,
+  fppOptions,
+  expenseCodes,
 }: {
   lines: GridLine[];
   onChange: (lines: GridLine[]) => void;
   readOnly?: boolean;
   showParticulars?: boolean;
+  /**
+   * The budget lines this entry may be charged to. Supplying them adds the FPP
+   * column; leaving them out leaves the grid as it was, for the entries that
+   * have no budget behind them.
+   */
+  fppOptions?: FppOption[];
+  /**
+   * Accounts that are expenses, by code. A line debiting one of these must
+   * name an FPP, and the grid marks it when it does not.
+   */
+  expenseCodes?: Set<string>;
 }) {
   const totals = useMemo(() => {
     const totalDebit = lines.reduce((s, l) => s + (l.debit || 0), 0);
@@ -60,6 +90,26 @@ export function JournalEntryGrid({
       ),
     [lines],
   );
+
+  /**
+   * A line that debits an expense and names no budget line.
+   *
+   * The same rule the posting function runs, so a line marked here is exactly
+   * a line the server will refuse - and one that is not marked will post.
+   */
+  const needsFpp = (line: GridLine) =>
+    !checkExpenseDebitsHaveFpp(
+      [
+        {
+          lineNo: line.lineNo,
+          accountCode: line.accountCode,
+          debit: line.debit || 0,
+          credit: line.credit || 0,
+          fppCode: line.fppCode,
+        },
+      ],
+      (code) => Boolean(expenseCodes?.has(code)),
+    ).ok;
 
   const update = (index: number, patch: Partial<GridLine>) => {
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -90,6 +140,7 @@ export function JournalEntryGrid({
             <tr>
               <th className="cbo-th w-10">#</th>
               <th className="cbo-th min-w-[18rem]">Account</th>
+              {fppOptions && <th className="cbo-th min-w-[16rem]">Budget line (FPP)</th>}
               {showParticulars && <th className="cbo-th min-w-[12rem]">Particulars</th>}
               <th className="cbo-th w-36 text-right">Debit</th>
               <th className="cbo-th w-36 text-right">Credit</th>
@@ -123,6 +174,44 @@ export function JournalEntryGrid({
                     />
                   )}
                 </td>
+
+                {fppOptions && (
+                  <td className="cbo-td">
+                    {readOnly ? (
+                      line.fppCode ? (
+                        <div>
+                          <span className="font-mono text-xs text-slate-500">{line.fppCode}</span>{' '}
+                          <span className="text-xs text-navy-900">{line.fppName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">&mdash;</span>
+                      )
+                    ) : (
+                      <Select
+                        value={line.fppCode ?? ''}
+                        onChange={(e) => {
+                          const chosen = fppOptions.find((o) => o.fppCode === e.target.value);
+                          update(index, {
+                            fppCode: chosen?.fppCode ?? '',
+                            fppName: chosen?.fppName ?? '',
+                          });
+                        }}
+                        invalid={needsFpp(line)}
+                        className="py-1.5 text-xs"
+                      >
+                        <option value="">
+                          {needsFpp(line) ? 'An expense needs a budget line' : 'None'}
+                        </option>
+                        {fppOptions.map((o) => (
+                          <option key={o.fppCode} value={o.fppCode}>
+                            {o.fppCode} — {o.fppName}
+                            {o.officeName ? ` (${o.officeName})` : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </td>
+                )}
 
                 {showParticulars && (
                   <td className="cbo-td">

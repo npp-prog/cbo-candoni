@@ -35,6 +35,7 @@ import {
 } from './proposeEntry';
 import type { DisbursementVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
+import { useFppOptions } from '@/data/useFppOptions';
 
 /**
  * The Disbursement Voucher.
@@ -62,6 +63,9 @@ export default function DisbursementDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
+  // The budget lines this entry may be charged to, and which accounts are
+  // expenses and therefore need one.
+  const { fppOptions, expenseCodes } = useFppOptions(fiscalYear, fundCode);
   const { user, profile, can, hasRole, officeScope } = useAuth();
 
   const { data: existing, loading } = useDocument<DisbursementVoucher>(
@@ -138,6 +142,8 @@ export default function DisbursementDetail() {
         lineNo: l.lineNo,
         accountCode: l.accountCode,
         accountName: l.accountName,
+        fppCode: l.fppCode,
+        fppName: l.fppName,
         debit: l.debit,
         credit: l.credit,
         particulars: l.particulars,
@@ -240,6 +246,8 @@ export default function DisbursementDetail() {
       lineNo: i + 1,
       accountCode: l.accountCode,
       accountName: l.accountName,
+      fppCode: l.fppCode ?? null,
+      fppName: l.fppName ?? null,
       debit: l.debit,
       credit: l.credit,
       officeId: officeId ?? null,
@@ -609,6 +617,8 @@ export default function DisbursementDetail() {
           >
             <JournalEntryGrid
               lines={entryLines}
+              fppOptions={fppOptions}
+              expenseCodes={expenseCodes}
               readOnly={!canEdit}
               onChange={(l) => {
                 setEntryLines(l);

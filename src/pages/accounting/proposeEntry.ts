@@ -40,6 +40,12 @@ import type { Centavos } from '@/types/common';
 export interface ObligationLineLite {
   accountCode: string;
   accountName: string;
+  /**
+   * The budget line this obligation line was charged to, carried onto the
+   * voucher's debit so the spending can be matched back to the appropriation.
+   */
+  fppCode?: string;
+  fppName?: string;
   amount: Centavos;
 }
 
@@ -104,6 +110,11 @@ export function proposeDvEntry(input: {
         lineNo: lineNo++,
         accountCode: line.accountCode,
         accountName: line.accountName,
+        // Carried from the obligation line this share came out of. The
+        // apportionment is per line, so each debit keeps its own budget line
+        // rather than the voucher taking one FPP for the lot.
+        fppCode: line.fppCode,
+        fppName: line.fppName,
         debit: share,
         credit: 0,
         particulars: input.particulars,
