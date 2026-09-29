@@ -139,11 +139,38 @@ export interface AllotmentCheckInput {
   appropriationRevised: Centavos;
   allotmentAlreadyReleased: Centavos;
   requestedRelease: Centavos;
+  /**
+   * The part of the appropriation the Budget Officer has deliberately held
+   * back, and which is therefore not available to release.
+   *
+   * The Budget Operations Manual calls it "For Later Release" and says it
+   * exists "to provide safeguards for shortfalls in the collection of
+   * revenues". It is not a reduction of the appropriation - the authority
+   * still exists and can be released later - so it cannot be recorded as a
+   * negative appropriation. It is a hold, and the only thing it does is make
+   * the held amount unavailable.
+   *
+   * Absent on an older release, where it is nothing.
+   */
+  forLaterRelease?: Centavos;
 }
 
 /**
  * Allotment control: cumulative allotments may not exceed the revised
- * appropriation for the same budget line.
+ * appropriation for the same budget line, less anything held for later
+ * release.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE HOLD IS SUBTRACTED HERE AND NOT SHOWN AS A SMALLER APPROPRIATION
+ * ---------------------------------------------------------------------------
+ * A department reading its available balance must see what it may actually
+ * commit. If the hold were left out of this test, CBO would let the Budget
+ * Officer release authority they had explicitly decided to withhold - and it
+ * would do so silently, because everything else would still foot.
+ *
+ * Reducing the appropriation instead would be worse: the appropriation is what
+ * the Sanggunian enacted, and a registry that showed less than the ordinance
+ * says would disagree with the ordinance on its face.
  *
  * A negative `requestedRelease` is a withdrawal of allotment, which is always
  * permitted against the appropriation but may not pull the released total
@@ -152,18 +179,24 @@ export interface AllotmentCheckInput {
  */
 export function checkAllotmentAgainstAppropriation(input: AllotmentCheckInput): CheckResult {
   const { appropriationRevised, allotmentAlreadyReleased, requestedRelease } = input;
+  const heldBack = input.forLaterRelease ?? 0;
+  const releasable = appropriationRevised - heldBack;
   const resulting = allotmentAlreadyReleased + requestedRelease;
 
-  if (resulting > appropriationRevised) {
-    const excess = resulting - appropriationRevised;
+  if (resulting > releasable) {
+    const excess = resulting - releasable;
     return fail(
       'ALLOTMENT_EXCEEDS_APPROPRIATION',
-      `Allotment release exceeds the available appropriation by ${(excess / 100).toFixed(2)}.`,
+      `Allotment release exceeds the available appropriation by ${(excess / 100).toFixed(2)}.` +
+        (heldBack > 0
+          ? ` ${(heldBack / 100).toFixed(2)} of this line is held for later release and is not available.`
+          : ''),
       {
         appropriationRevised,
+        forLaterRelease: heldBack,
         allotmentAlreadyReleased,
         requestedRelease,
-        available: appropriationRevised - allotmentAlreadyReleased,
+        available: releasable - allotmentAlreadyReleased,
         excess,
       },
     );

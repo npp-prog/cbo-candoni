@@ -709,3 +709,73 @@ describe('checkAugmentationExpenseClass', () => {
     expect(checkAugmentationExpenseClass([]).ok).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The For Later Release hold
+// ---------------------------------------------------------------------------
+
+describe('checkAllotmentAgainstAppropriation with a hold', () => {
+  const base = {
+    appropriationRevised: 1_000_000_00,
+    allotmentAlreadyReleased: 0,
+  };
+
+  it('behaves as before when nothing is held', () => {
+    expect(
+      checkAllotmentAgainstAppropriation({ ...base, requestedRelease: 1_000_000_00 }).ok,
+    ).toBe(true);
+  });
+
+  /**
+   * The whole point of the hold. Without this, CBO would let the Budget
+   * Officer release authority they had explicitly decided to withhold, and
+   * would do it silently because everything else still foots.
+   */
+  it('refuses a release that reaches into the held part', () => {
+    const result = checkAllotmentAgainstAppropriation({
+      ...base,
+      forLaterRelease: 300_000_00,
+      requestedRelease: 800_000_00,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].details?.excess).toBe(100_000_00);
+    expect(result.violations[0].message).toContain('held for later release');
+  });
+
+  it('allows a release up to the unheld part exactly', () => {
+    expect(
+      checkAllotmentAgainstAppropriation({
+        ...base,
+        forLaterRelease: 300_000_00,
+        requestedRelease: 700_000_00,
+      }).ok,
+    ).toBe(true);
+  });
+
+  it('counts what is already released against the unheld part', () => {
+    expect(
+      checkAllotmentAgainstAppropriation({
+        appropriationRevised: 1_000_000_00,
+        forLaterRelease: 300_000_00,
+        allotmentAlreadyReleased: 500_000_00,
+        requestedRelease: 300_000_00,
+      }).ok,
+    ).toBe(false);
+  });
+
+  /**
+   * A withdrawal is always permitted against the appropriation, hold or no
+   * hold. Whether it may be withdrawn is the obligation question, and that is
+   * checkAllotmentWithdrawal's.
+   */
+  it('lets a withdrawal through whatever is held', () => {
+    expect(
+      checkAllotmentAgainstAppropriation({
+        appropriationRevised: 1_000_000_00,
+        forLaterRelease: 900_000_00,
+        allotmentAlreadyReleased: 100_000_00,
+        requestedRelease: -50_000_00,
+      }).ok,
+    ).toBe(true);
+  });
+});

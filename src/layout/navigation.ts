@@ -58,6 +58,11 @@ export const NAVIGATION: NavItem[] = [
     icon: 'budget',
     children: [
       { label: 'Appropriation', to: '/budget/appropriations' },
+      // The order comes before the allotments it creates: the Budget Officer
+      // releases by order, and the allotment register is what the order leaves
+      // behind. Both are kept - an allotment may still be released singly, and
+      // a withdrawal of allotment is not an order at all.
+      { label: 'Allotment Release Orders', to: '/budget/release-orders' },
       { label: 'Allotments', to: '/budget/allotments' },
       { label: 'Obligations', to: '/budget/obligations' },
       { label: 'Registry (RAAO)', to: '/budget/registry' },

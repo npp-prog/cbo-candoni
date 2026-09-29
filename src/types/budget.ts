@@ -171,6 +171,17 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
 export interface Allotment extends BudgetKey, Partial<AuditStamps> {
   id: Id;
   allotmentNo: string;
+  /**
+   * The Allotment Release Order this line was released on, where it came from
+   * one. Lines sharing a number are one order and print as one document.
+   */
+  aroNo?: string;
+  aroPurpose?: string;
+  /**
+   * The part of this line's appropriation deliberately withheld from release.
+   * The Budget Operations Manual's "For Later Release" column.
+   */
+  forLaterRelease?: Centavos;
   allotmentDate: IsoDate;
   officeName: string;
   accountName: string;
@@ -298,7 +309,12 @@ export interface BudgetBalance extends BudgetKey {
   appropriationRevised: Centavos;
 
   allotmentReleased: Centavos;
-  /** appropriationRevised - allotmentReleased */
+  /**
+   * Appropriation held back from release. Not a reduction of the
+   * appropriation — the Sanggunian's figure stands — but it is not available.
+   */
+  forLaterRelease: Centavos;
+  /** appropriationRevised - forLaterRelease - allotmentReleased */
   availableAppropriation: Centavos;
 
   obligated: Centavos;

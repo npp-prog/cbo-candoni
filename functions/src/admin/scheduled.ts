@@ -2,6 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { db, COL, REGION } from '../lib/firebase';
 import { todayPh } from '../lib/period';
+import { budgetKeyId } from '../lib/budget';
 
 /**
  * Scheduled integrity and monitoring jobs.
@@ -34,35 +35,76 @@ export const verifyBudgetBalances = onSchedule(
       db.collection(COL.obligations).where('fiscalYear', '==', year).where('status', 'in', ['OBLIGATED', 'PAID', 'CLOSED']).get(),
     ]);
 
-    const rebuilt = new Map<string, { appropriation: number; allotment: number; obligated: number; disbursed: number }>();
-    const bump = (key: string, field: 'appropriation' | 'allotment' | 'obligated' | 'disbursed', amount: number) => {
-      const cur = rebuilt.get(key) ?? { appropriation: 0, allotment: 0, obligated: 0, disbursed: 0 };
+    type Rebuilt = {
+      appropriation: number;
+      allotment: number;
+      forLaterRelease: number;
+      obligated: number;
+      disbursed: number;
+    };
+    const rebuilt = new Map<string, Rebuilt>();
+    const bump = (key: string, field: keyof Rebuilt, amount: number) => {
+      const cur = rebuilt.get(key) ?? {
+        appropriation: 0,
+        allotment: 0,
+        forLaterRelease: 0,
+        obligated: 0,
+        disbursed: 0,
+      };
       cur[field] += amount;
       rebuilt.set(key, cur);
     };
 
+    /*
+     * The document id of a budget balance, derived by the SAME function the
+     * transactional writers use.
+     *
+     * This used to be a hand-written join of the key fields, and it fell one
+     * segment behind when the budget key gained the FPP code. Nothing failed
+     * and nothing was logged: the rebuilt ids simply stopped matching any
+     * stored id, `rebuilt.get(doc.id)` returned nothing, every balance was
+     * skipped by the `if (!r) continue` below, and the job reported a clean
+     * night every night while verifying not one figure.
+     *
+     * A second copy of a key derivation is the whole hazard here, so there is
+     * no second copy any more. If the key changes again, this follows it.
+     */
     const keyOf = (d: Record<string, unknown>) =>
-      [
-        d.fiscalYear,
-        d.fundCode,
-        d.officeId,
-        d.responsibilityCenterId ?? '-',
-        d.programId ?? '-',
-        d.projectId ?? '-',
-        d.activityId ?? '-',
-        d.accountCode,
-      ].join('__');
+      budgetKeyId({
+        fiscalYear: d.fiscalYear as number,
+        fundCode: d.fundCode as string,
+        officeId: d.officeId as string,
+        responsibilityCenterId: (d.responsibilityCenterId as string | null) ?? null,
+        programId: (d.programId as string | null) ?? null,
+        projectId: (d.projectId as string | null) ?? null,
+        activityId: (d.activityId as string | null) ?? null,
+        fppCode: (d.fppCode as string) ?? '',
+        accountCode: (d.accountCode as string) ?? '',
+      });
 
     for (const doc of appropriations.docs) bump(keyOf(doc.data()), 'appropriation', doc.data().amount ?? 0);
-    for (const doc of allotments.docs) bump(keyOf(doc.data()), 'allotment', doc.data().amount ?? 0);
+    for (const doc of allotments.docs) {
+      const a = doc.data();
+      bump(keyOf(a), 'allotment', (a.amount as number) ?? 0);
+      // The hold the Allotment Release Order placed on the line. It is carried
+      // on the allotment document precisely so that it can be rebuilt here;
+      // a figure that moves the balance and has no source document is a figure
+      // this job cannot check.
+      bump(keyOf(a), 'forLaterRelease', (a.forLaterRelease as number) ?? 0);
+    }
     for (const doc of obligations.docs) {
       const o = doc.data();
       const total = (o.totalAmount as number) ?? 0;
       const disbursed = (o.disbursedAmount as number) ?? 0;
       for (const line of (o.lines as Array<Record<string, unknown>>) ?? []) {
         const share = total > 0 ? Math.round(((line.amount as number) / total) * disbursed) : 0;
-        bump(keyOf(line), 'obligated', (line.amount as number) ?? 0);
-        bump(keyOf(line), 'disbursed', share);
+        // An obligation line is keyed on the object code the APPROPRIATION
+        // carried, not on the object being bought - they differ on every
+        // project line, where the appropriation named no object at all.
+        // `certifyObligation` keys it this way; so must the rebuild.
+        const key = keyOf({ ...line, accountCode: line.appropriatedAccountCode ?? '' });
+        bump(key, 'obligated', (line.amount as number) ?? 0);
+        bump(key, 'disbursed', share);
       }
     }
 
@@ -77,6 +119,7 @@ export const verifyBudgetBalances = onSchedule(
       const checks: Array<[string, number, number]> = [
         ['appropriationRevised', (s.appropriationRevised as number) ?? 0, r.appropriation],
         ['allotmentReleased', (s.allotmentReleased as number) ?? 0, r.allotment],
+        ['forLaterRelease', (s.forLaterRelease as number) ?? 0, r.forLaterRelease],
         ['obligated', (s.obligated as number) ?? 0, r.obligated],
       ];
 

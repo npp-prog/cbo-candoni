@@ -155,6 +155,41 @@ if (!clientKey || !serverKey) {
   console.log('budgetKeyId: client and server agree');
 }
 
+// --- 6. Nobody else builds a budget key by hand ------------------------------
+//
+// Two copies are already one more than anybody wants. A THIRD copy is what the
+// nightly integrity check had: a hand-written `[...].join('__')` that fell a
+// segment behind when the key gained the FPP code. Nothing failed. The rebuilt
+// ids simply stopped matching any stored id, every balance was skipped, and
+// the job reported a clean night every night while verifying nothing at all.
+//
+// A control that cannot fail out loud is worse than no control, because it is
+// believed. So any file that derives a balance document id derives it with
+// `budgetKeyId`, and this refuses the pattern that went wrong.
+
+const HAND_ROLLED = /\.join\(\s*['"`]__['"`]\s*\)/;
+const KEY_CONSUMERS = [
+  'functions/src/admin/scheduled.ts',
+  'functions/src/budget/aro.ts',
+  'functions/src/budget/obligations.ts',
+  'functions/src/budget/import.ts',
+];
+
+for (const file of KEY_CONSUMERS) {
+  const source = readFileSync(resolve(root, file), 'utf8');
+  if (HAND_ROLLED.test(source)) {
+    failures.push(
+      `${file} builds a budget key by joining fields with '__' instead of calling budgetKeyId. ` +
+        'A hand-written key drifts silently: it will keep producing ids, they will simply stop ' +
+        'matching the stored balances, and whatever reads them will report nothing wrong.',
+    );
+  }
+}
+
+if (!failures.some((f) => f.includes("joining fields with '__'"))) {
+  console.log(`budget keys: ${KEY_CONSUMERS.length} consumers all use budgetKeyId`);
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

@@ -115,9 +115,22 @@ export default function Allotments() {
       kind: 'amount',
       value: (a) => a.amount,
       cell: (a) => (
-        <span className={a.amount < 0 ? 'text-rose-700' : undefined}>
-          {formatPeso(a.amount, { symbol: false, parens: true })}
-        </span>
+        <div>
+          <span className={a.amount < 0 ? 'text-rose-700' : undefined}>
+            {formatPeso(a.amount, { symbol: false, parens: true })}
+          </span>
+          {/*
+            A line of an Allotment Release Order that released nothing and only
+            held an amount back is stored here as a zero release, because the
+            hold needs a source document the nightly rebuild can sum. Say so,
+            rather than leaving a clerk staring at a 0.00 release.
+          */}
+          {(a.forLaterRelease ?? 0) > 0 && (
+            <span className="block text-2xs font-normal text-amber-700">
+              {formatPeso(a.forLaterRelease ?? 0, { symbol: false })} for later release
+            </span>
+          )}
+        </div>
       ),
     },
     {

@@ -73,6 +73,15 @@ export interface BudgetBalanceData {
   appropriationAdjustments: number;
   appropriationRevised: number;
   allotmentReleased: number;
+  /**
+   * The part of the appropriation the Budget Officer has held back, in the
+   * Budget Operations Manual's words "For Later Release".
+   *
+   * Not a reduction of the appropriation - the authority still exists and can
+   * be released later - so it never touches appropriationRevised. It only
+   * makes the held amount unavailable.
+   */
+  forLaterRelease: number;
   availableAppropriation: number;
   obligated: number;
   availableAllotment: number;
@@ -87,6 +96,7 @@ export const EMPTY_BALANCE: BudgetBalanceData = {
   appropriationAdjustments: 0,
   appropriationRevised: 0,
   allotmentReleased: 0,
+  forLaterRelease: 0,
   availableAppropriation: 0,
   obligated: 0,
   availableAllotment: 0,
@@ -102,13 +112,22 @@ export const EMPTY_BALANCE: BudgetBalanceData = {
  * inside the transaction that will commit the obligation - is what the decision
  * is made on.
  */
+/**
+ * The stored balance, with whatever labels the line carries.
+ *
+ * The labels come back as well as the figures because a caller that needs to
+ * NAME a budget line - in a refusal message, or on an Allotment Release Order
+ * - would otherwise have to read the same document twice, once here for the
+ * figures and once outside the transaction for the office name. Reading it
+ * twice is how the two come to disagree.
+ */
 export async function readBudgetBalance(
   tx: Transaction,
   key: BudgetKey,
-): Promise<BudgetBalanceData> {
+): Promise<BudgetBalanceData & Partial<BudgetLabels>> {
   const snap = await tx.get(budgetBalanceRef(key));
   if (!snap.exists) return { ...EMPTY_BALANCE };
-  const d = snap.data() as Partial<BudgetBalanceData>;
+  const d = snap.data() as Partial<BudgetBalanceData & BudgetLabels>;
   return { ...EMPTY_BALANCE, ...d };
 }
 
@@ -123,7 +142,11 @@ export function deriveBalance(b: BudgetBalanceData): BudgetBalanceData {
   return {
     ...b,
     appropriationRevised,
-    availableAppropriation: appropriationRevised - b.allotmentReleased,
+    // What the office may still be given, which is the appropriation less
+    // what is held back and less what has already gone out. A department
+    // reading this has to see what it can actually be allotted.
+    availableAppropriation:
+      appropriationRevised - (b.forLaterRelease ?? 0) - b.allotmentReleased,
     availableAllotment: b.allotmentReleased - b.obligated,
     unpaidObligations: b.obligated - b.disbursed,
   };
@@ -162,6 +185,7 @@ export function applyBudgetDelta(
       current.appropriationAdjustments + (delta.appropriationAdjustments ?? 0),
     appropriationRevised: 0,
     allotmentReleased: current.allotmentReleased + (delta.allotmentReleased ?? 0),
+    forLaterRelease: (current.forLaterRelease ?? 0) + (delta.forLaterRelease ?? 0),
     availableAppropriation: 0,
     obligated: current.obligated + (delta.obligated ?? 0),
     availableAllotment: 0,

@@ -45,6 +45,12 @@ const DEFAULTS: Record<string, NumberingConfig> = {
   // booklet of receipts collects into whichever fund the payor is paying.
   RAAF: { docType: 'RAAF', pattern: 'RAAF-{YY}-{MM}-{SEQ}', sequenceLength: 4, resetOn: 'MONTH', perFund: false },
   ALLOT: { docType: 'ALLOT', pattern: '{BOOK}-{YYYY}-{SEQ}', sequenceLength: 4, resetOn: 'YEAR', perFund: true },
+  // The Allotment Release Order. One series per fund, running through the year
+  // so a gap in it is a question rather than a month boundary - the manual
+  // prints "ARO No." on the face of every one of the four forms, and a series
+  // that restarted each month would put four documents a year under each
+  // number.
+  ARO: { docType: 'ARO', pattern: 'ARO-{BOOK}-{YYYY}-{SEQ}', sequenceLength: 4, resetOn: 'YEAR', perFund: true },
   APPROP: { docType: 'APPROP', pattern: '{BOOK}-{YYYY}-{SEQ}', sequenceLength: 4, resetOn: 'YEAR', perFund: true },
 };
 

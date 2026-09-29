@@ -116,6 +116,26 @@ export const engine = {
       }
     >('importBudgetLines', p),
 
+  /** Issues an Allotment Release Order: one expense class, many budget lines. */
+  issueAro: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    expenseClass: string;
+    purpose: string;
+    date: IsoDate;
+    lines: Array<{
+      officeId: Id;
+      fppCode: string;
+      accountCode: string;
+      amount: Centavos;
+      forLaterRelease: Centavos;
+    }>;
+  }) =>
+    call<
+      typeof p,
+      { aroNo: string; form: string; lineCount: number; totalReleased: Centavos; totalHeld: Centavos }
+    >('issueAro', p),
+
   cancelObligation: (p: { obligationId: Id; reason: string }) =>
     call<typeof p, { obligationId: Id }>('cancelObligation', p),
 

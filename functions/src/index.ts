@@ -46,6 +46,7 @@ setGlobalOptions({
 export { approveAppropriation, releaseAllotment } from './budget/appropriations';
 export { certifyObligation, cancelObligation } from './budget/obligations';
 export { importBudgetLines } from './budget/import';
+export { issueAro } from './budget/aro';
 
 // --- Accounting --------------------------------------------------------------
 export { submitDv, reviewDv, approveDv, cancelDv } from './accounting/dv';
