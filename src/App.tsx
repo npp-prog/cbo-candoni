@@ -74,6 +74,7 @@ const SubsidiaryLedger = lazy(() => import('./pages/reports/SubsidiaryLedger'));
 const Journals = lazy(() => import('./pages/reports/Journals'));
 const Registers = lazy(() => import('./pages/reports/Registers'));
 const Aging = lazy(() => import('./pages/reports/Aging'));
+const BudgetVsActual = lazy(() => import('./pages/reports/BudgetVsActual'));
 const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
@@ -260,6 +261,10 @@ export default function App() {
           <Route path="/reports/journals" element={<Guard module="reports"><Journals /></Guard>} />
           <Route path="/reports/registers" element={<Guard module="reports"><Registers /></Guard>} />
           <Route path="/reports/aging" element={<Guard module="reports"><Aging /></Guard>} />
+          <Route
+            path="/reports/budget-vs-actual"
+            element={<Guard module="reports"><BudgetVsActual /></Guard>}
+          />
           <Route
             path="/accounting/opening-balances"
             element={<Guard module="accounting"><OpeningBalances /></Guard>}

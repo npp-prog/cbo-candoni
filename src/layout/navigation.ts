@@ -226,6 +226,10 @@ export const NAVIGATION: NavItem[] = [
      */
     children: [
       { label: 'SAOB', to: '/reports/saob' },
+      // The SAOB is the budget module compared with itself. This one puts the
+      // budget beside the General Ledger, which is the only way a disagreement
+      // between the two can show at all.
+      { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
       { label: 'Trial Balance', to: '/reports/trial-balance' },
       { label: 'Financial Statements', to: '/reports/financial-statements' },
       { label: 'General Ledger', to: '/reports/general-ledger' },
