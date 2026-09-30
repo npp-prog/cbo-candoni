@@ -146,7 +146,7 @@ export function AttachmentsPanel({
   return (
     <div>
       {!readOnly && (
-        <div className="mb-4 flex flex-wrap items-end gap-2 no-print">
+        <div className="cbo-filter-row mb-4 no-print">
           <div className="min-w-[14rem] flex-1">
             <label className="cbo-label" htmlFor="attachment-type">
               Document type

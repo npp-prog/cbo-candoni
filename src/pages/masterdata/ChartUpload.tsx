@@ -282,8 +282,13 @@ export default function ChartUpload() {
             subtitle="Nothing has been written yet."
             className="mb-4"
             footer={
+              /*
+               * items-end, so the buttons sit level with the BOTTOM of the
+               * select beside them. Centred, they floated up beside the
+               * label instead, which reads as though they belonged to it.
+               */
               canLoad ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-end justify-between gap-3">
                   <Field label="Accounts already in the chart" className="w-80">
                     <Select
                       value={mode}

@@ -35,11 +35,26 @@ import type { Centavos, IsoDate } from '@/types/common';
 /** A quarter of the fiscal year, as the accountability forms report it. */
 export type Quarter = 1 | 2 | 3 | 4;
 
+/**
+ * The months are abbreviated deliberately.
+ *
+ * Both places these labels appear are dropdowns in a filter row, where every
+ * control is one fixed width so that changing the period does not slide the
+ * row sideways. Spelt out, "Fourth Quarter (October to December)" needs 271px
+ * of text; the box holds about 185px. The label was being cut off mid-word -
+ * "First Quarter (January to M..." - which is worse than an abbreviation,
+ * because a reader cannot tell a truncated label from a short one and has no
+ * way to see the rest.
+ *
+ * Widening the box instead would mean widening EVERY control in every filter
+ * row to match, to keep them uniform, for the sake of four words that abbreviate
+ * without losing anything. Jan-Mar is not ambiguous.
+ */
 export const QUARTER_LABELS: Record<Quarter, string> = {
-  1: 'First Quarter (January to March)',
-  2: 'Second Quarter (April to June)',
-  3: 'Third Quarter (July to September)',
-  4: 'Fourth Quarter (October to December)',
+  1: 'First Quarter (Jan-Mar)',
+  2: 'Second Quarter (Apr-Jun)',
+  3: 'Third Quarter (Jul-Sep)',
+  4: 'Fourth Quarter (Oct-Dec)',
 };
 
 /** The quarter a plain YYYY-MM-DD date falls in. */

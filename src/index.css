@@ -82,6 +82,29 @@
     @apply block text-xs font-medium text-slate-600 mb-1.5;
   }
 
+  /*
+   * A row of filters, and the one rule that keeps it straight.
+   *
+   * Every control in the row must begin at the same height. Two things used
+   * to stop that: a label that wrapped to two lines pushed its own control
+   * down, and a hint underneath one field pulled the row's alignment about.
+   * Aligning the tops fixes the second; clipping the label to one line fixes
+   * the first.
+   *
+   * The clipping is scoped HERE and not put on `.cbo-label` itself, because
+   * in a form a label is allowed to wrap - "Requires a subsidiary on every
+   * line" needs its two lines, and truncating it would hide the half that
+   * says what it does. In a filter row the labels are one or two words and
+   * the alignment matters more.
+   */
+  .cbo-filter-row {
+    @apply flex flex-wrap items-start gap-x-4 gap-y-3;
+  }
+
+  .cbo-filter-row .cbo-label {
+    @apply h-4 leading-4 truncate;
+  }
+
   .cbo-th {
     @apply px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wider
            text-slate-500 bg-slate-50 border-b border-slate-200 whitespace-nowrap;

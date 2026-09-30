@@ -82,8 +82,17 @@ export function ReportShell<T>({
 
       {tabs}
 
+      {/*
+        items-START, not items-end.
+
+        Aligning the bottoms meant a field carrying a hint pushed its own
+        control UP and left the field beside it sitting low - so the two
+        controls never lined up, and the row jumped every time a hint appeared
+        or went away. Aligning the tops puts every label on one line and every
+        control on the line below it, whatever is underneath them.
+      */}
       {filters && (
-        <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 no-print">
+        <div className="cbo-filter-row mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 no-print">
           {filters}
         </div>
       )}

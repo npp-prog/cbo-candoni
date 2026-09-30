@@ -26,7 +26,9 @@ export function Field({ label, hint, error, required, children, className, htmlF
   return (
     <div className={className}>
       {label && (
-        <label className="cbo-label" htmlFor={htmlFor}>
+        // `title` because the label is clipped to one line: the full wording
+        // stays available on hover and to a screen reader.
+        <label className="cbo-label" htmlFor={htmlFor} title={label}>
           {label}
           {required && <span className="text-rose-600 ml-0.5">*</span>}
         </label>
