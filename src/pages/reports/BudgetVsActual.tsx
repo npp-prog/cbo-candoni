@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { COMPARISON_TABS } from './comparisonTabs';
 import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { OfficePicker } from '@/components/pickers';
@@ -186,6 +188,7 @@ export default function BudgetVsActual() {
             : `For the period January to ${monthName(throughPeriod)} ${fiscalYear}`,
       }}
       breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Budget and Actual' }]}
+      tabs={<SectionTabs tabs={COMPARISON_TABS} />}
       rows={rows}
       exportColumns={exportColumns}
       filters={

@@ -94,6 +94,7 @@ const Rstf = lazy(() => import('./pages/accounting/Rstf'));
 const UnreleasedChecks = lazy(() => import('./pages/treasury/UnreleasedChecks'));
 const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
 const AugmentationFormPage = lazy(() => import('./pages/budget/AugmentationFormPage'));
+const Scbaa = lazy(() => import('./pages/reports/Scbaa'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
@@ -313,8 +314,14 @@ export default function App() {
           <Route path="/reports/journals" element={<Guard module="reports"><Journals /></Guard>} />
           <Route path="/reports/registers" element={<Guard module="reports"><Registers /></Guard>} />
           <Route path="/reports/aging" element={<Guard module="reports"><Aging /></Guard>} />
+          {/* GAM Annex 8, the statement that is submitted. */}
           <Route
             path="/reports/budget-vs-actual"
+            element={<Guard module="reports"><Scbaa /></Guard>}
+          />
+          {/* CBO's own control report: the budget module beside the ledger. */}
+          <Route
+            path="/reports/budget-vs-actual/lines"
             element={<Guard module="reports"><BudgetVsActual /></Guard>}
           />
           {/* The Local Budget Accountability reports. They live under Budget

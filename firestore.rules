@@ -910,6 +910,29 @@ service cloud.firestore {
         hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'MUNICIPAL_TREASURER']);
     }
 
+    /*
+     * The Statement of Comparison of Budget and Actual Amounts carries two
+     * decisions of the same kind, and they belong to the same offices.
+     *
+     * Which annex line a sector of the appropriation ordinance sits on: Annex 8
+     * prints the national list and Candoni's ordinance does not use it, so
+     * "Allocation for Senior Citizens and PWD" has to be placed by somebody who
+     * knows what it funds.
+     *
+     * And what the Actual column counts - obligations incurred or
+     * disbursements paid. Section 373 says only "the amounts that result from
+     * execution of the budget", and the municipality answers to COA for which
+     * reading it submits.
+     *
+     * The Budget Officer is included here and not on the SRE mapping above:
+     * the sectors are the ordinance's, which is the Budget Office's document.
+     */
+    match /settings/scbaa {
+      allow read: if canRead();
+      allow write: if signedIn() &&
+        hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'MUNICIPAL_TREASURER', 'BUDGET_OFFICER']);
+    }
+
     // =========================================================================
     // DEFAULT DENY
     // Any collection not named above is inaccessible. New collections must be
