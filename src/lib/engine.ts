@@ -186,6 +186,8 @@ export const engine = {
     programName: string;
     sourceAgency: string;
     reference: string;
+    /** The RCA code of the trust liability. Validated server-side if given. */
+    accountCode?: string;
     startYear?: number;
     programmed: Centavos;
     received: Centavos;

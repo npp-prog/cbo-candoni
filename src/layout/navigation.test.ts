@@ -304,12 +304,43 @@ describe('the menu itself', () => {
    * and the words that tell these four apart are at the END of the title,
    * where a narrow sidebar truncates them.
    */
-  it('gives the registry exactly one menu item, whatever the GAM prescribes', () => {
+  it('gives the expenditure registry exactly one menu item, whatever the GAM prescribes', () => {
     const budget = NAVIGATION.find((i) => i.to === '/budget');
-    const registry = (budget?.children ?? []).filter((c) =>
-      c.label.toLowerCase().includes('registr'),
-    );
-    expect(registry.map((c) => c.to)).toEqual(['/budget/registry']);
+    const perClass = (budget?.children ?? []).filter((c) => c.to.startsWith('/budget/registry/'));
+    expect(perClass).toEqual([]);
+
+    const registry = (budget?.children ?? []).filter((c) => c.to === '/budget/registry');
+    expect(registry).toHaveLength(1);
+  });
+
+  /**
+   * The income registry is NOT one of those tabs.
+   *
+   * The four RAAO tabs are four cuts of one subject, expenditure. Appendix 23
+   * is the other subject, and putting it behind an expenditure register's tab
+   * strip is how a register nobody opens comes about.
+   */
+  it('lists the income registry beside the expenditure one, not inside it', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const income = (budget?.children ?? []).find((c) => c.to === '/budget/registry-income');
+    expect(income).toBeDefined();
+    expect(income!.group).toBe('Monitoring');
+  });
+
+  /**
+   * The Registry of Special Trust Fund sits under Accounting.
+   *
+   * GAM Appendix 18 is the Accounting Unit's book and trust money was never
+   * appropriated, which is the same reason the trust programmes themselves are
+   * not in the Budget menu.
+   */
+  it('keeps the trust registry with the accounting office that maintains it', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    expect((budget?.children ?? []).some((c) => c.to === '/accounting/trust-registry')).toBe(false);
+
+    const accounting = NAVIGATION.find((i) => i.to === '/accounting');
+    const entry = (accounting?.children ?? []).find((c) => c.to === '/accounting/trust-registry');
+    expect(entry).toBeDefined();
   });
 
   it('every heading holds at least one item', () => {

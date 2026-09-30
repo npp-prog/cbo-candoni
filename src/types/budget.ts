@@ -413,6 +413,15 @@ export interface TrustProgram {
   sourceAgency: string;
   /** The MOA, deed or advice it arrived under. */
   reference: string;
+  /**
+   * The Revised Chart of Accounts code the trust liability sits in.
+   *
+   * GAM Appendix 18 heads the Registry of Special Trust Fund with "Account -
+   * Code assigned in the RCA". Optional, and stated by the Accountant: a
+   * programme's liability account is a classification decision, and nothing in
+   * CBO can derive it from the source agency or the purpose.
+   */
+  accountCode?: string;
   /** When the programme started, for sorting and reporting. Not a control. */
   startYear?: FiscalYear;
 

@@ -89,6 +89,8 @@ const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
 const ChartUpload = lazy(() => import('./pages/masterdata/ChartUpload'));
 const Raao = lazy(() => import('./pages/budget/Raao'));
+const Reairr = lazy(() => import('./pages/budget/Reairr'));
+const Rstf = lazy(() => import('./pages/accounting/Rstf'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
@@ -156,6 +158,10 @@ export default function App() {
             from the allotment class, so the class is the route segment.
           */}
           <Route path="/budget/registry/:slug" element={<Guard module="budget"><Raao /></Guard>} />
+          {/* Appendix 23: the income side of the same pair of books. */}
+          <Route path="/budget/registry-income" element={<Guard module="budget"><Reairr /></Guard>} />
+          {/* Appendix 18. Accounting's book, not the Budget Office's. */}
+          <Route path="/accounting/trust-registry" element={<Guard module="accounting"><Rstf /></Guard>} />
           <Route
             path="/budget/statutory-limits"
             element={<Guard module="budget"><StatutoryLimits /></Guard>}

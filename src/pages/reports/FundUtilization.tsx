@@ -4,6 +4,7 @@ import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useObligations, useTrustPrograms } from '@/data/queries';
+import { UTILISED } from '@/pages/budget/rstf';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
@@ -53,7 +54,22 @@ export default function FundUtilization() {
   const utilisedThisYear = useMemo(() => {
     const out = new Map<string, Centavos>();
     for (const o of obligations.data) {
-      if (o.status === 'CANCELLED' || o.status === 'DRAFT') continue;
+      /*
+       * The server's rule, not a looser one.
+       *
+       * This used to skip only CANCELLED and DRAFT, which let a SUBMITTED, a
+       * BUDGET_REVIEWED and even a RETURNED request count as utilised. None of
+       * those has committed anything: `applyTrustDelta` adds to the
+       * programme's `utilised` when a request is CERTIFIED and takes it back
+       * when one is cancelled, and nowhere else.
+       *
+       * The consequence was visible on this very screen - "utilised this year"
+       * could come out larger than the life-to-date "utilised" beside it,
+       * which cannot be true - and a returned request, one the budget office
+       * had sent back, was being reported to the source agency as money
+       * committed to its programme.
+       */
+      if (!UTILISED.has(o.status)) continue;
       for (const line of o.lines ?? []) {
         if (!line.trustProgramId) continue;
         out.set(line.trustProgramId, (out.get(line.trustProgramId) ?? 0) + line.amount);

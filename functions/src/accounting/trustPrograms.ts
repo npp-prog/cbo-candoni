@@ -59,11 +59,30 @@ export const recordTrustProgram = onCall(
       sourceAgency?: string;
       reference?: string;
       startYear?: number;
+      accountCode?: string;
       programmed?: number;
       received?: number;
       status?: string;
       notes?: string;
     };
+
+    /*
+     * The Revised Chart of Accounts code the trust liability sits in, which
+     * GAM Appendix 18 heads the Registry of Special Trust Fund with.
+     *
+     * Optional - the Accountant classifies a programme, and nothing here can
+     * derive the account from a source agency and a purpose. But a value that
+     * IS given is checked, because a mistyped code prints on a statutory form
+     * as though it were the account, and nothing downstream would query it.
+     */
+    const accountCode = String(data.accountCode ?? '').trim();
+    if (accountCode && !/^\d{8}$/.test(accountCode)) {
+      throw new HttpsError(
+        'invalid-argument',
+        `"${accountCode}" is not an eight-digit account code. Leave it empty if the programme's ` +
+          'trust liability account has not been decided yet.',
+      );
+    }
 
     const input = {
       programCode: String(data.programCode ?? '').trim().toUpperCase(),
@@ -170,6 +189,7 @@ export const recordTrustProgram = onCall(
           sourceAgency: input.sourceAgency,
           reference: input.reference,
           startYear: Number.isInteger(Number(data.startYear)) ? Number(data.startYear) : null,
+          accountCode: accountCode || null,
           status: input.status as TrustProgramStatus,
           notes: String(data.notes ?? '').trim() || null,
           ...figures,

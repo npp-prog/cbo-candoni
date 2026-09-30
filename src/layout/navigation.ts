@@ -95,6 +95,14 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Budget transactions', label: 'Obligations', to: '/budget/obligations' },
 
       { group: 'Monitoring', label: 'Registry (RAAO)', to: '/budget/registry' },
+      /*
+       * The income side of the same pair of books, GAM Appendix 23.
+       *
+       * Beside the RAAO and not inside it: the RAAO tabs are four cuts of one
+       * subject, expenditure. This is the other subject, and burying it in an
+       * expenditure register is how it would never be opened.
+       */
+      { group: 'Monitoring', label: 'Registry of Income (REAIRR)', to: '/budget/registry-income' },
       // The tests the reviewing authority applies after enactment, run while
       // the budget is still being drafted.
       { group: 'Monitoring', label: 'Statutory Limits', to: '/budget/statutory-limits' },
@@ -170,6 +178,7 @@ export const NAVIGATION: NavItem[] = [
        * Budget Office owns it, which it does not.
        */
       { group: 'Monitoring and Setup', label: 'Trust Fund Programmes', to: '/accounting/trust-programs' },
+      { group: 'Monitoring and Setup', label: 'Registry of Special Trust Fund', to: '/accounting/trust-registry' },
       { group: 'Monitoring and Setup', label: 'Fund Utilization Report', to: '/accounting/fund-utilization' },
       { group: 'Monitoring and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
       { group: 'Monitoring and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },

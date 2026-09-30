@@ -47,6 +47,7 @@ interface FormState {
   programName: string;
   sourceAgency: string;
   reference: string;
+  accountCode: string;
   startYear: number | null;
   programmed: Centavos | null;
   received: Centavos | null;
@@ -59,6 +60,7 @@ const empty = (startYear: number): FormState => ({
   programName: '',
   sourceAgency: '',
   reference: '',
+  accountCode: '',
   startYear,
   programmed: null,
   received: null,
@@ -72,6 +74,7 @@ const fromProgram = (p: TrustProgram): FormState => ({
   programName: p.programName,
   sourceAgency: p.sourceAgency,
   reference: p.reference,
+  accountCode: p.accountCode ?? '',
   startYear: p.startYear ?? null,
   programmed: p.programmed,
   received: p.received,
@@ -133,6 +136,7 @@ export default function TrustPrograms() {
         programName: form.programName.trim(),
         sourceAgency: form.sourceAgency.trim(),
         reference: form.reference.trim(),
+        accountCode: form.accountCode.trim() || undefined,
         startYear: form.startYear ?? undefined,
         programmed: form.programmed ?? 0,
         received: form.received ?? 0,
@@ -331,6 +335,18 @@ export default function TrustPrograms() {
               <TextInput
                 value={form.programCode}
                 onChange={(e) => set({ programCode: e.target.value.toUpperCase() })}
+              />
+            </Field>
+
+            <Field
+              label="Trust liability account"
+              hint="The RCA code GAM Appendix 18 heads the registry with. Leave it empty until the account is decided."
+            >
+              <TextInput
+                inputMode="numeric"
+                placeholder="e.g. 20401040"
+                value={form.accountCode}
+                onChange={(e) => set({ accountCode: e.target.value })}
               />
             </Field>
 
