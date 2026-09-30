@@ -177,9 +177,9 @@ describe('the Statement of Financial Performance', () => {
   });
 
   /**
-   * Unlike the position statement, a nil line here carries information. "Share
-   * from Internal Revenue Collections" at nil says the chart has no such
-   * account, and leaving the line out would hide that.
+   * Unlike the position statement, a nil line here is still printed: the annex
+   * prints it, and a reader comparing two years needs the line to exist in
+   * both.
    */
   it('prints every revenue caption of the annex, including the empty ones', () => {
     const p = condensePerformance([rev()], []);
@@ -193,6 +193,36 @@ describe('the Statement of Financial Performance', () => {
       'Other Income',
     ]);
     expect(p.revenue.find((l) => l.caption === 'Other Share from National Taxes')!.current).toBe(0);
+  });
+
+  /**
+   * The correction from patch 49. These accounts sit in sub-major group
+   * 4-01-06, INSIDE major group 4-01 Tax Revenue, and the annex prints them on
+   * two lines of their own. Patch 48 left both lines empty on a false finding
+   * that the chart had no such accounts.
+   */
+  it('reports the IRA on its own line and keeps it out of Tax Revenue', () => {
+    const p = condensePerformance(
+      [
+        rev({ accountCode: '40102040', accountName: 'RPT Basic', amount: 5_000_000_00 }),
+        rev({
+          accountCode: '40106010',
+          accountName: 'Share from Internal Revenue Collections (IRA)',
+          amount: 80_000_000_00,
+        }),
+        rev({
+          accountCode: '40106030',
+          accountName: 'Share from National Wealth',
+          amount: 2_000_000_00,
+        }),
+      ],
+      [],
+    );
+    const by = (c: string) => p.revenue.find((l) => l.caption === c)!;
+    expect(by('Tax Revenue').current).toBe(5_000_000_00);
+    expect(by('Share from Internal Revenue Collections').current).toBe(80_000_000_00);
+    expect(by('Other Share from National Taxes').current).toBe(2_000_000_00);
+    expect(p.totalRevenue.current).toBe(87_000_000_00);
   });
 
   it('prints the expense captions in the annex order', () => {

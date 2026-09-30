@@ -424,16 +424,22 @@ export default function StatutoryLimits() {
                   ))}
                 </div>
                 {/*
-                  The finding that made this a nomination rather than a lookup.
-                  It is stated on the screen because the person reading it is
-                  the one who can have the account added.
+                  Corrected in patch 49. This card used to say the chart had no
+                  NTA account and point at the subsidy account, which would
+                  have put a wrong denominator under a statutory test.
                 */}
                 <p className="mt-3 text-xs text-slate-500">
-                  Candoni&rsquo;s chart of accounts carries no National Tax Allotment account — not
-                  under that name, nor as an Internal Revenue Allotment. The nearest is 40301010
-                  Subsidy from National Government, which is not the same account and may hold
-                  several things. CBO will not guess at it, so the office says which codes are the
-                  NTA and CBO adds up what it was told.
+                  The national shares are sub-major group 4-01-06 of the chart:{' '}
+                  <span className="font-mono">40106010</span> Share from Internal Revenue
+                  Collections (IRA), and then Expanded VAT, National Wealth, Tobacco Excise and
+                  Economic Zones. The IRA account is the one the 20% Development Fund is normally
+                  measured against.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  It is still nominated rather than assumed, because which of those five belongs in
+                  the base is a reading of Section 287 of the Local Government Code and not
+                  something CBO can settle — whether a share of national wealth or tobacco excise
+                  counts is the Budget Officer&rsquo;s call.
                 </p>
               </>
             )}

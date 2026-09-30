@@ -7,6 +7,7 @@ import {
   PERFORMANCE_REVENUE,
   POSITION_SECTIONS,
   captionFor,
+  lineForCode,
   majorGroupOf,
 } from './fsGroups';
 import { accountClassFor, fsClassificationFor } from './chartOfAccounts';
@@ -149,41 +150,62 @@ describe('the Statement of Financial Performance', () => {
   });
 
   /**
-   * The finding from patch 46, showing up again on a different form: the
-   * municipality's chart has no National Tax Allotment account, so the two
-   * national-share lines of Annex 6 have nothing behind them. They are printed
-   * because the form prints them, and they stay at nil until the account
-   * exists.
+   * The correction. Patch 48 left both national share lines empty and said the
+   * chart had no such account. It has: 4-01-06, five accounts of it, and the
+   * largest single income of the municipality is the first.
    */
-  it('leaves the national share lines empty, which is the honest figure', () => {
-    const shares = PERFORMANCE_REVENUE.filter((l) => l.caption.includes('Share'));
-    const national = shares.filter((l) => !l.caption.startsWith('Shares,'));
-    expect(national).toHaveLength(2);
-    for (const l of national) expect(l.groups).toEqual([]);
+  it('puts the IRA account on its own line, not in Tax Revenue', () => {
+    const line = lineForCode(PERFORMANCE_REVENUE, '40106010');
+    expect(line?.caption).toBe('Share from Internal Revenue Collections');
   });
 
-  it('draws every other revenue line from exactly one group', () => {
-    const backed = PERFORMANCE_REVENUE.filter((l) => l.groups.length > 0);
-    expect(backed).toHaveLength(5);
-    for (const l of backed) expect(l.groups).toHaveLength(1);
+  it.each([
+    ['40106020', 'Share from Expanded Value Added Tax'],
+    ['40106030', 'Share from National Wealth'],
+    ['40106040', 'Share from Tobacco Excise Tax'],
+    ['40106050', 'Share from Economic Zones'],
+  ])('puts %s (%s) under Other Share from National Taxes', (code) => {
+    expect(lineForCode(PERFORMANCE_REVENUE, code)?.caption).toBe(
+      'Other Share from National Taxes',
+    );
   });
 
-  it('does not use one group on two lines', () => {
+  /**
+   * The longest prefix wins, and it has to: 4010601 is inside 40106 is inside
+   * 401. Matched the other way round, the municipality's largest income would
+   * print on the wrong line of a submitted statement.
+   */
+  it('matches the longest prefix, so the shares do not fall back into Tax Revenue', () => {
+    expect(lineForCode(PERFORMANCE_REVENUE, '40102040')?.caption).toBe('Tax Revenue');
+    expect(lineForCode(PERFORMANCE_REVENUE, '40105020')?.caption).toBe('Tax Revenue');
+    expect(lineForCode(PERFORMANCE_REVENUE, '40106010')?.caption).not.toBe('Tax Revenue');
+  });
+
+  it('gives back nothing for a code no line claims', () => {
+    expect(lineForCode(PERFORMANCE_REVENUE, '10101010')).toBeUndefined();
+  });
+
+  it('claims no prefix twice', () => {
     const all = [...PERFORMANCE_REVENUE, ...PERFORMANCE_EXPENSES].flatMap((l) => l.groups);
     expect(new Set(all).size).toBe(all.length);
   });
 
-  it('covers every revenue and expense group the chart has, except transfers', () => {
-    const used = new Set([...PERFORMANCE_REVENUE, ...PERFORMANCE_EXPENSES].flatMap((l) => l.groups));
-    const inChart = new Set(
-      chart()
-        .map((a) => majorGroupOf(a.code))
-        .filter((g) => g.startsWith('4') || g.startsWith('5')),
-    );
-    // 403 is the transfers block, reported beneath the surplus rather than in
-    // either list, so it is expected to be missing from `used`.
-    const missed = [...inChart].filter((g) => !used.has(g) && g !== '403');
-    expect(missed).toEqual([]);
+  /**
+   * Every revenue and expense account in the municipality's chart reaches a
+   * line. Checked per ACCOUNT rather than per group, because the lines are no
+   * longer whole groups.
+   */
+  it('reaches every revenue and expense account the chart has, except transfers', () => {
+    const missed = chart()
+      .filter((a) => a.code.startsWith('4') || a.code.startsWith('5'))
+      // 4-03 is the transfers block, reported beneath the surplus rather than
+      // on either list.
+      .filter((a) => majorGroupOf(a.code) !== '403')
+      .filter(
+        (a) =>
+          !lineForCode(PERFORMANCE_REVENUE, a.code) && !lineForCode(PERFORMANCE_EXPENSES, a.code),
+      );
+    expect(missed.map((a) => `${a.code} ${a.name}`)).toEqual([]);
   });
 });
 

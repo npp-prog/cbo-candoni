@@ -230,29 +230,86 @@ export const POSITION_SECTIONS: StatementSectionDef[] = [
 
 export interface PerformanceLineDef {
   caption: string;
-  /** Groups feeding the line. Empty means the chart has nothing for it. */
-  groups: MajorGroupKey[];
+  /**
+   * Account code PREFIXES feeding the line, longest match winning.
+   *
+   * Prefixes and not major groups, because Annex 6 splits one major group in
+   * two. See the note on the national shares below.
+   */
+  groups: string[];
 }
 
 /**
  * Annex 6's revenue captions, in its order.
  *
- * Two of them have no group behind them, and that is a finding rather than an
- * oversight: Candoni's chart of accounts carries NO National Tax Allotment
- * account - not under that name, nor as an Internal Revenue Allotment. The
- * same absence turned up when the 20% Development Fund denominator was built
- * in patch 46. The lines are printed because the form prints them, and they
- * stay at nil until the account exists.
+ * ---------------------------------------------------------------------------
+ * WHY THE NATIONAL SHARES NEED A FINER PREFIX THAN THE REST
+ * ---------------------------------------------------------------------------
+ * Every other line here is a whole major group. These two are not: the
+ * municipality's shares of national taxes sit in SUB-MAJOR group 4-01-06,
+ * inside major group 4-01 Tax Revenue -
+ *
+ *   40106010 Share from Internal Revenue Collections (IRA)
+ *   40106020 Share from Expanded Value Added Tax
+ *   40106030 Share from National Wealth
+ *   40106040 Share from Tobacco Excise Tax (RA 7171 and 8240)
+ *   40106050 Share from Economic Zones
+ *
+ * - and Annex 6 prints them on two lines of their own, apart from Tax Revenue.
+ * So "Tax Revenue" takes 40101 to 40105 and the two share lines take 40106,
+ * with the IRA account alone on the first.
+ *
+ * ---------------------------------------------------------------------------
+ * A CORRECTION, RECORDED BECAUSE IT WAS SHIPPED WRONG
+ * ---------------------------------------------------------------------------
+ * Patch 48 left both share lines empty and said in terms that Candoni's chart
+ * carries no National Tax Allotment account. It does - 40106010, above. The
+ * claim came from a search of the chart whose output was cut off at ten lines
+ * by unrelated matches on the word "Allotment" in the equity accounts, and the
+ * conclusion was drawn from the truncated result without checking.
+ *
+ * The same false finding was written into the statutory limits screen in patch
+ * 46, where it pointed at 40301010 Subsidy from National Government as "the
+ * nearest thing" - which would have put the wrong denominator under the 20%
+ * Development Fund test.
  */
 export const PERFORMANCE_REVENUE: PerformanceLineDef[] = [
-  { caption: 'Tax Revenue', groups: ['401'] },
-  { caption: 'Share from Internal Revenue Collections', groups: [] },
-  { caption: 'Other Share from National Taxes', groups: [] },
+  // 40106 is carved out below, so Tax Revenue is named group by group rather
+  // than as the whole of 401.
+  { caption: 'Tax Revenue', groups: ['40101', '40102', '40103', '40104', '40105'] },
+  { caption: 'Share from Internal Revenue Collections', groups: ['4010601'] },
+  { caption: 'Other Share from National Taxes', groups: ['40106'] },
   { caption: 'Service and Business Income', groups: ['402'] },
   { caption: 'Shares, Grants and Donations', groups: ['404'] },
   { caption: 'Gains', groups: ['405'] },
   { caption: 'Other Income', groups: ['406'] },
 ];
+
+/**
+ * The line an account falls on, by longest matching prefix.
+ *
+ * Longest wins so that 4010601 (the IRA account) beats 40106 (the other
+ * national shares) which beats nothing. A plain lookup by major group cannot
+ * express that, and getting it wrong would report the municipality's largest
+ * single income on the wrong line of a submitted statement.
+ */
+export function lineForCode(
+  defs: PerformanceLineDef[],
+  code: string,
+): PerformanceLineDef | undefined {
+  const c = String(code ?? '').trim();
+  let best: PerformanceLineDef | undefined;
+  let bestLength = -1;
+  for (const def of defs) {
+    for (const prefix of def.groups) {
+      if (c.startsWith(prefix) && prefix.length > bestLength) {
+        best = def;
+        bestLength = prefix.length;
+      }
+    }
+  }
+  return best;
+}
 
 /**
  * Annex 6's expense captions, in ITS order - which is not the chart's.

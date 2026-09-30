@@ -5,6 +5,7 @@ import {
   POSITION_SECTIONS,
   TRANSFERS_GROUP,
   captionFor,
+  lineForCode,
   majorGroupOf,
 } from '@/lib/fsGroups';
 import type { Centavos } from '@/types/common';
@@ -293,9 +294,15 @@ export function condensePerformance(
       continue;
     }
 
+    /*
+     * By longest matching prefix, not by major group. Annex 6 splits 4-01
+     * Tax Revenue in two: the shares of national taxes in sub-major 4-01-06
+     * print on lines of their own, and the IRA account alone on the first of
+     * them. A major-group lookup cannot say that.
+     */
     const def =
-      PERFORMANCE_REVENUE.find((l) => l.groups.includes(group)) ??
-      PERFORMANCE_EXPENSES.find((l) => l.groups.includes(group));
+      lineForCode(PERFORMANCE_REVENUE, a.accountCode) ??
+      lineForCode(PERFORMANCE_EXPENSES, a.accountCode);
     if (!def) {
       unmapped.push({
         accountCode: a.accountCode,
@@ -307,7 +314,12 @@ export function condensePerformance(
       continue;
     }
 
-    const line = byGroup.get(group) ?? { caption: def.caption, current: 0, prior: 0, accounts: [] };
+    const line = byGroup.get(def.caption) ?? {
+      caption: def.caption,
+      current: 0,
+      prior: 0,
+      accounts: [],
+    };
     line.current += a.current;
     line.prior += a.prior;
     line.accounts.push({
@@ -316,7 +328,7 @@ export function condensePerformance(
       current: a.current,
       prior: a.prior,
     });
-    byGroup.set(group, line);
+    byGroup.set(def.caption, line);
   }
 
   /*
@@ -326,15 +338,9 @@ export function condensePerformance(
    * chart has no such account, and leaving the line out would hide that.
    */
   const build = (defs: typeof PERFORMANCE_REVENUE): CondensedLine[] =>
-    defs.map((d) => {
-      const parts = d.groups.map((g) => byGroup.get(g)).filter((l): l is CondensedLine => !!l);
-      return {
-        caption: d.caption,
-        current: parts.reduce((s, l) => s + l.current, 0),
-        prior: parts.reduce((s, l) => s + l.prior, 0),
-        accounts: parts.flatMap((l) => l.accounts),
-      };
-    });
+    defs.map(
+      (d) => byGroup.get(d.caption) ?? { caption: d.caption, current: 0, prior: 0, accounts: [] },
+    );
 
   const revenue = build(PERFORMANCE_REVENUE);
   const expenses = build(PERFORMANCE_EXPENSES);

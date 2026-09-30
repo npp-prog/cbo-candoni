@@ -190,10 +190,11 @@ export default function FinancialStatements() {
           )}
           {statement === 'performance' && (
             <p className="mt-1">
-              &ldquo;Share from Internal Revenue Collections&rdquo; and &ldquo;Other Share from
-              National Taxes&rdquo; print at nil because the municipality&rsquo;s chart of accounts
-              carries no National Tax Allotment account. The lines are printed because the form
-              prints them; they will fill once the account exists.
+              &ldquo;Share from Internal Revenue Collections&rdquo; is account 40106010 alone;
+              &ldquo;Other Share from National Taxes&rdquo; is the rest of sub-major group 4-01-06
+              — Expanded VAT, National Wealth, Tobacco Excise and Economic Zones. Both sit inside
+              major group 4-01 Tax Revenue in the chart and the annex prints them apart from it, so
+              Tax Revenue above excludes them.
             </p>
           )}
         </>

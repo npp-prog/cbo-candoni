@@ -27,20 +27,31 @@ import type { Centavos } from '@/types/common';
  * five-per-cent LDRRMF threshold moves with it.
  *
  * ---------------------------------------------------------------------------
- * THE NATIONAL TAX ALLOTMENT HAS TO BE NOMINATED
+ * THE NATIONAL TAX ALLOTMENT IS NOMINATED, BUT THE ACCOUNT EXISTS
  * ---------------------------------------------------------------------------
- * The 20% Development Fund is measured against the National Tax Allotment, and
- * Candoni's chart of accounts - all six hundred and twenty-five accounts of it
- * - carries no NTA account. There is no "National Tax Allotment", no "Internal
- * Revenue Allotment" and no "Share from" line that is one. The nearest thing
- * is 40301010 Subsidy from National Government, which is not the same account
- * and may hold several different things.
+ * A correction. This note used to say Candoni's chart carried no National Tax
+ * Allotment account and that 40301010 Subsidy from National Government was
+ * "the nearest thing". Both were wrong, and following the second would have
+ * put a wrong denominator under a statutory test. The chart has:
  *
- * So the account cannot be found by searching for it, and guessing at the
- * subsidy account would put a wrong denominator under a statutory test without
- * anybody being told. It is nominated instead, the way the SRE revenue mapping
- * and the Quick Response Fund lines are nominated: the office says which codes
- * are the NTA, once, and CBO adds up what it was told.
+ *   40106010 Share from Internal Revenue Collections (IRA)
+ *   40106020 Share from Expanded Value Added Tax
+ *   40106030 Share from National Wealth
+ *   40106040 Share from Tobacco Excise Tax (RA 7171 and 8240)
+ *   40106050 Share from Economic Zones
+ *
+ * The finding came from a search of the chart whose output was cut off at ten
+ * lines by unrelated matches on the word "Allotment" in the equity accounts,
+ * and the conclusion was drawn from the truncated result without checking.
+ *
+ * It stays NOMINATED rather than hard-coded to 40106010 all the same, and for
+ * a reason of its own: which of those five counts towards the 20% Development
+ * Fund base is a question about the fund, not about the chart. Section 287 of
+ * the Local Government Code sets the fund against the national tax allotment,
+ * and whether a municipality's share of national wealth or tobacco excise is
+ * part of that base is the Budget Officer's reading, not CBO's. So the office
+ * says which codes count and CBO adds up what it was told - and the screen now
+ * points at 40106010 rather than at the subsidy account.
  */
 
 export interface IncomeEstimateLine {
