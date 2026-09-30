@@ -93,6 +93,7 @@ const Reairr = lazy(() => import('./pages/budget/Reairr'));
 const Rstf = lazy(() => import('./pages/accounting/Rstf'));
 const UnreleasedChecks = lazy(() => import('./pages/treasury/UnreleasedChecks'));
 const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
+const AugmentationFormPage = lazy(() => import('./pages/budget/AugmentationFormPage'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
@@ -168,6 +169,8 @@ export default function App() {
           <Route path="/treasury/checks/unreleased" element={<Guard module="treasury"><UnreleasedChecks /></Guard>} />
           {/* Appendix 26, the third cash book beside Cash in Bank and Cash in Treasury. */}
           <Route path="/treasury/cash-advance-book" element={<Guard module="treasury"><CashAdvanceBook /></Guard>} />
+          {/* LBE Form No. 2, Budget Operations Manual page 186. */}
+          <Route path="/budget/augmentation-form" element={<Guard module="budget"><AugmentationFormPage /></Guard>} />
           <Route
             path="/budget/statutory-limits"
             element={<Guard module="budget"><StatutoryLimits /></Guard>}

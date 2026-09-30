@@ -105,6 +105,9 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Monitoring', label: 'Registry of Income (REAIRR)', to: '/budget/registry-income' },
       // The tests the reviewing authority applies after enactment, run while
       // the budget is still being drafted.
+      // LBE Form No. 2. The form the office already fills in by hand when
+      // savings are used to augment an existing item.
+      { group: 'Monitoring', label: 'Augmentation Form (LBE 2)', to: '/budget/augmentation-form' },
       { group: 'Monitoring', label: 'Statutory Limits', to: '/budget/statutory-limits' },
 
       /*

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner, Tabs } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
@@ -9,6 +9,16 @@ import { monthName } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import type { FsClassification } from '@/types/enums';
+import { FUND_BALANCE_CAPTIONS } from '@/lib/fsGroups';
+import {
+  condensePerformance,
+  condensePosition,
+  type CondensedLine,
+  type CondensedPerformance,
+  type CondensedPosition,
+  type FsAccountBalance,
+  type UnmappedBalance,
+} from './condensedFs';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -59,32 +69,37 @@ export default function FinancialStatements() {
 
   const accounts = useAccounts(false);
   const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
+  /*
+   * The comparative column. GAM Volume I, Sections 366 and 368: both
+   * statements are presented "with comparative figure of the preceding year".
+   *
+   * The whole of the preceding year, not the same months of it. The comparative
+   * is the year as it closed, which is the figure that was submitted; cutting
+   * it to September because this year's column stops in September would print
+   * a number nobody has ever seen.
+   */
+  const priorLedger = useLedgerEntries(fiscalYear - 1, fundCode, { throughPeriod: 12 });
   const budget = useBudgetBalances(fiscalYear, fundCode);
 
-  const lines = useMemo<FsLine[]>(() => {
-    const byAccount = new Map<string, { name: string; signed: Centavos }>();
+  const lines = useMemo<FsLine[]>(
+    () => balancesFrom(ledger.data, accounts.data, throughPeriod),
+    [ledger.data, accounts.data, throughPeriod],
+  );
 
-    for (const e of ledger.data) {
-      if (e.period > throughPeriod) continue;
-      const entry = byAccount.get(e.accountCode) ?? { name: e.accountName, signed: 0 };
-      entry.signed += e.signedAmount ?? 0;
-      byAccount.set(e.accountCode, entry);
-    }
+  /** The same balances for the whole of the preceding year. */
+  const priorLines = useMemo<FsLine[]>(
+    () => balancesFrom(priorLedger.data, accounts.data, 12),
+    [priorLedger.data, accounts.data],
+  );
 
-    const out: FsLine[] = [];
-    for (const [code, value] of byAccount) {
-      const account = accounts.data.find((a) => a.code === code);
-      const classification = (account?.fsClassification ?? 'NON_FINANCIAL_ITEM') as FsClassification;
-      // Debit-positive signed balance, flipped for credit-normal accounts so
-      // every figure presents as a positive number on the face of the
-      // statement.
-      const amount = CREDIT_NORMAL.includes(classification) ? -value.signed : value.signed;
-      if (amount === 0) continue;
-      out.push({ accountCode: code, accountName: value.name, classification, amount });
-    }
-
-    return out.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-  }, [ledger.data, accounts.data, throughPeriod]);
+  const condensed = useMemo(
+    () => condensePosition(lines as FsAccountBalance[], priorLines as FsAccountBalance[]),
+    [lines, priorLines],
+  );
+  const performance = useMemo(
+    () => condensePerformance(lines as FsAccountBalance[], priorLines as FsAccountBalance[]),
+    [lines, priorLines],
+  );
 
   const group = (classification: FsClassification) =>
     lines.filter((l) => l.classification === classification);
@@ -161,9 +176,26 @@ export default function FinancialStatements() {
       }
       footnote={
         <>
-          Prepared from posted journal entries. Classification follows each account&rsquo;s
-          financial-statement category in the Chart of Accounts; an account with no classification
-          recorded is excluded and should be corrected under Master Data.
+          <p>
+            Prepared from posted journal entries. No statement balance is stored anywhere in CBO,
+            so the statements cannot disagree with the ledger.
+          </p>
+          {(statement === 'position' || statement === 'performance') && (
+            <p className="mt-1">
+              Presented in the condensed format GAM Volume I, Sections 366 and 368 prescribe:
+              Annexes 5 and 6. Each line is an account group of the Revised Chart of Accounts, read
+              off the account code, and the second money column is the whole of {fiscalYear - 1} as
+              it closed — not the same months of it, which would be a figure nobody has seen.
+            </p>
+          )}
+          {statement === 'performance' && (
+            <p className="mt-1">
+              &ldquo;Share from Internal Revenue Collections&rdquo; and &ldquo;Other Share from
+              National Taxes&rdquo; print at nil because the municipality&rsquo;s chart of accounts
+              carries no National Tax Allotment account. The lines are printed because the form
+              prints them; they will fill once the account exists.
+            </p>
+          )}
         </>
       }
     >
@@ -174,47 +206,13 @@ export default function FinancialStatements() {
           No journal entries have been posted for the {fundLabel(fundCode)} in this period.
         </p>
       ) : statement === 'position' ? (
-        <>
-          <StatementSection title="Assets">
-            <SubSection title="Current assets" lines={group('CURRENT_ASSET')} total={currentAssets} />
-            <SubSection title="Non-current assets" lines={group('NON_CURRENT_ASSET')} total={nonCurrentAssets} />
-            <GrandTotal label="Total assets" value={totalAssets} />
-          </StatementSection>
-
-          <StatementSection title="Liabilities">
-            <SubSection title="Current liabilities" lines={group('CURRENT_LIABILITY')} total={currentLiabilities} />
-            <SubSection
-              title="Non-current liabilities"
-              lines={group('NON_CURRENT_LIABILITY')}
-              total={nonCurrentLiabilities}
-            />
-            <GrandTotal label="Total liabilities" value={totalLiabilities} />
-          </StatementSection>
-
-          <StatementSection title="Net assets / equity">
-            <SubSection title="" lines={group('NET_ASSETS_EQUITY')} total={equityBrought} />
-            <Row label="Surplus for the period" amount={surplus} />
-            <GrandTotal label="Total net assets / equity" value={netAssets} />
-          </StatementSection>
-
-          {totalAssets !== totalLiabilities + netAssets && (
-            <Alert tone="error" className="mt-4" title="The statement does not balance">
-              Total assets of {formatPeso(totalAssets)} do not equal liabilities plus net assets of{' '}
-              {formatPeso(totalLiabilities + netAssets)}. This normally means one or more accounts
-              have no financial-statement classification set in the Chart of Accounts.
-            </Alert>
-          )}
-        </>
+        <PositionStatement
+          data={condensed}
+          fiscalYear={fiscalYear}
+          surplus={performance.surplus}
+        />
       ) : statement === 'performance' ? (
-        <>
-          <StatementSection title="Revenue">
-            <SubSection title="" lines={group('REVENUE')} total={revenue} />
-          </StatementSection>
-          <StatementSection title="Expenses">
-            <SubSection title="" lines={group('EXPENSE')} total={expenses} />
-          </StatementSection>
-          <GrandTotal label={surplus >= 0 ? 'Surplus for the period' : 'Deficit for the period'} value={surplus} />
-        </>
+        <PerformanceStatement data={performance} fiscalYear={fiscalYear} />
       ) : statement === 'cashflow' ? (
         <CashFlowStatement ledger={ledger.data} throughPeriod={throughPeriod} />
       ) : statement === 'equity' ? (
@@ -424,5 +422,347 @@ function BudgetAndActual({
         </tr>
       </tfoot>
     </table>
+  );
+}
+
+/**
+ * Account balances for a year, sign-adjusted for presentation.
+ *
+ * Pulled out of the component because the comparative column needs the same
+ * computation over a different year. Two copies of the sign convention is how
+ * a statement comes to show last year's revenue as negative.
+ */
+function balancesFrom(
+  entries: Array<{ accountCode: string; accountName: string; period: number; signedAmount?: number }>,
+  accounts: Array<{ code: string; fsClassification?: string | null }>,
+  throughPeriod: number,
+): FsLine[] {
+  const byAccount = new Map<string, { name: string; signed: Centavos }>();
+
+  for (const e of entries) {
+    if (e.period > throughPeriod) continue;
+    const entry = byAccount.get(e.accountCode) ?? { name: e.accountName, signed: 0 };
+    entry.signed += e.signedAmount ?? 0;
+    byAccount.set(e.accountCode, entry);
+  }
+
+  const out: FsLine[] = [];
+  for (const [code, value] of byAccount) {
+    const account = accounts.find((a) => a.code === code);
+    const classification = (account?.fsClassification ?? 'NON_FINANCIAL_ITEM') as FsClassification;
+    // Debit-positive signed balance, flipped for credit-normal accounts so
+    // every figure presents as a positive number on the face of the statement.
+    const amount = CREDIT_NORMAL.includes(classification) ? -value.signed : value.signed;
+    if (amount === 0) continue;
+    out.push({ accountCode: code, accountName: value.name, classification, amount });
+  }
+
+  return out.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+}
+
+// ---------------------------------------------------------------------------
+// The condensed statements, Annexes 5 and 6
+// ---------------------------------------------------------------------------
+
+/** Two money columns: this year and the one before it, as the annexes print them. */
+function TwoYearRow({
+  label,
+  current,
+  prior,
+  indent = 0,
+  emphasis,
+  rule,
+  note,
+}: {
+  label: string;
+  current: Centavos;
+  prior: Centavos;
+  indent?: number;
+  emphasis?: boolean;
+  rule?: boolean;
+  note?: string;
+}) {
+  return (
+    <tr
+      className={`${rule ? 'border-t border-slate-300' : 'border-b border-slate-100'} ${
+        emphasis ? 'font-semibold text-navy-900' : 'text-slate-700'
+      }`}
+    >
+      <td className="cbo-td" style={{ paddingLeft: `${0.5 + indent * 1.25}rem` }}>
+        {label}
+      </td>
+      <td className="cbo-td text-center text-xs text-slate-500" style={{ width: '4rem' }}>
+        {note ?? ''}
+      </td>
+      <td className="cbo-td cbo-amount" style={{ width: '10rem' }}>
+        {formatPeso(current)}
+      </td>
+      <td className="cbo-td cbo-amount text-slate-500" style={{ width: '10rem' }}>
+        {formatPeso(prior)}
+      </td>
+    </tr>
+  );
+}
+
+function TwoYearHead({ fiscalYear }: { fiscalYear: number }) {
+  return (
+    <thead>
+      <tr className="border-b border-slate-300 text-slate-600">
+        <th className="cbo-th text-left" />
+        <th className="cbo-th text-center" style={{ width: '4rem' }}>
+          Note
+        </th>
+        <th className="cbo-th text-right" style={{ width: '10rem' }}>
+          {fiscalYear}
+        </th>
+        <th className="cbo-th text-right" style={{ width: '10rem' }}>
+          {fiscalYear - 1}
+        </th>
+      </tr>
+    </thead>
+  );
+}
+
+function CaptionLines({ lines }: { lines: CondensedLine[] }) {
+  return (
+    <>
+      {lines.map((l) => (
+        <TwoYearRow key={l.caption} label={l.caption} current={l.current} prior={l.prior} indent={1} />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Anything the statement could not place.
+ *
+ * Shown above the statement and not below it. A condensed statement goes on
+ * balancing when an account is missing from it, so this is the only thing
+ * standing between a dropped figure and a submitted return.
+ */
+function Unplaced({ rows }: { rows: UnmappedBalance[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <Alert
+      tone="error"
+      title={`${rows.length} account${rows.length === 1 ? '' : 's'} could not be placed on this statement`}
+      className="mb-4"
+    >
+      <p className="mb-2">
+        These carry a balance and appear under no caption, so the statement below is incomplete —
+        and it still balances, which is why this is an error and not a note.
+      </p>
+      <ul className="space-y-1">
+        {rows.map((r) => (
+          <li key={r.accountCode} className="font-mono text-xs">
+            {r.accountCode} {r.accountName} — {formatPeso(r.current)}
+            <span className="ml-2 font-sans text-slate-600">{r.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </Alert>
+  );
+}
+
+function PositionStatement({
+  data,
+  fiscalYear,
+  surplus,
+}: {
+  data: CondensedPosition;
+  fiscalYear: number;
+  surplus: { current: Centavos; prior: Centavos };
+}) {
+  const sec = (key: string) => data.sections.find((s) => s.key === key)!;
+  const equityCurrent = data.equityTotal.current + surplus.current;
+  const equityPrior = data.equityTotal.prior + surplus.prior;
+  const balanced =
+    data.totalAssets.current === data.totalLiabilities.current + equityCurrent;
+
+  return (
+    <>
+      <Unplaced rows={data.unmapped} />
+
+      <table className="w-full text-sm">
+        <TwoYearHead fiscalYear={fiscalYear} />
+        <tbody>
+          <TwoYearRow label="ASSETS" current={0} prior={0} emphasis />
+          {(['CURRENT_ASSET', 'NON_CURRENT_ASSET'] as const).map((key) => (
+            <Fragment key={key}>
+              <TwoYearRow label={sec(key).title} current={0} prior={0} indent={1} />
+              <CaptionLines lines={sec(key).lines} />
+              <TwoYearRow
+                label={sec(key).totalLabel}
+                current={sec(key).totalCurrent}
+                prior={sec(key).totalPrior}
+                indent={2}
+                rule
+              />
+            </Fragment>
+          ))}
+          <TwoYearRow
+            label="TOTAL ASSETS"
+            current={data.totalAssets.current}
+            prior={data.totalAssets.prior}
+            emphasis
+            rule
+          />
+
+          <TwoYearRow label="LIABILITIES" current={0} prior={0} emphasis />
+          {(['CURRENT_LIABILITY', 'NON_CURRENT_LIABILITY'] as const).map((key) => (
+            <Fragment key={key}>
+              <TwoYearRow label={sec(key).title} current={0} prior={0} indent={1} />
+              <CaptionLines lines={sec(key).lines} />
+              <TwoYearRow
+                label={sec(key).totalLabel}
+                current={sec(key).totalCurrent}
+                prior={sec(key).totalPrior}
+                indent={2}
+                rule
+              />
+            </Fragment>
+          ))}
+          <TwoYearRow
+            label="TOTAL LIABILITIES"
+            current={data.totalLiabilities.current}
+            prior={data.totalLiabilities.prior}
+            emphasis
+            rule
+          />
+
+          <TwoYearRow label="NET ASSETS/EQUITY" current={0} prior={0} emphasis />
+          <CaptionLines lines={data.equity} />
+          <TwoYearRow
+            label="Surplus (Deficit) for the period"
+            current={surplus.current}
+            prior={surplus.prior}
+            indent={1}
+          />
+          <TwoYearRow
+            label="TOTAL LIABILITIES AND NET ASSETS/EQUITY"
+            current={data.totalLiabilities.current + equityCurrent}
+            prior={data.totalLiabilities.prior + equityPrior}
+            emphasis
+            rule
+          />
+        </tbody>
+      </table>
+
+      {!balanced && (
+        <Alert tone="error" className="mt-4" title="The statement does not balance">
+          Total assets of {formatPeso(data.totalAssets.current)} do not equal liabilities plus net
+          assets of {formatPeso(data.totalLiabilities.current + equityCurrent)}.
+        </Alert>
+      )}
+
+      {/*
+        Annex 5 prints a Fund Balance block beneath Government Equity. CBO
+        cannot fill it from the ledger and says so rather than leaving four
+        blank lines for the reader to wonder about.
+      */}
+      <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Fund Balance</p>
+        <table className="mt-2 w-full text-sm">
+          <tbody>
+            {FUND_BALANCE_CAPTIONS.map((c) => (
+              <tr key={c} className="border-b border-slate-100 text-slate-700">
+                <td className="cbo-td">{c}</td>
+                <td className="cbo-td cbo-amount text-slate-400" style={{ width: '10rem' }}>
+                  —
+                </td>
+                <td className="cbo-td cbo-amount text-slate-400" style={{ width: '10rem' }}>
+                  —
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-2 text-xs text-slate-500">
+          Blank on purpose. The budgetary registry accounts (3-05) are not postable in CBO — the
+          registry is kept in the budget balances the Cloud Functions maintain and is never
+          journalised — so the general ledger carries nothing against them. These figures can be
+          derived from the Registry instead, but which registry figure answers to which caption is
+          a decision for the Accountant, and one wrong mapping here is a wrong figure on a
+          submitted statement.
+          {data.fundBalanceAccounts.length > 0 && (
+            <>
+              {' '}
+              <span className="text-amber-700">
+                {data.fundBalanceAccounts.length} registry account
+                {data.fundBalanceAccounts.length === 1 ? ' has' : 's have'} been posted to
+                notwithstanding; that should not happen and is worth looking at.
+              </span>
+            </>
+          )}
+        </p>
+      </section>
+    </>
+  );
+}
+
+function PerformanceStatement({
+  data,
+  fiscalYear,
+}: {
+  data: CondensedPerformance;
+  fiscalYear: number;
+}) {
+  return (
+    <>
+      <Unplaced rows={data.unmapped} />
+
+      <table className="w-full text-sm">
+        <TwoYearHead fiscalYear={fiscalYear} />
+        <tbody>
+          <TwoYearRow label="Revenue" current={0} prior={0} emphasis />
+          <CaptionLines lines={data.revenue} />
+          <TwoYearRow
+            label="Total Revenue"
+            current={data.totalRevenue.current}
+            prior={data.totalRevenue.prior}
+            emphasis
+            rule
+          />
+
+          <TwoYearRow label="Less: Current Operating Expenses" current={0} prior={0} emphasis />
+          <CaptionLines lines={data.expenses} />
+          <TwoYearRow
+            label="Current Operating Expenses"
+            current={data.totalExpenses.current}
+            prior={data.totalExpenses.prior}
+            emphasis
+            rule
+          />
+
+          <TwoYearRow
+            label="Surplus (Deficit) from Current Operation"
+            current={data.surplusFromOperation.current}
+            prior={data.surplusFromOperation.prior}
+            emphasis
+            rule
+          />
+          <TwoYearRow label="Add (Deduct):" current={0} prior={0} />
+          <TwoYearRow
+            label="Transfers and Subsidy From"
+            current={data.transfersFrom.current}
+            prior={data.transfersFrom.prior}
+            indent={1}
+          />
+          <TwoYearRow
+            label="Transfers and Subsidy To"
+            current={-data.transfersTo.current}
+            prior={-data.transfersTo.prior}
+            indent={1}
+          />
+          <TwoYearRow
+            label="Surplus (Deficit) for the period"
+            current={data.surplus.current}
+            prior={data.surplus.prior}
+            emphasis
+            rule
+          />
+        </tbody>
+      </table>
+    </>
   );
 }

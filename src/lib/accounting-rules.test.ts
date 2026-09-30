@@ -709,6 +709,56 @@ describe('checkAugmentationExpenseClass', () => {
     ).toBe(true);
   });
 
+  /**
+   * LBE Form No. 2, Note 2, second sentence: "Savings from CO cannot be used
+   * for augmentation purposes."
+   *
+   * This is a SEPARATE prohibition from the same-class rule, and the one CBO
+   * used to miss: a set drawn from Capital Outlay and applied to Capital
+   * Outlay never crosses a class, so the class rule passed it.
+   */
+  it('refuses Capital Outlay savings as a source, even within Capital Outlay', () => {
+    const result = checkAugmentationExpenseClass([
+      { lineNo: 1, expenseClass: 'CO', amount: -800_000_00 },
+      { lineNo: 2, expenseClass: 'CO', amount: 800_000_00 },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('AUGMENTATION_FROM_CAPITAL_OUTLAY');
+    expect(result.violations[0].message).toContain('supplemental budget');
+    expect(result.violations[0].details?.lineNos).toEqual([1]);
+  });
+
+  /**
+   * Capital Outlay on the receiving side is a different fault, and the reader
+   * needs the message that matches what they did.
+   */
+  it('still calls a move INTO Capital Outlay a crossing, not a CO source', () => {
+    const result = checkAugmentationExpenseClass([
+      { lineNo: 1, expenseClass: 'MOOE', amount: -50_000_00 },
+      { lineNo: 2, expenseClass: 'CO', amount: 50_000_00 },
+    ]);
+    expect(result.violations[0].code).toBe('AUGMENTATION_CROSSES_EXPENSE_CLASS');
+  });
+
+  it('names every Capital Outlay line the savings were taken from', () => {
+    const result = checkAugmentationExpenseClass([
+      { lineNo: 1, expenseClass: 'CO', amount: -300_000_00 },
+      { lineNo: 2, expenseClass: 'CO', amount: -200_000_00 },
+      { lineNo: 3, expenseClass: 'CO', amount: 500_000_00 },
+    ]);
+    expect(result.violations[0].details?.lineNos).toEqual([1, 2]);
+  });
+
+  it('ignores a Capital Outlay line left at zero', () => {
+    expect(
+      checkAugmentationExpenseClass([
+        { lineNo: 1, expenseClass: 'PS', amount: -10_000_00 },
+        { lineNo: 2, expenseClass: 'PS', amount: 10_000_00 },
+        { lineNo: 3, expenseClass: 'CO', amount: 0 },
+      ]).ok,
+    ).toBe(true);
+  });
+
   it('accepts an empty set rather than inventing a violation', () => {
     expect(checkAugmentationExpenseClass([]).ok).toBe(true);
   });

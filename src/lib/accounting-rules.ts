@@ -493,10 +493,10 @@ export interface AugmentationLine {
 }
 
 /**
- * An augmentation may not cross an expense class.
+ * The two limits on an augmentation, from LBE Form No. 2.
  *
  * ---------------------------------------------------------------------------
- * WHY THIS IS A REFUSAL AND NOT A WARNING
+ * WHY THESE ARE REFUSALS AND NOT WARNINGS
  * ---------------------------------------------------------------------------
  * An augmentation that moves MOOE savings into Capital Outlay is not a
  * borderline case. It is spending the Sanggunian never authorised, made under
@@ -507,12 +507,54 @@ export interface AugmentationLine {
  * reviewer finding it months later disallows it after the money is spent. So
  * CBO refuses it and names the other instrument.
  *
+ * ---------------------------------------------------------------------------
+ * THE SECOND LIMIT, WHICH CBO USED TO MISS
+ * ---------------------------------------------------------------------------
+ * Note 2 under LBE Form No. 2 of the Budget Operations Manual for LGUs (2023
+ * edition, page 186, revised as of reprinting for FY2024) is two rules in one
+ * sentence:
+ *
+ *   "Savings can augment only items of appropriation in the same expense
+ *    (e.g., PS to PS and MOOE to MOOE). SAVINGS FROM CO CANNOT BE USED FOR
+ *    AUGMENTATION PURPOSES."
+ *
+ * CBO enforced the first half and not the second, so a Capital Outlay line
+ * could be drained into another Capital Outlay line and nothing objected: the
+ * set never crossed a class, so the old check was satisfied.
+ *
+ * It is a separate prohibition and a stricter one. Capital Outlay savings
+ * arise because a project was not built, and the authority to build it does
+ * not become authority to build something else under an omnibus clause. The
+ * instrument for that is a supplemental budget.
+ *
+ * A source is a line with a NEGATIVE amount: a realignment is recorded as
+ * pairs of equal magnitude and opposite sign, and the negative half is the one
+ * the authority is taken from.
+ *
  * Nothing is checked for a SUPPLEMENTAL: the Sanggunian enacting a
  * supplemental budget may move authority wherever the ordinance says.
  * ---------------------------------------------------------------------------
  */
 export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckResult {
-  const classes = [...new Set(lines.filter((l) => l.amount !== 0).map((l) => l.expenseClass))];
+  const live = lines.filter((l) => l.amount !== 0);
+
+  // Checked first, because it is the more specific prohibition: a set drawn
+  // from CO and applied to CO does not cross a class at all, so the rule below
+  // would pass it.
+  const fromCapitalOutlay = live.filter((l) => l.amount < 0 && l.expenseClass === 'CO');
+  if (fromCapitalOutlay.length > 0) {
+    return fail(
+      'AUGMENTATION_FROM_CAPITAL_OUTLAY',
+      `Savings from Capital Outlay cannot be used for augmentation. LBE Form No. 2 of the Budget ` +
+        `Operations Manual says so in terms: "Savings from CO cannot be used for augmentation ` +
+        `purposes." Capital Outlay savings arise because a project was not built, and the ` +
+        `authority to build it does not become authority to build something else under the ` +
+        `omnibus clause. Use a supplemental budget, which is an ordinance of the Sanggunian.`,
+      { lineNos: fromCapitalOutlay.map((l) => l.lineNo) },
+    );
+  }
+
+  const classes = [...new Set(live.map((l) => l.expenseClass))];
   if (classes.length <= 1) return ok;
 
   return fail(
