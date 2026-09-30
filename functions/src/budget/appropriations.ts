@@ -212,21 +212,33 @@ export const releaseAllotment = onCall(
       const balance = await readBudgetBalance(tx, key);
 
       if (al.amount >= 0) {
-        const check = checkAllotmentAgainstAppropriation({
-          appropriationRevised: balance.appropriationRevised,
-          allotmentAlreadyReleased: balance.allotmentReleased,
-          requestedRelease: al.amount,
-        });
-        if (!check.ok) {
-          const d = check.violations[0].details as Record<string, number>;
-          throw new HttpsError(
-            'failed-precondition',
-            `Insufficient appropriation for ${al.accountCode} ${al.accountName}: ` +
-              `${(al.amount / 100).toFixed(2)} requested against ${(d.available / 100).toFixed(2)} available, ` +
-              `short by ${(d.excess / 100).toFixed(2)}. A supplemental appropriation or a realignment is needed first.`,
-            check.violations[0].details,
-          );
-        }
+        /*
+         * -------------------------------------------------------------------
+         * AN ALLOTMENT IS RELEASED BY ORDER, AND ONLY BY ORDER
+         * -------------------------------------------------------------------
+         * The Budget Operations Manual releases allotment on an Allotment
+         * Release Order - LBE Form No. 1 and its three siblings - recommended
+         * by the Local Budget Officer and approved by the Local Chief
+         * Executive. There is no other instrument.
+         *
+         * This callable used to release a single line on its own, with no
+         * order number, no purpose and no approval. Worse, it did not read
+         * the For Later Release hold at all: an amount the Budget Officer had
+         * deliberately withheld could be released straight through here, and
+         * nothing anywhere said so. A safeguard with a door beside it is not
+         * a safeguard.
+         *
+         * What is left is the WITHDRAWAL of allotment, below. That genuinely
+         * is not an order - it takes authority back rather than giving it -
+         * and it has its own rule.
+         */
+        throw new HttpsError(
+          'failed-precondition',
+          'An allotment is released on an Allotment Release Order, not one line at a time. ' +
+            'Use Budget \u203a Allotment Release Orders, where the order carries its number, its ' +
+            'purpose, the approval of the Local Chief Executive and the For Later Release column. ' +
+            'This screen records a WITHDRAWAL of allotment, which is a negative amount.',
+        );
       } else {
         const check = checkAllotmentWithdrawal({
           allotmentAlreadyReleased: balance.allotmentReleased,

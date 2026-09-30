@@ -126,9 +126,16 @@ export default function App() {
             element={<Guard module="budget"><EstimatedReceipts /></Guard>}
           />
           <Route path="/budget/allotments" element={<Guard module="budget"><Allotments /></Guard>} />
+          {/* One menu item, two tabs. The register is what the menu lands on;
+              the orders are a tab away. `/budget/release-orders` was the old
+              path and still arrives. */}
+          <Route
+            path="/budget/allotments/orders"
+            element={<Guard module="budget"><AllotmentReleaseOrders /></Guard>}
+          />
           <Route
             path="/budget/release-orders"
-            element={<Guard module="budget"><AllotmentReleaseOrders /></Guard>}
+            element={<Navigate to="/budget/allotments/orders" replace />}
           />
           <Route
             path="/budget/appropriations/upload"

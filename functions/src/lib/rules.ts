@@ -156,9 +156,21 @@ export interface AllotmentCheckInput {
    * negative appropriation. It is a hold, and the only thing it does is make
    * the held amount unavailable.
    *
-   * Absent on an older release, where it is nothing.
+   * ---------------------------------------------------------------------
+   * REQUIRED, AND IT WAS OPTIONAL
+   * ---------------------------------------------------------------------
+   * When the hold was introduced this field was optional, defaulting to
+   * nothing so that the call sites that already existed would keep
+   * compiling. They did - and they kept the OLD BEHAVIOUR. Three of the four
+   * places that check an allotment against its appropriation went on
+   * ignoring the hold entirely, so an amount the Budget Officer had withheld
+   * could be released through any of them, and nothing anywhere said so.
+   *
+   * An optional parameter on a safety rule defaults to no safety. It is
+   * required now, so the compiler is what makes a new call site answer the
+   * question. Pass 0 only where there genuinely is no hold to consider.
    */
-  forLaterRelease?: Centavos;
+  forLaterRelease: Centavos;
 }
 
 /**
@@ -185,7 +197,7 @@ export interface AllotmentCheckInput {
  */
 export function checkAllotmentAgainstAppropriation(input: AllotmentCheckInput): CheckResult {
   const { appropriationRevised, allotmentAlreadyReleased, requestedRelease } = input;
-  const heldBack = input.forLaterRelease ?? 0;
+  const heldBack = input.forLaterRelease;
   const releasable = appropriationRevised - heldBack;
   const resulting = allotmentAlreadyReleased + requestedRelease;
 

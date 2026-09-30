@@ -1,8 +1,15 @@
 import type { Centavos, PeriodNo } from '@/types/common';
-import type { Quarter } from '@/lib/budgetPeriods';
+import {
+  lastMonthOf,
+  monthsToDate,
+  periodColumns,
+  periodMonths,
+  previousPeriod,
+  type ReportPeriod,
+} from '@/lib/reportPeriods';
 
 /**
- * LBAc Form No. 1 — Quarterly Report of Receipts.
+ * LBAc Form No. 1 — the Report of Receipts.
  *
  * Budget Operations Manual for LGUs, 2023 Edition, Chapter 5 of Part II, Item
  * 5.5. Prepared by the Local Treasurer, certified correct by the Local
@@ -10,31 +17,56 @@ import type { Quarter } from '@/lib/budgetPeriods';
  * Budget Officer on or before the tenth day of the month following the quarter
  * reported.
  *
- * The computation lives here rather than in the screen because two of the
- * manual's columns are easy to get wrong in a way that still looks right, and
- * a wrong figure on a submitted form is not something the officer who signs it
- * can be expected to catch:
+ * ---------------------------------------------------------------------------
+ * THE SUBMISSION IS QUARTERLY; THE QUESTION IS NOT
+ * ---------------------------------------------------------------------------
+ * The manual's form is a quarter. The quarter is the deadline, not the only
+ * period anybody asks about: the Budget Officer looking at December wants
+ * December, and somebody answering a query in August wants it as of August.
+ * So the period is chosen, and `@/lib/reportPeriods` is the one definition of
+ * what a period is.
  *
- *   Column 5 is NOT column 3 plus column 4. The manual says "the estimated
- *   income from January to the end of the quarter reported" - the whole year
- *   to date, not the two quarters shown beside it. For the second quarter the
+ * The manual's layout is still exactly what comes out when the period is a
+ * quarter, down to its column numbers.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO COLUMNS THAT CAN BE COMPUTED FROM THEIR NEIGHBOURS AND BE WRONG
+ * ---------------------------------------------------------------------------
+ *   The estimate to date is NOT this period's estimate plus the previous
+ *   one's. The manual says "the estimated income from January to the end of
+ *   the quarter reported" - the whole year to date. For the second quarter the
  *   two happen to agree, which is exactly why the mistake survives testing.
  *
- *   Column 9 is NOT columns 6 to 8 added up. Those are the three months OF THE
- *   QUARTER; column 9 is January to the end of it, and the manual adds that it
- *   "should tally with the income account per Trial Balance as of date".
+ *   The actual to date is NOT the breakdown columns added up. Those are the
+ *   months of the period; the to-date figure is January to the end of it, and
+ *   the manual adds that it "should tally with the income account per Trial
+ *   Balance as of date".
  *
  * Both are computed from the periods they actually cover, and there are tests
  * for each that fail if either is derived from its neighbours.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A MONTHLY REPORT HAS NO VARIANCE
+ * ---------------------------------------------------------------------------
+ * The Local Finance Committee certifies estimated income BY QUARTER. There is
+ * no monthly estimate anywhere, and CBO does not make one up: dividing a
+ * quarter by three would produce figures nobody certified and a variance CBO
+ * invented, reported to the Committee as though the Treasurer had projected
+ * it.
+ *
+ * So the estimate is reported where it exists - on a quarter, on a year, and
+ * as of a month that closes a quarter - and where it does not, the estimate
+ * and variance columns say so instead of showing a number.
  */
 
 /**
  * One General Ledger entry on a revenue account.
  *
  * The actual income comes from the ledger, not from the collections register,
- * because the manual ties column 9 to the Trial Balance. A collection that has
- * been receipted but not yet journalised is not yet income, and a report that
- * counted it would disagree with the books it is filed beside.
+ * because the manual ties the to-date column to the Trial Balance. A
+ * collection that has been receipted but not yet journalised is not yet
+ * income, and a report that counted it would disagree with the books it is
+ * filed beside.
  */
 export interface ReceiptEntry {
   accountCode: string;
@@ -57,8 +89,8 @@ export interface QuarterEstimate {
  * The estimates, keyed by account code.
  *
  * CBO does not derive these from anything. Estimated income is a budget
- * PREPARATION figure - it is what the Local Finance Committee certified as the
- * income reasonably expected, and it is the denominator of the variance this
+ * PREPARATION figure - what the Local Finance Committee certified as the
+ * income reasonably expected - and it is the denominator of the variance this
  * whole form exists to show. Guessing it from last year's collections would
  * produce a form that looks complete and reports a variance against a number
  * nobody certified.
@@ -68,46 +100,73 @@ export type IncomeEstimates = Record<string, QuarterEstimate>;
 const QUARTER_KEYS = ['q1', 'q2', 'q3', 'q4'] as const;
 
 /** The estimate for one quarter, treating an absent figure as nothing. */
-export function estimateFor(estimate: QuarterEstimate | undefined, quarter: Quarter): Centavos {
-  if (!estimate) return 0;
+export function estimateForQuarter(
+  estimate: QuarterEstimate | undefined,
+  quarter: number,
+): Centavos {
+  if (!estimate || quarter < 1 || quarter > 4) return 0;
   return estimate[QUARTER_KEYS[quarter - 1]] ?? 0;
 }
 
-/** January to the end of the quarter reported - the manual's column 5. */
-export function estimateToDate(
+/** True where the period closes exactly on a quarter end. */
+export function endsOnAQuarter(period: ReportPeriod): boolean {
+  return lastMonthOf(period) % 3 === 0;
+}
+
+/**
+ * The estimate for the period itself.
+ *
+ * Null where the period is not one the Committee certified. A month has no
+ * estimate of its own and never will; an as-of is a running total and has no
+ * "this period" at all.
+ */
+export function estimateForPeriod(
   estimate: QuarterEstimate | undefined,
-  quarter: Quarter,
-): Centavos {
+  period: ReportPeriod,
+): Centavos | null {
+  if (period.mode === 'QUARTERLY') return estimateForQuarter(estimate, period.index);
+  if (period.mode === 'ANNUAL') {
+    return [1, 2, 3, 4].reduce((s, q) => s + estimateForQuarter(estimate, q), 0);
+  }
+  return null;
+}
+
+/**
+ * January to the end of the period - the manual's column 5.
+ *
+ * Available only where the period closes on a quarter, because the estimate
+ * itself is quarterly. Half of a certified quarter is not a certified figure.
+ */
+export function estimateToDateForPeriod(
+  estimate: QuarterEstimate | undefined,
+  period: ReportPeriod,
+): Centavos | null {
+  if (!endsOnAQuarter(period)) return null;
+  const quarters = lastMonthOf(period) / 3;
   let total = 0;
-  for (let q = 1; q <= quarter; q++) total += estimateFor(estimate, q as Quarter);
+  for (let q = 1; q <= quarters; q++) total += estimateForQuarter(estimate, q);
   return total;
 }
 
-/** The three accounting periods making up a quarter. */
-export function monthsOfQuarter(quarter: Quarter): [PeriodNo, PeriodNo, PeriodNo] {
-  const first = (quarter - 1) * 3 + 1;
-  return [first, first + 1, first + 2];
-}
-
 export interface ReceiptRow {
-  /** Column 2. */
+  /** Column 2 on the quarterly form. */
   accountCode: string;
   /** Column 1. */
   accountName: string;
-  /** Column 3 - the estimate for the quarter before the one reported. */
-  estimatedPrevious: Centavos;
-  /** Column 4 - the estimate for the quarter reported. */
-  estimatedThis: Centavos;
-  /** Column 5 - January to the end of the quarter reported. */
-  estimatedToDate: Centavos;
-  /** Columns 6, 7 and 8 - the three months of the quarter reported. */
-  months: [Centavos, Centavos, Centavos];
-  /** Column 9 - January to the end of the quarter reported. */
+  /** Column 3 - the estimate for the period before this one, where there is one. */
+  estimatedPrevious: Centavos | null;
+  /** Column 4 - the estimate for the period reported. */
+  estimatedThis: Centavos | null;
+  /** Column 5 - January to the end of the period reported. */
+  estimatedToDate: Centavos | null;
+  /** Columns 6 to 8 on a quarter: one figure per breakdown column. */
+  columns: Centavos[];
+  /** Column 9 - January to the end of the period reported. */
   actualToDate: Centavos;
-  /** Column 10 - column 9 less column 5. */
-  variance: Centavos;
+  /** Column 10 - column 9 less column 5. Null where nothing was estimated. */
+  variance: Centavos | null;
   /**
-   * Column 11 - column 10 over column 5, as a fraction.
+   * Column 11 - the variance over the estimate, as a fraction.
    *
    * Null where nothing was estimated. The manual's formula divides by column
    * 5, and an account with no estimate would divide by zero; showing that as
@@ -120,13 +179,18 @@ export interface ReceiptRow {
 }
 
 export interface ReceiptsReport {
-  quarter: Quarter;
+  period: ReportPeriod;
   rows: ReceiptRow[];
   total: Omit<ReceiptRow, 'accountCode' | 'accountName' | 'unestimated'>;
   /** True where no estimate has been nominated for any account. */
   noEstimates: boolean;
   /** Accounts carrying income that nobody estimated. */
   unestimatedCodes: string[];
+  /**
+   * True where the period does not close on a quarter, so the estimate and
+   * variance columns cannot be filled at all.
+   */
+  estimateUnavailable: boolean;
 }
 
 /**
@@ -135,7 +199,8 @@ export interface ReceiptsReport {
  * A revenue account carries a credit balance, and the ledger stores a credit
  * as a negative. Income is therefore the NEGATED sum - which also means a
  * debit to a revenue account, a refund or a correction, reduces it. That is
- * the behaviour the Trial Balance shows, and column 9 has to agree with it.
+ * the behaviour the Trial Balance shows, and the to-date column has to agree
+ * with it.
  */
 function incomeOf(entries: ReceiptEntry[]): Centavos {
   let total = 0;
@@ -144,7 +209,7 @@ function incomeOf(entries: ReceiptEntry[]): Centavos {
 }
 
 /**
- * Builds the form for one quarter.
+ * Builds the form for one period.
  *
  * An account appears if it was estimated or if it collected anything. An
  * account that was estimated and collected nothing must appear - that is a
@@ -153,18 +218,20 @@ function incomeOf(entries: ReceiptEntry[]): Centavos {
 export function buildReceiptsReport(
   entries: ReceiptEntry[],
   estimates: IncomeEstimates,
-  quarter: Quarter,
+  period: ReportPeriod,
 ): ReceiptsReport {
-  const months = monthsOfQuarter(quarter);
-  const lastPeriod = months[2];
+  const columns = periodColumns(period);
+  const toDate = new Set(monthsToDate(period));
+  const lastPeriod = lastMonthOf(period);
+  const previous = previousPeriod(period);
 
   const byAccount = new Map<string, ReceiptEntry[]>();
   const names = new Map<string, string>();
 
   for (const e of entries) {
-    // Entries after the quarter reported are not part of it. The caller may
-    // hand over a whole year; the form covers January to the end of the
-    // quarter and nothing beyond.
+    // Entries after the period reported are not part of it. The caller may
+    // hand over a whole year; the form covers January to the end of the period
+    // and nothing beyond.
     if (e.period > lastPeriod) continue;
     const list = byAccount.get(e.accountCode) ?? [];
     list.push(e);
@@ -173,67 +240,83 @@ export function buildReceiptsReport(
   }
 
   const codes = new Set<string>([...byAccount.keys(), ...Object.keys(estimates)]);
-
   const rows: ReceiptRow[] = [];
 
   for (const code of [...codes].sort()) {
     const estimate = estimates[code];
     const mine = byAccount.get(code) ?? [];
 
-    const estimatedThis = estimateFor(estimate, quarter);
-    const estimatedPrevious =
-      quarter === 1 ? 0 : estimateFor(estimate, (quarter - 1) as Quarter);
-    const toDateEstimate = estimateToDate(estimate, quarter);
+    const estimatedThis = estimateForPeriod(estimate, period);
+    const estimatedPrevious = previous ? estimateForPeriod(estimate, previous) : null;
+    const estimatedToDate = estimateToDateForPeriod(estimate, period);
 
-    const monthAmounts = months.map((p) => incomeOf(mine.filter((e) => e.period === p))) as [
-      Centavos,
-      Centavos,
-      Centavos,
-    ];
+    const columnAmounts = columns.map((c) => {
+      const months = new Set(c.months);
+      return incomeOf(mine.filter((e) => months.has(e.period)));
+    });
 
-    // January to the end of the quarter, over every period - not the three
-    // months above. For any quarter after the first those differ.
-    const actualToDate = incomeOf(mine);
+    // January to the end of the period, over every month in that range - not
+    // the breakdown columns above. For any period after the first month those
+    // differ.
+    const actualToDate = incomeOf(mine.filter((e) => toDate.has(e.period)));
 
-    const hasEstimate = toDateEstimate !== 0 || estimate !== undefined;
-    const hasIncome = actualToDate !== 0 || monthAmounts.some((m) => m !== 0);
+    const hasEstimate = estimate !== undefined;
+    const hasIncome = actualToDate !== 0 || columnAmounts.some((m) => m !== 0);
     if (!hasEstimate && !hasIncome) continue;
+
+    const variance = estimatedToDate === null ? null : actualToDate - estimatedToDate;
 
     rows.push({
       accountCode: code,
       accountName: names.get(code) ?? '',
       estimatedPrevious,
       estimatedThis,
-      estimatedToDate: toDateEstimate,
-      months: monthAmounts,
+      estimatedToDate,
+      columns: columnAmounts,
       actualToDate,
-      variance: actualToDate - toDateEstimate,
-      variancePct: toDateEstimate === 0 ? null : (actualToDate - toDateEstimate) / toDateEstimate,
-      unestimated: toDateEstimate === 0 && hasIncome,
+      variance,
+      variancePct:
+        estimatedToDate === null || estimatedToDate === 0 ? null : variance! / estimatedToDate,
+      unestimated: (estimatedToDate ?? 0) === 0 && hasIncome,
     });
   }
 
-  const sumOf = (pick: (r: ReceiptRow) => Centavos) => rows.reduce((s, r) => s + pick(r), 0);
+  /** Sums a nullable column: null only where every row is null. */
+  const sumNullable = (pick: (r: ReceiptRow) => Centavos | null): Centavos | null => {
+    const present = rows.map(pick).filter((v): v is Centavos => v !== null);
+    if (rows.length > 0 && present.length === 0) return null;
+    return present.reduce((s, v) => s + v, 0);
+  };
 
-  const totalEstimatedToDate = sumOf((r) => r.estimatedToDate);
-  const totalActualToDate = sumOf((r) => r.actualToDate);
+  const totalEstimatedToDate = sumNullable((r) => r.estimatedToDate);
+  const totalActualToDate = rows.reduce((s, r) => s + r.actualToDate, 0);
+  const totalVariance =
+    totalEstimatedToDate === null ? null : totalActualToDate - totalEstimatedToDate;
 
   return {
-    quarter,
+    period,
     rows,
     total: {
-      estimatedPrevious: sumOf((r) => r.estimatedPrevious),
-      estimatedThis: sumOf((r) => r.estimatedThis),
+      estimatedPrevious: sumNullable((r) => r.estimatedPrevious),
+      estimatedThis: sumNullable((r) => r.estimatedThis),
       estimatedToDate: totalEstimatedToDate,
-      months: [sumOf((r) => r.months[0]), sumOf((r) => r.months[1]), sumOf((r) => r.months[2])],
+      columns: columns.map((_, i) => rows.reduce((s, r) => s + (r.columns[i] ?? 0), 0)),
       actualToDate: totalActualToDate,
-      variance: totalActualToDate - totalEstimatedToDate,
+      variance: totalVariance,
+      // Computed from the totals, not averaged from the rows - averaging
+      // percentages would weight a small account like a large one.
       variancePct:
-        totalEstimatedToDate === 0
+        totalEstimatedToDate === null || totalEstimatedToDate === 0
           ? null
-          : (totalActualToDate - totalEstimatedToDate) / totalEstimatedToDate,
+          : totalVariance! / totalEstimatedToDate,
     },
     noEstimates: Object.keys(estimates).length === 0,
     unestimatedCodes: rows.filter((r) => r.unestimated).map((r) => r.accountCode),
+    estimateUnavailable: !endsOnAQuarter(period),
   };
+}
+
+/** Kept for the screens that still name the months of a quarter directly. */
+export function monthsOfQuarter(quarter: number): PeriodNo[] {
+  return periodMonths({ mode: 'QUARTERLY', index: quarter });
 }

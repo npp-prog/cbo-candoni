@@ -75,6 +75,7 @@ describe('allotment control', () => {
   it('permits a release within the appropriation', () => {
     const r = checkAllotmentAgainstAppropriation({
       appropriationRevised: 5_000_000_00,
+      forLaterRelease: 0,
       allotmentAlreadyReleased: 3_000_000_00,
       requestedRelease: 1_500_000_00,
     });
@@ -84,6 +85,7 @@ describe('allotment control', () => {
   it('permits a release that exactly exhausts the appropriation', () => {
     const r = checkAllotmentAgainstAppropriation({
       appropriationRevised: 5_000_000_00,
+      forLaterRelease: 0,
       allotmentAlreadyReleased: 3_000_000_00,
       requestedRelease: 2_000_000_00,
     });
@@ -93,6 +95,7 @@ describe('allotment control', () => {
   it('refuses a release exceeding the appropriation by one centavo', () => {
     const r = checkAllotmentAgainstAppropriation({
       appropriationRevised: 5_000_000_00,
+      forLaterRelease: 0,
       allotmentAlreadyReleased: 3_000_000_00,
       requestedRelease: 2_000_000_01,
     });
@@ -723,8 +726,28 @@ describe('checkAllotmentAgainstAppropriation with a hold', () => {
 
   it('behaves as before when nothing is held', () => {
     expect(
-      checkAllotmentAgainstAppropriation({ ...base, requestedRelease: 1_000_000_00 }).ok,
+      checkAllotmentAgainstAppropriation({
+        ...base,
+        forLaterRelease: 0,
+        requestedRelease: 1_000_000_00,
+      }).ok,
     ).toBe(true);
+  });
+
+  /**
+   * The field is REQUIRED, and this test is here to say why rather than to
+   * exercise arithmetic.
+   *
+   * It was optional, defaulting to nothing, so that the call sites that
+   * already existed would keep compiling. They did, and they kept ignoring
+   * the hold: three of the four places that check an allotment went on
+   * releasing authority the Budget Officer had withheld. An optional
+   * parameter on a safety rule defaults to no safety, and the compiler is
+   * what makes a new call site answer the question now.
+   */
+  it('cannot be called without saying what is held', () => {
+    // @ts-expect-error forLaterRelease is required
+    checkAllotmentAgainstAppropriation({ ...base, requestedRelease: 1_00 });
   });
 
   /**

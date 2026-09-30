@@ -1,24 +1,27 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Spinner, Alert } from '@/components/ui/Layout';
-import { Field, Select } from '@/components/ui/Field';
+import { PeriodPicker } from '@/components/PeriodPicker';
+import { Field } from '@/components/ui/Field';
 import { OfficePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAllotments, useObligations, useBudgetBalances } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
+import { figuresForPeriod, totalPeriod } from '@/lib/budgetPeriods';
 import {
-  QUARTER_LABELS,
-  figuresForPeriod,
-  quarterRange,
-  totalPeriod,
-  type Quarter,
-} from '@/lib/budgetPeriods';
+  DEFAULT_PERIOD,
+  periodHeading,
+  periodLabel,
+  periodRange,
+  showsManualColumnNumbers,
+  type ReportPeriod,
+} from '@/lib/reportPeriods';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
 
 /**
- * LBAc Form No. 2 — Quarterly Financial Report of Operations.
+ * LBAc Form No. 2 — the Financial Report of Operations.
  *
  * Budget Operations Manual for LGUs, 2023 Edition, Chapter 5 of Part II,
  * Item 5.5. Prepared by the Local Budget Officer and submitted to the Local
@@ -29,11 +32,16 @@ import { fundLabel } from '../budget/Obligations';
  * THE COLUMNS ARE THE MANUAL'S, NOT CBO'S
  * ---------------------------------------------------------------------------
  * Appropriation continuing and current; allotment released in previous
- * quarters, this quarter, total; balance of appropriation; obligations in
- * previous quarters, this quarter, total; unobligated allotment. In that
- * order, with the manual's own column numbers in the heading, because the
- * officer filling in the submission reads down the form and across CBO's
- * screen at the same time.
+ * periods, this period, total; balance of appropriation; obligations in
+ * previous periods, this period, total; unobligated allotment. In that order,
+ * with the manual's own column numbers in the heading, because the officer
+ * filling in the submission reads down the form and across CBO's screen at
+ * the same time.
+ *
+ * The quarter is the SUBMISSION deadline, not the only period anybody asks
+ * about, so the period is chosen. The manual's column numbers appear on the
+ * quarter and nowhere else: above a monthly or annual layout they would be
+ * numbering a different form.
  *
  * ---------------------------------------------------------------------------
  * WHY THE FIGURES ARE COMPUTED FROM THE DOCUMENTS AND NOT FROM THE BALANCES
@@ -67,14 +75,17 @@ interface Row {
 
 export default function QuarterlyFinancialReport() {
   const { fiscalYear, fundCode } = useFilters();
-  const [quarter, setQuarter] = useState<Quarter>(1);
+  const [period, setPeriod] = useState<ReportPeriod>(DEFAULT_PERIOD);
   const [officeId, setOfficeId] = useState<string | null>(null);
 
   const allotments = useAllotments(fiscalYear, fundCode);
   const obligations = useObligations(fiscalYear, fundCode);
   const balances = useBudgetBalances(fiscalYear, fundCode);
 
-  const range = quarterRange(fiscalYear, quarter);
+  const range = periodRange(period, fiscalYear);
+  const numbered = showsManualColumnNumbers(period);
+  /** The manual's column number, or nothing at all off the quarterly form. */
+  const n = (num: number) => (numbered ? ` (${num})` : '');
 
   const figures = useMemo(
     () => figuresForPeriod(allotments.data, obligations.data, range.from, range.to),
@@ -158,7 +169,10 @@ export default function QuarterlyFinancialReport() {
    * choosing.
    */
   const drift = useMemo(() => {
-    if (quarter !== 4 || officeId) return null;
+    // Only when the whole year is in view. A quarter's figures are a slice of
+    // the running balances and are not supposed to equal them, so comparing
+    // them would report a difference on every report but the last.
+    if (period.mode !== 'ANNUAL' || officeId) return null;
     const fromBalances = balances.data.reduce(
       (acc, b) => ({
         allotment: acc.allotment + b.allotmentReleased,
@@ -170,7 +184,7 @@ export default function QuarterlyFinancialReport() {
     const obligatedGap = totals.obligationTotal - fromBalances.obligated;
     if (allotmentGap === 0 && obligatedGap === 0) return null;
     return { allotmentGap, obligatedGap };
-  }, [quarter, officeId, balances.data, totals]);
+  }, [period.mode, officeId, balances.data, totals]);
 
   const exportColumns: ExportColumn<Row>[] = [
     { key: 'fpp', header: '(1) MFO/PPA', value: (r) => `${r.fppCode} ${r.fppName}` },
@@ -178,8 +192,18 @@ export default function QuarterlyFinancialReport() {
     { key: 'continuing', header: '(3) Continuing', kind: 'amount', value: (r) => r.continuing },
     { key: 'current', header: '(4) Current', kind: 'amount', value: (r) => r.current },
     { key: 'apprTotal', header: '(5) Total', kind: 'amount', value: (r) => r.continuing + r.current },
-    { key: 'allotPrev', header: '(6) Previous Quarters', kind: 'amount', value: (r) => r.allotmentPrevious },
-    { key: 'allotThis', header: '(7) This Quarter', kind: 'amount', value: (r) => r.allotmentThis },
+    {
+      key: 'allotPrev',
+      header: `${n(6)}Previous periods`.trim(),
+      kind: 'amount',
+      value: (r) => r.allotmentPrevious,
+    },
+    {
+      key: 'allotThis',
+      header: `${n(7)}${periodLabel(period)}`.trim(),
+      kind: 'amount',
+      value: (r) => r.allotmentThis,
+    },
     {
       key: 'allotTotal',
       header: '(8) Total Released',
@@ -215,24 +239,16 @@ export default function QuarterlyFinancialReport() {
   return (
     <ReportShell
       meta={{
-        title: 'Quarterly Financial Report of Operations',
+        title: 'Financial Report of Operations',
         fundLabel: fundLabel(fundCode),
-        periodLabel: `${QUARTER_LABELS[quarter]}, ${fiscalYear}`,
+        periodLabel: periodHeading(period, fiscalYear),
       }}
       breadcrumbs={[{ label: 'Budget' }, { label: 'Reports' }, { label: 'LBAc Form No. 2' }]}
       rows={rows}
       exportColumns={exportColumns}
       filters={
         <>
-          <Field label="Quarter" className="w-64">
-            <Select value={String(quarter)} onChange={(e) => setQuarter(Number(e.target.value) as Quarter)}>
-              {([1, 2, 3, 4] as Quarter[]).map((q) => (
-                <option key={q} value={q}>
-                  {QUARTER_LABELS[q]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <PeriodPicker value={period} onChange={setPeriod} />
           <Field label="Office" className="w-64">
             <OfficePicker value={officeId} onChange={setOfficeId} />
           </Field>
@@ -374,7 +390,7 @@ export default function QuarterlyFinancialReport() {
           {rows.length === 0 && (
             <Alert tone="info" title="Nothing released or committed yet" className="mt-4">
               No allotment has been released and no obligation certified in {fiscalYear} for this
-              fund up to the end of the {QUARTER_LABELS[quarter].toLowerCase()}.
+              fund up to the end of {periodLabel(period).toLowerCase()}.
             </Alert>
           )}
         </>

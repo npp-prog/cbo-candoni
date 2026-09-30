@@ -230,22 +230,69 @@ describe('the menu itself', () => {
   });
 
   /**
-   * The two halves of LBP Form No. 1 sit together.
-   *
-   * The appropriation is the expenditure side and the estimated receipts are
-   * the sources of financing. Separating them is what let CBO run for months
-   * with a budget column for every peso going out and none for any coming in.
+   * The two halves of LBP Form No. 1, in the form's own order: what will pay
+   * for the year, then what the year will spend. The ordinance enacts only
+   * the second, which is why the first needed a record of its own - and why
+   * it belongs in front rather than beside it as an afterthought.
    */
-  it('keeps the estimated receipts beside the appropriation', () => {
+  it('puts the estimated receipts immediately before the appropriation', () => {
     const budget = NAVIGATION.find((i) => i.to === '/budget');
     const transactions = (budget?.children ?? []).filter(
       (c) => c.group === 'Budget transactions',
     );
-    const appropriation = transactions.findIndex((c) => c.to === '/budget/appropriations');
     const receipts = transactions.findIndex((c) => c.to === '/budget/estimated-receipts');
-    expect(appropriation).toBeGreaterThanOrEqual(0);
-    expect(receipts).toBe(appropriation + 1);
+    const appropriation = transactions.findIndex((c) => c.to === '/budget/appropriations');
+    expect(receipts).toBe(0);
+    expect(appropriation).toBe(receipts + 1);
   });
+
+  /**
+   * Allotment is ONE menu item.
+   *
+   * It was two - "Allotment Release Orders" and "Allotment Register" - sitting
+   * next to each other and reading almost identically, and Neil opened the
+   * wrong one. Renaming helped and did not fix it: the officer still had to
+   * choose between two entries before knowing what was in either.
+   *
+   * The register and the orders are one subject with two faces, and they are
+   * tabs now. A second allotment entry brings the confusion back with it.
+   */
+  it('gives allotment exactly one menu item', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const allotment = (budget?.children ?? []).filter((c) =>
+      c.label.toLowerCase().includes('allotment'),
+    );
+    expect(allotment.map((c) => c.to)).toEqual(['/budget/allotments']);
+  });
+
+  /** The order of the group is the order the work happens in. */
+  it('lists the budget transactions in the order the work happens', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const transactions = (budget?.children ?? []).filter(
+      (c) => c.group === 'Budget transactions',
+    );
+    expect(transactions.map((c) => c.to)).toEqual([
+      '/budget/estimated-receipts',
+      '/budget/appropriations',
+      '/budget/allotments',
+      '/budget/obligations',
+    ]);
+  });
+
+  /**
+   * The forms are submitted quarterly and looked at far more often than that.
+   * The period is chosen on the screen now, so a label saying "Quarterly"
+   * would describe one of the four things the screen does.
+   */
+  it('does not call the LBAc forms quarterly in the menu', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const reports = (budget?.children ?? []).filter((c) => c.group === 'Reports');
+    expect(reports.length).toBeGreaterThan(0);
+    for (const r of reports) {
+      expect(r.label.toLowerCase()).not.toContain('quarterly');
+    }
+  });
+
 
   it('every heading holds at least one item', () => {
     for (const item of NAVIGATION) {

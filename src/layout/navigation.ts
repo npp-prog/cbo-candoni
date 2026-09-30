@@ -66,21 +66,31 @@ export const NAVIGATION: NavItem[] = [
      * books and tests it keeps, and the forms it submits.
      */
     children: [
-      { group: 'Budget transactions', label: 'Appropriation', to: '/budget/appropriations' },
-      // Beside the appropriation, because the two are the two halves of LBP
-      // Form No. 1: what will be spent, and what will pay for it. The
-      // ordinance enacts only the first, which is why the second needs a
-      // record of its own rather than being read off anything.
-      { group: 'Budget transactions', label: 'Estimated Receipts', to: '/budget/estimated-receipts' },
-      // The order comes before the allotments it creates: the Budget Officer
-      // releases by order, and the allotment register is what the order leaves
-      // behind. Both are kept - an allotment may still be released singly, and
-      // a withdrawal of allotment is not an order at all.
+      /*
+       * The order is LBP Form No. 1's: what will pay for the year, then what
+       * the year will spend. The ordinance enacts only the second, which is
+       * why the first needed a record of its own - and why it belongs in
+       * front of it rather than beside it as an afterthought.
+       */
       {
         group: 'Budget transactions',
-        label: 'Allotment Release Orders',
-        to: '/budget/release-orders',
+        label: 'Estimated Receipts',
+        to: '/budget/estimated-receipts',
       },
+      { group: 'Budget transactions', label: 'Appropriation', to: '/budget/appropriations' },
+      /*
+       * ONE item, not two.
+       *
+       * There were two - "Allotment Release Orders" and "Allotment Register" -
+       * and they sat next to each other reading almost identically. Renaming
+       * them helped and did not fix it: the officer still had to decide which
+       * of two menu entries to open before knowing what was in either.
+       *
+       * They are one subject with two faces. The register is what you open;
+       * the orders are how you add to it, a tab away. Nothing is lost - the
+       * tab strip is on both screens - and there is no longer a choice to get
+       * wrong on the way in.
+       */
       { group: 'Budget transactions', label: 'Allotments', to: '/budget/allotments' },
       { group: 'Budget transactions', label: 'Obligations', to: '/budget/obligations' },
 
@@ -104,10 +114,10 @@ export const NAVIGATION: NavItem[] = [
        * the Accountant against the budget - not statements drawn off the
        * books, which is what the Reports menu holds.
        */
-      { group: 'Reports', label: 'Quarterly Report of Receipts (LBAc 1)', to: '/budget/reports/receipts' },
+      { group: 'Reports', label: 'Report of Receipts (LBAc 1)', to: '/budget/reports/receipts' },
       {
         group: 'Reports',
-        label: 'Quarterly Financial Report of Operations (LBAc 2)',
+        label: 'Financial Report of Operations (LBAc 2)',
         to: '/budget/reports/quarterly-financial',
       },
       {
@@ -297,7 +307,7 @@ export const NAVIGATION: NavItem[] = [
       // budget beside the General Ledger, which is the only way a disagreement
       // between the two can show at all.
       { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
-      // The SRE and the two quarterly LBAc forms are NOT here. They are budget
+      // The SRE and the two LBAc forms are NOT here. They are budget
       // accountability reports, listed under Budget > Reports with the budget
       // they account for. What is left in this menu is drawn off the books.
       { label: 'Trial Balance', to: '/reports/trial-balance' },

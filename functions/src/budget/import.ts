@@ -541,6 +541,10 @@ export const importBudgetLines = onCall(
           if (line.amount < 0) continue;
           const check = checkAllotmentAgainstAppropriation({
             appropriationRevised: balances[i].appropriationRevised,
+            // The hold the Budget Officer placed with an Allotment Release
+            // Order. It was not read here, so a bulk upload released straight
+            // through an amount that had been deliberately withheld.
+            forLaterRelease: balances[i].forLaterRelease ?? 0,
             allotmentAlreadyReleased: balances[i].allotmentReleased,
             requestedRelease: line.amount,
           });

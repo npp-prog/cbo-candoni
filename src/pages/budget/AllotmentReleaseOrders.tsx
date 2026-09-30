@@ -16,6 +16,7 @@ import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Allotment, BudgetBalance } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from './Obligations';
+import { AllotmentTabs } from './allotmentTabs';
 
 /**
  * Allotment Release Orders.
@@ -349,6 +350,8 @@ export default function AllotmentReleaseOrders() {
             ) : undefined
           }
         />
+
+        <AllotmentTabs active="orders" />
 
         {building && (
           <Card

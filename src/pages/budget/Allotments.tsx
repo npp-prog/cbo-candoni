@@ -17,19 +17,41 @@ import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
-import { checkAllotmentAgainstAppropriation } from '@/lib/accounting-rules';
+import { checkAllotmentWithdrawal } from '@/lib/accounting-rules';
 import { budgetKeyId, type Allotment } from '@/types/budget';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import { fundLabel } from './Obligations';
+import { AllotmentTabs } from './allotmentTabs';
 
 /**
- * Allotment releases.
+ * The Allotment Register, and the withdrawal of allotment.
  *
- * The first budget control gate: cumulative allotments may not exceed the
- * revised appropriation for the same line. As on the obligation form, the
- * available figure shown while typing is a preview read from the budget
- * registry; `releaseAllotment` re-reads and re-checks it server-side before
- * committing.
+ * ---------------------------------------------------------------------------
+ * WHAT THIS SCREEN STOPPED DOING
+ * ---------------------------------------------------------------------------
+ * It used to release allotment, one line at a time, with no order number, no
+ * purpose and no approval by the Local Chief Executive. The Budget Operations
+ * Manual has no such instrument: an allotment is released on an Allotment
+ * Release Order, and there is no other way.
+ *
+ * Worse than duplication, it was a way round the control. The single-line
+ * release did not read the For Later Release hold at all, so an amount the
+ * Budget Officer had deliberately withheld could be released straight through
+ * here - silently, because everything else still footed. A safeguard with a
+ * door beside it is not a safeguard, and two menu items that both said
+ * "allotment" made it impossible to tell which door you were standing in.
+ *
+ * So releasing lives on Budget › Allotment Release Orders, and this is the
+ * register: every line released, the order it came from, and the one act that
+ * genuinely is not an order - taking allotment back.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A WITHDRAWAL IS NOT AN ORDER
+ * ---------------------------------------------------------------------------
+ * An Allotment Release Order gives authority. A withdrawal takes it back, and
+ * it is checked against a different thing: not what the appropriation allows,
+ * but what has already been obligated against the allotment being withdrawn.
+ * Authority cannot be pulled out from under a commitment already made.
  */
 export default function Allotments() {
   const { fiscalYear, fundCode } = useFilters();
@@ -39,7 +61,7 @@ export default function Allotments() {
   const { data, loading, error } = useAllotments(fiscalYear, fundCode);
 
   const [showForm, setShowForm] = useState(false);
-  const [releasing, setReleasing] = useState<Allotment | null>(null);
+  const [approving, setApproving] = useState<Allotment | null>(null);
   const [busy, setBusy] = useState(false);
 
   const totalReleased = useMemo(
@@ -47,17 +69,17 @@ export default function Allotments() {
     [data],
   );
 
-  const release = async (allotment: Allotment) => {
+  const approveWithdrawal = async (allotment: Allotment) => {
     setBusy(true);
     try {
       const result = await engine.releaseAllotment({ allotmentId: allotment.id });
       toast.success(
-        `Allotment ${result.allotmentNo} released`,
-        `${formatPeso(allotment.amount)} is now available to obligate. Remaining appropriation on this line: ${formatPeso(result.availableAppropriation)}.`,
+        `Withdrawal ${result.allotmentNo} recorded`,
+        `${formatPeso(Math.abs(allotment.amount))} taken back from ${allotment.accountCode} ${allotment.accountName}.`,
       );
-      setReleasing(null);
+      setApproving(null);
     } catch (err) {
-      toast.error('The allotment was not released', err instanceof Error ? err.message : String(err));
+      toast.error('The withdrawal was not recorded', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -67,11 +89,22 @@ export default function Allotments() {
     {
       key: 'allotmentNo',
       header: 'Reference',
-      width: '10rem',
-      value: (a) => a.allotmentNo ?? '',
+      width: '11rem',
+      value: (a) => `${a.aroNo ?? ''} ${a.allotmentNo ?? ''}`.trim(),
       cell: (a) =>
         a.allotmentNo ? (
-          <span className="font-mono text-xs">{a.allotmentNo}</span>
+          <div>
+            <span className="font-mono text-xs">{a.allotmentNo}</span>
+            {/*
+              Which order released this line. A line with no order number came
+              from a bulk upload rather than from an Allotment Release Order,
+              and saying so is the point: it is the one thing on this register
+              an auditor cannot trace to a form.
+            */}
+            <span className="block text-2xs text-slate-500">
+              {a.aroNo ? `Order ${a.aroNo}` : a.amount < 0 ? 'Withdrawal' : 'No order'}
+            </span>
+          </div>
         ) : (
           <span className="text-xs italic text-slate-400">Draft</span>
         ),
@@ -147,10 +180,10 @@ export default function Allotments() {
               variant="primary"
               onClick={(e) => {
                 e.stopPropagation();
-                setReleasing(a);
+                setApproving(a);
               }}
             >
-              Release
+              Approve
             </Button>
           )}
         </div>
@@ -163,23 +196,40 @@ export default function Allotments() {
   return (
     <div>
       <PageHeader
-        title="Allotments"
+        title="Allotment Register"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear} - ${formatPeso(totalReleased)} released`}
-        breadcrumbs={[{ label: 'Budget' }, { label: 'Allotments' }]}
+        breadcrumbs={[{ label: 'Budget' }, { label: 'Allotment Register' }]}
         actions={
           can('budget', 'create') && (
             <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => navigate('/budget/allotments/upload')}>
-                Upload releases
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => navigate('/budget/allotments/upload')}
+              >
+                Bulk upload
               </Button>
-              (
-            <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
-              Release allotment
-            </Button>
+              {/* There used to be a "Release allotment" button here. Releasing
+                  happens on the Allotment Release Order now - see the note at
+                  the top of this file. A stray bracket also rendered a literal
+                  "(" between the two buttons. */}
+              <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
+                Withdraw allotment
+              </Button>
             </div>
           )
         }
       />
+
+      <AllotmentTabs active="register" />
+
+      <Alert tone="info" className="my-4">
+        Every allotment released, and which order released it. Releasing happens on the{' '}
+        <strong>Release Orders</strong> tab &mdash; that is the instrument the Budget Operations
+        Manual provides, and the only one carrying an order number, the purpose, the approval of
+        the Local Chief Executive and the For Later Release column. What is done here is the
+        opposite act: taking allotment back.
+      </Alert>
 
       <DataTable
         rows={data}
@@ -204,28 +254,31 @@ export default function Allotments() {
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false);
-            toast.success('Allotment saved as a draft', 'Release it to make it available to obligate.');
+            toast.success(
+              'Withdrawal saved as a draft',
+              'Approve it to take the allotment back.',
+            );
           }}
         />
       )}
 
       <ConfirmDialog
-        open={Boolean(releasing)}
-        onCancel={() => setReleasing(null)}
+        open={Boolean(approving)}
+        onCancel={() => setApproving(null)}
         onConfirm={() => {
-          if (releasing) void release(releasing);
+          if (approving) void approveWithdrawal(approving);
         }}
         loading={busy}
-        title="Release allotment"
-        confirmLabel="Release"
-        variant="primary"
+        title="Withdraw allotment"
+        confirmLabel="Withdraw"
+        variant="danger"
         message={
-          releasing && (
+          approving && (
             <p>
-              Releasing makes <strong>{formatPeso(releasing.amount)}</strong> available to obligate
-              against {releasing.accountCode} {releasing.accountName} for {releasing.officeName}.
-              The available appropriation will be re-checked on the server before the release is
-              committed.
+              This takes <strong>{formatPeso(Math.abs(approving.amount))}</strong> of allotment back
+              from {approving.accountCode} {approving.accountName} for {approving.officeName}. The
+              server re-checks what has already been obligated against this line first: authority
+              cannot be pulled out from under a commitment already made.
             </p>
           )
         }
@@ -273,12 +326,24 @@ function AllotmentForm({
   const accountCode = balance?.accountCode ?? null;
   const accountName = balance?.accountName ?? '';
 
+  /**
+   * A withdrawal is checked against what has been OBLIGATED, not against the
+   * appropriation.
+   *
+   * The appropriation is not the question here: the money has already been
+   * released, and the only thing that can stop it being taken back is a
+   * commitment already made against it.
+   *
+   * The amount is entered as a positive figure and sent as a negative one.
+   * The field used to say "enter a negative amount to withdraw allotment",
+   * which put a minus sign between the officer and the act.
+   */
   const check = useMemo(() => {
     if (!balance || !amount || amount <= 0) return null;
-    return checkAllotmentAgainstAppropriation({
-      appropriationRevised: balance.appropriationRevised,
+    return checkAllotmentWithdrawal({
       allotmentAlreadyReleased: balance.allotmentReleased,
-      requestedRelease: amount,
+      obligated: balance.obligated,
+      requestedWithdrawal: -amount,
     });
   }, [balance, amount]);
 
@@ -304,7 +369,8 @@ function AllotmentForm({
           accountCode: accountCode ?? '',
           accountName,
           expenseClass,
-          amount,
+          // Stored negative: a withdrawal reduces the allotment released.
+          amount: -amount,
           particulars: particulars.trim() || null,
           status: 'DRAFT',
         },
@@ -326,8 +392,8 @@ function AllotmentForm({
     <Modal
       open
       onClose={onClose}
-      title="Release an allotment"
-      description="Saved as a draft. Releasing it commits appropriation authority to the office."
+      title="Withdraw allotment"
+      description="Saved as a draft. Approving it takes the allotment back from the office."
       size="lg"
       footer={
         <>
@@ -387,16 +453,15 @@ function AllotmentForm({
         </Field>
 
         <Field
-          label="Amount to release"
+          label="Amount to withdraw"
           required
           htmlFor="amount"
-          hint="Enter a negative amount to withdraw allotment."
+          hint="A positive figure. It is recorded as a reduction of the allotment released."
         >
           <AmountInput
             id="amount"
             value={amount}
             onChange={setAmount}
-            allowNegative
             invalid={check ? !check.ok : false}
           />
         </Field>
@@ -412,12 +477,12 @@ function AllotmentForm({
             Budget line position
           </p>
           <dl className="grid gap-3 sm:grid-cols-4">
-            <Figure label="Revised appropriation" value={balance.appropriationRevised} />
-            <Figure label="Already released" value={balance.allotmentReleased} />
-            <Figure label="Available to release" value={balance.availableAppropriation} />
+            <Figure label="Released so far" value={balance.allotmentReleased} />
+            <Figure label="Already obligated" value={balance.obligated} />
+            <Figure label="Not yet obligated" value={balance.availableAllotment} />
             <Figure
-              label="After this release"
-              value={balance.availableAppropriation - (amount ?? 0)}
+              label="Released after this"
+              value={balance.allotmentReleased - (amount ?? 0)}
               tone={check && !check.ok ? 'negative' : 'default'}
             />
           </dl>
@@ -426,15 +491,15 @@ function AllotmentForm({
 
       {officeId && balances.data.filter((b) => b.officeId === officeId && b.appropriationRevised !== 0).length === 0 && (
         <Alert tone="warning" className="mt-4">
-          This office has no approved appropriation for {fiscalYear}. Record and approve the
-          appropriation before releasing an allotment against it.
+          This office has no approved appropriation for {fiscalYear}, so it has no allotment to
+          withdraw either.
         </Alert>
       )}
 
       {check && !check.ok && (
-        <Alert tone="error" className="mt-4" title="Insufficient appropriation">
-          {check.violations[0].message} A supplemental appropriation or a realignment is needed
-          before this allotment can be released.
+        <Alert tone="error" className="mt-4" title="This allotment cannot be withdrawn">
+          {check.violations[0].message} Cancel the obligations against this line first: authority
+          cannot be pulled out from under a commitment already made.
         </Alert>
       )}
     </Modal>
