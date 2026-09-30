@@ -47,7 +47,11 @@ export default function UnreleasedChecks() {
   const sheets = useMemo(
     () =>
       buildUnreleasedChecks({
-        checks: checks.data.filter((c) => c.fundCode === fundCode),
+        checks: checks.data
+          .filter((c) => c.fundCode === fundCode)
+          // The cancellation stamp carries a full timestamp; the schedule
+          // compares plain dates, so only the day is taken.
+          .map((c) => ({ ...c, cancelledAt: c.cancelledBy?.at?.slice(0, 10) })),
         asOf,
         obrByDv,
         bankAccountId: bankAccountId || null,
@@ -115,14 +119,20 @@ export default function UnreleasedChecks() {
             (Appendix 28) is suspended.
           </p>
           {/*
-            The limitation, stated rather than left to be found. It only bites
-            on a back-dated run, and the fix is a cancelled date on the check.
+            What was said here in patch 45 was wrong, and the corrected rule is
+            worth spelling out because it changes the figure the journal
+            voucher restores.
           */}
           <p className="mt-1">
-            A check that was later cancelled, went stale or was replaced is left out. CBO records
-            that a check was cancelled but not when, so a schedule struck at an earlier date cannot
-            tell whether it was still live then. For a schedule run at today&apos;s date this makes
-            no difference.
+            A check cancelled <em>after</em> the date was a live unreleased check on it, and is
+            listed. One already cancelled by the date is not. A stale check that was never released
+            is listed too — going stale does not hand it to the payee, and the money is still in the
+            bank.
+          </p>
+          <p className="mt-1">
+            A replaced check is left out on purpose: its replacement stands in its place and is on
+            this schedule itself if it is unreleased, so counting both would restore the same money
+            twice.
           </p>
         </>
       }
@@ -216,6 +226,16 @@ function Row({ row }: { row: SucRow }) {
         {row.releasedLater && row.dateReleased && (
           <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-2xs text-slate-600">
             released {formatShortDate(row.dateReleased)}
+          </span>
+        )}
+        {row.cancelledLater && (
+          <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-2xs text-amber-800">
+            cancelled since
+          </span>
+        )}
+        {row.staleUnreleased && (
+          <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-2xs text-amber-800">
+            stale, never released
           </span>
         )}
       </td>

@@ -59,8 +59,59 @@ describe('which checks belong on the schedule', () => {
     expect(build([chk({ checkDate: YEAR_END })])[0].rows).toHaveLength(1);
   });
 
-  it.each(['CANCELLED', 'STALE', 'REPLACED'])('leaves out a %s check', (status) => {
-    expect(build([chk({ status })])).toEqual([]);
+  /**
+   * Patch 45 left every one of these out and said CBO did not record when a
+   * check was cancelled. It does - `cancelledBy` carries the moment - and
+   * these are the cases that were being dropped.
+   */
+  it('lists a check cancelled AFTER the date, which was live on it', () => {
+    const sheets = build([chk({ status: 'CANCELLED', cancelledAt: '2027-02-11' })]);
+    expect(sheets[0].rows).toHaveLength(1);
+    expect(sheets[0].rows[0].cancelledLater).toBe(true);
+  });
+
+  it('leaves out a check already cancelled by the date', () => {
+    expect(build([chk({ status: 'CANCELLED', cancelledAt: '2026-12-15' })])).toEqual([]);
+  });
+
+  /**
+   * The safe way round. Without a recorded moment the check is treated as
+   * already cancelled, because the alternative restores cash the municipality
+   * may not be holding.
+   */
+  it('leaves out a cancelled check with no recorded moment', () => {
+    expect(build([chk({ status: 'CANCELLED' })])).toEqual([]);
+  });
+
+  it('leaves out a check cancelled later that had already been released', () => {
+    expect(
+      build([
+        chk({ status: 'CANCELLED', cancelledAt: '2027-02-11', dateReleased: '2026-11-20' }),
+      ]),
+    ).toEqual([]);
+  });
+
+  /**
+   * Going stale does not hand a check to the payee. A stale check that was
+   * never released is money still sitting in the bank.
+   */
+  it('lists a stale check that was never released', () => {
+    const sheets = build([chk({ status: 'STALE' })]);
+    expect(sheets[0].rows).toHaveLength(1);
+    expect(sheets[0].rows[0].staleUnreleased).toBe(true);
+  });
+
+  it('leaves out a stale check that had been released by the date', () => {
+    expect(build([chk({ status: 'STALE', dateReleased: '2026-06-30' })])).toEqual([]);
+  });
+
+  /**
+   * Still left out, and deliberately. The replacement stands in its place and
+   * is on this schedule itself if it is unreleased; counting both would
+   * restore the same money twice through the year-end journal voucher.
+   */
+  it('leaves out a replaced check, whose replacement stands in its place', () => {
+    expect(build([chk({ status: 'REPLACED' })])).toEqual([]);
   });
 });
 

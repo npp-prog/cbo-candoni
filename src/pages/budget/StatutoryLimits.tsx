@@ -7,11 +7,19 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useBudgetBalances } from '@/data/queries';
+import { useBudgetBalances, useEstimatedReceipts } from '@/data/queries';
 import { useDocument } from '@/hooks/useFirestore';
 import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
+import {
+  compareToStated,
+  isMaterial,
+  ntaSuggestion,
+  regularIncomeSuggestion,
+  type IncomeComparison,
+  type IncomeSuggestion,
+} from '@/lib/statutoryIncome';
 import {
   INCOME_CLASS_LABELS,
   checkStatutoryLimits,
@@ -59,6 +67,14 @@ interface Settings {
   nationalTaxAllotment?: Centavos;
   /** Budget balance ids the office has nominated as Quick Response Fund. */
   quickResponseLineIds?: string[];
+  /**
+   * The account codes the office has nominated as the National Tax Allotment.
+   *
+   * Nominated because Candoni's chart carries no NTA account at all - see the
+   * note at the head of statutoryIncome.ts. Guessing at Subsidy from National
+   * Government would put a wrong denominator under a statutory test.
+   */
+  ntaAccountCodes?: string[];
 }
 
 const VERDICT_TONE: Record<LimitVerdict, 'emerald' | 'rose' | 'amber' | 'slate'> = {
@@ -81,6 +97,9 @@ export default function StatutoryLimits() {
   const toast = useToast();
 
   const balances = useBudgetBalances(fiscalYear, fundCode);
+  // The income estimates of LBP Form No. 1. Not CBO's ledger - the document
+  // the reviewing authority itself reads.
+  const receipts = useEstimatedReceipts(fiscalYear, fundCode);
   const docId = `statutoryLimits-${fiscalYear}`;
   const stored = useDocument<Settings>(COL.settings, docId);
 
@@ -137,6 +156,41 @@ export default function StatutoryLimits() {
 
     return { personalServices, ldrrmf, quickResponseFund, developmentFund };
   }, [balances.data, nominated]);
+
+  /**
+   * What the income estimates on record support.
+   *
+   * Offered, never applied. The Budget Officer presses a button or does not;
+   * nothing here writes into the form on its own, because the figure that goes
+   * under a statutory test is a person's statement and has to stay one.
+   */
+  const nominatedNta = form.ntaAccountCodes;
+  const ntaCodes = useMemo(() => new Set(nominatedNta ?? []), [nominatedNta]);
+
+  const regularSuggested = useMemo(
+    () => regularIncomeSuggestion(receipts.data),
+    [receipts.data],
+  );
+  const ntaSuggested = useMemo(
+    () => ntaSuggestion(receipts.data, nominatedNta),
+    [receipts.data, nominatedNta],
+  );
+
+  const regularCheck = compareToStated(form.estimatedRegularIncome ?? 0, regularSuggested);
+  const ntaCheck = compareToStated(form.nationalTaxAllotment ?? 0, ntaSuggested);
+  const disagreements = [
+    { label: 'Estimated regular income', check: regularCheck },
+    { label: 'National Tax Allotment', check: ntaCheck },
+  ].filter((d) => isMaterial(d.check));
+
+  /** Every account the estimates carry, for nominating the NTA. */
+  const receiptAccounts = useMemo(
+    () =>
+      [...receipts.data]
+        .filter((r) => r.annual !== 0)
+        .sort((a, b) => a.accountCode.localeCompare(b.accountCode)),
+    [receipts.data],
+  );
 
   const results = useMemo(
     () =>
@@ -200,6 +254,32 @@ export default function StatutoryLimits() {
         </Alert>
       )}
 
+      {/*
+        Two figures for one thing, and they disagree. Whichever is wrong, a
+        statutory threshold moves with it - five per cent of the estimated
+        regular income is what makes the whole ordinance operative or not - so
+        this is worth interrupting for rather than noting quietly below.
+      */}
+      {disagreements.length > 0 && (
+        <Alert
+          tone="warning"
+          title="The figures typed here do not match the income estimates on record"
+          className="mb-5"
+        >
+          {disagreements.map((d) => (
+            <p key={d.label}>
+              {d.label}: {formatPeso(d.check.stated)} typed here against{' '}
+              {formatPeso(d.check.suggested)} in the Estimated Receipts for {fiscalYear} — a
+              difference of {formatPeso(Math.abs(d.check.difference))}.
+            </p>
+          ))}
+          <p className="mt-2">
+            One of the two is wrong, and the threshold moves with it. Neither is changed here
+            until somebody decides which.
+          </p>
+        </Alert>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
         <Card title="The tests" bodyClassName="p-0">
           <ul className="divide-y divide-slate-100">
@@ -249,6 +329,13 @@ export default function StatutoryLimits() {
                   disabled={!canEdit}
                   onChange={(v) => set({ estimatedRegularIncome: v ?? 0 })}
                 />
+                <FromEstimates
+                  suggestion={regularSuggested}
+                  check={regularCheck}
+                  canEdit={canEdit}
+                  onUse={() => set({ estimatedRegularIncome: regularSuggested.amount })}
+                  emptyNote="No regular income estimate has been loaded for this year, so there is nothing to compare with."
+                />
               </Field>
 
               <Field
@@ -259,6 +346,13 @@ export default function StatutoryLimits() {
                   value={form.nationalTaxAllotment ?? null}
                   disabled={!canEdit}
                   onChange={(v) => set({ nationalTaxAllotment: v ?? 0 })}
+                />
+                <FromEstimates
+                  suggestion={ntaSuggested}
+                  check={ntaCheck}
+                  canEdit={canEdit}
+                  onUse={() => set({ nationalTaxAllotment: ntaSuggested.amount })}
+                  emptyNote="No account has been nominated as the National Tax Allotment yet, so CBO has nothing to add up. Nominate one below."
                 />
               </Field>
             </div>
@@ -299,6 +393,51 @@ export default function StatutoryLimits() {
               </>
             )}
           </Card>
+
+          <Card
+            title="Which accounts are the National Tax Allotment"
+            subtitle="Nominated, because the chart has no account by that name."
+          >
+            {receiptAccounts.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No income estimate has been loaded for {fiscalYear} in this fund, so there is
+                nothing to nominate from yet.
+              </p>
+            ) : (
+              <>
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {receiptAccounts.map((r) => (
+                    <Checkbox
+                      key={r.accountCode}
+                      checked={ntaCodes.has(r.accountCode)}
+                      disabled={!canEdit}
+                      onChange={(on) =>
+                        set({
+                          ntaAccountCodes: on
+                            ? [...ntaCodes, r.accountCode]
+                            : [...ntaCodes].filter((c) => c !== r.accountCode),
+                        })
+                      }
+                      label={`${r.accountCode} ${r.accountName}`}
+                      hint={formatPeso(r.annual)}
+                    />
+                  ))}
+                </div>
+                {/*
+                  The finding that made this a nomination rather than a lookup.
+                  It is stated on the screen because the person reading it is
+                  the one who can have the account added.
+                */}
+                <p className="mt-3 text-xs text-slate-500">
+                  Candoni&rsquo;s chart of accounts carries no National Tax Allotment account — not
+                  under that name, nor as an Internal Revenue Allotment. The nearest is 40301010
+                  Subsidy from National Government, which is not the same account and may hold
+                  several things. CBO will not guess at it, so the office says which codes are the
+                  NTA and CBO adds up what it was told.
+                </p>
+              </>
+            )}
+          </Card>
         </div>
       </div>
 
@@ -315,7 +454,15 @@ export default function StatutoryLimits() {
             The figures on the right are not derived from CBO&rsquo;s own ledger on purpose. The
             reviewing authority uses the figure in the municipality&rsquo;s own statements, and a
             test run against a different number than the reviewer&rsquo;s is one that passes here
-            and fails there.
+            and fails there. What CBO now offers beside two of them is not its ledger either: it
+            is the income estimate of LBP Form No. 1, the document the reviewer reads. It is
+            offered and never applied — the figure under a statutory test stays a person&rsquo;s
+            statement.
+          </li>
+          <li>
+            Regular income realised last year has no such offer. That figure belongs to the year
+            before this one and comes off the municipality&rsquo;s own statements, not from
+            anything CBO holds for {fiscalYear}.
           </li>
         </ul>
       </Card>
@@ -359,5 +506,62 @@ function LimitRow({ result }: { result: LimitResult }) {
         {result.note}
       </p>
     </li>
+  );
+}
+
+/**
+ * What the income estimates support, shown beside what was typed.
+ *
+ * The button is the only way the figure moves. Nothing here writes on its own,
+ * and nothing is pre-filled: a denominator under a statutory test is somebody's
+ * statement, and a screen that quietly filled it in would turn that statement
+ * into CBO's - with the person's name still under it.
+ */
+function FromEstimates({
+  suggestion,
+  check,
+  canEdit,
+  onUse,
+  emptyNote,
+}: {
+  suggestion: IncomeSuggestion;
+  check: IncomeComparison;
+  canEdit: boolean;
+  onUse: () => void;
+  emptyNote: string;
+}) {
+  if (suggestion.empty) {
+    return <p className="mt-1.5 text-xs text-slate-500">{emptyNote}</p>;
+  }
+
+  return (
+    <div className="mt-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-slate-500">
+          The Estimated Receipts carry{' '}
+          <span className="tabular font-mono text-navy-800">{formatPeso(suggestion.amount)}</span>
+          {suggestion.lines.length === 1
+            ? ' on one account'
+            : ` across ${suggestion.lines.length} accounts`}
+          .
+        </span>
+        {check.agrees ? (
+          <span className="text-emerald-700">Matches what is typed.</span>
+        ) : (
+          canEdit && (
+            <Button size="sm" onClick={onUse}>
+              Use this figure
+            </Button>
+          )
+        )}
+      </div>
+      {!check.agrees && (
+        <p className={isMaterial(check) ? 'mt-1 text-amber-700' : 'mt-1 text-slate-500'}>
+          {check.difference > 0
+            ? `${formatPeso(check.difference)} more is typed here than the estimates carry.`
+            : `${formatPeso(-check.difference)} less is typed here than the estimates carry.`}
+        </p>
+      )}
+    </div>
   );
 }
