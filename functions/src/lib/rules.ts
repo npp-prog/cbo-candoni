@@ -319,6 +319,117 @@ export function checkExpenseDebitsHaveFpp(
 }
 
 // ---------------------------------------------------------------------------
+// 2a2. What kind of voucher this is
+// ---------------------------------------------------------------------------
+
+/**
+ * A disbursement voucher is one of two things, and they are not variations of
+ * each other.
+ *
+ * An OBLIGATED voucher pays an expenditure. It draws on an Obligation Request
+ * that was certified against a released allotment, so by the time it is paid
+ * the money has passed appropriation, allotment and obligation.
+ *
+ * A TRUST LIABILITY voucher settles something the municipality is merely
+ * holding: retention on a contract, a bidder's bond, the employees' share of a
+ * premium, tax withheld and now remitted. It is not expenditure, it was never
+ * appropriated, and requiring an obligation for it would mean inventing an
+ * appropriation for money that was never the municipality's to spend.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A RULE AND NOT A LABEL
+ * ---------------------------------------------------------------------------
+ * Before the category existed, a voucher with no obligation simply went
+ * through. There was no way to tell a deliberate trust settlement from a
+ * voucher whose obligation the encoder had forgotten to attach, and the
+ * difference is the whole budget control: the second one is an expenditure
+ * that never touched an allotment.
+ *
+ * So the category is declared, and each kind is held to what it is:
+ *
+ *   OBLIGATED         must carry an obligation.
+ *   TRUST_LIABILITY   must not carry one, AND must not debit an expense.
+ *
+ * The second half of that is the part that matters. A trust-liability voucher
+ * that debited an expense account would be an expenditure with no obligation
+ * behind it, wearing the one label that excuses the missing obligation. It
+ * would escape the budget control entirely and still look deliberate.
+ */
+export type DvCategory = 'OBLIGATED' | 'TRUST_LIABILITY';
+
+export interface DvCategoryInput {
+  category: string;
+  hasObligation: boolean;
+  lines: FppCheckLine[];
+}
+
+export function checkDvCategory(
+  input: DvCategoryInput,
+  isExpenseAccount: (accountCode: string) => boolean,
+): CheckResult {
+  const results: CheckResult[] = [];
+
+  if (input.category !== 'OBLIGATED' && input.category !== 'TRUST_LIABILITY') {
+    return fail(
+      'DV_CATEGORY_UNKNOWN',
+      `"${input.category}" is not a kind of voucher. A disbursement voucher either pays an ` +
+        'obligation or settles a trust liability, and which one it is decides whether an ' +
+        'Obligation Request is required.',
+      { category: input.category },
+    );
+  }
+
+  if (input.category === 'OBLIGATED' && !input.hasObligation) {
+    results.push(
+      fail(
+        'DV_OBLIGATION_MISSING',
+        'This voucher pays an expenditure, so it must draw on a certified Obligation Request. ' +
+          'Attach the OBR, or - if this settles money the municipality is only holding, such as ' +
+          'retention or a remittance - record it as a trust liability instead.',
+      ),
+    );
+  }
+
+  if (input.category === 'TRUST_LIABILITY') {
+    if (input.hasObligation) {
+      results.push(
+        fail(
+          'DV_TRUST_HAS_OBLIGATION',
+          'A trust liability settles money the municipality is holding, not an expenditure, so ' +
+            'it cannot draw on an Obligation Request. Paying it against an obligation would ' +
+            'consume an allotment for something that was never appropriated.',
+        ),
+      );
+    }
+
+    const expenseDebits = input.lines.filter(
+      (l) => l.debit > 0 && isExpenseAccount(String(l.accountCode).trim()),
+    );
+
+    if (expenseDebits.length > 0) {
+      results.push(
+        fail(
+          'DV_TRUST_DEBITS_EXPENSE',
+          `Line${expenseDebits.length === 1 ? '' : 's'} ${expenseDebits
+            .map((l) => l.lineNo)
+            .join(', ')} debit${expenseDebits.length === 1 ? 's' : ''} an expense ` +
+            `(${expenseDebits.map((l) => l.accountCode).join(', ')}). A trust liability settles ` +
+            'a liability the municipality is holding; an expense on this voucher would be ' +
+            'spending with no obligation and no allotment behind it. Record it as an obligated ' +
+            'voucher against an OBR.',
+          {
+            lineNos: expenseDebits.map((l) => l.lineNo),
+            accountCodes: expenseDebits.map((l) => l.accountCode),
+          },
+        ),
+      );
+    }
+  }
+
+  return merge(...results);
+}
+
+// ---------------------------------------------------------------------------
 // 2b. Realignment
 // ---------------------------------------------------------------------------
 

@@ -26,7 +26,7 @@ import { engine } from '@/lib/engine';
 import { formatPeso, amountInWords } from '@/lib/money';
 import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '@/lib/clearing';
 import { formatLongDate, todayPh } from '@/lib/dates';
-import { checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
+import { checkDvCategory, checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
 import {
   proposeDvEntry,
   computeDeduction,
@@ -34,6 +34,12 @@ import {
   type ObligationLineLite,
 } from './proposeEntry';
 import type { DisbursementVoucher } from '@/types/accounting';
+import {
+  DV_CATEGORIES,
+  DV_CATEGORY_HINTS,
+  DV_CATEGORY_LABELS,
+  type DvCategory,
+} from '@/types/enums';
 import { fundLabel } from '../budget/Obligations';
 import { useFppOptions } from '@/data/useFppOptions';
 
@@ -98,6 +104,17 @@ export default function DisbursementDetail() {
   // --- Form state ----------------------------------------------------------
 
   const [dvDate, setDvDate] = useState(todayPh());
+  /*
+   * What kind of voucher this is, chosen before anything else because it
+   * decides whether an Obligation Request is required at all.
+   *
+   * A voucher raised before the category existed has none stored. It is shown
+   * as unset rather than guessed from whether it happens to carry an
+   * obligation: guessing would quietly relabel a voucher whose OBR somebody
+   * forgot as a deliberate trust settlement, which is the one mistake this
+   * field exists to catch.
+   */
+  const [dvCategory, setDvCategory] = useState<DvCategory | ''>('OBLIGATED');
   const [obligationId, setObligationId] = useState<string | null>(null);
   const [obrNo, setObrNo] = useState<string | null>(null);
   const [obligationLines, setObligationLines] = useState<ObligationLineLite[]>([]);
@@ -117,6 +134,7 @@ export default function DisbursementDetail() {
   useEffect(() => {
     if (!existing) return;
     setDvDate(existing.dvDate);
+    setDvCategory(existing.dvCategory ?? '');
     setObligationId(existing.obligationId ?? null);
     setObrNo(existing.obrNo ?? null);
     setPayeeId(existing.payeeId);
@@ -201,6 +219,32 @@ export default function DisbursementDetail() {
   );
 
   /**
+   * The same category rule the server will run.
+   *
+   * Shown while the voucher is being built rather than at submission, because
+   * the fix for "a trust liability may not debit an expense" is to change the
+   * accounting distribution, and that is what the encoder is looking at.
+   */
+  const category = useMemo(
+    () =>
+      checkDvCategory(
+        {
+          category: dvCategory,
+          hasObligation: Boolean(obligationId),
+          lines: entryLines.map((l) => ({
+            lineNo: l.lineNo,
+            accountCode: l.accountCode,
+            debit: l.debit,
+            credit: l.credit,
+            fppCode: l.fppCode ?? null,
+          })),
+        },
+        (code) => expenseCodes.has(code),
+      ),
+    [dvCategory, obligationId, entryLines, expenseCodes],
+  );
+
+  /**
    * Duplicate warning. Not a block - two genuine payments of the same amount
    * to the same supplier in the same month do happen - but paying the same
    * invoice twice is the failure mode that actually loses public money, so it
@@ -229,8 +273,12 @@ export default function DisbursementDetail() {
     fiscalYear,
     period: Number(dvDate.slice(5, 7)),
     fundCode,
-    obligationId: obligationId ?? null,
-    obrNo: obrNo ?? null,
+    dvCategory: dvCategory || null,
+    // A trust liability never carries an obligation, so switching to it drops
+    // one that had been chosen rather than leaving it in the document for the
+    // server to refuse.
+    obligationId: dvCategory === 'TRUST_LIABILITY' ? null : obligationId ?? null,
+    obrNo: dvCategory === 'TRUST_LIABILITY' ? null : obrNo ?? null,
     officeId: officeId!,
     officeName,
     payeeId: payeeId!,
@@ -320,7 +368,12 @@ export default function DisbursementDetail() {
               </Button>
             )}
             {canSubmit && (
-              <Button variant="primary" onClick={() => setConfirm('submit')}>
+              <Button
+                variant="primary"
+                disabled={!category.ok}
+                title={category.ok ? undefined : category.violations[0].message}
+                onClick={() => setConfirm('submit')}
+              >
                 Submit
               </Button>
             )}
@@ -424,33 +477,78 @@ export default function DisbursementDetail() {
                 </Field>
 
                 <Field
-                  label="Obligation (OBR)"
-                  htmlFor="obr"
-                  className="lg:col-span-3"
-                  hint="Selecting an obligation fills in the payee, office, particulars and the accounting distribution."
+                  label="Kind of voucher"
+                  required
+                  htmlFor="dvCategory"
+                  hint={dvCategory ? DV_CATEGORY_HINTS[dvCategory] : undefined}
                 >
-                  <ObligationPicker
-                    id="obr"
-                    value={obligationId}
-                    fiscalYear={fiscalYear}
-                    fundCode={fundCode}
+                  <Select
+                    id="dvCategory"
+                    value={dvCategory}
                     disabled={!canEdit}
-                    onChange={(v, obr) => {
-                      setObligationId(v);
-                      setObrNo(obr?.obrNo ?? null);
-                      setObligationLines(obr?.lines ?? []);
-                      if (obr) {
-                        setPayeeId(obr.payeeId);
-                        setPayeeName(obr.payeeName);
-                        setOfficeId(obr.officeId);
-                        setOfficeName(obr.officeName);
-                        if (!particulars) setParticulars(obr.particulars);
-                        if (!grossAmount) setGrossAmount(obr.unpaidAmount);
-                        setEntryTouched(false);
+                    onChange={(e) => {
+                      const next = e.target.value as DvCategory | '';
+                      setDvCategory(next);
+                      // Switching to a trust liability clears the obligation
+                      // here as well as in the payload, so the screen shows
+                      // what will actually be saved.
+                      if (next === 'TRUST_LIABILITY') {
+                        setObligationId(null);
+                        setObrNo(null);
+                        setObligationLines([]);
                       }
                     }}
-                  />
+                  >
+                    <option value="">Choose&hellip;</option>
+                    {DV_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {DV_CATEGORY_LABELS[c]}
+                      </option>
+                    ))}
+                  </Select>
                 </Field>
+
+                {dvCategory === 'TRUST_LIABILITY' ? (
+                  <div className="lg:col-span-2">
+                    <Alert tone="info">
+                      A trust liability settles money the municipality is holding for somebody
+                      else &mdash; retention, a bidder&rsquo;s bond, premiums or tax withheld and
+                      now remitted. It needs no Obligation Request, and no expense account may be
+                      debited: an expense here would be spending with no obligation and no
+                      allotment behind it.
+                    </Alert>
+                  </div>
+                ) : (
+                  <Field
+                    label="Obligation (OBR)"
+                    required
+                    htmlFor="obr"
+                    className="lg:col-span-2"
+                    hint="Selecting an obligation fills in the payee, office, particulars and the accounting distribution."
+                  >
+                    <ObligationPicker
+                      id="obr"
+                      value={obligationId}
+                      fiscalYear={fiscalYear}
+                      fundCode={fundCode}
+                      disabled={!canEdit}
+                      onChange={(v, obr) => {
+                        setObligationId(v);
+                        setObrNo(obr?.obrNo ?? null);
+                        setObligationLines(obr?.lines ?? []);
+                        if (obr) {
+                          setPayeeId(obr.payeeId);
+                          setPayeeName(obr.payeeName);
+                          setOfficeId(obr.officeId);
+                          setOfficeName(obr.officeName);
+                          if (!particulars) setParticulars(obr.particulars);
+                          if (!grossAmount) setGrossAmount(obr.unpaidAmount);
+                          setEntryTouched(false);
+                        }
+                      }}
+                    />
+                  </Field>
+                )}
 
                 <Field label="Payee" required htmlFor="payee" className="lg:col-span-2">
                   <PayeePicker
@@ -635,6 +733,24 @@ export default function DisbursementDetail() {
                 </ul>
               </Alert>
             )}
+
+            {!category.ok && (
+              <Alert
+                tone="error"
+                className="mt-4"
+                title={
+                  dvCategory === 'TRUST_LIABILITY'
+                    ? 'This is not a trust liability'
+                    : 'This voucher cannot be submitted yet'
+                }
+              >
+                <ul className="list-inside list-disc space-y-0.5">
+                  {category.violations.map((v, i) => (
+                    <li key={i}>{v.message}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
           </Card>
         )}
 
@@ -729,13 +845,17 @@ export default function DisbursementDetail() {
         message={
           <>
             <p>
-              Approving assigns the DV number, draws {formatPeso(grossAmount ?? 0)} against{' '}
-              {obrNo ? `OBR ${obrNo}` : 'the budget'}, and prepares the journal entry.
+              Approving assigns the DV number, {formatPeso(grossAmount ?? 0)}
+              {dvCategory === 'TRUST_LIABILITY'
+                ? ' against the trust liability it settles'
+                : ` against OBR ${obrNo ?? ''}`}
+              , and prepares the journal entry.
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              The unpaid balance of the obligation and the state of the accounting period are
-              re-checked on the server. Posting to the General Ledger is a separate act by the
-              Municipal Accountant.
+              {dvCategory === 'TRUST_LIABILITY'
+                ? 'No allotment is consumed: a trust liability settles money the municipality is holding, not an expenditure. That it debits no expense is re-checked on the server.'
+                : 'The unpaid balance of the obligation and the state of the accounting period are re-checked on the server.'}{' '}
+              Posting to the General Ledger is a separate act by the Municipal Accountant.
             </p>
           </>
         }

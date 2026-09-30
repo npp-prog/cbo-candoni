@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  checkDvCategory,
   checkDoubleEntry,
   checkAllotmentAgainstAppropriation,
   checkAllotmentWithdrawal,
@@ -777,5 +778,143 @@ describe('checkAllotmentAgainstAppropriation with a hold', () => {
         requestedRelease: -50_000_00,
       }).ok,
     ).toBe(true);
+  });
+});
+
+describe('checkDvCategory', () => {
+  const isExpense = (code: string) => code.startsWith('5');
+
+  const line = (over: Record<string, unknown> = {}) => ({
+    lineNo: 1,
+    accountCode: '20101010',
+    debit: 0,
+    credit: 1_000_00,
+    ...over,
+  });
+
+  it('passes an obligated voucher that carries an obligation', () => {
+    const result = checkDvCategory(
+      {
+        category: 'OBLIGATED',
+        hasObligation: true,
+        lines: [line({ accountCode: '50201010', debit: 1_000_00, credit: 0, fppCode: '1011' })],
+      },
+      isExpense,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  /**
+   * The hole this rule closes. Before the category existed, a voucher with no
+   * obligation simply went through, and nothing distinguished a deliberate
+   * trust settlement from an obligation somebody forgot to attach.
+   */
+  it('refuses an obligated voucher with no obligation behind it', () => {
+    const result = checkDvCategory(
+      { category: 'OBLIGATED', hasObligation: false, lines: [line()] },
+      isExpense,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('DV_OBLIGATION_MISSING');
+  });
+
+  it('passes a trust liability that debits a liability', () => {
+    const result = checkDvCategory(
+      {
+        category: 'TRUST_LIABILITY',
+        hasObligation: false,
+        lines: [
+          line({ lineNo: 1, accountCode: '20401010', debit: 1_000_00, credit: 0 }),
+          line({ lineNo: 2, accountCode: '10101010', debit: 0, credit: 1_000_00 }),
+        ],
+      },
+      isExpense,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('refuses a trust liability that draws on an obligation', () => {
+    const result = checkDvCategory(
+      { category: 'TRUST_LIABILITY', hasObligation: true, lines: [line()] },
+      isExpense,
+    );
+    expect(result.violations[0].code).toBe('DV_TRUST_HAS_OBLIGATION');
+  });
+
+  /**
+   * The half that makes the category a control rather than a label. An expense
+   * on a trust-liability voucher is spending with no obligation and no
+   * allotment, wearing the one label that excuses the missing obligation.
+   */
+  it('refuses a trust liability that debits an expense', () => {
+    const result = checkDvCategory(
+      {
+        category: 'TRUST_LIABILITY',
+        hasObligation: false,
+        lines: [
+          line({ lineNo: 1, accountCode: '50203010', debit: 5_000_00, credit: 0 }),
+          line({ lineNo: 2, accountCode: '10101010', debit: 0, credit: 5_000_00 }),
+        ],
+      },
+      isExpense,
+    );
+    expect(result.ok).toBe(false);
+    const violation = result.violations.find((v) => v.code === 'DV_TRUST_DEBITS_EXPENSE');
+    expect(violation).toBeDefined();
+    expect(violation?.details).toMatchObject({ lineNos: [1] });
+  });
+
+  /**
+   * A CREDIT to an expense reverses something already charged. It is not new
+   * spending, and refusing it would make a correction impossible to record.
+   */
+  it('allows a credit to an expense on a trust liability', () => {
+    const result = checkDvCategory(
+      {
+        category: 'TRUST_LIABILITY',
+        hasObligation: false,
+        lines: [line({ accountCode: '50203010', debit: 0, credit: 1_000_00 })],
+      },
+      isExpense,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('reports both faults when a trust liability has an obligation and an expense', () => {
+    const result = checkDvCategory(
+      {
+        category: 'TRUST_LIABILITY',
+        hasObligation: true,
+        lines: [line({ accountCode: '50203010', debit: 1_00, credit: 0 })],
+      },
+      isExpense,
+    );
+    expect(result.violations.map((v) => v.code).sort()).toEqual([
+      'DV_TRUST_DEBITS_EXPENSE',
+      'DV_TRUST_HAS_OBLIGATION',
+    ]);
+  });
+
+  it('refuses a category it does not recognise rather than letting it through', () => {
+    const result = checkDvCategory(
+      { category: 'ORDINARY', hasObligation: false, lines: [line()] },
+      isExpense,
+    );
+    expect(result.violations[0].code).toBe('DV_CATEGORY_UNKNOWN');
+  });
+
+  /**
+   * An unclassified voucher must not pass by default. A missing category is
+   * how every pre-existing voucher looks, and treating that as "obligated, no
+   * obligation needed" would reopen the hole for exactly the records nobody
+   * revisits.
+   */
+  it('refuses an empty category', () => {
+    const result = checkDvCategory(
+      { category: '', hasObligation: true, lines: [line()] },
+      isExpense,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('DV_CATEGORY_UNKNOWN');
   });
 });

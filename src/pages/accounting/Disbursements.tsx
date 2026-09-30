@@ -10,7 +10,12 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useDisbursementVouchers } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, monthName } from '@/lib/dates';
-import { DV_STATUSES, STATUS_LABELS } from '@/types/enums';
+import {
+  DV_CATEGORIES,
+  DV_CATEGORY_LABELS,
+  DV_STATUSES,
+  STATUS_LABELS,
+} from '@/types/enums';
 import type { DisbursementVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
 
@@ -21,6 +26,7 @@ export default function Disbursements() {
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
   const [queue, setQueue] = useState<'all' | 'mine'>('all');
+  const [category, setCategory] = useState('');
 
   const { data, loading, error } = useDisbursementVouchers(fiscalYear, fundCode, status || undefined);
 
@@ -47,8 +53,18 @@ export default function Disbursements() {
     let out = data;
     if (period) out = out.filter((d) => Number(d.dvDate?.slice(5, 7)) === period);
     if (queue === 'mine' && myStages.length) out = out.filter((d) => myStages.includes(d.status));
+    if (category) {
+      // A voucher raised before the category existed has none stored. It is
+      // not quietly counted as either kind: "Not stated" lists exactly those,
+      // which is the only honest answer and also the list worth working
+      // through.
+      out =
+        category === 'UNSET'
+          ? out.filter((d) => !d.dvCategory)
+          : out.filter((d) => d.dvCategory === category);
+    }
     return out;
-  }, [data, period, queue, myStages]);
+  }, [data, period, queue, myStages, category]);
 
   const totals = useMemo(
     () =>
@@ -85,6 +101,26 @@ export default function Disbursements() {
       width: '7rem',
       value: (d) => d.dvDate,
       cell: (d) => <span className="text-xs">{formatShortDate(d.dvDate)}</span>,
+    },
+    {
+      key: 'dvCategory',
+      header: 'Kind',
+      width: '8rem',
+      value: (d) => (d.dvCategory ? DV_CATEGORY_LABELS[d.dvCategory] : ''),
+      cell: (d) =>
+        d.dvCategory ? (
+          <span
+            className={
+              d.dvCategory === 'TRUST_LIABILITY'
+                ? 'text-xs text-amber-800'
+                : 'text-xs text-slate-600'
+            }
+          >
+            {DV_CATEGORY_LABELS[d.dvCategory]}
+          </span>
+        ) : (
+          <span className="text-xs italic text-slate-400">Not stated</span>
+        ),
     },
     {
       key: 'obrNo',
@@ -198,6 +234,20 @@ export default function Disbursements() {
             >
               <option value="all">All vouchers</option>
               <option value="mine">Awaiting my action</option>
+            </Select>
+            <Select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-auto py-1.5 text-sm"
+              aria-label="Filter by kind of voucher"
+            >
+              <option value="">Both kinds</option>
+              {DV_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {DV_CATEGORY_LABELS[c]}
+                </option>
+              ))}
+              <option value="UNSET">Not stated</option>
             </Select>
             <Select
               value={status}

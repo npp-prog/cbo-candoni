@@ -12,6 +12,7 @@ import type {
   CashAdvanceType,
   CashFlowClass,
   CheckStatus,
+  DvCategory,
   DvStatus,
   JevStatus,
   JournalBook,
@@ -84,7 +85,18 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
   period: PeriodNo;
   fundCode: string;
 
-  /** The obligation this voucher draws against. Required for expenditures. */
+  /**
+   * What this voucher pays, and the reason the next two fields are optional.
+   *
+   * OBLIGATED pays an expenditure and must draw on an Obligation Request.
+   * TRUST_LIABILITY settles money the municipality is only holding and must
+   * not. Before this field existed, a voucher with no obligation simply went
+   * through, and nothing told a deliberate trust settlement apart from an
+   * obligation somebody forgot to attach.
+   */
+  dvCategory?: DvCategory;
+
+  /** The obligation this voucher draws against. Required when OBLIGATED. */
   obligationId?: Id;
   obrNo?: string;
 

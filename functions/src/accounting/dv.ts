@@ -14,7 +14,7 @@ import { recordTransition, notifyInTransaction } from '../lib/audit';
 import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
-import { checkDvMath } from '../lib/rules';
+import { checkDvCategory, checkDvMath } from '../lib/rules';
 import { createJevInTransaction, type JevLineData } from '../lib/ledger';
 
 const ENCODERS: Role[] = [
@@ -27,8 +27,65 @@ const ENCODERS: Role[] = [
 
 const REVIEWERS: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER'];
 
+/**
+ * The voucher's category, held to what it says it is.
+ *
+ * An OBLIGATED voucher pays an expenditure and must draw on a certified
+ * Obligation Request. A TRUST_LIABILITY voucher settles money the
+ * municipality is only holding - retention, a bond, a remittance - and must
+ * not draw on one, nor debit an expense.
+ *
+ * Both halves are checked here rather than only on the screen, because the
+ * screen is a courtesy. Before the category existed a voucher with no
+ * obligation simply went through, and nothing distinguished a deliberate
+ * trust settlement from an obligation somebody forgot - which is the whole
+ * budget control, missing and invisible.
+ *
+ * The Chart of Accounts is read only when a trust-liability voucher has a
+ * debit to check. An obligated voucher never needs it.
+ */
+async function assertDvCategory(dv: DvDoc): Promise<void> {
+  const lines = (dv.accountLines ?? []).map((l) => ({
+    lineNo: l.lineNo,
+    accountCode: l.accountCode,
+    debit: l.debit ?? 0,
+    credit: l.credit ?? 0,
+    fppCode: l.fppCode ?? null,
+  }));
+
+  let isExpense = (_code: string) => false;
+
+  if (dv.dvCategory === 'TRUST_LIABILITY' && lines.some((l) => l.debit > 0)) {
+    const snap = await db.collection(COL.accounts).get();
+    const expense = new Set<string>();
+    for (const doc of snap.docs) {
+      const a = doc.data() as { code?: string; accountClass?: string };
+      if (a.code && a.accountClass === 'EXPENSE') expense.add(a.code.trim());
+    }
+    isExpense = (code: string) => expense.has(code);
+  }
+
+  const check = checkDvCategory(
+    {
+      category: String(dv.dvCategory ?? ''),
+      hasObligation: Boolean(dv.obligationId),
+      lines,
+    },
+    isExpense,
+  );
+
+  if (!check.ok) {
+    throw new HttpsError('failed-precondition', check.violations[0].message, {
+      violations: check.violations,
+    });
+  }
+}
+
+
 interface DvDoc {
   dvNo?: string;
+  /** OBLIGATED or TRUST_LIABILITY. Absent on a voucher raised before it existed. */
+  dvCategory?: string;
   dvDate: string;
   fiscalYear: number;
   fundCode: string;
@@ -142,6 +199,12 @@ export const submitDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
         violations: math.violations,
       });
     }
+
+    // What kind of voucher this is, and whether it is held to it. Checked
+    // before the attachments so the encoder is told the structural thing
+    // first - attaching documents to a voucher of the wrong kind is wasted
+    // work.
+    await assertDvCategory(dv);
 
     if ((dv.attachmentCount ?? 0) === 0) {
       throw new HttpsError(
@@ -328,6 +391,16 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
 
     assertFundInScope(caller, dv.fundCode);
     await assertNotSelfApproval(caller, dv.createdBy?.uid, `DV ${dv.dvNo ?? dvId}`);
+
+    /*
+     * Re-checked here and not only at submission.
+     *
+     * Approval is the act that assigns a number, consumes the obligation and
+     * writes the journal entry - and between submission and approval the
+     * voucher's lines and its obligation can both be edited. A category
+     * verified an hour ago says nothing about the document being approved now.
+     */
+    await assertDvCategory(dv);
 
     const period = periodOf(dv.dvDate);
     await assertFiscalYearOpen(dv.fiscalYear, tx);

@@ -99,6 +99,30 @@ export const DV_STATUSES = [
 ] as const;
 export type DvStatus = (typeof DV_STATUSES)[number];
 
+/**
+ * What kind of thing a disbursement voucher pays.
+ *
+ * OBLIGATED pays an expenditure and draws on a certified Obligation Request.
+ * TRUST_LIABILITY settles money the municipality is only holding - retention,
+ * a bidder's bond, a remittance of something withheld - which was never
+ * appropriated and has no obligation behind it.
+ */
+export const DV_CATEGORIES = ['OBLIGATED', 'TRUST_LIABILITY'] as const;
+export type DvCategory = (typeof DV_CATEGORIES)[number];
+
+export const DV_CATEGORY_LABELS: Record<DvCategory, string> = {
+  OBLIGATED: 'Obligated',
+  TRUST_LIABILITY: 'Trust Liability',
+};
+
+export const DV_CATEGORY_HINTS: Record<DvCategory, string> = {
+  OBLIGATED:
+    'Pays an expenditure. Must draw on a certified Obligation Request, which consumed a released allotment.',
+  TRUST_LIABILITY:
+    'Settles money the municipality is holding for somebody else - retention, a bidder\'s bond, premiums or tax withheld and now remitted. No Obligation Request, and no expense may be debited.',
+};
+
+
 export const JEV_STATUSES = [
   'DRAFT',
   'FOR_REVIEW',
