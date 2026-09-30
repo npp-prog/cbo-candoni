@@ -30,6 +30,7 @@ const SERVER_ONLY = [
   'budgetBalances',
   'budgetSummaries',
   'estimatedReceipts',
+  'trustPrograms',
   'cashPositions',
   'accountingPeriods',
   'workflowHistory',

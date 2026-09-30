@@ -148,6 +148,19 @@ export const NAVIGATION: NavItem[] = [
       // Everything below is looked at or set up, never posted. The heading is
       // not decoration: without it these would sit directly under the group
       // above and read as though they too journalized something.
+
+      /*
+       * The Trust Fund's own funding control, and it is here rather than in
+       * the Budget menu on purpose.
+       *
+       * There is no ordinance behind a trust programme and nothing for the
+       * Budget Officer to release: the money arrived under a memorandum of
+       * agreement, and the Accountant books it, reports on it and answers to
+       * the source for it. Putting it beside the appropriation would say the
+       * Budget Office owns it, which it does not.
+       */
+      { group: 'Monitoring and Setup', label: 'Trust Fund Programmes', to: '/accounting/trust-programs' },
+      { group: 'Monitoring and Setup', label: 'Fund Utilization Report', to: '/accounting/fund-utilization' },
       { group: 'Monitoring and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
       { group: 'Monitoring and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },
       // The ageing of receivables, payables and unliquidated advances. It was

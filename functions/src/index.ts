@@ -48,6 +48,7 @@ export { certifyObligation, cancelObligation } from './budget/obligations';
 export { importBudgetLines } from './budget/import';
 export { issueAro } from './budget/aro';
 export { recordEstimatedReceipts } from './budget/estimatedReceipts';
+export { recordTrustProgram } from './accounting/trustPrograms';
 
 // --- Accounting --------------------------------------------------------------
 export { submitDv, reviewDv, approveDv, cancelDv } from './accounting/dv';

@@ -25,6 +25,8 @@ const Appropriations = lazy(() => import('./pages/budget/Appropriations'));
 const Allotments = lazy(() => import('./pages/budget/Allotments'));
 const AllotmentReleaseOrders = lazy(() => import('./pages/budget/AllotmentReleaseOrders'));
 const EstimatedReceipts = lazy(() => import('./pages/budget/EstimatedReceipts'));
+const TrustPrograms = lazy(() => import('./pages/accounting/TrustPrograms'));
+const FundUtilization = lazy(() => import('./pages/reports/FundUtilization'));
 const Obligations = lazy(() => import('./pages/budget/Obligations'));
 const ObligationDetail = lazy(() => import('./pages/budget/ObligationDetail'));
 const BudgetRegistry = lazy(() => import('./pages/budget/Registry'));
@@ -306,6 +308,16 @@ export default function App() {
           <Route
             path="/reports/quarterly-financial"
             element={<Navigate to="/budget/reports/quarterly-financial" replace />}
+          />
+          {/* The Trust Fund's funding control. Accounting's, not Budget's:
+              there is no ordinance behind a trust programme. */}
+          <Route
+            path="/accounting/trust-programs"
+            element={<Guard module="accounting"><TrustPrograms /></Guard>}
+          />
+          <Route
+            path="/accounting/fund-utilization"
+            element={<Guard module="accounting"><FundUtilization /></Guard>}
           />
           <Route
             path="/accounting/opening-balances"

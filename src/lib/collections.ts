@@ -39,6 +39,14 @@ export const COL = {
    * and the Statement of Comparison have no budget column for receipts.
    */
   estimatedReceipts: 'estimatedReceipts',
+  /**
+   * The Trust Fund's own funding control. A programme is money received for a
+   * stated purpose, with a programmed ceiling that a Funding Utilization
+   * Request is checked against - the part the released allotment plays in the
+   * General Fund. Not tied to a fiscal year: trust money does not expire with
+   * the budget.
+   */
+  trustPrograms: 'trustPrograms',
 
   // Accounting
   disbursementVouchers: 'disbursementVouchers',
@@ -98,6 +106,7 @@ export const SERVER_ONLY_COLLECTIONS: CollectionName[] = [
   COL.budgetBalances,
   COL.budgetSummaries,
   COL.estimatedReceipts,
+  COL.trustPrograms,
   COL.cashPositions,
   COL.accountingPeriods,
   COL.workflowHistory,

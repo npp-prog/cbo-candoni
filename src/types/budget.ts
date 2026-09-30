@@ -221,6 +221,16 @@ export interface ObligationLine extends BudgetKey {
    * budget balance is keyed on this one.
    */
   appropriatedAccountCode?: string;
+  /**
+   * The Trust Fund programme this line utilises.
+   *
+   * Present only in the Trust Fund, where there is no appropriation and no
+   * allotment: the programme the money was received under is what the
+   * commitment is checked against, and it takes the place of the FPP and the
+   * budget key on a General Fund line.
+   */
+  trustProgramId?: Id;
+  trustProgramName?: string;
   sector?: string;
   serviceSector?: string;
   expenseClass: ExpenseClass;
@@ -376,6 +386,53 @@ export interface EstimatedReceipt {
   particulars?: string;
   /** What the figures were loaded from, where they came from a file. */
   sourceFile?: string;
+  updatedAt: string;
+  updatedBy?: { uid: Id; name: string };
+}
+
+/**
+ * A Trust Fund programme.
+ *
+ * Money received for a stated purpose from a source that keeps the right to
+ * ask for it back, with an approved work and financial plan. The programmed
+ * amount is the ceiling a Funding Utilization Request is checked against — the
+ * part the released allotment plays in the General Fund.
+ *
+ * Owned by the Accounting office rather than the Budget Office: there is no
+ * ordinance behind it and nothing for the Budget Officer to release.
+ *
+ * Deliberately NOT keyed to a fiscal year. Trust money does not expire with
+ * the budget year, and a programme that had to be re-entered every January
+ * would end up recorded twice with two different balances.
+ */
+export interface TrustProgram {
+  id: Id;
+  programCode: string;
+  programName: string;
+  /** The agency or person the money came from. */
+  sourceAgency: string;
+  /** The MOA, deed or advice it arrived under. */
+  reference: string;
+  /** When the programme started, for sorting and reporting. Not a control. */
+  startYear?: FiscalYear;
+
+  /** The ceiling. Every utilisation is checked against it. */
+  programmed: Centavos;
+  /** What the source has actually remitted. Stated by the Accountant, not
+   *  derived from the ledger — CBO does not yet tie a collection to a
+   *  programme. Reported, never controlled on. */
+  received: Centavos;
+  /** Committed by a certified FURS. Maintained only by Cloud Functions. */
+  utilised: Centavos;
+  /** Paid out on an approved voucher. Maintained only by Cloud Functions. */
+  disbursed: Centavos;
+  /** programmed - utilised */
+  availableToUtilise: Centavos;
+  /** utilised - disbursed */
+  unpaidUtilisations: Centavos;
+
+  status: 'ACTIVE' | 'CLOSED';
+  notes?: string;
   updatedAt: string;
   updatedBy?: { uid: Id; name: string };
 }

@@ -66,6 +66,7 @@ export const COL = {
   budgetBalances: 'budgetBalances',
   budgetSummaries: 'budgetSummaries',
   estimatedReceipts: 'estimatedReceipts',
+  trustPrograms: 'trustPrograms',
   disbursementVouchers: 'disbursementVouchers',
   jevs: 'jevs',
   ledgerEntries: 'ledgerEntries',

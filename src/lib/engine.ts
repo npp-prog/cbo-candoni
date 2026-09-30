@@ -172,6 +172,40 @@ export const engine = {
       }
     >('recordEstimatedReceipts', p),
 
+  /**
+   * Create or amend a Trust Fund programme.
+   *
+   * Omit `programId` to create. The worked figures - utilised and disbursed -
+   * are never sent: they are maintained inside the transactions that certify a
+   * utilisation and approve a voucher, so the balance cannot drift from the
+   * documents that moved it.
+   */
+  recordTrustProgram: (p: {
+    programId?: Id;
+    programCode: string;
+    programName: string;
+    sourceAgency: string;
+    reference: string;
+    startYear?: number;
+    programmed: Centavos;
+    received: Centavos;
+    status: 'ACTIVE' | 'CLOSED';
+    notes?: string;
+  }) =>
+    call<
+      typeof p,
+      {
+        programId: Id;
+        programCode: string;
+        programmed: Centavos;
+        received: Centavos;
+        utilised: Centavos;
+        disbursed: Centavos;
+        availableToUtilise: Centavos;
+        unpaidUtilisations: Centavos;
+      }
+    >('recordTrustProgram', p),
+
   cancelObligation: (p: { obligationId: Id; reason: string }) =>
     call<typeof p, { obligationId: Id }>('cancelObligation', p),
 

@@ -41,6 +41,7 @@ import {
   type DvCategory,
 } from '@/types/enums';
 import { fundLabel } from '../budget/Obligations';
+import { isTrustFund, obligationForm } from '@/lib/obligationForm';
 import { useFppOptions } from '@/data/useFppOptions';
 
 /**
@@ -500,7 +501,13 @@ export default function DisbursementDetail() {
                     }}
                   >
                     <option value="">Choose&hellip;</option>
-                    {DV_CATEGORIES.map((c) => (
+                    {DV_CATEGORIES.filter(
+                      // In the Trust Fund every voucher utilises a programme,
+                      // so every voucher carries a FURS. The trust-liability
+                      // kind belongs to the appropriated funds, where it
+                      // settles money held inside them.
+                      (c) => !(isTrustFund(fundCode) && c === 'TRUST_LIABILITY'),
+                    ).map((c) => (
                       <option key={c} value={c}>
                         {DV_CATEGORY_LABELS[c]}
                       </option>
@@ -520,7 +527,7 @@ export default function DisbursementDetail() {
                   </div>
                 ) : (
                   <Field
-                    label="Obligation (OBR)"
+                    label={`Obligation (${obligationForm(fundCode).short})`}
                     required
                     htmlFor="obr"
                     className="lg:col-span-2"

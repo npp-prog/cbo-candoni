@@ -17,6 +17,12 @@ import {
   type BudgetKey,
 } from '../lib/budget';
 import { checkObligationAgainstAllotment } from '../lib/rules';
+import { checkFursAgainstProgram } from '../lib/trustPrograms';
+import {
+  readTrustProgram,
+  applyTrustDelta,
+  type TrustProgramData,
+} from '../accounting/trustPrograms';
 
 /**
  * certifyObligation - the budget control gate.
@@ -105,6 +111,15 @@ export const certifyObligation = onCall(
             accountName: string;
             /** The object code the appropriation carried; empty on a project line. */
             appropriatedAccountCode?: string;
+            /**
+             * The Trust Fund programme this line utilises.
+             *
+             * Present only in the Trust Fund, where there is no appropriation
+             * and no allotment and the programme is what the commitment is
+             * checked against.
+             */
+            trustProgramId?: string;
+            trustProgramName?: string;
             expenseClass: string;
             amount: number;
           }
@@ -166,6 +181,27 @@ export const certifyObligation = onCall(
         );
       }
 
+      /*
+       * ---------------------------------------------------------------------
+       * WHICH CONTROL APPLIES
+       * ---------------------------------------------------------------------
+       * The General and Special Education Funds are controlled by the
+       * appropriation the Sanggunian enacted, released as allotment. The Trust
+       * Fund has no ordinance behind it at all - the money is not the
+       * municipality's - so it is controlled by the programme it was received
+       * under, and its commitment is a Funding Utilization Request rather than
+       * an Obligation Request.
+       *
+       * Until this branch existed, every fund was checked against
+       * `allotmentReleased`, the Trust Fund included. A FURS could therefore
+       * not be certified unless somebody first invented an appropriation and
+       * an Allotment Release Order for trust money - and those invented
+       * figures would have gone into the Statement of Receipts and
+       * Expenditures and into the bases of the Personal Services cap and the
+       * LDRRMF as though the municipality had been given money it had not.
+       */
+      const isTrust = String(obr.fundCode ?? '').trim().toUpperCase() === 'TF';
+
       // Read every budget line's authoritative balance.
       const balances = new Map<number, Awaited<ReturnType<typeof readBudgetBalance>>>();
       const shortfalls: Array<{
@@ -177,7 +213,66 @@ export const certifyObligation = onCall(
         excess: number;
       }> = [];
 
-      for (const line of obr.lines) {
+      /** Trust Fund only: the programmes touched, read once each. */
+      const trustPrograms = new Map<string, TrustProgramData>();
+      /** Trust Fund only: what this FURS utilises per programme. */
+      const trustRequested = new Map<string, number>();
+
+      if (isTrust) {
+        /*
+         * Lines on the same programme are summed before the programme is read.
+         *
+         * Checking each line against the same balance would let two lines of
+         * one FURS, each fitting on its own, together pass the programmed
+         * amount - and both would be written, because neither read sees the
+         * other.
+         */
+        for (const line of obr.lines) {
+          const programId = String(line.trustProgramId ?? '').trim();
+          if (!programId) {
+            throw new HttpsError(
+              'failed-precondition',
+              `Line ${line.lineNo} names no trust programme. A utilisation in the Trust Fund is ` +
+                'charged to the programme the money was received under - there is no ' +
+                'appropriation to charge it to.',
+            );
+          }
+          trustRequested.set(programId, (trustRequested.get(programId) ?? 0) + line.amount);
+        }
+
+        for (const [programId, requested] of trustRequested) {
+          const program = await readTrustProgram(tx, programId);
+          trustPrograms.set(programId, program);
+
+          const check = checkFursAgainstProgram({
+            programmed: program.programmed,
+            alreadyUtilised: program.utilised,
+            requestedUtilisation: requested,
+            status: program.status,
+          });
+
+          if (!check.ok) {
+            /*
+             * No override here, unlike the allotment check below.
+             *
+             * An over-obligation in the General Fund is a decision the
+             * municipality may take about its own appropriation, recorded and
+             * answered for. Trust money is not the municipality's to decide
+             * about: passing the programmed amount spends somebody else's
+             * money beyond the plan they approved, and no official of this
+             * municipality can authorise that.
+             */
+            throw new HttpsError(
+              'failed-precondition',
+              `${program.programCode} ${program.programName}: ${check.violations[0].message} ` +
+                'Nothing was certified.',
+              { violations: check.violations, programId, programCode: program.programCode },
+            );
+          }
+        }
+      }
+
+      for (const line of isTrust ? [] : obr.lines) {
         const key: BudgetKey = {
           fiscalYear: line.fiscalYear ?? obr.fiscalYear,
           fundCode: line.fundCode ?? obr.fundCode,
@@ -247,7 +342,7 @@ export const certifyObligation = onCall(
       const now = new Date().toISOString();
       const totalExcess = shortfalls.reduce((s, f) => s + f.excess, 0);
 
-      for (const line of obr.lines) {
+      for (const line of isTrust ? [] : obr.lines) {
         const key: BudgetKey = {
           fiscalYear: line.fiscalYear ?? obr.fiscalYear,
           fundCode: line.fundCode ?? obr.fundCode,
@@ -277,7 +372,21 @@ export const certifyObligation = onCall(
         );
       }
 
-      applySummaryDelta(tx, obr.fiscalYear, obr.fundCode, { obligated: computedTotal });
+      /*
+       * A utilisation moves the programme and NOTHING in the budget.
+       *
+       * No budget balance, no budget summary. Trust money was never
+       * appropriated, and a figure written into `budgetBalances` for it would
+       * surface as expenditure in the Statement of Comparison of Budget and
+       * Actual Amounts against an appropriation that does not exist.
+       */
+      for (const [programId, requested] of trustRequested) {
+        applyTrustDelta(tx, programId, trustPrograms.get(programId)!, { utilised: requested });
+      }
+
+      if (!isTrust) {
+        applySummaryDelta(tx, obr.fiscalYear, obr.fundCode, { obligated: computedTotal });
+      }
 
       tx.update(obrRef, {
         obrNo,
@@ -313,14 +422,22 @@ export const certifyObligation = onCall(
         event: 'CERTIFY',
         entityType: COL.obligations,
         entityId: obligationId,
-        entityRef: `OBR ${obrNo}`,
+        entityRef: `${isTrust ? 'FURS' : 'OBR'} ${obrNo}`,
         fiscalYear: obr.fiscalYear,
         fundCode: obr.fundCode,
         action: 'CERTIFY',
         previousStatus: obr.status,
         newStatus: 'OBLIGATED',
         assignedToRole: 'ACCOUNTING_ENCODER',
-        remarks: `Certified as to availability of allotment. ${obr.payeeName}, ${(computedTotal / 100).toFixed(2)}.`,
+        // The Trust Fund has no allotment, so certifying one is not a
+        // certification as to its availability. Saying so anyway would put a
+        // sentence in the audit trail that describes a control that was never
+        // applied.
+        remarks:
+          (isTrust
+            ? 'Certified as to availability of the trust programme.'
+            : 'Certified as to availability of allotment.') +
+          ` ${obr.payeeName}, ${(computedTotal / 100).toFixed(2)}.`,
       });
 
       // An override gets its own CRITICAL audit record in addition to the
@@ -411,6 +528,8 @@ export const cancelObligation = onCall(
             accountName: string;
             /** The object code the appropriation carried; empty on a project line. */
             appropriatedAccountCode?: string;
+            /** Trust Fund only: the programme this line utilises. */
+            trustProgramId?: string;
             expenseClass: string;
             amount: number;
           }
@@ -428,9 +547,35 @@ export const cancelObligation = onCall(
       }
 
       const wasObligated = obr.status === 'OBLIGATED';
+      const cancelIsTrust = String(obr.fundCode ?? '').trim().toUpperCase() === 'TF';
       const balances = new Map<number, Awaited<ReturnType<typeof readBudgetBalance>>>();
 
-      if (wasObligated) {
+      /*
+       * Cancelling a utilisation must give the programme back what it took.
+       *
+       * Missing this is the shape of bug that never errors: the FURS goes to
+       * CANCELLED, the register looks right, and the programme quietly keeps
+       * the commitment for the rest of its life. The money would be
+       * unspendable and nothing would say why.
+       */
+      const cancelTrustPrograms = new Map<string, TrustProgramData>();
+      const cancelTrustAmounts = new Map<string, number>();
+
+      if (wasObligated && cancelIsTrust) {
+        for (const line of obr.lines) {
+          const programId = String(line.trustProgramId ?? '').trim();
+          if (!programId) continue;
+          cancelTrustAmounts.set(
+            programId,
+            (cancelTrustAmounts.get(programId) ?? 0) + line.amount,
+          );
+        }
+        for (const programId of cancelTrustAmounts.keys()) {
+          cancelTrustPrograms.set(programId, await readTrustProgram(tx, programId));
+        }
+      }
+
+      if (wasObligated && !cancelIsTrust) {
         for (const line of obr.lines) {
           const key: BudgetKey = {
             fiscalYear: line.fiscalYear ?? obr.fiscalYear,
@@ -451,7 +596,7 @@ export const cancelObligation = onCall(
         }
       }
 
-      if (wasObligated) {
+      if (wasObligated && !cancelIsTrust) {
         for (const line of obr.lines) {
           const key: BudgetKey = {
             fiscalYear: line.fiscalYear ?? obr.fiscalYear,
@@ -477,6 +622,12 @@ export const cancelObligation = onCall(
           );
         }
         applySummaryDelta(tx, obr.fiscalYear, obr.fundCode, { obligated: -obr.totalAmount });
+      }
+
+      for (const [programId, amount] of cancelTrustAmounts) {
+        applyTrustDelta(tx, programId, cancelTrustPrograms.get(programId)!, {
+          utilised: -amount,
+        });
       }
 
       tx.update(ref, {

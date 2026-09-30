@@ -1435,6 +1435,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "trustPrograms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "programCode",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

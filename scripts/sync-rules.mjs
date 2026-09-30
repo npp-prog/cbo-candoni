@@ -42,6 +42,11 @@ const PAIRS = [
   // REPLACES rather than adds, so a server copy that had lost that check would
   // accept a file the browser refused and store the wrong estimate silently.
   { source: 'src/lib/estimatedReceipts.ts', target: 'functions/src/lib/estimatedReceipts.ts' },
+  // `trustPrograms` is the Trust Fund's funding ceiling. It joined for the
+  // same reason as the allotment rules: the browser tells an officer whether
+  // a utilisation fits, and the engine decides. A server copy that had drifted
+  // would wave through a commitment the screen had refused.
+  { source: 'src/lib/trustPrograms.ts', target: 'functions/src/lib/trustPrograms.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

@@ -214,6 +214,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /*
+     * Trust Fund programmes - the Trust Fund's funding ceiling.
+     *
+     * Written only by the recordTrustProgram callable and by the functions
+     * that certify a utilisation and approve a voucher. The programmed amount
+     * is what a Funding Utilization Request is checked against, so it is the
+     * same kind of figure as a released allotment and gets the same treatment:
+     * a control figure is not one a browser console should be able to raise.
+     *
+     * The three balances on the document - utilised, disbursed and the two
+     * derived from them - are maintained inside the transactions that write
+     * the utilisations and the vouchers, exactly as budgetBalances are.
+     */
+    match /trustPrograms/{programId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
     match /cashPositions/{positionId} {
       allow read: if canRead();
       allow write: if false;

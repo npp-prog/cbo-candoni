@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, TextInput, TextArea, DateInput, AmountInput } from '@/components/ui/Field';
+import { Field, TextInput, TextArea, DateInput, AmountInput, Select } from '@/components/ui/Field';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -11,18 +11,24 @@ import { AccountPicker, OfficePicker, PayeePicker } from '@/components/pickers';
 import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
-import { obligationForm } from '@/lib/obligationForm';
+import { obligationForm, isTrustFund } from '@/lib/obligationForm';
+import { checkFursAgainstProgram } from '@/lib/trustPrograms';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useBudgetBalances } from '@/data/queries';
+import { useTrustPrograms, useBudgetBalances } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine, EngineError } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatLongDate, todayPh } from '@/lib/dates';
 import { checkObligationAgainstAllotment } from '@/lib/accounting-rules';
-import { budgetKeyId, type Obligation, type ObligationLine } from '@/types/budget';
+import {
+  budgetKeyId,
+  type Obligation,
+  type ObligationLine,
+  type TrustProgram,
+} from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from './Obligations';
 
@@ -53,10 +59,17 @@ export default function ObligationDetail() {
   // where the money is held for somebody else and is not the municipality's
   // own appropriation to obligate.
   const form = obligationForm(fundCode);
+  /*
+   * The Trust Fund has no appropriation and no allotment, so a utilisation is
+   * charged to the programme the money was received under. Everything below
+   * that reads "budget line" reads "trust programme" in that fund.
+   */
+  const trust = isTrustFund(fundCode);
   const { user, profile, can, hasRole, officeScope } = useAuth();
 
   const { data: existing, loading } = useDocument<Obligation>(isNew ? null : COL.obligations, id);
   const balances = useBudgetBalances(fiscalYear, fundCode);
+  const trustPrograms = useTrustPrograms(true);
 
   const [tab, setTab] = useState<'details' | 'attachments' | 'history'>('details');
   const [saving, setSaving] = useState(false);
@@ -138,11 +151,57 @@ export default function ObligationDetail() {
     return balances.data.find((b) => b.id === key) ?? null;
   };
 
+  /** Trust Fund: what this FURS already asks of each programme, summed. */
+  const trustRequestedByProgram = useMemo(() => {
+    const out = new Map<string, number>();
+    if (!trust) return out;
+    for (const l of lines) {
+      if (!l.trustProgramId) continue;
+      out.set(l.trustProgramId, (out.get(l.trustProgramId) ?? 0) + (l.amount ?? 0));
+    }
+    return out;
+  }, [trust, lines]);
+
   const lineChecks = useMemo(
     () =>
       lines.map((line) => {
+        if (trust) {
+          const program = trustPrograms.data.find((p) => p.id === line.trustProgramId) ?? null;
+          if (!program || !line.amount) {
+            return { balance: null, program, shortfall: 0, ok: true };
+          }
+
+          // Already counted where this FURS is being edited after certification.
+          const alreadyCounted =
+            existing?.status === 'OBLIGATED'
+              ? (existing.lines ?? [])
+                  .filter((l) => l.trustProgramId === program.id)
+                  .reduce((s, l) => s + l.amount, 0)
+              : 0;
+
+          // Every line on this programme, not just this one: two lines that
+          // each fit alone can together pass the ceiling, and the server sums
+          // them before it reads.
+          const requested = trustRequestedByProgram.get(program.id) ?? 0;
+
+          const result = checkFursAgainstProgram({
+            programmed: program.programmed,
+            alreadyUtilised: program.utilised - alreadyCounted,
+            requestedUtilisation: requested,
+            status: program.status,
+          });
+
+          const details = result.violations[0]?.details as { excess?: number } | undefined;
+          return {
+            balance: null,
+            program,
+            shortfall: details?.excess ?? 0,
+            ok: result.ok,
+          };
+        }
+
         const balance = balanceFor(line);
-        if (!balance || !line.amount) return { balance, shortfall: 0, ok: true };
+        if (!balance || !line.amount) return { balance, program: null, shortfall: 0, ok: true };
 
         // When editing an already-certified obligation the amount is already
         // counted in `obligated`, so it must not be double-counted here.
@@ -158,12 +217,26 @@ export default function ObligationDetail() {
         });
 
         const details = result.violations[0]?.details as { excess?: number } | undefined;
-        return { balance, shortfall: details?.excess ?? 0, ok: result.ok };
+        return { balance, program: null, shortfall: details?.excess ?? 0, ok: result.ok };
       }),
-    [lines, balances.data, existing],
+    [lines, balances.data, existing, trust, trustPrograms.data, trustRequestedByProgram],
   );
 
-  const totalShortfall = lineChecks.reduce((s, c) => s + c.shortfall, 0);
+  /*
+   * A trust shortfall belongs to the PROGRAMME, not to the line.
+   *
+   * Every line on an over-committed programme reports the same figure, so
+   * adding them would tell the officer the FURS is short by three times what
+   * it is actually short by.
+   */
+  const totalShortfall = useMemo(() => {
+    if (!trust) return lineChecks.reduce((s, c) => s + c.shortfall, 0);
+    const seen = new Map<string, number>();
+    for (const c of lineChecks) {
+      if (c.program && c.shortfall > 0) seen.set(c.program.id, c.shortfall);
+    }
+    return [...seen.values()].reduce((s, v) => s + v, 0);
+  }, [trust, lineChecks]);
   const hasShortfall = totalShortfall > 0;
 
   const validationProblems = useMemo(() => {
@@ -176,9 +249,13 @@ export default function ObligationDetail() {
       if (!l.accountCode) problems.push(`Line ${i + 1}: select an account.`);
       if (!l.officeId) problems.push(`Line ${i + 1}: select an office.`);
       if (!l.amount || l.amount <= 0) problems.push(`Line ${i + 1}: enter an amount.`);
+      if (trust && !l.trustProgramId) {
+        problems.push(`Line ${i + 1}: choose the trust programme this utilises.`);
+      }
+      if (!trust && !l.fppCode) problems.push(`Line ${i + 1}: choose the budget line.`);
     });
     return problems;
-  }, [payeeId, officeId, particulars, totalAmount, lines]);
+  }, [payeeId, officeId, particulars, totalAmount, lines, trust]);
 
   // --- Actions -------------------------------------------------------------
 
@@ -202,8 +279,13 @@ export default function ObligationDetail() {
       programId: l.programId ?? null,
       projectId: l.projectId ?? null,
       activityId: l.activityId ?? null,
-      fppCode: l.fppCode!,
+      // Empty in the Trust Fund: there is no appropriated budget line, and an
+      // FPP invented to fill the column would put trust spending into the
+      // comparison of budget against actual.
+      fppCode: l.fppCode ?? '',
       fppName: l.fppName ?? '',
+      trustProgramId: l.trustProgramId ?? null,
+      trustProgramName: l.trustProgramName ?? null,
       sector: l.sector ?? null,
       serviceSector: l.serviceSector ?? null,
       appropriatedAccountCode: l.appropriatedAccountCode ?? '',
@@ -426,8 +508,12 @@ export default function ObligationDetail() {
             </Card>
 
             <Card
-              title="Charges against the budget"
-              subtitle="Each line is charged against one budget line. The available allotment shown is read live from the budget registry."
+              title={trust ? 'Utilisations of trust programmes' : 'Charges against the budget'}
+              subtitle={
+                trust
+                  ? 'Each line utilises one trust programme. The available figure is what remains of the programmed amount, read live from the register.'
+                  : 'Each line is charged against one budget line. The available allotment shown is read live from the budget registry.'
+              }
             >
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
@@ -435,10 +521,14 @@ export default function ObligationDetail() {
                     <tr>
                       <th className="cbo-th w-10">#</th>
                       <th className="cbo-th min-w-[13rem]">Office</th>
-                      <th className="cbo-th min-w-[18rem]">Budget line (FPP)</th>
+                      <th className="cbo-th min-w-[18rem]">
+                        {trust ? 'Trust programme' : 'Budget line (FPP)'}
+                      </th>
                       <th className="cbo-th min-w-[16rem]">Object of expenditure</th>
                       <th className="cbo-th w-36 text-right">Amount</th>
-                      <th className="cbo-th w-44 text-right">Available allotment</th>
+                      <th className="cbo-th w-44 text-right">
+                        {trust ? 'Available to utilise' : 'Available allotment'}
+                      </th>
                       {canEdit && <th className="cbo-th w-10" />}
                     </tr>
                   </thead>
@@ -465,6 +555,35 @@ export default function ObligationDetail() {
                           </td>
 
                           <td className="cbo-td">
+                            {trust ? (
+                              <Select
+                                value={line.trustProgramId ?? ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const chosen = trustPrograms.data.find(
+                                    (p) => p.id === e.target.value,
+                                  );
+                                  setLines((ls) =>
+                                    ls.map((l, i) =>
+                                      i === index
+                                        ? {
+                                            ...l,
+                                            trustProgramId: chosen?.id,
+                                            trustProgramName: chosen?.programName,
+                                          }
+                                        : l,
+                                    ),
+                                  );
+                                }}
+                              >
+                                <option value="">Choose a programme&hellip;</option>
+                                {trustPrograms.data.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.programCode} — {p.programName}
+                                  </option>
+                                ))}
+                              </Select>
+                            ) : (
                             <BudgetLinePicker
                               balances={balances.data}
                               officeId={line.officeId ?? null}
@@ -503,6 +622,7 @@ export default function ObligationDetail() {
                                 )
                               }
                             />
+                            )}
                           </td>
 
                           <td className="cbo-td">
@@ -534,11 +654,18 @@ export default function ObligationDetail() {
                           </td>
 
                           <td className="cbo-td text-right">
-                            <AvailabilityCell
-                              balance={check.balance}
-                              shortfall={check.shortfall}
-                              ready={Boolean(line.officeId && line.fppCode)}
-                            />
+                            {trust ? (
+                              <TrustAvailabilityCell
+                                program={check.program}
+                                shortfall={check.shortfall}
+                              />
+                            ) : (
+                              <AvailabilityCell
+                                balance={check.balance}
+                                shortfall={check.shortfall}
+                                ready={Boolean(line.officeId && line.fppCode)}
+                              />
+                            )}
                           </td>
 
                           {canEdit && (
@@ -775,6 +902,57 @@ function AvailabilityCell({
       <Badge tone="slate" className="mt-0.5">
         released {formatPeso(balance.allotmentReleased, { symbol: false })}
       </Badge>
+    </div>
+  );
+}
+
+/**
+ * What remains of a trust programme.
+ *
+ * The figure shown is the PROGRAMME's, not the line's, and the shortfall is
+ * the programme's too - every line charged to an over-committed programme
+ * shows the same one. That is deliberate: the ceiling belongs to the
+ * programme, and showing a share of it per line would invite somebody to fix
+ * one line and think the FURS now fits.
+ */
+function TrustAvailabilityCell({
+  program,
+  shortfall,
+}: {
+  program: TrustProgram | null;
+  shortfall: Centavos;
+}) {
+  if (!program) {
+    return <span className="text-xs text-slate-400">Choose a programme</span>;
+  }
+
+  if (program.status === 'CLOSED') {
+    return <span className="text-xs text-rose-700">This programme is closed</span>;
+  }
+
+  return (
+    <div>
+      <span
+        className={clsx(
+          'block font-mono text-sm tabular',
+          shortfall > 0 ? 'text-rose-700' : 'text-navy-900',
+        )}
+      >
+        {formatPeso(program.availableToUtilise, { symbol: false })}
+      </span>
+      {shortfall > 0 && (
+        <span className="block text-2xs text-rose-600">
+          the programme is short by {formatPeso(shortfall, { symbol: false })}
+        </span>
+      )}
+      <Badge tone="slate" className="mt-0.5">
+        {formatPeso(program.programmed, { symbol: false })} programmed
+      </Badge>
+      {program.received < program.utilised && (
+        <span className="mt-0.5 block text-2xs text-amber-700">
+          utilised beyond what has been received
+        </span>
+      )}
     </div>
   );
 }

@@ -16,6 +16,11 @@ import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period'
 import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
 import { checkDvCategory, checkDvMath } from '../lib/rules';
 import { createJevInTransaction, type JevLineData } from '../lib/ledger';
+import {
+  readTrustProgram,
+  applyTrustDelta,
+  type TrustProgramData,
+} from './trustPrograms';
 
 const ENCODERS: Role[] = [
   'SUPER_ADMIN',
@@ -63,6 +68,24 @@ async function assertDvCategory(dv: DvDoc): Promise<void> {
       if (a.code && a.accountClass === 'EXPENSE') expense.add(a.code.trim());
     }
     isExpense = (code: string) => expense.has(code);
+  }
+
+  /*
+   * In the Trust Fund every voucher utilises a programme, so every voucher
+   * carries a FURS. There is no trust-liability voucher there: the whole fund
+   * is money held for somebody else, and the utilisation IS the control.
+   */
+  if (
+    String(dv.fundCode ?? '').trim().toUpperCase() === 'TF' &&
+    dv.dvCategory === 'TRUST_LIABILITY'
+  ) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Every Trust Fund voucher must draw on a Funding Utilization Request. The trust-liability ' +
+        'kind is for the General and Special Education Funds, where it settles money held ' +
+        'inside an appropriated fund; in the Trust Fund the utilisation is the control and ' +
+        'nothing may be paid without one.',
+    );
   }
 
   const check = checkDvCategory(
@@ -138,6 +161,8 @@ interface ObligationDoc {
       accountName: string;
       /** The object code the appropriation carried; empty on a project line. */
       appropriatedAccountCode?: string;
+      /** Trust Fund only: the programme this line utilises. */
+      trustProgramId?: string;
       expenseClass: string;
       amount: number;
     }
@@ -427,6 +452,16 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     let obligation: ObligationDoc | null = null;
     const obligationBalances = new Map<number, Awaited<ReturnType<typeof readBudgetBalance>>>();
 
+    /*
+     * Trust Fund only.
+     *
+     * A utilisation consumes its programme, not a budget line - there is no
+     * appropriation behind it. Read here, in the read phase, exactly as the
+     * budget balances are.
+     */
+    const obligationIsTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
+    const trustPrograms = new Map<string, TrustProgramData>();
+
     if (dv.obligationId) {
       const obrRef = db.collection(COL.obligations).doc(dv.obligationId);
       const obrSnap = await tx.get(obrRef);
@@ -449,7 +484,7 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
         );
       }
 
-      for (const line of obligation.lines ?? []) {
+      for (const line of obligationIsTrust ? [] : obligation.lines ?? []) {
         const key: BudgetKey = {
           fiscalYear: line.fiscalYear ?? obligation.fiscalYear,
           fundCode: line.fundCode ?? obligation.fundCode,
@@ -466,6 +501,14 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
           accountCode: line.appropriatedAccountCode ?? '',
         };
         obligationBalances.set(line.lineNo, await readBudgetBalance(tx, key));
+      }
+
+      if (obligationIsTrust) {
+        for (const line of obligation.lines ?? []) {
+          const programId = String(line.trustProgramId ?? '').trim();
+          if (!programId || trustPrograms.has(programId)) continue;
+          trustPrograms.set(programId, await readTrustProgram(tx, programId));
+        }
       }
     }
 
@@ -551,6 +594,9 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       let allocated = 0;
       const lines = obr.lines ?? [];
 
+      /** Trust Fund only: what this voucher pays per programme. */
+      const trustShares = new Map<string, number>();
+
       lines.forEach((line, idx) => {
         const isLast = idx === lines.length - 1;
         // The last line absorbs the rounding remainder so the allocation sums
@@ -559,6 +605,14 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
           ? dv.grossAmount - allocated
           : Math.round((line.amount / obrTotal) * dv.grossAmount);
         allocated += share;
+
+        if (obligationIsTrust) {
+          const programId = String(line.trustProgramId ?? '').trim();
+          if (programId) {
+            trustShares.set(programId, (trustShares.get(programId) ?? 0) + share);
+          }
+          return;
+        }
 
         const key: BudgetKey = {
           fiscalYear: line.fiscalYear ?? obr.fiscalYear,
@@ -585,7 +639,20 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
         );
       });
 
-      applySummaryDelta(tx, dv.fiscalYear, dv.fundCode, { disbursed: dv.grossAmount });
+      /*
+       * A trust voucher moves the programme and nothing in the budget.
+       *
+       * No budget balance and no budget summary: writing one would put trust
+       * spending into the Statement of Comparison of Budget and Actual Amounts
+       * against an appropriation that does not exist.
+       */
+      for (const [programId, share] of trustShares) {
+        applyTrustDelta(tx, programId, trustPrograms.get(programId)!, { disbursed: share });
+      }
+
+      if (!obligationIsTrust) {
+        applySummaryDelta(tx, dv.fiscalYear, dv.fundCode, { disbursed: dv.grossAmount });
+      }
 
       const newDisbursed = (obr.disbursedAmount ?? 0) + dv.grossAmount;
       tx.update(db.collection(COL.obligations).doc(dv.obligationId!), {

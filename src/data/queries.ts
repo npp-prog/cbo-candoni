@@ -16,6 +16,7 @@ import type {
   DisbursementVoucher,
   Employee,
   EstimatedReceipt,
+  TrustProgram,
   Fund,
   JournalEntryVoucher,
   LedgerEntry,
@@ -169,6 +170,21 @@ export const useEstimatedReceipts = (fiscalYear: number, fundCode: string) =>
       orderBy('accountCode'),
     ],
     ['estimatedReceipts', fiscalYear, fundCode],
+  );
+
+/**
+ * The Trust Fund programmes.
+ *
+ * Not filtered by fiscal year: trust money does not expire with the budget,
+ * and a programme received in November is spent over the following year.
+ */
+export const useTrustPrograms = (activeOnly = false) =>
+  useCollection<TrustProgram>(
+    COL.trustPrograms,
+    activeOnly
+      ? [where('status', '==', 'ACTIVE'), orderBy('programCode')]
+      : [orderBy('programCode')],
+    ['trustPrograms', activeOnly],
   );
 
 export const useBudgetSummary = (fiscalYear: number, fundCode: string) =>
