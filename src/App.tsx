@@ -87,6 +87,7 @@ const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
 const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
+const ChartUpload = lazy(() => import('./pages/masterdata/ChartUpload'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
@@ -353,6 +354,12 @@ export default function App() {
 
           {/* Master data */}
           <Route path="/master-data" element={<Navigate to="/master-data/accounts" replace />} />
+          {/* Before the :entity route, or "accounts/upload" would be read as
+              an entity called "accounts" with a stray path segment. */}
+          <Route
+            path="/master-data/accounts/upload"
+            element={<Guard module="masterData" action="create"><ChartUpload /></Guard>}
+          />
           <Route path="/master-data/:entity" element={<Guard module="masterData"><MasterData /></Guard>} />
 
           {/* Documents, administration, audit */}

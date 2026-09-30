@@ -8,6 +8,7 @@ import {
   usePayees,
   useAvailableObligations,
 } from '@/data/queries';
+import { isBudgetChargeable } from '@/lib/chartOfAccounts';
 import { EXPENSE_CLASS_LABELS } from '@/types/enums';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
@@ -28,21 +29,40 @@ export function AccountPicker({
   disabled,
   invalid,
   id,
-  expenseOnly,
+  budgetChargeable,
 }: {
   value: string | null;
   onChange: (code: string | null, account: { code: string; name: string } | null) => void;
   disabled?: boolean;
   invalid?: boolean;
   id?: string;
-  expenseOnly?: boolean;
+  /**
+   * Restrict to what a budget charge may be spent on.
+   *
+   * Named for the question, not for the account class, because the answer is
+   * not one class: an expense account, or one of the capitalisable assets
+   * Capital Outlay is charged to. It was called `expenseOnly` and did what
+   * the name said, which is why a Capital Outlay obligation could not be
+   * encoded.
+   */
+  budgetChargeable?: boolean;
 }) {
   const { data, loading } = useAccounts(true);
 
   const options = useMemo<Option[]>(
     () =>
       data
-        .filter((a) => (expenseOnly ? a.accountClass === 'EXPENSE' : true))
+        /*
+         * `expenseOnly` means "what a budget charge may be spent on", not
+         * "accountClass === EXPENSE".
+         *
+         * The Revised Chart of Accounts has NO Capital Outlay expense
+         * account: Capital Outlay is charged to the asset acquired - a
+         * building, a vehicle, software. Filtering to expense accounts meant
+         * a Capital Outlay obligation could not be encoded at all, which
+         * nobody discovered because the chart had not been loaded yet.
+         */
+        .filter((a) => (budgetChargeable ? isBudgetChargeable(a.code, a.name) : true))
         .map((a) => ({
           value: a.code,
           code: a.code,
@@ -55,7 +75,7 @@ export function AccountPicker({
             .filter(Boolean)
             .join(' - '),
         })),
-    [data, expenseOnly],
+    [data, budgetChargeable],
   );
 
   return (

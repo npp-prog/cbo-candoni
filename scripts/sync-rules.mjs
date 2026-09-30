@@ -47,6 +47,10 @@ const PAIRS = [
   // a utilisation fits, and the engine decides. A server copy that had drifted
   // would wave through a commitment the screen had refused.
   { source: 'src/lib/trustPrograms.ts', target: 'functions/src/lib/trustPrograms.ts' },
+  // `chartOfAccounts` derives every classification from the account code. The
+  // browser shows the officer what a file will load as, and the engine writes
+  // it; a drifted copy would preview one chart and store another.
+  { source: 'src/lib/chartOfAccounts.ts', target: 'functions/src/lib/chartOfAccounts.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

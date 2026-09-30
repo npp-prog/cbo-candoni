@@ -629,7 +629,7 @@ export default function ObligationDetail() {
                             <AccountPicker
                               value={line.accountCode ?? null}
                               disabled={!canEdit}
-                              expenseOnly
+                              budgetChargeable
                               onChange={(code, account) =>
                                 setLines((ls) =>
                                   ls.map((l, i) =>

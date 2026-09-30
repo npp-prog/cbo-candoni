@@ -577,9 +577,19 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
         breadcrumbs={[{ label: 'Master Data' }, { label: config.title }]}
         actions={
           can('masterData', 'create') && (
-            <Button variant="primary" size="sm" onClick={() => setEditing({})}>
-              Add {config.singular}
-            </Button>
+            <>
+              {/* Six hundred accounts is not a thing anybody adds one at a
+                  time, so the chart gets a loader and the button to reach
+                  it sits where somebody looking at an empty chart is. */}
+              {config.slug === 'accounts' && (
+                <Link to="/master-data/accounts/upload">
+                  <Button size="sm">Load from a file</Button>
+                </Link>
+              )}
+              <Button variant="primary" size="sm" onClick={() => setEditing({})}>
+                Add {config.singular}
+              </Button>
+            </>
           )
         }
       />

@@ -408,7 +408,7 @@ function LiquidationForm({
                 <td className="cbo-td">
                   <AccountPicker
                     value={line.accountCode ?? null}
-                    expenseOnly
+                    budgetChargeable
                     onChange={(code, account) =>
                       setLines((ls) =>
                         ls.map((l, i) =>

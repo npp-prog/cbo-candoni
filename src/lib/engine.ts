@@ -206,6 +206,25 @@ export const engine = {
       }
     >('recordTrustProgram', p),
 
+  /**
+   * Load the Revised Chart of Accounts.
+   *
+   * Sends a code and a title per row and nothing else: every classification is
+   * derived on the server from the code, by the same rules the screen
+   * previewed with. KEEP_EDITS, the default, updates only the title on an
+   * account that already exists — re-deriving would silently undo the
+   * corrections the Accountant has made since the first load.
+   */
+  importChartOfAccounts: (p: {
+    rows: Array<{ code: string; name: string }>;
+    fileName?: string;
+    mode?: 'KEEP_EDITS' | 'REDERIVE';
+  }) =>
+    call<
+      typeof p,
+      { total: number; created: number; updated: number; unchanged: number; mode: string }
+    >('importChartOfAccounts', p),
+
   cancelObligation: (p: { obligationId: Id; reason: string }) =>
     call<typeof p, { obligationId: Id }>('cancelObligation', p),
 

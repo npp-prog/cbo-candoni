@@ -1,0 +1,626 @@
+Account Code,Account Title
+10101010,Cash Local Treasury
+10101020,Petty Cash
+10102010,"Cash in Bank - Local Currency, Current Account"
+10102020,"Cash in Bank - Local Currency, Savings Account"
+10103010,"Cash in Bank - Foreign Currency, Current Account"
+10103020,"Cash in Bank - Foreign Currency, Savings Account"
+10201010,"Cash in Bank -Local Currency, Time Deposits"
+10201020,"Cash in Bank - Foreign Currency, Time Deposits"
+10201030,Treasury Bills
+10202010,Financial Assets Held for Trading
+10202020,Financial Assets Designated at Fair Value Through Surplus or Deficit
+10203010,Investments in Treasury Bills - Local
+10203011,Allowance for Impairment - Investments in Treasury Bills - Local
+10203020,Investments in Bonds-Local
+10203021,Allowance for Impairment - Investments in Bonds - Local
+10204010,Investments in Stocks
+10204020,Investments in Bonds
+10205010,Deposits on Letters of Credit
+10205011,Allowance for Impairment - Deposits in Letters of Credit
+10205020,Guaranty Deposits
+10205021,Allowance for Impairment - Guaranty Deposits
+10205990,Other Investments
+10205991,Allowance for Impairment - Other Investments
+10206010,Investments in Joint Venture
+10206011,Allowance for Impairment - Investments in Joint Venture
+10207010,Sinking Fund
+10301010,Accounts Receivable
+10301011,Allowance for Impairment - Accounts Receivable
+10301020,Real Property Tax Receivable
+10301021,Allowance for Impairment - RPT Receivable
+10301030,Special Education Tax Receivable
+10301031,Allowance for Impairment - SET Receivable
+10301040,Notes Receivable
+10301041,Allowance for Impairment - Notes Receivable
+10301050,Loans Receivable - Government-Owned and/or Controlled Corporations
+10301051,Allowance for Impairment - Loans Receivable - Government-Owned and/or Controlled Corporations
+10301060,Loans Receivable - Local Government Units
+10301061,Allowance for Impairment - Loans Receivable - Local Government Units
+10301070,Interests Receivable
+10301071,Allowance for Impairment - Interests Receivable
+10301080,Dividends Receivable
+10301081,Allowance for Impairment - Dividends Receivable
+10301990,Loans Receivable - Others
+10301991,Allowance for Impairment - Loans Receivable - Others
+10302010,Operating Lease Receivable
+10302011,Allowance for Impairment - Operating Lease Receivable
+10302020,Finance Lease Receivable
+10302021,Allowance for Impairment - Finance Lease Receivable
+10303010,Due from National Government Agencies
+10303011,Allowance for Impairment - Due from National Government Agencies
+10303020,Due from Government-Owned and/or Controlled Corporations
+10303021,Allowance for Impairment - Due from GOCCs
+10303030,Due from Local Government Units
+10303031,Allowance for Impairment - Due from LGUs
+10303040,Due from Joint Venture
+10303041,Allowance for Impairment - Due from Joint Venture
+10304050,Due from Other Funds
+10304060,Due from Special Accounts
+10304070,Due from Local Economic Enterprise
+10305010,Advances for Operating Expenses
+10305020,Advances for Payroll
+10305030,Advances to Special Disbursing Officer
+10305040,Advances to Officers and Employees
+10306010,Receivables - Disallowances/Charges
+10306011,Allowance for Impairment - Receivables- Disallowances/Charges
+10306020,Due from Officers and Employees
+10306021,Allowance for Impairment - Due from Officers and Employees
+10306030,Due from Non-Government Organizations/People's Organizations
+10306031,Allowance for Impairment - Due from Non-Government Organizations/People's Organizations
+10306990,Other Receivables
+10306991,Allowance for Impairment - Other Receivables
+10401010,Merchandise Inventory
+10402010,Food Supplies for Distribution
+10402020,Welfare Goods for Distribution
+10402030,Drugs and Medicines for Distribution
+10402040,"Medical, Dental and Laboratory Supplies for Distribution"
+10402050,Agricultural and Marine Supplies for Distribution
+10402060,Agricultural Produce for Distribution
+10402070,Textbooks and Instructional Materials for Distribution
+10402080,Construction Materials for Distribution
+10402090,Property and Equipment for Distribution
+10402990,Other Supplies and Materials for Distribution
+10403010,Raw Materials Inventory
+10403020,Work-in-Process Inventory
+10403030,Finished Goods Inventory
+10404010,Office Supplies Inventory
+10404020,"Accountable Forms, Plates and Stickers"
+10404030,Non-Accountable Forms Inventory
+10404040,Animal/Zoological Supplies Inventory
+10404050,Food Supplies Inventory
+10404060,Drugs and Medicines Inventory
+10404070,"Medical, Dental and Laboratory Supplies Inventory"
+10404080,"Fuel, Oil and Lubricants Inventory"
+10404090,Agricultural and Marine Supplies Inventory
+10404100,Textbooks and Instructional Materials Inventory
+10404110,"Military, Police and Traffic Supplies Inventory"
+10404120,Chemical and Filtering Supplies Inventory
+10404130,Construction Materials Inventory
+10404990,Other Supplies and Materials Inventory
+10405010,Semi-Expendable Machinery
+10405020,Semi-Expendable Office Equipment
+10405030,Semi-Expendable Information and Communications Technology Equipment
+10405040,Semi-Expendable Agricultural and Forestry Equipment
+10405050,Semi-Expendable Marine and Fishery Equipment
+10405060,Semi-Expendable Airport Equipment
+10405070,Semi-Expendable Communications Equipment
+10405080,Semi-Expendable Disaster Response and Rescue Equipment
+10405090,"Semi-Expendable Military, Police and Security Equipment"
+10405100,"Semi-Expendable Medical, Dental and Laboratory Equipment"
+10405110,Semi-Expendable Printing Equipment
+10405120,Semi-Expendable Sports Equipment
+10405130,Semi-Expendable Technical and Scientific Equipment
+10405140,Semi-Expendable Construction Equipment
+10405990,Semi-Expendable Other Machinery and Equipment
+10406010,Semi-Expendable Furniture and Fixtures
+10406020,Semi-Expendable Books
+10501010,Advances to Contractors
+10501020,Prepaid Rent
+10501030,Prepaid Registration
+10501040,Prepaid Interest
+10501050,Prepaid Insurance
+10501990,Other Prepayments
+10601010,"Investment Property, Land"
+10601011,"Accumulated Impairment Losses - Investment Property, Land"
+10601020,"Investment Property, Buildings"
+10601021,"Accumulated Depreciation - Investment Property, Buildings"
+10601022,"Accumulated Impairment Losses - Investment Property, Buildings"
+10601030,"Construction in Progress - Investment Property, Buildings"
+10701010,Land
+10701011,Accumulated Impairment Losses - Land
+10702010,"Land Improvements, Aquaculture Structures"
+10702011,"Accumulated Depreciation - Land Improvements, Aquaculture Structures"
+10702012,"Accumulated Impairment Losses - Land Improvements, Aquaculture Structures"
+10702990,Other Land Improvements
+10702991,Accumulated Depreciation - Other Land Improvements
+10702992,Accumulated Impairment Losses - Other Land Improvements
+10703010,Road Networks
+10703011,Accumulated Depreciation - Road Networks
+10703012,Accumulated Impairment Losses - Road Networks
+10703020,Flood Control Systems
+10703021,Accumulated Depreciation - Flood Control Systems
+10703022,Accumulated Impairment Losses - Flood Control Systems
+10703030,Sewer Systems
+10703031,Accumulated Depreciation - Sewer Systems
+10703032,Accumulated Impairment Losses - Sewer Systems
+10703040,Water Supply Systems
+10703041,Accumulated Depreciation - Water Supply Systems
+10703042,Accumulated Impairment Losses - Water Supply Systems
+10703050,Power Supply Systems
+10703051,Accumulated Depreciation - Power Supply Systems
+10703052,Accumulated Impairment Losses - Power Supply Systems
+10703060,Communication Networks
+10703061,Accumulated Depreciation - Communication Networks
+10703062,Accumulated Impairment Losses - Communication Networks
+10703070,Seaport Systems
+10703071,Accumulated Depreciation - Seaport Systems
+10703072,Accumulated Impairment Losses - Seaport Systems
+10703080,Airport Systems
+10703081,Accumulated Depreciation - Airport Systems
+10703082,Accumulated Impairment Losses - Airport Systems
+10703090,"Parks, Plazas and Monuments"
+10703091,"Accumulated Depreciation - Parks, Plazas and Monuments"
+10703092,"Accumulated Impairment Losses - Parks, Plazas and Monuments"
+10703990,Other Infrastructure Assets
+10703991,Accumulated Depreciation - Other Infrastructure Assets
+10703992,Accumulated Impairment Losses - Other Infrastructure Assets
+10704010,Buildings
+10704011,Accumulated Depreciation - Buildings
+10704012,Accumulated Impairment Losses - Buildings
+10704020,School Buildings
+10704021,Accumulated Depreciation - School Buildings
+10704022,Accumulated Impairment Losses - School Buildings
+10704030,Hospitals and Health Centers
+10704031,Accumulated Depreciation - Hospitals and Health Centers
+10704032,Accumulated Impairment Losses - Hospitals and Health Centers
+10704040,Markets
+10704041,Accumulated Depreciation - Markets
+10704042,Accumulated Impairment Losses - Markets
+10704050,Slaughterhouses
+10704051,Accumulated Depreciation - Slaughterhouses
+10704052,Accumulated Impairment Losses- Slaughterhouses
+10704060,Hostels and Dormitories
+10704061,Accumulated Depreciation - Hostels and Dormitories
+10704062,Accumulated Impairment Losses - Hostels and Dormitories
+10704990,Other Structures
+10704991,Accumulated Depreciation - Other Structures
+10704992,Accumulated Impairment Losses - Other Structures
+10705010,Machinery
+10705011,Accumulated Depreciation - Machinery
+10705012,Accumulated Impairment Losses - Machinery
+10705020,Office Equipment
+10705021,Accumulated Depreciation - Office Equipment
+10705022,Accumulated Impairment Losses - Office Equipment
+10705030,Information and Communication Technology Equipment
+10705031,Accumulated Depreciation - Information and Communication Technology Equipment
+10705032,Accumulated Impairment Losses - Information and Communication Technology Equipment
+10705040,Agricultural and Forestry Equipment
+10705041,Accumulated Depreciation - Agricultural and Forestry Equipment
+10705042,Accumulated Impairment Losses - Agricultural and Forestry Equipment
+10705050,Marine and Fishery Equipment
+10705051,Accumulated Depreciation - Marine and Fishery Equipment
+10705052,Accumulated Impairment Losses - Marine and Fishery Equipment
+10705060,Airport Equipment
+10705061,Accumulated Depreciation - Airport Equipment
+10705062,Accumulated Impairment Losses - Airport Equipment
+10705070,Communication Equipment
+10705071,Accumulated Depreciation - Communication Equipment
+10705072,Accumulated Impairment Losses - Communication Equipment
+10705080,Construction and Heavy Equipment
+10705081,Accumulated Depreciation - Construction and Heavy Equipment
+10705082,Accumulated Impairment Losses - Construction and Heavy Equipment
+10705090,Disaster Response and Rescue Equipment
+10705091,Accumulated Depreciation - Disaster Response and Rescue Equipment
+10705092,Accumulated Impairment Losses - Disaster Response and Rescue Equipment
+10705100,"Military, Police and Security Equipment"
+10705101,"Accumulated Depreciation - Military, Police and Security Equipment"
+10705102,"Accumulated Impairment Losses - Military, Police and Security Equipment"
+10705110,Medical Equipment
+10705111,Accumulated Depreciation - Medical Equipment
+10705112,Accumulated Impairment Losses - Medical Equipment
+10705120,Printing Equipment
+10705121,Accumulated Depreciation - Printing Equipment
+10705122,Accumulated Impairment Losses - Printing Equipment
+10705130,Sports Equipment
+10705131,Accumulated Depreciation - Sports Equipment
+10705132,Accumulated Impairment Losses - Sports Equipment
+10705140,Technical and Scientific Equipment
+10705141,Accumulated Depreciation - Technical and Scientific Equipment
+10705142,Accumulated Impairment Losses - Technical and Scientific Equipment
+10705990,Other Machinery and Equipment
+10705991,Accumulated Depreciation - Other Machinery and Equipment
+10705992,Accumulated Impairment Losses - Other Machinery and Equipment
+10706010,Motor Vehicles
+10706011,Accumulated Depreciation - Motor Vehicles
+10706012,Accumulated Impairment Losses - Motor Vehicles
+10706020,Trains
+10706021,Accumulated Depreciation - Trains
+10706022,Accumulated Impairment Losses - Trains
+10706030,Aircrafts and Aircrafts Ground Equipment
+10706031,Accumulated Depreciation - Aircrafts and Aircrafts Ground Equipment
+10706032,Accumulated Impairment Losses - Aircrafts and Aircrafts Ground Equipment
+10706040,Watercrafts
+10706041,Accumulated Depreciation - Watercrafts
+10706042,Accumulated Impairment Losses - Watercrafts
+10706990,Other Transportation Equipment
+10706991,Accumulated Depreciation - Other Transportation Equipment
+10706992,Accumulated Impairment Losses - Other Transportation Equipment
+10707010,Furniture and Fixtures
+10707011,Accumulated Depreciation - Furniture and Fixtures
+10707012,Accumulated Impairment Losses - Furniture and Fixtures
+10707020,Books
+10707021,Accumulated Depreciation - Books
+10707022,Accumulated Impairment Losses - Books
+10708010,"Leased Assets, Land"
+10708011,"Accumulated Impairment Losses-Leased Assets, Land"
+10708020,"Leased Assets, Buildings and Other Structures"
+10708021,"Accumulated Depreciation - Leased Assets, Buildings and Other Structures"
+10708022,"Accumulated Impairment Losses - Leased Assets, Buildings and Other Structures"
+10708030,"Leased Assets, Machinery and Equipment"
+10708031,"Accumulated Depreciation - Leased Assets, Machinery and Equipment"
+10708032,"Accumulated Impairment Losses - Leased Assets, Machinery and Equipment"
+10708040,"Leased Assets, Transportation Equipment"
+10708041,"Accumulated Depreciation - Leased Assets, Transportation Equipment"
+10708042,"Accumulated Impairment Losses - Leased Assets, Transportation Equipment"
+10708990,Other Leased Assets
+10708991,Accumulated Depreciation - Other Leased Assets
+10708992,Accumulated Impairment Losses - Other Leased Assets
+10709010,"Leased Assets Improvements, Land"
+10709011,"Accumulated Depreciation - Leased Assets Improvements, Land"
+10709012,"Accumulated Impairment Losses - Leased Assets Improvements, Land"
+10709020,"Leased Assets Improvements, Buildings"
+10709021,"Accumulated Depreciation - Leased Assets Improvements, Buildings"
+10709022,"Accumulated Impairment Losses - Leased Assets Improvements, Buildings"
+10709990,Other Leased Assets Improvements
+10709991,Accumulated Depreciation - Other Leased Assets Improvements
+10709992,Accumulated Impairment Losses - Other Leased Assets Improvements
+10710010,Construction in Progress - Land Improvements
+10710020,Construction in Progress - Infrastructure Assets
+10710030,Construction in Progress - Buildings and Other Structures
+10710040,Construction in Progress - Leased Assets
+10710050,Construction in Progress - Leased Assets Improvements
+10711010,Service Concession Assets
+10711011,Accumulated Depreciation - Service Concession Assets
+10711012,Accumulated Impairment Losses - Service Concession Assets
+10799010,Work/Zoo Animals
+10799011,Accumulated Depreciation - Work/Zoo Animals
+10799012,Accumulated Impairment Losses - Work/Zoo Animals
+10799990,"Other Property, Plant and Equipment"
+10799991,"Accumulated Depreciation - Other Property, Plant and Equipment"
+10799992,"Accumulated Impairment Losses - Other Property, Plant and Equipment"
+10801010,Breeding Stocks
+10801020,Plants and Trees
+10801030,Aquaculture
+10801990,Other Bearer Biological Assets
+10901010,Patents/Copyrights
+10901011,Accumulated Amortization - Patents/Copyrights
+10901012,Accumulated Impairment Losses - Patents/Copyrights
+10901020,Computer Software
+10901021,Accumulated Amortization - Computer Software
+10901022,Accumulated Impairment Losses - Computer Software
+10901990,Other Intangible Assets
+10901991,Accumulated Amortization - Other Intangible Assets
+10901992,Accumulated Impairment Losses - Other Intangible Assets
+10902010,Service Concession Assets - Intangible Assets
+19902090,Prepaid Benefit Cost
+20101010,Accounts Payable
+20101020,Due to Officers and Employees
+20101040,Notes Payable
+20101050,Interest Payable
+20101060,Operating Lease Payable
+20101070,Finance Lease Payable
+20101080,Awards and Rewards Payable
+20101090,Service Concession Arrangement Payable
+20101100,Pension Benefits Payable
+20101110,Leave Benefits Payable
+20101120,Retirement Gratuity Payable
+20102020,Bonds Payable - Domestic
+20102040,Loans Payable - Domestic
+20102050,Loans Payable - Foreign
+20102021,Discount on Bonds Payable - Domestic
+20102022,Premium on Bonds Payable - Domestic
+20201010,Due to BIR
+20201020,Due to GSIS
+20201030,Due to Pag-IBIG
+20201040,Due to PhilHealth
+20201050,Due to NGAs
+20201060,Due to GOCCs
+20201070,Due to LGUs
+20201080,Due to Joint Venture
+20301010,Due to Other Funds
+20301020,Due to Special Accounts
+20301030,Due to Local Economic Enterprises
+20401010,Trust Liabilities
+20401020,Trust Liabilities - Disaster Risk Reduction and Management Fund
+20401030,Bail Bonds Payable
+20401040,Guaranty/Security Deposits Payable
+20401050,Customers' Deposits Payable
+20501010,Deferred Real Property Tax
+20501011,Discount on Advance Payment of Real Property Tax
+20501020,Deferred Special Education Tax
+20501021,Discount on Advance Payment of Special Education Tax
+20501030,Deferred Finance Lease Revenue
+20501040,Deferred Service Concession Revenue
+20501050,Unearned Revenue - Investment Property
+20501990,Other Deferred Credits
+20601040,Termination Benefits
+20601060,Accrued Benefit Cost
+20601990,Other Provisions
+29999990,Other Payables
+30101010,Government Equity
+30101020,Prior Period Adjustment
+30201010,Income and Expense Summary
+30301010,Equity in Joint Venture
+30401010,Unrealized Gain/(Loss) from Changes in the Fair Value of Financial Assets
+30501010,Fund Balance
+30501020,Unappropriated Surplus
+30501030,Continuing Allotment
+30501040,Continuing Appropriations
+30501050,Commitments
+30502010,"Estimates of Income, Revenues and Receipts"
+30502020,Estimates-Internal Sources
+30502030,Estimates-External Sources
+30502040,Realized Income Revenues and Receipts
+30502050,Appropriations – Annual Budget
+30502060,Appropriations – Supplemental Budget
+30502070,Legislative Appropriations
+30502080,Released Current Allotments
+30502090,Current Allotment
+30502100,Released Continuing Allotment
+30503010,Current Allotments - Obligated
+30503020,Obligations-Current Allotment
+30503030,Continuing Allotments- Obligated
+30503040,Obligations-Continuing Allotment
+30503050,Current Allotments - Obligations Consummated
+30503060,Continuing Allotments - Obligations Consummated
+30503070,Consummated Obligations
+30504010,Reversion of Unallotted CY Appropriations
+30504020,Reversion of Unobligated CY Allotments
+30504030,Reversion of Unutilized Continuing Appropriations and Allotments
+31301010,Remeasurement Gain
+31301020,Remeasurement Loss
+40101020,Professional Tax
+40101050,Community Tax
+40102040,Real Property Tax- Basic
+40102041,Discount on Real Property Tax- Basic
+40102050,Special Education Tax
+40102051,Discount on Special Education Tax
+40102060,Special Levy on Idle Lands
+40102070,Special Levy on Lands Benefited by Public Works Projects
+40102080,Real Property Transfer Tax
+40103030,Business Tax
+40103040,"Tax on Sand, Gravel and Other Quarry Products"
+40103050,Tax on Delivery Trucks and Vans
+40103060,Amusement Tax
+40103070,Franchise Tax
+40103080,Printing and Publication Tax
+40104990,Other Taxes
+40105010,Tax Revenue - Fines and Penalties - Taxes on Individual and Corporation
+40105020,Tax Revenue - Fines and Penalties - Property Taxes
+40105030,Tax Revenue - Fines and Penalties - Taxes on Goods and Services
+40105040,Tax Revenue - Fines and Penalties - Other Taxes
+40106010,Share from Internal Revenue Collections (IRA)
+40106020,Share from Expanded Value Added Tax
+40106030,Share from National Wealth
+40106040,Share from Tobacco Excise Tax (RA 7171 and 8240)
+40106050,Share from Economic Zones
+40201010,Permit Fees
+40201020,Registration Fees
+40201030,"Registration Plates, Tags and Stickers Fees"
+40201040,Clearance and Certification Fees
+40201070,Supervision and Regulation Enforcement Fees
+40201100,Inspection Fees
+40201110,Verification and Authentication Fees
+40201130,Processing Fees
+40201140,Occupation Fees
+40201150,"Fishery Rentals, Fees and Charges"
+40201160,Fees for Sealing and Licensing of Weights and Measures
+40201980,Fines and Penalties - Service Income
+40201990,Other Service Income
+40202010,School Fees
+40202020,Affiliation Fees
+40202040,Seminar/Training Fees
+40202050,Rent Income
+40202060,Communication Network Fees
+40202070,Transportation System Fees
+40202080,Road Network Fees
+40202090,Waterworks System Fees
+40202100,Power Supply System Fees
+40202110,Seaport System Fees
+40202120,Parking Fees
+40202130,Receipts from Operation of Hostels/Dormitories and Other Like Facilities
+40202140,Receipts from Market Operations
+40202150,Receipts from Slaughterhouse Operations
+40202160,Receipts from Cemetery Operations
+40202170,Receipts from Printing and Publication
+40202180,Sales Revenue
+40202181,Sales Discounts
+40202190,Garbage Fees
+40202200,Hospital Fees
+40202210,Dividend Income
+40202220,Interest Income
+40202230,Service Concession Revenue
+40202240,Other Service Concession Revenue
+40202250,Finance Lease Revenue
+40202260,Share in the Profit of Joint Venture
+40202980,Fines and Penalties - Business Income
+40202990,Other Business Income
+40301010,Subsidy from National Government
+40301020,Subsidy from Other Local Government Units
+40301030,Subsidy from Government-Owned and/or Controlled Corporations
+40301040,Subsidy from Other Funds
+40301050,Subsidy from General Fund Proper/Other Special Accounts
+40301060,Subsidy from Other Local Economic Enterprise/Public Utility
+40302010,Transfers from General Fund of LGU Counterpart/Equity Share
+40302020,Transfers from General Fund of Unspent DRRMF
+40302030,Transfers from National Government
+40302040,Transfers from Other Local Government Units
+40302050,Transfers from Government-Owned and/or Controlled Corporations
+40401010,Share from PAGCOR
+40401020,Share from PCSO
+40402010,Grants and Donations in Cash
+40402020,Grants and Donations in Kind
+40402030,Grants from Concessionary loans
+40501010,Gain from Changes in Fair Value of Financial Instruments
+40501020,Gain on Foreign Exchange (FOREX)
+40501030,Gain on Sale of Investments
+40501040,Gain on Sale of Investment Property
+40501050,"Gain on Sale of Property, Plant and Equipment"
+40501060,Gain on Initial Recognition of Biological Assets
+40501070,Gain on Sale of Biological Assets
+40501080,Gain from Changes in Fair Value Less Cost to Sell of Biological Assets Due to Physical Change
+40501090,Gain from Changes in Fair Value Less Cost to Sell of Biological Assets Due to Price Change
+40501100,Gain from Initial Recognition of Agricultural Produce
+40501110,Gain on Sale of Intangible Assets
+40501120,Reversal of Impairment Losses
+40501990,Other Gains
+40601010,Miscellaneous Income
+50101010,Salaries and Wages - Regular
+50101020,Salaries and Wages - Casual/Contractual
+50102010,Personnel Economic Relief Allowance (PERA)
+50102020,Representation Allowance (RA)
+50102030,Transportation Allowance (TA)
+50102040,Clothing/Uniform Allowance
+50102050,Subsistence Allowance
+50102060,Laundry Allowance
+50102070,Quarters Allowance
+50102080,Productivity Incentive Allowance
+50102090,Overseas Allowance
+50102100,Honoraria
+50102110,Hazard Pay
+50102120,Longevity Pay
+50102130,Overtime and Night Pay
+50102140,Year End Bonus
+50102150,Cash Gift
+50102990,Other Bonuses and Allowances
+50103010,Retirement and Life Insurance Premiums
+50103020,Pag-IBIG Contributions
+50103030,PhilHealth Contributions
+50103040,Employees Compensation Insurance Premiums
+50103050,Provident/Welfare Fund Contributions
+50104010,Pension Benefits
+50104020,Retirement Gratuity
+50104030,Terminal Leave Benefits
+50104040,Employee Benefit Expense
+50104990,Other Personnel Benefits
+50201010,Traveling Expenses - Local
+50201020,Traveling Expenses - Foreign
+50202010,Training Expenses
+50202020,Scholarship Grants/Expenses
+50203010,Office Supplies Expenses
+50203020,Accountable Forms Expenses
+50203030,Non-Accountable Forms Expenses
+50203040,Animal/Zoological Supplies Expenses
+50203050,Food Supplies Expenses
+50203060,Welfare Goods Expenses
+50203070,Drugs and Medicines Expenses
+50203080,"Medical, Dental and Laboratory Supplies Expenses"
+50203090,"Fuel, Oil and Lubricants Expenses"
+50203100,Agricultural and Marine Supplies Expenses
+50203110,Textbooks and Instructional Materials Expenses
+50203120,"Military, Police and Traffic Supplies Expenses"
+50203130,Chemical and Filtering Supplies Expenses
+50203210,Semi-Expendable Machinery and Equipment Expenses
+50203220,"Semi-Expendable Furniture, Fixtures and Books Expenses"
+50203990,Other Supplies and Materials Expenses
+50204010,Water Expenses
+50204020,Electricity Expenses
+50205010,Postage and Courier Services
+50205020,Telephone Expenses
+50205030,Internet Subscription Expenses
+50205040,"Cable, Satellite, Telegraph and Radio Expenses"
+50206010,Awards/Rewards Expenses
+50206020,Prizes
+50207010,Survey Expenses
+50207020,"Research, Exploration and Development Expenses"
+50208010,Demolition and Relocation Expenses
+50208020,Desilting and Dredging Expenses
+50209010,"Generation, Transmission and Distribution Expenses"
+50210010,Confidential Expenses
+50210020,Intelligence Expenses
+50210030,Extraordinary and Miscellaneous Expenses
+50211010,Legal Services
+50211020,Auditing Services
+50211030,Consultancy Services
+50211990,Other Professional Services
+50212010,Environment/Sanitary Services
+50212020,Janitorial Services
+50212030,Security Services
+50212990,Other General Services
+50213010,Repairs and Maintenance - Investment Property
+50213020,Repairs and Maintenance - Land Improvements
+50213030,Repairs and Maintenance - Infrastructure Assets
+50213040,Repairs and Maintenance - Buildings and Other Structures
+50213050,Repairs and Maintenance - Machinery and Equipment
+50213060,Repairs and Maintenance - Transportation Equipment
+50213070,Repairs and Maintenance - Furniture and Fixtures
+50213080,Repairs and Maintenance - Leased Assets
+50213090,Repairs and Maintenance - Leased Assets Improvements
+50213210,Repairs and Maintenance-Semi-Expendable Machinery and Equipment
+50213220,"Repairs and Maintenance-Semi-Expendable Furniture, Fixtures and Books"
+50213990,"Repairs and Maintenance - Other Property, Plant and Equipment"
+50214020,Subsidy to National Government Agencies
+50214030,Subsidy to Other Local Government Units
+50214060,Subsidy to Other Funds
+50214070,Subsidy to General Fund Proper/Special Accounts
+50214080,Subsidy to Local Economic Enterprises/Public Utilities
+50214990,Subsidies - Others
+50215010,Transfers of Unspent Current Year DRRM Funds to the Trust Fund
+50215020,Transfers for Project Equity Share /LGU Counterpart
+50216010,"Taxes, Duties and Licenses"
+50216020,Fidelity Bond Premiums
+50216030,Insurance Expenses
+50299010,Advertising Expenses
+50299020,Printing and Publication Expenses
+50299030,Representation Expenses
+50299040,Transportation and Delivery Expenses
+50299050,Rent Expenses
+50299060,Membership Dues and Contributions to Organizations
+50299070,Subscription Expenses
+50299080,Donations
+50299990,Other Maintenance and Operating Expenses
+50301010,Management Supervision/Trusteeship Fees
+50301020,Interest Expenses
+50301030,Guarantee Fees
+50301040,Bank Charges
+50301050,Commitment Fees
+50301990,Other Financial Charges
+50401010,Direct Materials
+50401020,Direct Labor
+50401030,Manufacturing Overhead
+50402010,Cost of Sales
+50501010,Depreciation - Investment Property
+50501020,Depreciation - Land Improvements
+50501030,Depreciation - Infrastructure Assets
+50501040,Depreciation - Buildings and Other Structures
+50501050,Depreciation - Machinery and Equipment
+50501060,Depreciation - Transportation Equipment
+50501070,"Depreciation - Furniture, Fixtures and Books"
+50501080,Depreciation - Leased Assets
+50501090,Depreciation - Leased Assets Improvements
+50501100,Depreciation -Service Concession Assets
+50501990,"Depreciation - Other Property, Plant and Equipment"
+50502010,Amortization - Intangible Assets
+50503010,Impairment Loss - Financial Assets Held to Maturity
+50503020,Impairment Loss - Loans and Receivables
+50503030,Impairment Loss - Lease Receivables
+50503040,Impairment Loss - Investments in GOCCs
+50503050,Impairment Loss - Investments in Joint Venture
+50503060,Impairment Loss - Other Receivables
+50503070,Impairment Loss - Investment Property
+50503080,"Impairment Loss - Property, Plant and Equipment"
+50503090,Impairment Loss - Intangible Assets
+50504010,Loss on Foreign Exchange (FOREX)
+50504020,Loss on Sale of Investments
+50504030,Loss on Sale of Investment Property
+50504040,"Loss on Sale of Property, Plant and Equipment"
+50504050,Loss on Sale of Biological Assets
+50504060,Loss on Sale of Intangible Assets
+50504070,Loss on Sale of Assets
+50504080,Loss on Initial Recognition of Biological Assets
+50504090,Loss of Assets
+50504100,Loss on Guaranty
+50504110,Loss from Changes in Fair Value of Financial Instruments
+50504990,Other Losses
+50505010,Grants for Concessionary Loans

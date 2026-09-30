@@ -49,6 +49,7 @@ export { importBudgetLines } from './budget/import';
 export { issueAro } from './budget/aro';
 export { recordEstimatedReceipts } from './budget/estimatedReceipts';
 export { recordTrustProgram } from './accounting/trustPrograms';
+export { importChartOfAccounts } from './masterdata/accounts';
 
 // --- Accounting --------------------------------------------------------------
 export { submitDv, reviewDv, approveDv, cancelDv } from './accounting/dv';
