@@ -299,3 +299,75 @@ describe('the Statement of Financial Performance', () => {
     expect(p.totalRevenue.prior).toBe(8_000_00);
   });
 });
+
+/**
+ * Annex 6-A. A shorter form, and shorter for a reason: trust money arrives as a
+ * grant for a stated purpose, so there is no tax revenue and no business income
+ * in a trust fund, and the annex carries no Financial Expenses or Direct Costs.
+ */
+describe('the Trust Fund statements', () => {
+  const rev = (over: Partial<FsAccountBalance> = {}) =>
+    bal({ accountCode: '40402010', accountName: 'Grants and Donations in Cash', classification: 'REVENUE', ...over });
+
+  it('prints only the captions Annex 6-A carries', () => {
+    const p = condensePerformance([rev()], [], 'TF');
+    expect(p.revenue.map((l) => l.caption)).toEqual(['Grants and Donations']);
+    expect(p.expenses.map((l) => l.caption)).toEqual([
+      'Personnel Services',
+      'Maintenance and Other Operating Expenses',
+      'Non-Cash Expenses',
+    ]);
+  });
+
+  /**
+   * A nil line says something on the General Fund - "no IRA account exists" -
+   * and says nothing at all on the Trust Fund except that the wrong form was
+   * printed.
+   */
+  it('does not print a Tax Revenue line on a trust fund', () => {
+    const p = condensePerformance([rev()], [], 'TF');
+    expect(p.revenue.some((l) => l.caption === 'Tax Revenue')).toBe(false);
+  });
+
+  it('reports a tax account posted to a trust fund rather than hiding it', () => {
+    const p = condensePerformance(
+      [bal({ accountCode: '40102040', accountName: 'RPT Basic', classification: 'REVENUE' })],
+      [],
+      'TF',
+    );
+    expect(p.unmapped).toHaveLength(1);
+  });
+
+  it('keeps the General Fund form for every other fund', () => {
+    for (const fund of ['GF', 'SEF', undefined]) {
+      const p = condensePerformance([rev()], [], fund);
+      expect(p.revenue.length, String(fund)).toBe(7);
+    }
+  });
+
+  /**
+   * Annex 5-A needs no list of its own: it is Annex 5 with the captions a trust
+   * fund never uses left out, and a caption nothing was posted to is not
+   * printed anyway. This pins that, so the claim is checked rather than
+   * asserted in a comment.
+   */
+  it('drops the captions Annex 5-A omits from the position statement, without a list', () => {
+    const p = condensePosition(
+      [
+        bal({ accountCode: '10101010', classification: 'CURRENT_ASSET' }),
+        bal({
+          accountCode: '20401010',
+          accountName: 'Trust Liabilities',
+          classification: 'CURRENT_LIABILITY',
+          amount: 800_000_00,
+        }),
+      ],
+      [],
+    );
+    const captions = p.sections.flatMap((s) => s.lines).map((l) => l.caption);
+    expect(captions).toEqual(['Cash and Cash Equivalents', 'Trust Liabilities']);
+    for (const absent of ['Investment Property', 'Biological Assets', 'Intangible Assets', 'Provisions']) {
+      expect(captions).not.toContain(absent);
+    }
+  });
+});

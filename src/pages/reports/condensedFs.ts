@@ -1,7 +1,9 @@
 import {
   FUND_BALANCE_GROUP,
   PERFORMANCE_EXPENSES,
+  PERFORMANCE_EXPENSES_TF,
   PERFORMANCE_REVENUE,
+  PERFORMANCE_REVENUE_TF,
   POSITION_SECTIONS,
   TRANSFERS_GROUP,
   captionFor,
@@ -265,7 +267,11 @@ export interface CondensedPerformance {
 export function condensePerformance(
   current: FsAccountBalance[],
   prior: FsAccountBalance[],
+  /** 'TF' selects Annex 6-A, the Trust Fund's shorter form. */
+  fundCode?: string,
 ): CondensedPerformance {
+  const revenueDefs = fundCode === 'TF' ? PERFORMANCE_REVENUE_TF : PERFORMANCE_REVENUE;
+  const expenseDefs = fundCode === 'TF' ? PERFORMANCE_EXPENSES_TF : PERFORMANCE_EXPENSES;
   const all = pair(current, prior);
   const unmapped: UnmappedBalance[] = [];
   const byGroup = new Map<string, CondensedLine>();
@@ -301,8 +307,7 @@ export function condensePerformance(
      * them. A major-group lookup cannot say that.
      */
     const def =
-      lineForCode(PERFORMANCE_REVENUE, a.accountCode) ??
-      lineForCode(PERFORMANCE_EXPENSES, a.accountCode);
+      lineForCode(revenueDefs, a.accountCode) ?? lineForCode(expenseDefs, a.accountCode);
     if (!def) {
       unmapped.push({
         accountCode: a.accountCode,
@@ -342,8 +347,8 @@ export function condensePerformance(
       (d) => byGroup.get(d.caption) ?? { caption: d.caption, current: 0, prior: 0, accounts: [] },
     );
 
-  const revenue = build(PERFORMANCE_REVENUE);
-  const expenses = build(PERFORMANCE_EXPENSES);
+  const revenue = build(revenueDefs);
+  const expenses = build(expenseDefs);
 
   const totalRevenue = {
     current: revenue.reduce((s, l) => s + l.current, 0),

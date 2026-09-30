@@ -10,6 +10,7 @@ import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import type { FsClassification } from '@/types/enums';
 import { FUND_BALANCE_CAPTIONS } from '@/lib/fsGroups';
+import { buildEquityStatement, type EquityStatement } from './equityStatement';
 import {
   condensePerformance,
   condensePosition,
@@ -97,8 +98,19 @@ export default function FinancialStatements() {
     [lines, priorLines],
   );
   const performance = useMemo(
-    () => condensePerformance(lines as FsAccountBalance[], priorLines as FsAccountBalance[]),
-    [lines, priorLines],
+    // The Trust Fund has its own shorter form, Annex 6-A.
+    () => condensePerformance(lines as FsAccountBalance[], priorLines as FsAccountBalance[], fundCode),
+    [lines, priorLines, fundCode],
+  );
+
+  const equityStatement = useMemo(
+    () =>
+      buildEquityStatement({
+        current: lines as FsAccountBalance[],
+        prior: priorLines as FsAccountBalance[],
+        surplus: performance.surplus,
+      }),
+    [lines, priorLines, performance.surplus],
   );
 
   const group = (classification: FsClassification) =>
@@ -217,15 +229,7 @@ export default function FinancialStatements() {
       ) : statement === 'cashflow' ? (
         <CashFlowStatement ledger={ledger.data} throughPeriod={throughPeriod} />
       ) : statement === 'equity' ? (
-        <>
-          <Row label="Net assets / equity, beginning of period" amount={equityBrought} />
-          <Row label={surplus >= 0 ? 'Add: surplus for the period' : 'Less: deficit for the period'} amount={surplus} />
-          <GrandTotal label="Net assets / equity, end of period" value={netAssets} />
-          <Alert tone="info" className="mt-4">
-            Prior period adjustments and other direct movements in equity appear here once they
-            are posted as journal entries of type Prior Period Adjustment.
-          </Alert>
-        </>
+        <EquityStatementView data={equityStatement} fiscalYear={fiscalYear} />
       ) : (
         <BudgetAndActual budget={budget.data} expenses={group('EXPENSE')} />
       )}
@@ -765,5 +769,149 @@ function PerformanceStatement({
         </tbody>
       </table>
     </>
+  );
+}
+
+/**
+ * Annex 7, the Statement of Changes in Net Assets/Equity.
+ *
+ * Eight lines and the manual's own wording for each. The comparative column's
+ * opening balance is blank rather than nil: with two years of ledger loaded,
+ * the close of the year before the comparative one is not knowable, and a zero
+ * there would read as a municipality that began with nothing.
+ */
+function EquityStatementView({
+  data,
+  fiscalYear,
+}: {
+  data: EquityStatement;
+  fiscalYear: number;
+}) {
+  const priorOpeningKnown = data.openingBalance.prior !== 0;
+
+  return (
+    <>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-300 text-slate-600">
+            <th className="cbo-th text-left" />
+            <th className="cbo-th text-right" style={{ width: '10rem' }}>
+              {fiscalYear}
+            </th>
+            <th className="cbo-th text-right" style={{ width: '10rem' }}>
+              {fiscalYear - 1}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <EquityRow
+            label={`Balance at January 1, ${fiscalYear}`}
+            current={data.openingBalance.current}
+            prior={data.openingBalance.prior}
+            priorBlank={!priorOpeningKnown}
+          />
+          <EquityRow label="Add (Deduct)" current={null} prior={null} />
+          <EquityRow
+            label="Change in Accounting Policy"
+            current={data.changeInAccountingPolicy.current}
+            prior={data.changeInAccountingPolicy.prior}
+            indent
+          />
+          <EquityRow
+            label="Prior Period Errors"
+            current={data.priorPeriodErrors.current}
+            prior={data.priorPeriodErrors.prior}
+            indent
+          />
+          <EquityRow
+            label="Restated Balance"
+            current={data.restatedBalance.current}
+            prior={data.restatedBalance.prior}
+            priorBlank={!priorOpeningKnown}
+            rule
+          />
+          <EquityRow
+            label="Add (Deduct) Changes in net assets/equity during the year"
+            current={null}
+            prior={null}
+          />
+          <EquityRow
+            label="Adjustment of net revenue recognized directly in net assets/equity"
+            current={data.adjustmentRecognisedInEquity.current}
+            prior={data.adjustmentRecognisedInEquity.prior}
+            indent
+          />
+          <EquityRow
+            label="Surplus (Deficit) for the period"
+            current={data.surplus.current}
+            prior={data.surplus.prior}
+            indent
+          />
+          <EquityRow
+            label="Total recognized revenue and expenses for the period"
+            current={data.totalRecognised.current}
+            prior={data.totalRecognised.prior}
+            rule
+          />
+          <EquityRow
+            label={`Balance at December 31, ${fiscalYear}`}
+            current={data.closingBalance.current}
+            prior={data.closingBalance.prior}
+            priorBlank={!priorOpeningKnown}
+            emphasis
+            rule
+          />
+        </tbody>
+      </table>
+
+      {data.accountingPolicyNotTracked && (
+        <p className="mt-3 text-xs text-slate-500">
+          Change in Accounting Policy is nil because no account holds one: a change of policy is
+          restated through the accounts it affects rather than booked to one of its own. The line is
+          printed because Annex 7 prints it.
+        </p>
+      )}
+      {!priorOpeningKnown && (
+        <p className="mt-1 text-xs text-slate-500">
+          The {fiscalYear - 1} column has no opening balance because the close of {fiscalYear - 2} is
+          not in the ledger this screen reads. Blank rather than nil — nil would read as a
+          municipality that began with nothing.
+        </p>
+      )}
+    </>
+  );
+}
+
+function EquityRow({
+  label,
+  current,
+  prior,
+  indent,
+  emphasis,
+  rule,
+  priorBlank,
+}: {
+  label: string;
+  current: Centavos | null;
+  prior: Centavos | null;
+  indent?: boolean;
+  emphasis?: boolean;
+  rule?: boolean;
+  priorBlank?: boolean;
+}) {
+  return (
+    <tr
+      className={`${rule ? 'border-t border-slate-300' : 'border-b border-slate-100'} ${
+        emphasis ? 'font-semibold text-navy-900' : 'text-slate-700'
+      }`}
+    >
+      <td className="cbo-td" style={{ paddingLeft: indent ? '2rem' : '0.5rem' }}>
+        {label}
+      </td>
+      <td className="cbo-td cbo-amount">{current === null ? '' : formatPeso(current)}</td>
+      <td className="cbo-td cbo-amount text-slate-500">
+        {prior === null || priorBlank ? '' : formatPeso(prior)}
+      </td>
+    </tr>
   );
 }

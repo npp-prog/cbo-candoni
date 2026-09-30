@@ -327,6 +327,34 @@ export const PERFORMANCE_EXPENSES: PerformanceLineDef[] = [
 ];
 
 /**
+ * Annex 6-A: the Trust Fund's own Statement of Financial Performance.
+ *
+ * A shorter form, and shorter for a reason rather than for brevity. Trust money
+ * arrives as a grant or a donation for a stated purpose, so the only revenue
+ * caption is that one; there is no tax revenue in a trust fund and no business
+ * income. On the expense side the annex carries no Financial Expenses and no
+ * Direct Costs.
+ *
+ * It matters because the performance statement prints its nil lines on purpose
+ * - a nil line says something on the General Fund - and on the Trust Fund a
+ * "Tax Revenue" line at nil says nothing at all except that somebody printed
+ * the wrong form.
+ *
+ * The position statement needs no such list: Annex 5-A is Annex 5 with the
+ * captions a trust fund never uses left out, and those are left out already
+ * because a caption nothing was posted to is not printed.
+ */
+export const PERFORMANCE_REVENUE_TF: PerformanceLineDef[] = [
+  { caption: 'Grants and Donations', groups: ['404'] },
+];
+
+export const PERFORMANCE_EXPENSES_TF: PerformanceLineDef[] = [
+  { caption: 'Personnel Services', groups: ['501'] },
+  { caption: 'Maintenance and Other Operating Expenses', groups: ['502'] },
+  { caption: 'Non-Cash Expenses', groups: ['505'] },
+];
+
+/**
  * The transfers block beneath the surplus from current operation.
  *
  * Group 4-03 is "Transfers and Subsidy" and holds both directions in the
