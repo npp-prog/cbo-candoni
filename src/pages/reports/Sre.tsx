@@ -7,16 +7,24 @@ import { Field, Select } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAccounts, useBudgetBalances, useLedgerEntries } from '@/data/queries';
+import {
+  useAccounts,
+  useBudgetBalances,
+  useEstimatedReceipts,
+  useLedgerEntries,
+} from '@/data/queries';
 import { useDocument } from '@/hooks/useFirestore';
 import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { monthName } from '@/lib/dates';
 import { SRE_BUCKET_LABELS } from '@/lib/sectors';
+import { annualOf } from '@/lib/estimatedReceipts';
 import {
   SRE_MAPPABLE_LINES,
   SRE_RECEIPT_LINES,
+  appropriationsByFund,
+  estimatesAsEntries,
   expendituresByFund,
   mappingConflicts,
   receiptsByLine,
@@ -76,6 +84,21 @@ export default function Sre() {
   const tf = useLedgerEntries(fiscalYear, 'TF', { throughPeriod });
 
   const gfBudget = useBudgetBalances(fiscalYear, 'GF');
+  const sefBudget = useBudgetBalances(fiscalYear, 'SEF');
+  const tfBudget = useBudgetBalances(fiscalYear, 'TF');
+
+  /*
+   * The Budget Year column.
+   *
+   * Annex A asks for it on both sides. On the spending side CBO has always had
+   * it - the appropriation ordinance is loaded. On the receiving side it did
+   * not exist anywhere in the system, because an ordinance authorises
+   * expenditure and says nothing about what will pay for it; the figures now
+   * come from the estimated receipts recorded under Budget.
+   */
+  const gfEstimate = useEstimatedReceipts(fiscalYear, 'GF');
+  const sefEstimate = useEstimatedReceipts(fiscalYear, 'SEF');
+  const tfEstimate = useEstimatedReceipts(fiscalYear, 'TF');
   const accounts = useAccounts(false);
   const mappingDoc = useDocument<{ lines?: SreMapping }>(COL.settings, 'sreMapping');
 
@@ -105,6 +128,45 @@ export default function Sre() {
     () => resolveTotals(receiptsByLine(entries, mapping)),
     [entries, mapping],
   );
+
+  /** The estimate, placed by the same mapping that places the actual. */
+  const budgetFigures = useMemo(
+    () =>
+      resolveTotals(
+        receiptsByLine(
+          estimatesAsEntries(
+            [...gfEstimate.data, ...sefEstimate.data, ...tfEstimate.data].map((r) => ({
+              fundCode: r.fundCode,
+              accountCode: r.accountCode,
+              accountName: r.accountName,
+              annual: annualOf(r),
+            })),
+          ),
+          mapping,
+        ),
+      ),
+    [gfEstimate.data, sefEstimate.data, tfEstimate.data, mapping],
+  );
+
+  const budgetExpenditures = useMemo(
+    () =>
+      appropriationsByFund(
+        [...gfBudget.data, ...sefBudget.data, ...tfBudget.data].map((b) => ({
+          fundCode: b.fundCode,
+          fppCode: b.fppCode,
+          sector: b.sector,
+          serviceSector: b.serviceSector,
+          appropriationRevised: b.appropriationRevised,
+        })),
+      ),
+    [gfBudget.data, sefBudget.data, tfBudget.data],
+  );
+
+  /** Nothing recorded anywhere, so the whole column would be a row of dashes. */
+  const noEstimate =
+    gfEstimate.data.length === 0 &&
+    sefEstimate.data.length === 0 &&
+    tfEstimate.data.length === 0;
 
   const unmapped = useMemo(
     () => unmappedReceipts(entries, mapping, (code) => revenueCodes.has(code)),
@@ -245,6 +307,20 @@ export default function Sre() {
             </Alert>
           )}
 
+          {noEstimate && (
+            <Alert
+              tone="warning"
+              title="The Budget Year column for receipts is empty"
+              className="mb-4 no-print"
+            >
+              No estimated receipts have been recorded for {fiscalYear}. The appropriation
+              ordinance authorises expenditure only, so the receipts side of this column cannot be
+              read off it &mdash; it comes from the estimated receipts schedule under Budget, which
+              is the receipts portion of LBP Form No. 1. The expenditure side of the column is the
+              appropriation and is filled in below.
+            </Alert>
+          )}
+
           {unmapped.length > 0 && (
             <Alert
               tone="warning"
@@ -262,13 +338,15 @@ export default function Sre() {
             <thead>
               <tr>
                 <th className="cbo-th">Particulars</th>
-                <th className="cbo-th w-44 text-right">Amount</th>
+                <th className="cbo-th w-44 text-right">Actual</th>
+                <th className="cbo-th w-44 text-right">Budget Year</th>
               </tr>
             </thead>
             <tbody>
               <SectionRow label="RECEIPTS" />
               <tr>
                 <td className="cbo-td text-sm text-slate-500">Beginning Cash Balance</td>
+                <td className="cbo-td cbo-amount text-slate-400">to be entered</td>
                 <td className="cbo-td cbo-amount text-slate-400">to be entered</td>
               </tr>
               {SRE_RECEIPT_LINES.map((line) => (
@@ -286,12 +364,18 @@ export default function Sre() {
                       ? ''
                       : formatPeso(figures.get(line.key) ?? 0, { symbol: false, dash: true })}
                   </td>
+                  <td className="cbo-td cbo-amount">
+                    {line.kind === 'HEADING'
+                      ? ''
+                      : formatPeso(budgetFigures.get(line.key) ?? 0, { symbol: false, dash: true })}
+                  </td>
                 </tr>
               ))}
 
               <SectionRow label="EXPENDITURES" />
               <tr>
                 <td className="cbo-td pl-3 text-sm font-medium text-navy-900">I. General Fund</td>
+                <td className="cbo-td" />
                 <td className="cbo-td" />
               </tr>
               {(['GENERAL', 'ECONOMIC', 'SOCIAL', 'DEBT'] as const).map((b) => (
@@ -301,6 +385,9 @@ export default function Sre() {
                   </td>
                   <td className="cbo-td cbo-amount">
                     {formatPeso(expenditures.generalFund[b], { symbol: false, dash: true })}
+                  </td>
+                  <td className="cbo-td cbo-amount">
+                    {formatPeso(budgetExpenditures.generalFund[b], { symbol: false, dash: true })}
                   </td>
                 </tr>
               ))}
@@ -316,6 +403,12 @@ export default function Sre() {
                   <td className="cbo-td cbo-amount text-amber-900">
                     {formatPeso(expenditures.generalFundUnclassified, { symbol: false })}
                   </td>
+                  <td className="cbo-td cbo-amount text-amber-900">
+                    {formatPeso(budgetExpenditures.generalFundUnclassified, {
+                      symbol: false,
+                      dash: true,
+                    })}
+                  </td>
                 </tr>
               )}
               <tr>
@@ -325,6 +418,12 @@ export default function Sre() {
                 <td className="cbo-td cbo-amount">
                   {formatPeso(expenditures.specialEducationFund, { symbol: false, dash: true })}
                 </td>
+                <td className="cbo-td cbo-amount">
+                  {formatPeso(budgetExpenditures.specialEducationFund, {
+                    symbol: false,
+                    dash: true,
+                  })}
+                </td>
               </tr>
               <tr>
                 <td className="cbo-td pl-3 text-sm font-medium text-navy-900">
@@ -333,15 +432,22 @@ export default function Sre() {
                 <td className="cbo-td cbo-amount">
                   {formatPeso(expenditures.trustFund, { symbol: false, dash: true })}
                 </td>
+                <td className="cbo-td cbo-amount">
+                  {formatPeso(budgetExpenditures.trustFund, { symbol: false, dash: true })}
+                </td>
               </tr>
               <tr className="border-t-2 border-navy-800 font-semibold">
                 <td className="cbo-td">Total Expenditures</td>
                 <td className="cbo-td cbo-amount">
                   {formatPeso(expenditures.total, { symbol: false })}
                 </td>
+                <td className="cbo-td cbo-amount">
+                  {formatPeso(budgetExpenditures.total, { symbol: false })}
+                </td>
               </tr>
               <tr>
                 <td className="cbo-td text-sm text-slate-500">Ending Cash Balance</td>
+                <td className="cbo-td cbo-amount text-slate-400">to be entered</td>
                 <td className="cbo-td cbo-amount text-slate-400">to be entered</td>
               </tr>
             </tbody>
@@ -430,7 +536,7 @@ export default function Sre() {
 function SectionRow({ label }: { label: string }) {
   return (
     <tr className="bg-slate-100">
-      <td className="cbo-td text-sm font-semibold uppercase tracking-wide text-navy-900" colSpan={2}>
+      <td className="cbo-td text-sm font-semibold uppercase tracking-wide text-navy-900" colSpan={3}>
         {label}
       </td>
     </tr>

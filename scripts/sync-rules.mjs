@@ -37,6 +37,11 @@ const PAIRS = [
   { source: 'src/lib/serials.ts', target: 'functions/src/lib/serials.ts' },
   { source: 'src/lib/clearing.ts', target: 'functions/src/lib/clearing.ts' },
   { source: 'src/lib/sectors.ts', target: 'functions/src/lib/sectors.ts' },
+  // `estimatedReceipts` joined when the financing side of the budget arrived.
+  // Its duplicate-account rule is the reason: a repeated account in an upload
+  // REPLACES rather than adds, so a server copy that had lost that check would
+  // accept a file the browser refused and store the wrong estimate silently.
+  { source: 'src/lib/estimatedReceipts.ts', target: 'functions/src/lib/estimatedReceipts.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

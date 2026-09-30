@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildReceiptComparison,
   actualByFpp,
   buildComparison,
   unbudgetedActual,
@@ -153,5 +154,97 @@ describe('unbudgetedActual', () => {
     expect(
       unbudgetedActual([line()], [entry('GHOST', 50_000_00), entry('GHOST', 0, 50_000_00)]),
     ).toEqual([]);
+  });
+});
+
+describe('buildReceiptComparison', () => {
+  const estimate = (accountCode: string, annual: number, incomeClass = 'REGULAR') => ({
+    accountCode,
+    accountName: `Account ${accountCode}`,
+    incomeClass,
+    annual,
+  });
+
+  it('puts the estimate beside the collections for the same account', () => {
+    const { rows } = buildReceiptComparison(
+      [estimate('40101010', 4_000_000_00)],
+      [{ accountCode: '40101010', amount: 3_500_000_00 }],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      finalBudget: 4_000_000_00,
+      actual: 3_500_000_00,
+      variance: -500_000_00,
+    });
+    expect(rows[0].variancePct).toBeCloseTo(-0.125, 10);
+  });
+
+  /**
+   * The row this half of the statement exists for: money the Local Finance
+   * Committee certified as collectible that did not arrive. It has no ledger
+   * entries, so anything driven by the ledger alone would drop it.
+   */
+  it('keeps an estimated account that collected nothing', () => {
+    const { rows } = buildReceiptComparison([estimate('40101010', 4_000_000_00)], []);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].actual).toBe(0);
+    expect(rows[0].variance).toBe(-4_000_000_00);
+    expect(rows[0].unbudgeted).toBe(false);
+  });
+
+  it('keeps collections on an account nobody estimated, and marks them', () => {
+    const { rows } = buildReceiptComparison(
+      [],
+      [{ accountCode: '40201010', accountName: 'Business Tax', amount: 90_000_00 }],
+    );
+    expect(rows[0]).toMatchObject({
+      accountCode: '40201010',
+      accountName: 'Business Tax',
+      finalBudget: 0,
+      actual: 90_000_00,
+      unbudgeted: true,
+    });
+    expect(rows[0].variancePct).toBeNull();
+  });
+
+  it('adds several ledger entries for one account', () => {
+    const { rows } = buildReceiptComparison(
+      [estimate('40101010', 100_00)],
+      [
+        { accountCode: '40101010', amount: 60_00 },
+        { accountCode: '40101010', amount: 30_00 },
+      ],
+    );
+    expect(rows[0].actual).toBe(90_00);
+  });
+
+  it('leaves out an account with neither an estimate nor a collection', () => {
+    const { rows } = buildReceiptComparison(
+      [estimate('40101010', 0)],
+      [{ accountCode: '40101010', amount: 0 }],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('totals from the rows, and the total variance agrees with its own columns', () => {
+    const { total } = buildReceiptComparison(
+      [estimate('40101010', 100_00), estimate('40201010', 50_00)],
+      [
+        { accountCode: '40101010', amount: 120_00 },
+        { accountCode: '40301010', amount: 30_00 },
+      ],
+    );
+    expect(total.finalBudget).toBe(150_00);
+    expect(total.actual).toBe(150_00);
+    expect(total.variance).toBe(0);
+    expect(total.variancePct).toBe(0);
+  });
+
+  it('sorts by account code', () => {
+    const { rows } = buildReceiptComparison(
+      [estimate('40201010', 1_00), estimate('40101010', 1_00)],
+      [],
+    );
+    expect(rows.map((r) => r.accountCode)).toEqual(['40101010', '40201010']);
   });
 });

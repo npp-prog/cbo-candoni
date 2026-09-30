@@ -67,6 +67,11 @@ export const NAVIGATION: NavItem[] = [
      */
     children: [
       { group: 'Budget transactions', label: 'Appropriation', to: '/budget/appropriations' },
+      // Beside the appropriation, because the two are the two halves of LBP
+      // Form No. 1: what will be spent, and what will pay for it. The
+      // ordinance enacts only the first, which is why the second needs a
+      // record of its own rather than being read off anything.
+      { group: 'Budget transactions', label: 'Estimated Receipts', to: '/budget/estimated-receipts' },
       // The order comes before the allotments it creates: the Budget Officer
       // releases by order, and the allotment register is what the order leaves
       // behind. Both are kept - an allotment may still be released singly, and

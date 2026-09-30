@@ -342,3 +342,40 @@ export interface BudgetSummary {
   utilizationRate: number;
   updatedAt: string;
 }
+
+/**
+ * One line of the budget year's estimated receipts.
+ *
+ * LBP Form No. 1, "Budget of Expenditures and Sources of Financing", section
+ * II. Certified by the Local Treasurer, the Local Budget Officer, the Local
+ * Planning and Development Coordinator and the Local Accountant as "reasonably
+ * projected as collectible for the Budget Year".
+ *
+ * Not an appropriation and not an authority to spend: an estimate of what will
+ * come in. It is here rather than beside the appropriations because the
+ * ordinance does not enact it - which is exactly why CBO had no budget column
+ * for receipts on any statement until this existed.
+ */
+export interface EstimatedReceipt {
+  /** `{fiscalYear}__{fundCode}__{accountCode}` - one line per account. */
+  id: Id;
+  fiscalYear: FiscalYear;
+  fundCode: string;
+  accountCode: string;
+  accountName: string;
+  /** LBP Form No. 1's three-way split. Two statutory limits rest on it. */
+  incomeClass: 'REGULAR' | 'NON_REGULAR' | 'NON_INCOME';
+  q1: Centavos;
+  q2: Centavos;
+  q3: Centavos;
+  q4: Centavos;
+  /** q1 + q2 + q3 + q4. Stored so a list can be sorted and totalled without
+   *  adding four fields on every row, and recomputed on every write. */
+  annual: Centavos;
+  /** The wording of LBP Form No. 1 where the account name is not the form's. */
+  particulars?: string;
+  /** What the figures were loaded from, where they came from a file. */
+  sourceFile?: string;
+  updatedAt: string;
+  updatedBy?: { uid: Id; name: string };
+}

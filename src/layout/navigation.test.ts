@@ -229,6 +229,24 @@ describe('the menu itself', () => {
     expect(targets).not.toContain('/reports/quarterly-financial');
   });
 
+  /**
+   * The two halves of LBP Form No. 1 sit together.
+   *
+   * The appropriation is the expenditure side and the estimated receipts are
+   * the sources of financing. Separating them is what let CBO run for months
+   * with a budget column for every peso going out and none for any coming in.
+   */
+  it('keeps the estimated receipts beside the appropriation', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const transactions = (budget?.children ?? []).filter(
+      (c) => c.group === 'Budget transactions',
+    );
+    const appropriation = transactions.findIndex((c) => c.to === '/budget/appropriations');
+    const receipts = transactions.findIndex((c) => c.to === '/budget/estimated-receipts');
+    expect(appropriation).toBeGreaterThanOrEqual(0);
+    expect(receipts).toBe(appropriation + 1);
+  });
+
   it('every heading holds at least one item', () => {
     for (const item of NAVIGATION) {
       for (const block of toBlocks(item.children ?? [])) {

@@ -136,6 +136,42 @@ export const engine = {
       { aroNo: string; form: string; lineCount: number; totalReleased: Centavos; totalHeld: Centavos }
     >('issueAro', p),
 
+  /**
+   * The budget year's estimated receipts - LBP Form No. 1, section II.
+   *
+   * REPLACE leaves the year's estimate for that fund matching the file sent,
+   * deleting the accounts the file no longer names. MERGE only adds and
+   * updates. Re-uploading a corrected form wants REPLACE; editing one line on
+   * the screen wants MERGE.
+   */
+  recordEstimatedReceipts: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    mode: 'MERGE' | 'REPLACE';
+    fileName?: string;
+    lines: Array<{
+      accountCode: string;
+      accountName?: string;
+      incomeClass: string;
+      q1: Centavos;
+      q2: Centavos;
+      q3: Centavos;
+      q4: Centavos;
+      particulars?: string;
+    }>;
+  }) =>
+    call<
+      typeof p,
+      {
+        fiscalYear: number;
+        fundCode: string;
+        mode: string;
+        lineCount: number;
+        removed: number;
+        total: Centavos;
+      }
+    >('recordEstimatedReceipts', p),
+
   cancelObligation: (p: { obligationId: Id; reason: string }) =>
     call<typeof p, { obligationId: Id }>('cancelObligation', p),
 

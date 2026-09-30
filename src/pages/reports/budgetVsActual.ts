@@ -157,3 +157,123 @@ export function unbudgetedActual(
   }
   return out.sort((a, b) => b.amount - a.amount);
 }
+
+// ---------------------------------------------------------------------------
+// Receipts
+// ---------------------------------------------------------------------------
+
+/**
+ * The receipts half of the Statement of Comparison of Budget and Actual
+ * Amounts.
+ *
+ * It did not exist until there was a budget to compare against. An
+ * appropriation ordinance authorises expenditure and enacts no receipts at
+ * all, so the statement could put the budget beside the actual on everything
+ * the municipality spent and nothing it collected. The budget column here is
+ * the estimated receipts schedule - the receipts portion of LBP Form No. 1.
+ *
+ * The same double-count trap as the expenditure side applies in reverse: an
+ * account with an estimate and no collections, and an account with
+ * collections and no estimate, must BOTH appear. Dropping either would let
+ * the statement foot to its own totals while omitting a real figure, and a
+ * shortfall against a certified estimate is the single thing this half of the
+ * statement exists to show.
+ */
+export interface ReceiptEstimate {
+  accountCode: string;
+  accountName: string;
+  incomeClass: string;
+  annual: Centavos;
+}
+
+export interface ReceiptActual {
+  accountCode: string;
+  accountName?: string;
+  /** Credits less debits, so a refunded collection reduces the line. */
+  amount: Centavos;
+}
+
+export interface ReceiptComparisonRow {
+  accountCode: string;
+  accountName: string;
+  incomeClass: string;
+  finalBudget: Centavos;
+  actual: Centavos;
+  /** Actual less budget. Negative is a shortfall against the estimate. */
+  variance: Centavos;
+  /** variance / finalBudget, or null where nothing was estimated. */
+  variancePct: number | null;
+  /** True where collections arrived on an account nobody estimated. */
+  unbudgeted: boolean;
+}
+
+export function buildReceiptComparison(
+  estimates: ReceiptEstimate[],
+  actuals: ReceiptActual[],
+): { rows: ReceiptComparisonRow[]; total: Omit<ReceiptComparisonRow, 'accountCode' | 'accountName' | 'incomeClass' | 'unbudgeted'> } {
+  const byCode = new Map<string, ReceiptComparisonRow>();
+
+  for (const e of estimates) {
+    const row = byCode.get(e.accountCode);
+    if (row) {
+      // Two estimate rows for one account should be impossible - the store
+      // holds one document per account - but summing rather than replacing
+      // means a duplicate that did slip through overstates visibly instead of
+      // vanishing.
+      row.finalBudget += e.annual;
+      continue;
+    }
+    byCode.set(e.accountCode, {
+      accountCode: e.accountCode,
+      accountName: e.accountName,
+      incomeClass: e.incomeClass,
+      finalBudget: e.annual,
+      actual: 0,
+      variance: 0,
+      variancePct: null,
+      unbudgeted: false,
+    });
+  }
+
+  for (const a of actuals) {
+    const row = byCode.get(a.accountCode);
+    if (row) {
+      row.actual += a.amount;
+      if (!row.accountName && a.accountName) row.accountName = a.accountName;
+      continue;
+    }
+    byCode.set(a.accountCode, {
+      accountCode: a.accountCode,
+      accountName: a.accountName ?? '',
+      incomeClass: '',
+      finalBudget: 0,
+      actual: a.amount,
+      variance: 0,
+      variancePct: null,
+      unbudgeted: true,
+    });
+  }
+
+  const rows = [...byCode.values()]
+    .map((r) => ({
+      ...r,
+      variance: r.actual - r.finalBudget,
+      variancePct: r.finalBudget === 0 ? null : (r.actual - r.finalBudget) / r.finalBudget,
+      unbudgeted: r.finalBudget === 0 && r.actual !== 0,
+    }))
+    .filter((r) => r.finalBudget !== 0 || r.actual !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+
+  const finalBudget = rows.reduce((s, r) => s + r.finalBudget, 0);
+  const actual = rows.reduce((s, r) => s + r.actual, 0);
+
+  return {
+    rows,
+    total: {
+      finalBudget,
+      actual,
+      variance: actual - finalBudget,
+      variancePct: finalBudget === 0 ? null : (actual - finalBudget) / finalBudget,
+    },
+  };
+}

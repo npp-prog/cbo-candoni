@@ -15,6 +15,7 @@ import type {
   Deposit,
   DisbursementVoucher,
   Employee,
+  EstimatedReceipt,
   Fund,
   JournalEntryVoucher,
   LedgerEntry,
@@ -151,6 +152,23 @@ export const useBudgetBalances = (fiscalYear: number, fundCode: string, officeId
         ]
       : [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('officeId'), orderBy('accountCode')],
     ['budgetBalances', fiscalYear, fundCode, officeId],
+  );
+
+/**
+ * The budget year's estimated receipts for one fund - LBP Form No. 1, II.
+ *
+ * The financing side of the budget. The appropriation ordinance carries only
+ * expenditure, so this is the only place a budget figure for receipts exists.
+ */
+export const useEstimatedReceipts = (fiscalYear: number, fundCode: string) =>
+  useCollection<EstimatedReceipt>(
+    COL.estimatedReceipts,
+    [
+      where('fiscalYear', '==', fiscalYear),
+      where('fundCode', '==', fundCode),
+      orderBy('accountCode'),
+    ],
+    ['estimatedReceipts', fiscalYear, fundCode],
   );
 
 export const useBudgetSummary = (fiscalYear: number, fundCode: string) =>

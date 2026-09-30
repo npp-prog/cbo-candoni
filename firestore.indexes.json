@@ -1417,6 +1417,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "estimatedReceipts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

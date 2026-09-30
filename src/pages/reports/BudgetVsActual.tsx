@@ -4,7 +4,7 @@ import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { OfficePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
-import { useBudgetBalances, useLedgerEntries } from '@/data/queries';
+import { useAccounts, useBudgetBalances, useEstimatedReceipts, useLedgerEntries } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import { monthName } from '@/lib/dates';
 import { SRE_BUCKET_LABELS } from '@/lib/sectors';
@@ -12,8 +12,10 @@ import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos, PeriodNo } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
+import { INCOME_CLASS_LABELS, type IncomeClass } from '@/lib/estimatedReceipts';
 import {
   buildComparison,
+  buildReceiptComparison,
   unbudgetedActual,
   type ComparisonRow as Row,
   type GroupBy,
@@ -77,6 +79,45 @@ export default function BudgetVsActual() {
 
   const balances = useBudgetBalances(fiscalYear, fundCode, officeId);
   const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
+
+  /*
+   * The receipts half.
+   *
+   * The statement compares budget with actual, and until the estimated
+   * receipts existed it could only do so for spending - an appropriation
+   * ordinance enacts no receipts, so there was no budget column to put beside
+   * the collections. The estimate now comes from the receipts portion of LBP
+   * Form No. 1, recorded under Budget.
+   */
+  const estimates = useEstimatedReceipts(fiscalYear, fundCode);
+  const accounts = useAccounts(false);
+
+  const revenueCodes = useMemo(
+    () => new Set(accounts.data.filter((a) => a.accountClass === 'REVENUE').map((a) => a.code)),
+    [accounts.data],
+  );
+
+  const receipts = useMemo(
+    () =>
+      buildReceiptComparison(
+        estimates.data.map((e) => ({
+          accountCode: e.accountCode,
+          accountName: e.accountName,
+          incomeClass: e.incomeClass,
+          annual: e.annual,
+        })),
+        ledger.data
+          .filter((e) => revenueCodes.has(e.accountCode))
+          .map((e) => ({
+            accountCode: e.accountCode,
+            accountName: e.accountName,
+            // A revenue account carries a credit balance, so income is credits
+            // less debits and a refunded collection reduces the line.
+            amount: e.credit - e.debit,
+          })),
+      ),
+    [estimates.data, ledger.data, revenueCodes],
+  );
 
   const rows = useMemo(
     () => buildComparison(balances.data, ledger.data, groupBy),
@@ -221,6 +262,10 @@ export default function BudgetVsActual() {
             </Alert>
           )}
 
+          <h3 className="mb-3 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+            Expenditures
+          </h3>
+
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -301,6 +346,94 @@ export default function BudgetVsActual() {
               </tr>
             </tfoot>
           </table>
+
+          <h3 className="mt-8 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+            Receipts
+          </h3>
+
+          {estimates.data.length === 0 ? (
+            <Alert
+              tone="warning"
+              title="There is no budget column for receipts"
+              className="mt-3 no-print"
+            >
+              No estimated receipts have been recorded for {fiscalYear} in the{' '}
+              {fundLabel(fundCode)}. An appropriation ordinance authorises expenditure and enacts
+              no receipts, so this half of the statement cannot be read off it. Record the receipts
+              portion of LBP Form No. 1 on Budget &rsaquo; Estimated Receipts, and the comparison
+              below fills in.
+            </Alert>
+          ) : (
+            <table className="mt-3 w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="cbo-th">Account</th>
+                  <th className="cbo-th">Income class</th>
+                  <th className="cbo-th text-right">Estimate</th>
+                  <th className="cbo-th text-right">Actual</th>
+                  <th className="cbo-th text-right">Variance</th>
+                  <th className="cbo-th text-right">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receipts.rows.map((r) => (
+                  <tr key={r.accountCode} className={r.unbudgeted ? 'bg-amber-50' : undefined}>
+                    <td className="cbo-td text-sm">
+                      <span className="font-mono text-2xs text-slate-500">{r.accountCode}</span>{' '}
+                      {r.accountName}
+                      {r.unbudgeted && (
+                        <span className="block text-2xs text-amber-800">
+                          Collected but never estimated
+                        </span>
+                      )}
+                    </td>
+                    <td className="cbo-td text-2xs text-slate-500">
+                      {INCOME_CLASS_LABELS[r.incomeClass as IncomeClass] ?? ''}
+                    </td>
+                    <td className="cbo-td cbo-amount">
+                      {formatPeso(r.finalBudget, { symbol: false, dash: true })}
+                    </td>
+                    <td className="cbo-td cbo-amount">
+                      {formatPeso(r.actual, { symbol: false, dash: true })}
+                    </td>
+                    <td
+                      className={`cbo-td cbo-amount ${r.variance < 0 ? 'text-rose-700' : ''}`}
+                    >
+                      {formatPeso(r.variance, { symbol: false, parens: true })}
+                    </td>
+                    <td className="cbo-td cbo-amount">
+                      {r.variancePct === null ? '' : `${(r.variancePct * 100).toFixed(1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-navy-800 font-semibold">
+                  <td className="cbo-td border-b-0" colSpan={2}>
+                    TOTAL RECEIPTS
+                  </td>
+                  <td className="cbo-td cbo-amount border-b-0">
+                    {formatPeso(receipts.total.finalBudget, { symbol: false })}
+                  </td>
+                  <td className="cbo-td cbo-amount border-b-0">
+                    {formatPeso(receipts.total.actual, { symbol: false })}
+                  </td>
+                  <td
+                    className={`cbo-td cbo-amount border-b-0 ${
+                      receipts.total.variance < 0 ? 'text-rose-700' : ''
+                    }`}
+                  >
+                    {formatPeso(receipts.total.variance, { symbol: false, parens: true })}
+                  </td>
+                  <td className="cbo-td cbo-amount border-b-0">
+                    {receipts.total.variancePct === null
+                      ? ''
+                      : `${(receipts.total.variancePct * 100).toFixed(1)}%`}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
 
           {rows.length === 0 && (
             <Alert tone="info" title="Nothing to compare yet" className="mt-4">

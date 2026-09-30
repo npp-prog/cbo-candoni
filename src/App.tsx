@@ -24,6 +24,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Appropriations = lazy(() => import('./pages/budget/Appropriations'));
 const Allotments = lazy(() => import('./pages/budget/Allotments'));
 const AllotmentReleaseOrders = lazy(() => import('./pages/budget/AllotmentReleaseOrders'));
+const EstimatedReceipts = lazy(() => import('./pages/budget/EstimatedReceipts'));
 const Obligations = lazy(() => import('./pages/budget/Obligations'));
 const ObligationDetail = lazy(() => import('./pages/budget/ObligationDetail'));
 const BudgetRegistry = lazy(() => import('./pages/budget/Registry'));
@@ -115,6 +116,12 @@ export default function App() {
           {/* Budget */}
           <Route path="/budget" element={<Navigate to="/budget/obligations" replace />} />
           <Route path="/budget/appropriations" element={<Guard module="budget"><Appropriations /></Guard>} />
+          {/* The financing side. The ordinance carries only expenditure, so
+              without this no statement has a budget column for receipts. */}
+          <Route
+            path="/budget/estimated-receipts"
+            element={<Guard module="budget"><EstimatedReceipts /></Guard>}
+          />
           <Route path="/budget/allotments" element={<Guard module="budget"><Allotments /></Guard>} />
           <Route
             path="/budget/release-orders"

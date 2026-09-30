@@ -32,6 +32,13 @@ export const COL = {
   obligations: 'obligations',
   budgetBalances: 'budgetBalances',
   budgetSummaries: 'budgetSummaries',
+  /**
+   * The financing side of the budget year: what the Local Finance Committee
+   * certified as reasonably collectible, per revenue account per fund. The
+   * appropriation ordinance carries only expenditure, so without this the SRE
+   * and the Statement of Comparison have no budget column for receipts.
+   */
+  estimatedReceipts: 'estimatedReceipts',
 
   // Accounting
   disbursementVouchers: 'disbursementVouchers',
@@ -90,6 +97,7 @@ export const SERVER_ONLY_COLLECTIONS: CollectionName[] = [
   COL.counters,
   COL.budgetBalances,
   COL.budgetSummaries,
+  COL.estimatedReceipts,
   COL.cashPositions,
   COL.accountingPeriods,
   COL.workflowHistory,

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   SRE_MAPPABLE_LINES,
   SRE_RECEIPT_LINES,
+  appropriationsByFund,
+  estimatesAsEntries,
   expendituresByFund,
   mappingConflicts,
   receiptsByLine,
@@ -194,5 +196,96 @@ describe('expendituresByFund', () => {
       sectors,
     );
     expect(t.generalFund.GENERAL).toBe(300_00);
+  });
+});
+
+describe('estimatesAsEntries', () => {
+  it('puts an estimate on the same line the actual would land on', () => {
+    const mapping = { rptBasic: ['40101010'], businessTax: ['40201010'] };
+
+    const estimate = receiptsByLine(
+      estimatesAsEntries([
+        { fundCode: 'GF', accountCode: '40101010', annual: 4_000_000_00 },
+        { fundCode: 'GF', accountCode: '40201010', annual: 1_000_000_00 },
+      ]),
+      mapping,
+    );
+
+    const actual = receiptsByLine(
+      [
+        { fundCode: 'GF', accountCode: '40101010', credit: 3_500_000_00, debit: 0 },
+        { fundCode: 'GF', accountCode: '40201010', credit: 1_200_000_00, debit: 0 },
+      ],
+      mapping,
+    );
+
+    expect([...estimate.keys()].sort()).toEqual([...actual.keys()].sort());
+    expect(estimate.get('rptBasic')).toBe(4_000_000_00);
+    expect(actual.get('rptBasic')).toBe(3_500_000_00);
+  });
+
+  it('subtotals an estimate through the same resolution as an actual', () => {
+    const totals = resolveTotals(
+      receiptsByLine(
+        estimatesAsEntries([
+          { fundCode: 'GF', accountCode: '40101010', annual: 4_000_000_00 },
+          { fundCode: 'GF', accountCode: '40201010', annual: 1_000_000_00 },
+        ]),
+        { rptBasic: ['40101010'], businessTax: ['40201010'] },
+      ),
+    );
+    expect(totals.get('totalTaxRevenue')).toBe(5_000_000_00);
+    expect(totals.get('totalReceipts')).toBe(5_000_000_00);
+  });
+});
+
+describe('appropriationsByFund', () => {
+  const line = (over: Record<string, unknown> = {}) => ({
+    fundCode: 'GF',
+    fppCode: '1011',
+    sector: 'General Public Services',
+    appropriationRevised: 1_000_00,
+    ...over,
+  });
+
+  it('buckets the budget exactly as the actual is bucketed', () => {
+    const totals = appropriationsByFund([
+      line(),
+      line({
+        fppCode: '8751',
+        sector: 'Health, Nutrition and Population Control',
+        appropriationRevised: 500_00,
+      }),
+    ]);
+    expect(totals.generalFund.GENERAL).toBe(1_000_00);
+    expect(totals.generalFund.SOCIAL).toBe(500_00);
+    expect(totals.total).toBe(1_500_00);
+  });
+
+  it('keeps the Special Education and Trust Funds on their own lines', () => {
+    const totals = appropriationsByFund([
+      line({ fundCode: 'SEF', appropriationRevised: 200_00 }),
+      line({ fundCode: 'TF', appropriationRevised: 300_00 }),
+    ]);
+    expect(totals.specialEducationFund).toBe(200_00);
+    expect(totals.trustFund).toBe(300_00);
+    expect(totals.generalFund.GENERAL).toBe(0);
+  });
+
+  /**
+   * A funding source with no service named cannot be bucketed, and is carried
+   * in its own figure rather than dropped - the budget column must foot to the
+   * appropriation whatever the sector data looks like.
+   */
+  it('carries an unbucketable line rather than losing it', () => {
+    const totals = appropriationsByFund([
+      line({ sector: '20% Development Fund', serviceSector: undefined }),
+    ]);
+    expect(totals.generalFundUnclassified).toBe(1_000_00);
+    expect(totals.total).toBe(1_000_00);
+  });
+
+  it('ignores a line with no appropriation', () => {
+    expect(appropriationsByFund([line({ appropriationRevised: 0 })]).total).toBe(0);
   });
 });

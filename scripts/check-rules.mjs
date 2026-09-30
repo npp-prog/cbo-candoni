@@ -29,6 +29,7 @@ const SERVER_ONLY = [
   'counters',
   'budgetBalances',
   'budgetSummaries',
+  'estimatedReceipts',
   'cashPositions',
   'accountingPeriods',
   'workflowHistory',

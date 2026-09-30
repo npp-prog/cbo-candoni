@@ -1,16 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ReportShell } from '@/components/ReportShell';
-import { Spinner, Alert, Card } from '@/components/ui/Layout';
+import { Spinner, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, Select, AmountInput } from '@/components/ui/Field';
-import { useToast } from '@/components/ui/Toast';
+import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
-import { useAuth } from '@/auth/AuthProvider';
-import { useAccounts, useLedgerEntries } from '@/data/queries';
-import { useDocument } from '@/hooks/useFirestore';
-import { db } from '@/lib/firebase';
-import { COL } from '@/lib/collections';
+import { useAccounts, useEstimatedReceipts, useLedgerEntries } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import { monthName } from '@/lib/dates';
 import { QUARTER_LABELS, type Quarter } from '@/lib/budgetPeriods';
@@ -18,7 +13,6 @@ import {
   buildReceiptsReport,
   monthsOfQuarter,
   type IncomeEstimates,
-  type QuarterEstimate,
   type ReceiptEntry,
   type ReceiptRow,
 } from './quarterlyReceipts';
@@ -53,31 +47,23 @@ import { fundLabel } from '../budget/Obligations';
  * such figure anywhere, and nothing in the system implies it - last year's
  * collections divided by four is not an estimate, it is a guess wearing one.
  *
- * So the form asks for them once per year per fund, stores them in settings,
- * and where they are missing it reports the variance column as unavailable
- * rather than computing one against zero. A form that shows a confident
- * variance against a denominator nobody certified is worse than a form that
- * shows a blank, because the Treasurer signs it.
+ * They are recorded once, for the whole year, in the Estimated Receipts
+ * module - the receipts portion of LBP Form No. 1 - and read from there rather
+ * than kept again here. This form used to hold its own copy, which meant the
+ * same figure lived in two places and the quarterly report could disagree with
+ * the annual statement about what the municipality expected to collect.
+ *
+ * Where they are missing the variance column is reported as unavailable rather
+ * than computed against zero. A form that shows a confident variance against a
+ * denominator nobody certified is worse than one that shows a blank, because
+ * the Treasurer signs it.
  * ---------------------------------------------------------------------------
  */
 
-interface EstimatesDoc {
-  estimates?: IncomeEstimates;
-  updatedAt?: string;
-}
-
-const QUARTER_KEYS: Array<keyof QuarterEstimate> = ['q1', 'q2', 'q3', 'q4'];
-
 export default function QuarterlyReceipts() {
   const { fiscalYear, fundCode } = useFilters();
-  const { hasRole } = useAuth();
-  const toast = useToast();
 
   const [quarter, setQuarter] = useState<Quarter>(1);
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState<IncomeEstimates>({});
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const months = monthsOfQuarter(quarter);
 
@@ -86,17 +72,18 @@ export default function QuarterlyReceipts() {
   // the whole year up to that point is needed - not just the three months.
   const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod: months[2] });
 
-  const docId = `incomeEstimates-${fiscalYear}-${fundCode}`;
-  const stored = useDocument<EstimatesDoc>(COL.settings, docId);
-
-  // The stored figures land in the form once, and the form is the truth after
-  // that - re-seeding on every snapshot would overwrite what is being typed.
-  useEffect(() => {
-    if (stored.loading || dirty) return;
-    setForm(stored.data?.estimates ?? {});
-  }, [stored.data, stored.loading, dirty]);
-
-  const canEdit = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'MUNICIPAL_TREASURER');
+  /*
+   * The estimate comes from the Estimated Receipts module, not from a store of
+   * its own.
+   *
+   * This form used to keep its own quarterly figures in a settings document.
+   * They were the same figures the Statement of Receipts and Expenditures and
+   * the Statement of Comparison need, held in a second place with a second
+   * screen to type them into - which is how a municipality ends up submitting
+   * a quarterly report and an annual statement that disagree about what it
+   * expected to collect.
+   */
+  const stored = useEstimatedReceipts(fiscalYear, fundCode);
 
   const revenueAccounts = useMemo(
     () =>
@@ -129,7 +116,13 @@ export default function QuarterlyReceipts() {
     [ledger.data, accountNames],
   );
 
-  const estimates = stored.data?.estimates ?? {};
+  const estimates = useMemo<IncomeEstimates>(() => {
+    const out: IncomeEstimates = {};
+    for (const r of stored.data) {
+      out[r.accountCode] = { q1: r.q1, q2: r.q2, q3: r.q3, q4: r.q4 };
+    }
+    return out;
+  }, [stored.data]);
 
   const report = useMemo(
     () => buildReceiptsReport(entries, estimates, quarter),
@@ -138,42 +131,6 @@ export default function QuarterlyReceipts() {
 
   /** The account name, falling back to the chart where the ledger carried none. */
   const nameOf = (row: ReceiptRow) => row.accountName || accountNames.get(row.accountCode) || '';
-
-  const setEstimate = (code: string, key: keyof QuarterEstimate, value: Centavos | null) => {
-    setDirty(true);
-    setForm((prev) => ({ ...prev, [code]: { ...prev[code], [key]: value ?? 0 } }));
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      // Accounts with nothing entered are dropped rather than stored as four
-      // zeroes: a stored zero is a statement that nothing is expected, and the
-      // report treats it as one.
-      const cleaned: IncomeEstimates = {};
-      for (const [code, q] of Object.entries(form)) {
-        const total = QUARTER_KEYS.reduce((s, k) => s + (q[k] ?? 0), 0);
-        if (total !== 0) cleaned[code] = q;
-      }
-      await setDoc(
-        doc(db, COL.settings, docId),
-        { estimates: cleaned, updatedAt: new Date().toISOString() },
-        { merge: true },
-      );
-      setDirty(false);
-      setEditing(false);
-      toast.success(
-        'Estimated income saved',
-        `${Object.keys(cleaned).length} account${
-          Object.keys(cleaned).length === 1 ? '' : 's'
-        } for ${fundLabel(fundCode)}, ${fiscalYear}.`,
-      );
-    } catch (err) {
-      toast.error('The estimates were not saved', err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const exportColumns: ExportColumn<ReceiptRow>[] = [
     { key: 'name', header: '(1) Account Title/Description of Income', value: (r) => nameOf(r) },
@@ -247,11 +204,9 @@ export default function QuarterlyReceipts() {
       rows={report.rows}
       exportColumns={exportColumns}
       actions={
-        canEdit ? (
-          <Button size="sm" onClick={() => setEditing((v) => !v)}>
-            {editing ? 'Close estimates' : 'Estimated income'}
-          </Button>
-        ) : undefined
+        <Link to="/budget/estimated-receipts">
+          <Button size="sm">Estimated receipts</Button>
+        </Link>
       }
       filters={
         <Field label="Quarter" className="w-64">
@@ -280,90 +235,6 @@ export default function QuarterlyReceipts() {
         </>
       }
     >
-      {editing && (
-        <Card
-          title={`Estimated income · ${fundLabel(fundCode)} · ${fiscalYear}`}
-          subtitle="What the Local Finance Committee certified as reasonably expected, quarter by quarter. CBO does not derive these from anything."
-          className="mb-5 no-print"
-          footer={
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-600">
-                Saved once per fiscal year per fund. Leave an account blank where nothing is
-                expected from it.
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => {
-                    setDirty(false);
-                    setForm(stored.data?.estimates ?? {});
-                    setEditing(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button variant="primary" loading={saving} disabled={saving} onClick={() => void save()}>
-                  Save the estimates
-                </Button>
-              </div>
-            </div>
-          }
-        >
-          {revenueAccounts.length === 0 ? (
-            <Alert tone="warning">
-              No revenue account is in the Chart of Accounts yet. Load the Revised Chart of Accounts
-              first &mdash; this form is a list of income accounts, and without them it has no rows.
-            </Alert>
-          ) : (
-            <div className="max-h-[28rem] overflow-y-auto rounded border border-slate-200">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-50 text-left text-slate-600">
-                  <tr>
-                    <th className="px-2 py-1.5 font-medium">Account</th>
-                    {QUARTER_KEYS.map((k, i) => (
-                      <th
-                        key={k}
-                        className="px-2 py-1.5 text-right font-medium"
-                        style={{ width: '9rem' }}
-                      >
-                        {QUARTER_LABELS[(i + 1) as Quarter]}
-                      </th>
-                    ))}
-                    <th className="px-2 py-1.5 text-right font-medium" style={{ width: '9rem' }}>
-                      Year
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {revenueAccounts.map((a) => {
-                    const q = form[a.code] ?? {};
-                    const year = QUARTER_KEYS.reduce((s, k) => s + (q[k] ?? 0), 0);
-                    return (
-                      <tr key={a.code}>
-                        <td className="px-2 py-1.5">
-                          <span className="font-mono text-2xs text-slate-500">{a.code}</span>{' '}
-                          <span>{a.name}</span>
-                        </td>
-                        {QUARTER_KEYS.map((k) => (
-                          <td key={k} className="px-2 py-1.5">
-                            <AmountInput
-                              value={q[k] ?? null}
-                              onChange={(v) => setEstimate(a.code, k, v)}
-                            />
-                          </td>
-                        ))}
-                        <td className="px-2 py-1.5 text-right font-mono">
-                          {year === 0 ? '—' : formatPeso(year, { symbol: false })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      )}
-
       {loading ? (
         <Spinner />
       ) : error ? (
@@ -380,12 +251,12 @@ export default function QuarterlyReceipts() {
             >
               Columns 3, 4, 5, 10 and 11 are the estimate and the variance against it, and this
               form exists to show that variance. Without the figures the Local Finance Committee
-              certified, what is below is a list of collections and not LBAc Form No. 1.
-              {canEdit ? (
-                <> Use &ldquo;Estimated income&rdquo; above to record them.</>
-              ) : (
-                <> The Treasurer or the Budget Officer can record them.</>
-              )}
+              certified, what is below is a list of collections and not LBAc Form No. 1. They are
+              recorded once, for the whole year, on{' '}
+              <Link className="underline" to="/budget/estimated-receipts">
+                Budget &rsaquo; Estimated Receipts
+              </Link>{' '}
+              — the same figures the SRE and the Statement of Comparison use.
             </Alert>
           )}
 

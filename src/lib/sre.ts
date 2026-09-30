@@ -225,6 +225,31 @@ export function receiptsByLine(entries: SreEntry[], mapping: SreMapping): Map<st
   return out;
 }
 
+/**
+ * Estimated receipts, shaped so the same aggregation can place them.
+ *
+ * The estimate and the actual must land on the same line of the statement or
+ * the budget column is not a comparison. Rather than a second function with a
+ * second copy of the mapping logic - which would work until the day somebody
+ * fixed one of them - an estimate is presented as a credit and put through
+ * `receiptsByLine` exactly as a collection is.
+ *
+ * It also means one mapping serves both. The office maps an account code to a
+ * receipt line once, and that decision governs where its estimate and its
+ * collections both appear.
+ */
+export function estimatesAsEntries(
+  rows: Array<{ fundCode: string; accountCode: string; accountName?: string; annual: Centavos }>,
+): SreEntry[] {
+  return rows.map((r) => ({
+    fundCode: r.fundCode,
+    accountCode: r.accountCode,
+    accountName: r.accountName,
+    credit: r.annual,
+    debit: 0,
+  }));
+}
+
 /** Account codes the office has put on more than one line. */
 export function mappingConflicts(mapping: SreMapping): Array<{ accountCode: string; lines: string[] }> {
   const seen = new Map<string, string[]>();
@@ -322,6 +347,64 @@ const EMPTY_BUCKETS = (): Record<SreBucket, Centavos> => ({
  * the statement never under-reports what was spent; it simply admits that one
  * line of it is not yet classified.
  */
+/**
+ * The Budget Year column of the expenditure section.
+ *
+ * Annex A asks for the budget beside the actual, and on the spending side CBO
+ * has it: the appropriation ordinance is loaded, and every line carries the
+ * sector that decides its bucket.
+ *
+ * It deliberately reuses `bucketFor` and returns the same shape as
+ * `expendituresByFund`, so the budget and the actual are bucketed by one
+ * decision rather than two. A line counted as Economic Services in one column
+ * and General Services in the other would leave both columns footing to their
+ * own totals while comparing different things.
+ */
+export interface AppropriationLine {
+  fundCode: string;
+  fppCode: string;
+  sector?: string;
+  serviceSector?: string;
+  appropriationRevised: Centavos;
+}
+
+export function appropriationsByFund(lines: AppropriationLine[]): ExpenditureTotals {
+  const generalFund = EMPTY_BUCKETS();
+  let generalFundUnclassified = 0;
+  let specialEducationFund = 0;
+  let trustFund = 0;
+
+  for (const line of lines) {
+    const amount = line.appropriationRevised;
+    if (amount === 0) continue;
+
+    const fund = line.fundCode.trim().toUpperCase();
+    if (fund === 'SEF') {
+      specialEducationFund += amount;
+      continue;
+    }
+    if (fund === 'TF') {
+      trustFund += amount;
+      continue;
+    }
+
+    const bucket = bucketFor(line.sector, line.serviceSector);
+    if (bucket) generalFund[bucket] += amount;
+    else generalFundUnclassified += amount;
+  }
+
+  const total =
+    generalFund.GENERAL +
+    generalFund.ECONOMIC +
+    generalFund.SOCIAL +
+    generalFund.DEBT +
+    generalFundUnclassified +
+    specialEducationFund +
+    trustFund;
+
+  return { generalFund, generalFundUnclassified, specialEducationFund, trustFund, total };
+}
+
 export function expendituresByFund(
   entries: SreEntry[],
   sectors: SectorOfFpp[],

@@ -196,6 +196,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /*
+     * The budget year's estimated receipts - LBP Form No. 1, section II.
+     *
+     * Written only by the recordEstimatedReceipts callable. These authorise
+     * nothing, so the usual argument for a server-only collection does not
+     * apply; the argument that does is that they become the budget column of
+     * the SRE, which is submitted to the DOF-BLGF, and the base of the LDRRMF
+     * and Personal Services limits. A figure that leaves the municipality on a
+     * signed form is not one a browser console should be able to set.
+     *
+     * The duplicate-account rule is also unenforceable from the client, which
+     * cannot see what another tab is sending.
+     */
+    match /estimatedReceipts/{receiptId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
     match /cashPositions/{positionId} {
       allow read: if canRead();
       allow write: if false;
@@ -836,23 +854,19 @@ service cloud.firestore {
         (
           key.matches('^statutoryLimits-[0-9]{4}$') &&
           hasAny(['BUDGET_OFFICER', 'MUNICIPAL_TREASURER'])
-        ) ||
-        /*
-         * The estimated income behind LBAc Form No. 1, one document per fiscal
-         * year per fund - incomeEstimates-2026-GF and nothing else.
-         *
-         * The same reasoning as the statutory limits above: this is the figure
-         * the Local Finance Committee certified as reasonably expected, which
-         * the Treasurer states and the Budget Officer works to. It is also the
-         * denominator of every variance on that form, so it is the one setting
-         * where a wrong figure produces a confident wrong report rather than a
-         * missing one - all the more reason it should be entered by the office
-         * that owns it rather than by an administrator on their behalf.
-         */
-        (
-          key.matches('^incomeEstimates-[0-9]{4}-[A-Z]{2,6}$') &&
-          hasAny(['BUDGET_OFFICER', 'MUNICIPAL_TREASURER'])
         )
+        /*
+         * There was a third case here: incomeEstimates-{year}-{fund}, which
+         * held the quarterly income estimates behind LBAc Form No. 1. Those
+         * figures now live in the estimatedReceipts collection, written by a
+         * callable and read by the SRE and the Statement of Comparison as well
+         * as by that form.
+         *
+         * The grant is removed rather than left in place. A write permission
+         * for a store nothing reads any more is a door into a room that has
+         * been demolished: harmless until somebody writes to it and spends an
+         * afternoon wondering why the report does not change.
+         */
       );
     }
 
