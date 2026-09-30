@@ -10,6 +10,7 @@ import { engine } from '@/lib/engine';
 import { readSheet, findText, type SheetRow } from '@/lib/spreadsheet';
 import {
   checkChart,
+  checkNamedAccounts,
   deriveAccount,
   isContraAccount,
   type ChartRowInput,
@@ -74,6 +75,16 @@ export default function ChartUpload() {
   const canLoad = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   const check = useMemo(() => (rows.length ? checkChart(rows) : null), [rows]);
+  /*
+   * A chart can be perfectly well formed and still not contain the accounts
+   * CBO posts to by code - or contain them under different titles, which is
+   * worse, because the postings then go to the wrong account and balance
+   * while doing it.
+   */
+  const namedAccounts = useMemo(
+    () => (rows.length ? checkNamedAccounts(rows) : []),
+    [rows],
+  );
   const unclassified = useMemo(() => rows.filter((r) => r.account === null), [rows]);
 
   const summary = useMemo(() => {
@@ -260,6 +271,25 @@ export default function ChartUpload() {
               {check.violations.length > 6 && (
                 <p className="mt-1">and {check.violations.length - 6} more.</p>
               )}
+            </Alert>
+          )}
+
+          {namedAccounts.length > 0 && (
+            <Alert
+              tone="warning"
+              title="CBO posts to accounts this chart does not have under those titles"
+              className="mb-4"
+            >
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {namedAccounts.map((v, i) => (
+                  <li key={i}>{v.message}</li>
+                ))}
+              </ul>
+              <p className="mt-1">
+                The chart will still load. But a collection, a deposit, a payroll or a voucher
+                posted afterwards will go to whichever account carries that code, and it will
+                balance while doing it — so nothing later will report the mistake.
+              </p>
             </Alert>
           )}
 

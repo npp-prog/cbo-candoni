@@ -11,6 +11,13 @@ import type { Centavos } from '@/types/common';
 import type { FsClassification } from '@/types/enums';
 import { FUND_BALANCE_CAPTIONS } from '@/lib/fsGroups';
 import { buildEquityStatement, type EquityStatement } from './equityStatement';
+import { isCashAccount } from '@/lib/cashFlowLines';
+import {
+  SECTION_LABELS,
+  buildCashFlows,
+  type CashFlowEntry,
+  type CashFlowRow as CashFlowStatementRow,
+} from './cashFlows';
 import {
   condensePerformance,
   condensePosition,
@@ -227,7 +234,13 @@ export default function FinancialStatements() {
       ) : statement === 'performance' ? (
         <PerformanceStatement data={performance} fiscalYear={fiscalYear} />
       ) : statement === 'cashflow' ? (
-        <CashFlowStatement ledger={ledger.data} throughPeriod={throughPeriod} />
+        <CashFlowStatement
+          ledger={ledger.data as unknown as CashFlowEntry[]}
+          priorLedger={priorLedger.data}
+          throughPeriod={throughPeriod}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+        />
       ) : statement === 'equity' ? (
         <EquityStatementView data={equityStatement} fiscalYear={fiscalYear} />
       ) : (
@@ -302,38 +315,202 @@ function GrandTotal({ label, value }: { label: string; value: Centavos }) {
   );
 }
 
+/**
+ * The Statement of Cash Flows, Annex 9.
+ *
+ * The statement CBO shipped with read the cash-flow class off the cash line of
+ * each entry and printed three net figures. That could not work: the class of
+ * a cash account is always OPERATING, and every posting routine on the server
+ * writes that literal in any case, so the investing and financing lines were
+ * structurally incapable of carrying anything. What replaces it is the direct
+ * method the annex actually prescribes - see lib/cashFlowLines.ts for why it
+ * needs no allocation rule.
+ */
 function CashFlowStatement({
   ledger,
+  priorLedger,
   throughPeriod,
+  fiscalYear,
+  fundCode,
 }: {
-  ledger: Array<{ period: number; cashFlowClass?: string | null; accountCode: string; signedAmount: number }>;
+  ledger: CashFlowEntry[];
+  priorLedger: Array<{ accountCode: string; signedAmount: number }>;
   throughPeriod: number;
+  fiscalYear: number;
+  fundCode?: string;
 }) {
-  const flows = useMemo(() => {
-    const relevant = ledger.filter((e) => e.period <= throughPeriod);
-    const cashAccounts = relevant.filter((e) => e.accountCode?.startsWith('1010'));
+  const priorClosingCash = useMemo(
+    () =>
+      priorLedger
+        .filter((e) => isCashAccount(e.accountCode))
+        .reduce((s, e) => s + e.signedAmount, 0),
+    [priorLedger],
+  );
 
-    const byClass = { OPERATING: 0, INVESTING: 0, FINANCING: 0 };
-    for (const e of cashAccounts) {
-      const cls = (e.cashFlowClass ?? 'OPERATING') as keyof typeof byClass;
-      if (cls in byClass) byClass[cls] += e.signedAmount;
-    }
-    const net = byClass.OPERATING + byClass.INVESTING + byClass.FINANCING;
-    return { ...byClass, net };
-  }, [ledger, throughPeriod]);
+  const data = useMemo(
+    () => buildCashFlows({ entries: ledger, throughPeriod, priorClosingCash, fundCode }),
+    [ledger, throughPeriod, priorClosingCash, fundCode],
+  );
+
+  const openedTwice = data.priorClosingCash !== 0 && data.openingFromOpeningEntry !== 0;
 
   return (
     <>
-      <Row label="Net cash from operating activities" amount={flows.OPERATING} />
-      <Row label="Net cash from investing activities" amount={flows.INVESTING} />
-      <Row label="Net cash from financing activities" amount={flows.FINANCING} />
-      <GrandTotal label="Net increase in cash and cash equivalents" value={flows.net} />
+      {!data.tiesOut && (
+        <Alert tone="error" className="mb-4">
+          <p className="font-medium">This statement does not tie to the General Ledger.</p>
+          <p className="mt-1">
+            It reports a closing balance of {formatPeso(data.closingCash)} while the cash accounts
+            in the ledger stand at {formatPeso(data.closingCashPerLedger)} — a difference of{' '}
+            {formatPeso(data.drift)}. Nothing on this statement is rounded or apportioned, so a
+            difference of even one centavo is a real defect and not an artefact. Do not submit it
+            until the cause is found.
+          </p>
+          {data.unbalanced.length > 0 && (
+            <p className="mt-1">
+              {data.unbalanced.length === 1 ? 'This journal entry does' : 'These journal entries do'}{' '}
+              not foot:{' '}
+              {data.unbalanced.map((u) => `${u.jevNo} (out by ${formatPeso(u.difference)})`).join('; ')}.
+            </p>
+          )}
+        </Alert>
+      )}
 
-      <Alert tone="info" className="mt-4">
-        Classified by the cash-flow category recorded against each journal entry line. Lines posted
-        without a classification are treated as operating; set the cash-flow classification on the
-        account in the Chart of Accounts so future postings classify themselves.
+      {openedTwice && (
+        <Alert tone="warning" className="mb-4">
+          {fiscalYear} carries an opening-balance journal entry of{' '}
+          {formatPeso(data.openingFromOpeningEntry)} even though {fiscalYear - 1} is already in CBO
+          and closed with {formatPeso(data.priorClosingCash)} in cash. Opening balances are encoded
+          once, on conversion; the year opened twice over and the opening line below is the sum of
+          both.
+        </Alert>
+      )}
+
+      {data.blocks.map((block) => (
+        <StatementSection key={block.section} title={SECTION_LABELS[block.section]}>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">
+            Cash Inflows
+          </p>
+          {block.inflows.map((r) => (
+            <CashFlowRowView key={r.caption} row={r} />
+          ))}
+          <Row label="Total Cash Inflows" amount={block.totalIn} />
+
+          <p className="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-slate-500">
+            Cash Outflows
+          </p>
+          {block.outflows.map((r) => (
+            <CashFlowRowView key={r.caption} row={r} />
+          ))}
+          <Row label="Total Cash Outflows" amount={block.totalOut} />
+
+          <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-slate-300 py-1">
+            <span className="text-sm font-medium text-navy-900">
+              Net Cash Provided by (Used in) {SECTION_LABELS[block.section].replace('Cash Flows From ', '')}
+            </span>
+            <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
+              {formatPeso(block.net, { symbol: false, parens: true })}
+            </span>
+          </div>
+        </StatementSection>
+      ))}
+
+      <Row
+        label="Total Cash Provided by Operating, Investing and Financing Activities"
+        amount={data.netFlows}
+      />
+      <Row label={`Add: Cash Balance, Beginning ${fiscalYear}`} amount={data.openingCash} />
+      <GrandTotal label="Cash Balance, End of the Period" value={data.closingCash} />
+
+      {data.tiesOut && (
+        <Alert tone="success" className="mt-4">
+          This statement ties to the General Ledger exactly: the closing balance above is the
+          balance of the cash accounts in the ledger, to the centavo. The two were built from
+          different lines of the same journal entries — this statement from the counterpart lines,
+          the ledger balance from the cash lines — so they agree only if every entry was counted
+          once and in full.
+        </Alert>
+      )}
+
+      <Alert tone="info" className="mt-3">
+        <p>
+          Prepared by the direct method, GAM Annex 9. Each caption is the counterpart of the cash
+          line in the journal entry: a cheque drawn against Salaries and Wages is a payment to
+          employees, one drawn against Office Equipment is a purchase of Property, Plant and
+          Equipment. Because a journal entry balances, each counterpart line accounts for exactly
+          its own amount of the cash that moved — nothing here is apportioned or estimated.
+        </p>
+        <p className="mt-1">
+          {data.cashEntries.toLocaleString()} journal{' '}
+          {data.cashEntries === 1 ? 'entry' : 'entries'} moved cash and{' '}
+          {data.transferEntries.toLocaleString()}{' '}
+          {data.transferEntries === 1 ? 'was a transfer' : 'were transfers'} between cash accounts —
+          a deposit of collections, or a movement between bank accounts. Transfers are deliberately
+          absent: the money was reported when it was collected, and reporting it again on deposit
+          would double the statement.
+        </p>
+        <p className="mt-1">
+          Amounts are shown gross. Where tax is withheld from a payment, the full expense appears as
+          an outflow and the tax withheld as a receipt, because the LGU kept that money until it is
+          remitted. The two net to the cash that left the bank.
+        </p>
+        {fundCode === 'TF' && (
+          <p className="mt-1">
+            The Trust Fund is presented on Annex 9-A, the shorter face: one operating receipt line,
+            two payment lines, and investing and financing shown only where there is something in
+            them.
+          </p>
+        )}
       </Alert>
+
+      <Alert tone="warning" className="mt-3">
+        Until this release the investing and financing sections of this statement could never carry
+        anything, whatever Candoni bought or borrowed, because they were read from a classification
+        the server writes as &ldquo;operating&rdquo; on every line it posts. Any Statement of Cash
+        Flows printed from CBO before this release showed the whole year under operating activities
+        and should not be relied on.
+      </Alert>
+    </>
+  );
+}
+
+/** One caption, with the counterpart accounts behind it available on demand. */
+function CashFlowRowView({ row }: { row: CashFlowStatementRow }) {
+  const [open, setOpen] = useState(false);
+  const canOpen = row.accounts.length > 0;
+
+  return (
+    <>
+      <div className="flex items-baseline justify-between gap-4 py-1 pl-4">
+        {canOpen ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="text-left text-sm text-navy-800 underline decoration-dotted underline-offset-2 hover:text-navy-900"
+          >
+            {row.caption}
+          </button>
+        ) : (
+          <span className="text-sm text-slate-400">{row.caption}</span>
+        )}
+        <span
+          className={`w-44 text-right font-mono text-sm tabular ${row.amount === 0 ? 'text-slate-400' : 'text-navy-900'}`}
+        >
+          {formatPeso(row.amount, { symbol: false, parens: true })}
+        </span>
+      </div>
+      {open &&
+        row.accounts.map((a) => (
+          <div key={a.accountCode} className="flex items-baseline justify-between gap-4 py-0.5 pl-10">
+            <span className="text-xs text-slate-500">
+              <span className="font-mono text-2xs text-slate-400">{a.accountCode}</span>{' '}
+              {a.accountName}
+            </span>
+            <span className="w-44 text-right font-mono text-xs tabular text-slate-500">
+              {formatPeso(a.amount, { symbol: false, parens: true })}
+            </span>
+          </div>
+        ))}
     </>
   );
 }

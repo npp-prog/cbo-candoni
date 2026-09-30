@@ -1,4 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
@@ -127,8 +128,8 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
     const lines: JevLineData[] = [
       {
         lineNo: 1,
-        accountCode: '10101020',
-        accountName: 'Cash - Collecting Officers',
+        accountCode: CASH_LOCAL_TREASURY.code,
+        accountName: CASH_LOCAL_TREASURY.name,
         debit: rcd.totalCollections,
         credit: 0,
         subsidiaryType: 'EMPLOYEE',
@@ -285,8 +286,8 @@ export const recordDeposit = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
       },
       {
         lineNo: 2,
-        accountCode: '10101020',
-        accountName: 'Cash - Collecting Officers',
+        accountCode: CASH_LOCAL_TREASURY.code,
+        accountName: CASH_LOCAL_TREASURY.name,
         debit: 0,
         credit: dep.amount,
         subsidiaryType: 'EMPLOYEE',

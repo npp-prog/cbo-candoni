@@ -408,3 +408,124 @@ export function checkChart(rows: ChartRowInput[]): CheckResult {
     ? { ok: true, violations: [] }
     : { ok: false, violations };
 }
+
+// ---------------------------------------------------------------------------
+// The accounts the system posts to by code
+// ---------------------------------------------------------------------------
+
+/**
+ * Every account CBO writes into a journal entry by a hardcoded code.
+ *
+ * These exist because a hardcoded account code with a hardcoded title beside
+ * it is a claim about the Chart of Accounts, and nothing was checking it. Four
+ * of the seven were wrong, and each had been wrong since the feature shipped.
+ *
+ * The GAM Revised Chart of Accounts for LGUs (Volume III) gives major group
+ * 1-01 exactly two Cash on Hand accounts - 1-01-01-010 Cash Local Treasury and
+ * 1-01-01-020 Petty Cash - and there is no "Cash - Collecting Officers" in the
+ * LGU chart at all. That is the national government agency account. Posting
+ * collections to it here meant posting them to code 1-01-01-020, whose real
+ * title is Petty Cash, so every peso collected and every deposit made ran
+ * through the petty cash fund: the undeposited collections have been sitting
+ * in Petty Cash on the Statement of Financial Position, and Cash Local
+ * Treasury - which the Cash in Local Treasury report reads - stood at nil.
+ *
+ * The bank pair had the same fault the other way about: the constant named for
+ * the current account carried the savings account code. And Advances for
+ * Payroll is 1-03-05-020, in the cash advances group with the other advances,
+ * not the 1-99 code the payroll entry was proposing, which is in no chart.
+ *
+ * `checkNamedAccounts` holds all of them against the chart Candoni actually
+ * loaded, so the next one cannot ship quietly.
+ */
+export interface NamedAccount {
+  readonly code: string;
+  readonly name: string;
+}
+
+/** 1-01-01-010. Collections in the hands of the treasury, before deposit. */
+export const CASH_LOCAL_TREASURY: NamedAccount = {
+  code: '10101010',
+  name: 'Cash Local Treasury',
+};
+
+/** 1-01-01-020. The petty cash fund, and nothing else. */
+export const PETTY_CASH: NamedAccount = {
+  code: '10101020',
+  name: 'Petty Cash',
+};
+
+/** 1-01-02-010. */
+export const CASH_IN_BANK_CURRENT: NamedAccount = {
+  code: '10102010',
+  name: 'Cash in Bank - Local Currency, Current Account',
+};
+
+/** 1-01-02-020. */
+export const CASH_IN_BANK_SAVINGS: NamedAccount = {
+  code: '10102020',
+  name: 'Cash in Bank - Local Currency, Savings Account',
+};
+
+/** 1-03-05-020, with the other cash advances. */
+export const ADVANCES_FOR_PAYROLL: NamedAccount = {
+  code: '10305020',
+  name: 'Advances for Payroll',
+};
+
+export const ACCOUNTS_PAYABLE: NamedAccount = {
+  code: '20101010',
+  name: 'Accounts Payable',
+};
+
+export const DUE_TO_OFFICERS_AND_EMPLOYEES: NamedAccount = {
+  code: '20101020',
+  name: 'Due to Officers and Employees',
+};
+
+export const NAMED_ACCOUNTS: readonly NamedAccount[] = [
+  CASH_LOCAL_TREASURY,
+  PETTY_CASH,
+  CASH_IN_BANK_CURRENT,
+  CASH_IN_BANK_SAVINGS,
+  ADVANCES_FOR_PAYROLL,
+  ACCOUNTS_PAYABLE,
+  DUE_TO_OFFICERS_AND_EMPLOYEES,
+];
+
+/**
+ * Every account named above must exist in the loaded chart under exactly that
+ * title. A mismatch means CBO is posting to an account that is not the one the
+ * code believes it is - which is not caught by anything else, because the
+ * posting is perfectly valid and balances perfectly against the wrong account.
+ */
+export function checkNamedAccounts(
+  chart: Array<{ code: string; name: string }>,
+): Violation[] {
+  const byCode = new Map(chart.map((r) => [r.code.trim(), r.name.trim()]));
+  const violations: Violation[] = [];
+
+  for (const account of NAMED_ACCOUNTS) {
+    const found = byCode.get(account.code);
+    if (found === undefined) {
+      violations.push({
+        code: 'NAMED_ACCOUNT_MISSING',
+        message:
+          `CBO posts to account ${account.code} (${account.name}) by code, and it is not in the ` +
+          'Chart of Accounts.',
+        details: { code: account.code, expected: account.name },
+      });
+    } else if (found !== account.name) {
+      violations.push({
+        code: 'NAMED_ACCOUNT_RENAMED',
+        message:
+          `CBO posts to account ${account.code} as \u201c${account.name}\u201d, but the Chart of ` +
+          `Accounts calls it \u201c${found}\u201d. One of the two is wrong, and the postings have ` +
+          'been going to whichever account carries that code.',
+        details: { code: account.code, expected: account.name, found },
+      });
+    }
+  }
+
+  return violations;
+}

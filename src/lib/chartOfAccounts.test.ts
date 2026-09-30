@@ -3,6 +3,7 @@ import {
   accountClassFor,
   cashFlowClassFor,
   checkChart,
+  checkNamedAccounts,
   deriveAccount,
   expenseClassFor,
   fsClassificationFor,
@@ -338,3 +339,69 @@ describe('checkChart', () => {
     expect(result.violations.filter((v) => v.code === 'CHART_BAD_CODE')).toHaveLength(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('checkNamedAccounts', () => {
+  /**
+   * The accounts CBO hardcodes, held against the chart Candoni actually loads.
+   *
+   * This is the test that would have caught four shipped defects: collections
+   * posted to Petty Cash under the title of an account the LGU chart does not
+   * contain, deposits crediting the same, the current-account constant
+   * carrying the savings-account code, and a payroll entry proposing an
+   * account in no chart at all. Every one of those postings balanced, so
+   * nothing else could have found them.
+   */
+  const chart = readShippedChart();
+
+  it('reads the shipped chart', () => {
+    expect(chart.length).toBeGreaterThan(600);
+  });
+
+  it('finds every hardcoded account in the chart under its own title', () => {
+    expect(checkNamedAccounts(chart)).toEqual([]);
+  });
+
+  it('reports an account that is not in the chart', () => {
+    const violations = checkNamedAccounts(chart.filter((r) => r.code !== '10305020'));
+    expect(violations).toHaveLength(1);
+    expect(violations[0].code).toBe('NAMED_ACCOUNT_MISSING');
+  });
+
+  it('reports an account whose title is not what the code posts it as', () => {
+    const violations = checkNamedAccounts(
+      chart.map((r) => (r.code === '10101020' ? { ...r, name: 'Cash - Collecting Officers' } : r)),
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0].code).toBe('NAMED_ACCOUNT_RENAMED');
+    expect(violations[0].message).toContain('10101020');
+  });
+});
+
+/** The chart as shipped, quoted titles and all. */
+function readShippedChart(): Array<{ code: string; name: string }> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const text = fs.readFileSync(
+    path.resolve(__dirname, '../../data/chart-of-accounts.csv'),
+    'utf8',
+  );
+
+  const rows: Array<{ code: string; name: string }> = [];
+  for (const raw of text.split(/\r?\n/).slice(1)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const comma = line.indexOf(',');
+    if (comma < 0) continue;
+    const code = line.slice(0, comma).trim();
+    let name = line.slice(comma + 1).trim();
+    // A title containing a comma is quoted, in the ordinary CSV way.
+    if (name.startsWith('"') && name.endsWith('"')) {
+      name = name.slice(1, -1).replace(/""/g, '"');
+    }
+    rows.push({ code, name });
+  }
+  return rows;
+}

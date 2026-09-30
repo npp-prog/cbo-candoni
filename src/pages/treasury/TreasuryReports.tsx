@@ -1,4 +1,10 @@
 import { useMemo, useState } from 'react';
+import {
+  ACCOUNTS_PAYABLE,
+  ADVANCES_FOR_PAYROLL,
+  CASH_LOCAL_TREASURY,
+  DUE_TO_OFFICERS_AND_EMPLOYEES,
+} from '@/lib/chartOfAccounts';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -62,12 +68,16 @@ interface SourceDoc {
   status?: string;
 }
 
-/** Cash and payable accounts from the COA Revised Chart of Accounts for LGUs. */
+/**
+ * Cash and payable accounts, taken from the single checked list in
+ * lib/chartOfAccounts rather than written out again here. Two of the four
+ * written out here before were not the accounts their titles named.
+ */
 const ACCOUNTS = {
-  accountsPayable: { code: '20101010', name: 'Accounts Payable' },
-  cashCollectingOfficers: { code: '10101020', name: 'Cash - Collecting Officers' },
-  dueToOfficersAndEmployees: { code: '20101020', name: 'Due to Officers and Employees' },
-  advancesForPayroll: { code: '19901020', name: 'Advances for Payroll' },
+  accountsPayable: ACCOUNTS_PAYABLE,
+  cashLocalTreasury: CASH_LOCAL_TREASURY,
+  dueToOfficersAndEmployees: DUE_TO_OFFICERS_AND_EMPLOYEES,
+  advancesForPayroll: ADVANCES_FOR_PAYROLL,
 };
 
 /**
@@ -540,8 +550,8 @@ function PrepareReport({
     }
     return [
       {
-        accountCode: ACCOUNTS.cashCollectingOfficers.code,
-        accountName: ACCOUNTS.cashCollectingOfficers.name,
+        accountCode: ACCOUNTS.cashLocalTreasury.code,
+        accountName: ACCOUNTS.cashLocalTreasury.name,
         debit: total,
         credit: 0,
         particulars: `Collections per ${short}`,

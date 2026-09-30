@@ -1,4 +1,5 @@
 import type { GridLine } from '@/components/journal/JournalEntryGrid';
+import { ACCOUNTS_PAYABLE, CASH_IN_BANK_CURRENT } from '@/lib/chartOfAccounts';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -57,9 +58,15 @@ export interface DeductionLite {
   amount: Centavos;
 }
 
-/** Cash in Bank - Local Currency, Current Account (COA Revised Chart for LGUs). */
-export const CASH_IN_BANK_LCCA = { code: '10102020', name: 'Cash in Bank - Local Currency, Current Account' };
-export const ACCOUNTS_PAYABLE = { code: '20101010', name: 'Accounts Payable' };
+/**
+ * Cash in Bank - Local Currency, Current Account, and Accounts Payable.
+ *
+ * Re-exported from the checked list rather than written out again: the
+ * constant here used to carry 10102020, which is the SAVINGS account, under
+ * the current account title.
+ */
+export const CASH_IN_BANK_LCCA = CASH_IN_BANK_CURRENT;
+export { ACCOUNTS_PAYABLE };
 
 export function proposeDvEntry(input: {
   grossAmount: Centavos;
