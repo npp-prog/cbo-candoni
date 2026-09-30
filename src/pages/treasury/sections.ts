@@ -37,6 +37,9 @@ export const CHECK_TABS = [
   // The claim sheet is the list of who is being paid out of the checks drawn,
   // so it reads with the check register rather than beside it.
   { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
+  // Drawn out of the same register and submitted to Accounting at year end,
+  // so it belongs on the check book's strip as well as in Treasury Reports.
+  { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
 ];
 
 export const ADA_TABS = [

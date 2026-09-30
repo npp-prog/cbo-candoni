@@ -179,6 +179,8 @@ describe('the menu itself', () => {
       '/treasury/checks/rci',
       '/treasury/ada/radai',
       '/treasury/payroll/rcdisb',
+      // GAM Appendix 42, submitted to Accounting at year end.
+      '/treasury/checks/unreleased',
     ]);
     // The register each strip hangs off is itself a sidebar item, by design.
     const registers = new Set([

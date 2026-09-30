@@ -91,6 +91,8 @@ const ChartUpload = lazy(() => import('./pages/masterdata/ChartUpload'));
 const Raao = lazy(() => import('./pages/budget/Raao'));
 const Reairr = lazy(() => import('./pages/budget/Reairr'));
 const Rstf = lazy(() => import('./pages/accounting/Rstf'));
+const UnreleasedChecks = lazy(() => import('./pages/treasury/UnreleasedChecks'));
+const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
@@ -162,6 +164,10 @@ export default function App() {
           <Route path="/budget/registry-income" element={<Guard module="budget"><Reairr /></Guard>} />
           {/* Appendix 18. Accounting's book, not the Budget Office's. */}
           <Route path="/accounting/trust-registry" element={<Guard module="accounting"><Rstf /></Guard>} />
+          {/* Appendix 42, drawn off the check register it sits beside. */}
+          <Route path="/treasury/checks/unreleased" element={<Guard module="treasury"><UnreleasedChecks /></Guard>} />
+          {/* Appendix 26, the third cash book beside Cash in Bank and Cash in Treasury. */}
+          <Route path="/treasury/cash-advance-book" element={<Guard module="treasury"><CashAdvanceBook /></Guard>} />
           <Route
             path="/budget/statutory-limits"
             element={<Guard module="budget"><StatutoryLimits /></Guard>}

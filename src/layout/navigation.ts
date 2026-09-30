@@ -249,6 +249,10 @@ export const NAVIGATION: NavItem[] = [
       // ----------------------------------------------------------------
       { group: 'Cash Books', label: 'Cash in Bank', to: '/treasury/cash-in-bank' },
       { group: 'Cash Books', label: 'Cash in Local Treasury', to: '/reports/cash-in-local-treasury' },
+      // GAM Appendix 26. The third book of the same kind: cash the
+      // municipality holds, this time in a disbursing officer's hands rather
+      // than in the bank or the vault.
+      { group: 'Cash Books', label: 'Cash Advances', to: '/treasury/cash-advance-book' },
       { group: 'Cash Books', label: 'Cash Position', to: '/treasury/cash-position' },
 
       // ----------------------------------------------------------------
@@ -269,6 +273,10 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
       { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
       { group: 'Treasury Reports', label: 'Report of Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+      // GAM Appendix 42. Listed here as well as on the check book's own strip,
+      // like the other reports the municipality submits: "where do I find the
+      // unreleased checks" is asked by people who are not in the register.
+      { group: 'Treasury Reports', label: 'Schedule of Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
       { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
 
       // ----------------------------------------------------------------
