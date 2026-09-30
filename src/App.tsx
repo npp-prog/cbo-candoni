@@ -88,6 +88,7 @@ const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
 const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
 const ChartUpload = lazy(() => import('./pages/masterdata/ChartUpload'));
+const Raao = lazy(() => import('./pages/budget/Raao'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
@@ -149,6 +150,12 @@ export default function App() {
           <Route path="/budget/obligations/new" element={<Guard module="budget" action="create"><ObligationDetail /></Guard>} />
           <Route path="/budget/obligations/:id" element={<Guard module="budget"><ObligationDetail /></Guard>} />
           <Route path="/budget/registry" element={<Guard module="budget"><BudgetRegistry /></Guard>} />
+          {/*
+            The four statutory registries, GAM Appendices 19-22. One screen
+            behind four addresses: the instruction sheets are identical apart
+            from the allotment class, so the class is the route segment.
+          */}
+          <Route path="/budget/registry/:slug" element={<Guard module="budget"><Raao /></Guard>} />
           <Route
             path="/budget/statutory-limits"
             element={<Guard module="budget"><StatutoryLimits /></Guard>}

@@ -294,6 +294,24 @@ describe('the menu itself', () => {
   });
 
 
+  /**
+   * The registry is ONE menu item, and the five views are tabs on it.
+   *
+   * The GAM prescribes four registries whose titles share their first nine
+   * words - "Registry of Appropriations, Allotments and Obligations - " - and
+   * CBO adds a summary. Five entries reading almost identically in the sidebar
+   * is the arrangement Neil opened the wrong one of when allotment had two,
+   * and the words that tell these four apart are at the END of the title,
+   * where a narrow sidebar truncates them.
+   */
+  it('gives the registry exactly one menu item, whatever the GAM prescribes', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const registry = (budget?.children ?? []).filter((c) =>
+      c.label.toLowerCase().includes('registr'),
+    );
+    expect(registry.map((c) => c.to)).toEqual(['/budget/registry']);
+  });
+
   it('every heading holds at least one item', () => {
     for (const item of NAVIGATION) {
       for (const block of toBlocks(item.children ?? [])) {

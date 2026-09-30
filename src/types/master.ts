@@ -73,6 +73,20 @@ export interface Office extends SoftDeletable {
   shortName?: string;
   head?: string;
   headPosition?: string;
+  /**
+   * The GAM's four-digit functional classification code for this office.
+   *
+   * Annex A of GAM Volume III, and OPTIONAL on purpose. Candoni's own
+   * appropriation ordinance identifies a budget line by object code or project
+   * name, not by a function code, so nothing in CBO can derive this - it is a
+   * judgement about which function of the manual an office performs, and it
+   * belongs to the Budget Officer, not to a default.
+   *
+   * Left empty, everything still works; the registries simply print the
+   * municipality's own F.P.P. Filled in, the registries can also be read
+   * against the functional classification the GAM reports on.
+   */
+  functionCode?: string;
   sortOrder: number;
 }
 

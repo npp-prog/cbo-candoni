@@ -13,6 +13,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { upsertMaster, deactivateMaster, reactivateMaster, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { REVENUE_SOURCES } from '@/types/treasury';
+import { FPP_CODES, fppLabel } from '@/lib/fppCodes';
 import { formatPeso } from '@/lib/money';
 import {
   ACCOUNT_CLASSES,
@@ -350,6 +351,20 @@ const CONFIGS: Record<string, EntityConfig> = {
       { key: 'shortName', label: 'Short name', type: 'text', inTable: true, width: '10rem' },
       { key: 'head', label: 'Office head', type: 'text', inTable: true },
       { key: 'headPosition', label: 'Position', type: 'text' },
+      {
+        // Optional, and it stays optional. See the note on Office.functionCode:
+        // nothing can derive which function of Annex A an office performs, so
+        // an empty value here is a question not yet answered, never a fault.
+        key: 'functionCode',
+        label: 'GAM function code (F.P.P.)',
+        type: 'select',
+        inTable: true,
+        width: '8rem',
+        options: [
+          { value: '', label: 'Not set' },
+          ...FPP_CODES.map((f) => ({ value: f.code, label: fppLabel(f.code) })),
+        ],
+      },
       { key: 'sortOrder', label: 'Sort order', type: 'number' },
     ],
   },

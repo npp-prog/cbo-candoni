@@ -1,0 +1,71 @@
+Table Appendix,Report/Document Name,Acronym,Responsible Office/ Department/ Committee,Printed Copy,Commence,Control No.,COA,Acctg,MTO,MBO,RO,DO,Payee/ Supplier,Employee,Inspection Officer/ Committee,SPO,Total
+1,General Journal,GJ,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+2,Cash Receipts Journal,CRJ,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+3,Procurement Received Journal,PRJ,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+4,Cash Disbursement Journal,CDJ,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+5,Check Disbursement Journal,CKDJ,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+6,Authority to Debit Account Disbursement Journal,ADADJ,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+7,General Ledger,GL,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+8,Subsidiary Ledger,SL,Accounting,Office Discretion,Office Discretion,no control no.,,1\*,,,,,,,,,1
+9,Supplies Ledger Card,SLC,Accounting,Office Discretion,Office Discretion,Item No. c/o SPO,,1\*,,,,,,,,,1
+10,Investment Property Ledger Card – Land,IPLC-L,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+11,Investment Property Ledger Card – Building,IPLC-B,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+12,Land and Land Improvements Ledger Card,LLILC,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+13,Local Road Network Ledger Card,LRNLC,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+14,Other Public Infrastructures Ledger Card,OPILC,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+15,Building and Structures Ledger Card,BSLC,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+16,Equipment Ledger Card,ELC,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+17,"Other Property, Plant and Equipment Ledger Card",OPPELC,Accounting,Office Discretion,Office Discretion,,,1\*,,,,,,,,,1
+18,Registry of Special Trust Fund ,RSTF,Accounting,Office Discretion,Jan 2021,,,1\*,,,,,,,,,1
+19,"Registry of Appropriations, Allotment and Obligation – Capital Outlay",RAAOCO,Accounting,Office Discretion,Jan 2021,,,1\*,,,,,,,,,1
+20,"Registry of Appropriations, Allotment and Obligation – Maintenance and Other Operating Expenses",RAAOMOOE,Accounting,Office Discretion,Jan 2021,,,1\*,,,,,,,,,1
+21,"Registry of Appropriations, Allotment and Obligation – Personal Services",RAAOPS,Accounting,Office Discretion,Jan 2021,,,1\*,,,,,,,,,1
+22,"Registry of Appropriations, Allotment and Obligation – Financial Expenses ",RAAOFE,Accounting,Office Discretion,Jan 2021,,,1\*,,,,,,,,,1
+23,Registry of Estimated and Actual Income/Revenues and Receipts,REAIRR,Accounting,Office Discretion,Jan 2021,,,1\*,,,,,,,,,1
+24,Cashbook – Cash in Treasury ,CB-CT,Treasurer's Office,Office Discretion,Office Discretion,,,,1\*,,,,,,,,1
+25,Cashbook – Cash in Bank, CB-CB,Treasurer's Office,Office Discretion,Office Discretion,,,,1\*,,,,,,,,1
+26,Cashbook – Cash Advances,CB-CA,Disbursing Officer,Office Discretion,Office Discretion,,,,1\*,,,,,,,,1
+27,Petty Cash Record ,PCR,Treasurer's Office,Office Discretion,Sept 2020,,1\*,1,1,,,,,,,,3
+28,"Certification on Appropriations, Funds and Obligation of Allotment",CAFOA,General,A4 Sub 20,Jan 2021,,"1,1",1,1,1\*,1,,,,,,6
+29,Fund Utilization Request and Status,FURS,General,A4 Sub 20,Sept 2020,,1,1\*,,,1,,,,,,3
+30,Journal Voucher,JV,Accounting,Office Discretion,,,1\*,1,,,,,,,,,2
+31,Disbursement Voucher,DV,General,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,1,,,,1,,,,4
+32,Payroll,,General,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,1,,1,,,,,,4
+33,Petty Cash Voucher,PCV,General,A4 Sub 20,Sept 2020,,1\*,,1,,,,,,,,2
+34,Report of Collections and Deposits,RCD,Treasurer's Office,A4 Sub 20,Sept 2020,,1,1,1\*1,,,,,,,,4
+35,Liquidation Report,LR,General,A4 Sub 20,Sept 2020,,1\*,1,,,,,,1,,,3
+36,Authority to Debit Account,ADA,Treasurer's Office,A4 Sub 20,Office Discretion,,,,,,,,,,,,
+37,Report of Authority to Debit Account Issued,RADAI,Treasurer's Office,A4 Sub 20,Office Discretion,,1\*,1,1,,,,,,,,3
+38,Report of Checks Issued,RCI,Treasurer's Office,A4 Sub 20,Sept 2020,,1\*,1,1,,,,,,,,3
+39,Report of Cash Disbursements,RCDisb,Disbursing Officer,A4 Sub 20,Sept 2020,,1\*,1,,,,1,,,,,3
+40,Report of Supplies and Materials Issued ,RSMI,Supply/Property Officer,Office Discretion,Office Discretion,,,1\*,,,,,,,,1,2
+41,Check Register,CkR,Treasurer's Office,Office Discretion,Office Discretion,,,,1\*,,,,,,,,1
+42,Schedule of Unreleased Checks,SUC,Treasurer's Office,Office Discretion,Dec 2020,,1\*,1,1,,,,,,,,3
+43,Index of Payment,IP,Accounting,Office Discretion,Office Discretion,,,,,,,,,,,,
+44,Report of Accountability for Accountable Forms ,RAAF,Treasurer's Office,Office Discretion,Office Discretion,,1\*,,1,,,,,,,,2
+45,Abstract of Real Property Tax Collections,ARPTC,Accounting,Office Discretion,Office Discretion,,,,,,,,,,,,
+46,Itinerary of Travel,IT,General,Office Discretion,Sept 2020,,1\*,,,,,,,1,,,2
+47,Purchase Request,PR,General,Office Discretion,Sept 2020,,1\*,,,,1,,,,,1,3
+48,Requisition and Issue Slip,RIS,General,A4 Sub 20,Sept 2020,,,1\*,,,1,,,,,1,3
+49,Purchase Order,PO,General,Office Discretion,Sept 2020,,1\*1,,,,,,1,,,1,4
+50,Acceptance and Inspection Report,AIR,General,A4 Sub 20,Sept 2020,,1,1,,,,,1\*,,1,1,5
+51,Property Acknowledgement Receipt,PAR,General,A4 Sub 20,Sept 2020,,1,1,,,,,,1,,1\*,4
+52,Inventory Custodian Slip,ICS,General,A4 Sub 20,Sept 2020,,1,1,,,,,,1,,1\*,4
+53,Stock Card,SC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+54,Property Card,PC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+55,Biological Assets Property Card,BAPC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+56,Land and Land Improvements Property Card,LLIPC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+57,Local Road Network Property Card,LRNPC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+58,Other Public Infrastructures Property Card,OPIPC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+59,Building and Structures Property Card,BSPC,Supply/Property Officer,Office Discretion,Office Discretion,,,,,,,,,,,1\*,1
+60,Report on the Physical Count of Inventories,RPCI,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+61,Report on the Physical Count of Investment Property,RPCIP,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+62,Report on the Physical Count of Land and Land Improvements,RPCLLI,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+63,Report on the Physical Count of Local Road Network,RPCLRN,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+64,Report on the Physical Count of Other Public Infrastructure,RPCOPI,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+65,Report on the Physical Count of Building and Structures,RPCBS,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+66,"Report on the Physical Count of Equipment, Furniture and Fixtures, and Other PPE",RPCEFFOPPE,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1\*,1,,,,,,,1,1,4
+67,Inventory and Inspection Report for Unserviceable Property,IIRUP,Inventory Committee,Long (13x8.5) Sub 20,Sept 2020,,1,1\*,,,,,,,,1,3
+68,Waste Materials Report,WMR,General,A4 Sub 20,Sept 2020,,1,1\*,,,,,,,,1,3
+69,Job Order,JO,General,,,,1\*1,,,,,,1,,,1,4
+70,Property Transfer Report,PTR,General,,,,1,1,,,,,,,1,1,4 

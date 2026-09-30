@@ -16,6 +16,7 @@ import { formatPeso } from '@/lib/money';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { ExportColumn } from '@/lib/export';
 import type { BudgetBalance } from '@/types/budget';
+import { RegistryTabs } from './registryTabs';
 import { fundLabel } from './Obligations';
 
 /**
@@ -165,11 +166,12 @@ export default function Registry() {
   return (
     <ReportShell
       meta={{
-        title: 'Registry of Appropriations, Allotments and Obligations',
+        title: 'Registry of Appropriations, Allotments and Obligations - Summary',
         fundLabel: fundLabel(fundCode),
         periodLabel: `For the fiscal year ${fiscalYear}`,
       }}
       breadcrumbs={[{ label: 'Budget' }, { label: 'Registry' }]}
+      tabs={<RegistryTabs active="summary" />}
       rows={rows}
       exportColumns={exportColumns}
       filters={
@@ -205,6 +207,17 @@ export default function Registry() {
       }
       footnote={
         <>
+          {/*
+            Said plainly, because this screen has the same name as four forms
+            that are filed and audited. It is a summary across all four classes
+            and the GAM does not prescribe it; printing it in place of one of
+            the registries would be submitting a form that does not exist.
+          */}
+          <p className="mb-2">
+            This is CBO&apos;s own summary across all four allotment classes. The registries the
+            GAM prescribes — Appendices 19 to 22, one per class — are the other four tabs above,
+            and those are the ones that are printed and filed.
+          </p>
           Available appropriation is the revised appropriation less allotments released. Available
           allotment is allotments released less obligations incurred. Both are computed from the
           source documents and cannot be edited.

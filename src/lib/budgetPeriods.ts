@@ -128,8 +128,16 @@ export interface PeriodObligation {
  * and CLOSED. DRAFT, SUBMITTED, BUDGET_REVIEWED and RETURNED commit nothing
  * yet, and CANCELLED commits nothing any more.
  */
-const RELEASED = new Set(['APPROVED']);
-const COMMITTED = new Set(['CERTIFIED', 'OBLIGATED', 'PAID', 'CLOSED']);
+/**
+ * Exported because the RAAO registries need exactly the same answer.
+ *
+ * Two copies of "what counts as released" is how a registry comes to disagree
+ * with the figures it is meant to detail - the registry would list an
+ * allotment the summary had not counted, or foot to a different total, and
+ * whichever was read second would be the one believed.
+ */
+export const RELEASED = new Set(['APPROVED']);
+export const COMMITTED = new Set(['CERTIFIED', 'OBLIGATED', 'PAID', 'CLOSED']);
 
 export interface LineKeyParts {
   officeId: string;
