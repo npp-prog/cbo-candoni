@@ -15,6 +15,7 @@ import {
   checkAllotmentAgainstAppropriation,
   checkAugmentationExpenseClass,
   checkRealignmentSet,
+  planAugmentationAllotment,
 } from '../lib/rules';
 import { findSector } from '../lib/sectors';
 
@@ -533,6 +534,52 @@ export const importBudgetLines = onCall(
       const lines = [...byLine.values()];
       const balances = await Promise.all(lines.map((l) => readBudgetBalance(tx, l.key)));
 
+      /**
+       * A realignment moves the allotment as well as the appropriation.
+       *
+       * It used to move the appropriation alone, and was refused outright the
+       * moment the reduced appropriation fell below the allotment already
+       * released. That refusal describes the ordinary case: savings are what
+       * is left of an item after its allotment was released and not all of it
+       * spent, so an augmentation made mid-year is made from an account whose
+       * allotment IS released. The office was left to withdraw the allotment
+       * by hand, post the realignment, then release a new allotment on the far
+       * side - three acts for one decision, and nothing tying them together.
+       *
+       * `planAugmentationAllotment` works out what has to move. The plan is
+       * all-or-nothing: if any line cannot give up or take on its allotment,
+       * nothing is posted.
+       */
+      const allotmentPlan =
+        kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT'
+          ? planAugmentationAllotment(
+              lines.map((l, i) => ({
+                lineNo: i,
+                accountCode: l.rows[0].accountCode,
+                accountName: l.rows[0].accountName,
+                officeName: l.rows[0].officeName,
+                amount: l.amount,
+                appropriationRevised: balances[i].appropriationRevised,
+                allotmentReleased: balances[i].allotmentReleased,
+                obligated: balances[i].obligated,
+                forLaterRelease: balances[i].forLaterRelease ?? 0,
+              })),
+            )
+          : null;
+
+      if (allotmentPlan && !allotmentPlan.ok) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${allotmentPlan.violations[0].message} Nothing was posted.`,
+          allotmentPlan.violations[0].details,
+        );
+      }
+
+      /** allotmentReleased delta per line index, from the plan. */
+      const allotmentByLine = new Map<number, number>(
+        (allotmentPlan?.moves ?? []).map((m) => [m.lineNo, m.allotmentDelta]),
+      );
+
       // ---- the invariant, checked on the summed amount ----------------------
 
       if (kind === 'ALLOTMENT') {
@@ -570,10 +617,16 @@ export const importBudgetLines = onCall(
               `This file would drive the appropriation for ${r.accountCode} ${r.accountName} in ${r.officeName} to ${peso(resulting)}. An appropriation cannot be negative. Nothing was posted.`,
             );
           }
-          if (resulting < balances[i].allotmentReleased) {
+          // The allotment as it will stand once this posting is applied: a
+          // realignment takes some of it back in the same transaction, so the
+          // figure to test against is the one after that withdrawal, not the
+          // one before it.
+          const resultingAllotment =
+            balances[i].allotmentReleased + (allotmentByLine.get(i) ?? 0);
+          if (resulting < resultingAllotment) {
             throw new HttpsError(
               'failed-precondition',
-              `This file would reduce the appropriation for ${r.accountCode} ${r.accountName} in ${r.officeName} to ${peso(resulting)}, below the ${peso(balances[i].allotmentReleased)} already released as allotment. Withdraw the allotment first. Nothing was posted.`,
+              `This file would reduce the appropriation for ${r.accountCode} ${r.accountName} in ${r.officeName} to ${peso(resulting)}, below the ${peso(resultingAllotment)} released as allotment. Withdraw the allotment first. Nothing was posted.`,
             );
           }
         }
@@ -617,6 +670,10 @@ export const importBudgetLines = onCall(
         } else {
           delta.appropriationAdjustments = line.amount;
         }
+
+        // A realignment carries its allotment with it.
+        const allotmentDelta = allotmentByLine.get(i);
+        if (allotmentDelta) delta.allotmentReleased = allotmentDelta;
 
         applyBudgetDelta(tx, line.key, balances[i], delta, {
           officeName: first.officeName,
@@ -739,6 +796,8 @@ export const importBudgetLines = onCall(
         total,
         allotmentNo,
         reference,
+        /** How much allotment a realignment carried across with it. */
+        allotmentMoved: allotmentPlan?.totalMoved ?? 0,
       };
     });
   },

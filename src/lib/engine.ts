@@ -113,6 +113,8 @@ export const engine = {
         total: Centavos;
         allotmentNo: string | null;
         reference: string;
+        /** How much allotment a realignment carried across with it. */
+        allotmentMoved: Centavos;
       }
     >('importBudgetLines', p),
 

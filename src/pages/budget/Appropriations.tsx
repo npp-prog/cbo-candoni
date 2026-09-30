@@ -501,7 +501,10 @@ function AppropriationForm({
       });
       toast.success(
         'Realignment posted',
-        `${res.posted} line${res.posted === 1 ? '' : 's'}. The total appropriation of the fund is unchanged.`,
+        `${res.posted} line${res.posted === 1 ? '' : 's'}. The total appropriation of the fund is unchanged` +
+          (res.allotmentMoved
+            ? `, and ${formatPeso(res.allotmentMoved)} of allotment moved with it.`
+            : '. No allotment had to move - the savings came from appropriation not yet released.'),
       );
       onSaved();
     } catch (err) {
@@ -752,6 +755,28 @@ function AppropriationForm({
               {classCheck.violations[0].message}
             </Alert>
           )}
+
+          <Alert tone="info" title="The allotment moves with the appropriation" className="mb-4">
+            <p>
+              This is one budget transaction, not a record of one. Posting it moves the
+              appropriation and, where it has to, the allotment as well — withdrawn from the line
+              the savings come from and released to the line being augmented, in the same act. The
+              total allotment of the fund does not change, because an augmentation creates no new
+              spending authority.
+            </p>
+            <p className="mt-1">
+              Savings are taken from appropriation that has <em>not</em> yet been released as
+              allotment first, since moving that costs the account no spending authority it holds
+              today. Only what cannot be found there comes back out of the released allotment — so
+              a line whose allotment is fully released gives up allotment peso for peso, and a line
+              still holding unreleased appropriation gives up none.
+            </p>
+            <p className="mt-1">
+              Allotment that is already obligated cannot be taken back. Where it would have to be,
+              nothing is posted and the line is named, so the obligations can be cancelled or less
+              taken from that account.
+            </p>
+          </Alert>
 
           <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
             <div>

@@ -609,6 +609,196 @@ export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
 }
 
 // ---------------------------------------------------------------------------
+// 2b. Moving the allotment with the appropriation
+// ---------------------------------------------------------------------------
+
+/**
+ * What a realignment must do to the allotment, as well as to the appropriation.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS
+ * ---------------------------------------------------------------------------
+ * A realignment used to move the appropriation and nothing else, and the
+ * posting was refused outright the moment the reduced appropriation fell below
+ * the allotment already released: "Withdraw the allotment first. Nothing was
+ * posted."
+ *
+ * That refusal describes the normal case, not an edge one. Savings are what is
+ * left of an item after its allotment has been released and not all of it
+ * spent - so an augmentation made in, say, October is made from an account
+ * whose allotment IS released, and the refusal blocked it. The office was left
+ * to withdraw the allotment by hand, post the realignment, and release a new
+ * allotment on the far side: three acts for one decision, two of which nothing
+ * checked and nothing tied back to the first.
+ *
+ * An augmentation is one budget transaction. It moves authority from one
+ * account to another, and the allotment is part of that authority.
+ *
+ * ---------------------------------------------------------------------------
+ * HOW MUCH ALLOTMENT MOVES
+ * ---------------------------------------------------------------------------
+ * Not always the whole amount, and the reason is worth stating.
+ *
+ * An account may hold appropriation that has never been released as allotment.
+ * Savings are taken from THAT first, because moving unreleased appropriation
+ * costs the account no spending authority it currently has. Only what cannot
+ * be found there has to come out of the released allotment:
+ *
+ *     unreleased = appropriation - allotment released
+ *     withdrawn  = max(0, amount moved - unreleased)
+ *
+ * So an account whose allotment is fully released gives up allotment peso for
+ * peso with the appropriation - the common case, and what the office expects.
+ * An account still holding unreleased appropriation gives up none, because it
+ * has lost no spending authority. Neither result is a policy this file
+ * invented; both fall out of taking the savings from the loosest money first.
+ *
+ * Whatever is withdrawn is released on the augmented side. The fund's total
+ * allotment does not change, because an augmentation creates no new spending
+ * authority - it moves what was already there.
+ */
+
+export interface AugmentationAllotmentLine {
+  lineNo: number;
+  accountCode: string;
+  accountName: string;
+  officeName: string;
+  /** Signed: negative where savings are taken, positive where they are used. */
+  amount: Centavos;
+  /** The balances as they stand BEFORE this realignment is applied. */
+  appropriationRevised: Centavos;
+  allotmentReleased: Centavos;
+  obligated: Centavos;
+  /** Held back by an Allotment Release Order and not available to release. */
+  forLaterRelease: Centavos;
+}
+
+export interface AllotmentMove {
+  lineNo: number;
+  /** Negative where allotment is withdrawn, positive where it is released. */
+  allotmentDelta: Centavos;
+}
+
+export interface AugmentationAllotmentPlan extends CheckResult {
+  moves: AllotmentMove[];
+  /** Withdrawn from the savings side, and released on the augmented side. */
+  totalMoved: Centavos;
+}
+
+export function planAugmentationAllotment(
+  lines: AugmentationAllotmentLine[],
+): AugmentationAllotmentPlan {
+  const violations: Violation[] = [];
+  const moves: AllotmentMove[] = [];
+
+  const sources = lines.filter((l) => l.amount < 0);
+  const destinations = lines.filter((l) => l.amount > 0);
+
+  // --- the savings side ----------------------------------------------------
+  let totalMoved = 0;
+  for (const line of sources) {
+    const taken = -line.amount;
+    const unreleased = line.appropriationRevised - line.allotmentReleased;
+    const withdrawn = Math.max(0, taken - unreleased);
+    if (withdrawn === 0) continue;
+
+    const check = checkAllotmentWithdrawal({
+      allotmentAlreadyReleased: line.allotmentReleased,
+      obligated: line.obligated,
+      requestedWithdrawal: withdrawn,
+    });
+    if (!check.ok) {
+      const free = line.allotmentReleased - line.obligated;
+      violations.push({
+        code: 'AUGMENTATION_ALLOTMENT_OBLIGATED',
+        message:
+          `${line.accountCode} ${line.accountName} in ${line.officeName} cannot give up ` +
+          `${(taken / 100).toFixed(2)}. Taking it needs ${(withdrawn / 100).toFixed(2)} of the ` +
+          `allotment back, and only ${(free / 100).toFixed(2)} is unobligated - ` +
+          `${(line.obligated / 100).toFixed(2)} is already committed. Cancel the obligations ` +
+          'first, or take less from this account.',
+        details: {
+          lineNo: line.lineNo,
+          accountCode: line.accountCode,
+          taken,
+          withdrawn,
+          available: free,
+          obligated: line.obligated,
+        },
+      });
+      continue;
+    }
+
+    moves.push({ lineNo: line.lineNo, allotmentDelta: -withdrawn });
+    totalMoved += withdrawn;
+  }
+
+  if (violations.length > 0) {
+    return { ok: false, violations, moves: [], totalMoved: 0 };
+  }
+  if (totalMoved === 0) {
+    // Every peso came out of unreleased appropriation. The augmented side gets
+    // appropriation only, and the allotment is released in the ordinary way.
+    return { ok: true, violations: [], moves: [], totalMoved: 0 };
+  }
+
+  // --- the augmented side --------------------------------------------------
+  /*
+   * Where the allotment withdrawn is less than the appropriation moved, it has
+   * to be spread over the augmented items, and the split is apportionment
+   * rather than a fact about any one of them. It is done in proportion to the
+   * amounts, with the odd centavos going to the largest item so the two sides
+   * agree exactly. In the ordinary case - a source whose allotment is fully
+   * released - the proportion is one to one and every item receives allotment
+   * equal to its own increase, so no apportionment is visible at all.
+   */
+  const totalReceived = destinations.reduce((s, l) => s + l.amount, 0);
+  const shares = destinations.map((l) => ({
+    line: l,
+    exact: (totalMoved * l.amount) / totalReceived,
+    share: Math.floor((totalMoved * l.amount) / totalReceived),
+  }));
+  let remainder = totalMoved - shares.reduce((s, x) => s + x.share, 0);
+  for (const x of [...shares].sort((a, b) => b.exact - a.exact)) {
+    if (remainder <= 0) break;
+    x.share += 1;
+    remainder -= 1;
+  }
+
+  for (const { line, share } of shares) {
+    if (share === 0) continue;
+    const check = checkAllotmentAgainstAppropriation({
+      // The appropriation AFTER this realignment, which is what the released
+      // allotment has to sit inside.
+      appropriationRevised: line.appropriationRevised + line.amount,
+      forLaterRelease: line.forLaterRelease,
+      allotmentAlreadyReleased: line.allotmentReleased,
+      requestedRelease: share,
+    });
+    if (!check.ok) {
+      const details = check.violations[0].details as Record<string, number>;
+      violations.push({
+        code: 'AUGMENTATION_ALLOTMENT_HELD',
+        message:
+          `${line.accountCode} ${line.accountName} in ${line.officeName} cannot receive the ` +
+          `${(share / 100).toFixed(2)} of allotment that comes with this augmentation: ` +
+          check.violations[0].message +
+          ' Release the hold on this line, or post the augmentation and issue the allotment separately.',
+        details: { lineNo: line.lineNo, accountCode: line.accountCode, share, ...details },
+      });
+      continue;
+    }
+    moves.push({ lineNo: line.lineNo, allotmentDelta: share });
+  }
+
+  if (violations.length > 0) {
+    return { ok: false, violations, moves: [], totalMoved: 0 };
+  }
+
+  return { ok: true, violations: [], moves, totalMoved };
+}
+
+// ---------------------------------------------------------------------------
 // 3. Disbursement voucher arithmetic
 // ---------------------------------------------------------------------------
 

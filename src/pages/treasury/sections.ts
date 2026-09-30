@@ -27,6 +27,10 @@ export const COLLECTION_TABS = [
   // day's receipts had to go back out to the sidebar to report on them.
   { label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
   { label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
+  // The Accountant's abstract, not the Treasurer's: GAM Section 68 puts it in
+  // Accounting because its purpose is working out what is owed to the province
+  // and the barangays, not reporting what was taken in.
+  { label: 'Abstract of RPT Collections', to: '/reports/rpt-abstract' },
   { label: 'Summary of Collections', to: '/reports/summary-of-collections' },
   { label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
 ];

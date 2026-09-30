@@ -8,6 +8,7 @@ import {
   checkAugmentationExpenseClass,
   checkExpenseDebitsHaveFpp,
   checkRealignmentSet,
+  planAugmentationAllotment,
   checkDvMath,
   checkLiquidation,
   computeReconciliation,
@@ -989,5 +990,142 @@ describe('checkDvCategory', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.violations[0].code).toBe('DV_CATEGORY_UNKNOWN');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('planAugmentationAllotment', () => {
+  /**
+   * The rule under test: savings come out of unreleased appropriation first,
+   * and only what cannot be found there is taken back out of the released
+   * allotment. Whatever is taken back is released on the augmented side, so
+   * the fund's total allotment never changes.
+   */
+  const line = (over: Partial<Parameters<typeof planAugmentationAllotment>[0][number]>) => ({
+    lineNo: 1,
+    accountCode: '50203010',
+    accountName: 'Office Supplies Expenses',
+    officeName: 'Mayor',
+    amount: 0,
+    appropriationRevised: 0,
+    allotmentReleased: 0,
+    obligated: 0,
+    forLaterRelease: 0,
+    ...over,
+  });
+
+  it('moves allotment peso for peso when the source is fully released', () => {
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -40_000, appropriationRevised: 100_000, allotmentReleased: 100_000 }),
+      line({ lineNo: 2, amount: 40_000, appropriationRevised: 50_000 }),
+    ]);
+
+    expect(plan.ok).toBe(true);
+    expect(plan.totalMoved).toBe(40_000);
+    expect(plan.moves).toEqual([
+      { lineNo: 1, allotmentDelta: -40_000 },
+      { lineNo: 2, allotmentDelta: 40_000 },
+    ]);
+  });
+
+  it('moves no allotment when the savings fit inside unreleased appropriation', () => {
+    // 100,000 appropriated, only 30,000 released. Taking 50,000 costs the
+    // account no spending authority it currently holds.
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 30_000 }),
+      line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+    ]);
+
+    expect(plan.ok).toBe(true);
+    expect(plan.totalMoved).toBe(0);
+    expect(plan.moves).toEqual([]);
+  });
+
+  it('moves only the part that cannot come from unreleased appropriation', () => {
+    // 20,000 unreleased, so 30,000 of the 50,000 has to come out of allotment.
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 80_000 }),
+      line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+    ]);
+
+    expect(plan.totalMoved).toBe(30_000);
+    expect(plan.moves).toEqual([
+      { lineNo: 1, allotmentDelta: -30_000 },
+      { lineNo: 2, allotmentDelta: 30_000 },
+    ]);
+  });
+
+  it('refuses to take allotment that is already obligated', () => {
+    const plan = planAugmentationAllotment([
+      line({
+        lineNo: 1,
+        amount: -50_000,
+        appropriationRevised: 100_000,
+        allotmentReleased: 100_000,
+        obligated: 90_000,
+      }),
+      line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+    ]);
+
+    expect(plan.ok).toBe(false);
+    expect(plan.violations[0].code).toBe('AUGMENTATION_ALLOTMENT_OBLIGATED');
+    // Nothing is half-done: a refused plan moves nothing at all.
+    expect(plan.moves).toEqual([]);
+    expect(plan.totalMoved).toBe(0);
+  });
+
+  it('refuses where the augmented line is held for later release', () => {
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -40_000, appropriationRevised: 100_000, allotmentReleased: 100_000 }),
+      line({ lineNo: 2, amount: 40_000, appropriationRevised: 20_000, forLaterRelease: 60_000 }),
+    ]);
+
+    expect(plan.ok).toBe(false);
+    expect(plan.violations[0].code).toBe('AUGMENTATION_ALLOTMENT_HELD');
+    expect(plan.moves).toEqual([]);
+  });
+
+  it('apportions across several augmented items and keeps the centavos exact', () => {
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -100_000, appropriationRevised: 100_000, allotmentReleased: 70_000 }),
+      line({ lineNo: 2, amount: 33_333, appropriationRevised: 10_000 }),
+      line({ lineNo: 3, amount: 66_667, appropriationRevised: 10_000 }),
+    ]);
+
+    expect(plan.ok).toBe(true);
+    expect(plan.totalMoved).toBe(70_000);
+    // 23,333.1 and 46,666.9 - the odd centavo goes to the larger item.
+    expect(plan.moves).toEqual([
+      { lineNo: 1, allotmentDelta: -70_000 },
+      { lineNo: 2, allotmentDelta: 23_333 },
+      { lineNo: 3, allotmentDelta: 46_667 },
+    ]);
+  });
+
+  it('takes from several sources at once', () => {
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -30_000, appropriationRevised: 30_000, allotmentReleased: 30_000 }),
+      // This one has 25,000 unreleased, so only 5,000 comes out of allotment.
+      line({ lineNo: 2, amount: -30_000, appropriationRevised: 30_000, allotmentReleased: 5_000 }),
+      line({ lineNo: 3, amount: 60_000, appropriationRevised: 10_000 }),
+    ]);
+
+    expect(plan.totalMoved).toBe(35_000);
+    expect(plan.moves).toEqual([
+      { lineNo: 1, allotmentDelta: -30_000 },
+      { lineNo: 2, allotmentDelta: -5_000 },
+      { lineNo: 3, allotmentDelta: 35_000 },
+    ]);
+  });
+
+  it('never changes the total allotment of the fund', () => {
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -70_000, appropriationRevised: 90_000, allotmentReleased: 90_000 }),
+      line({ lineNo: 2, amount: 25_000, appropriationRevised: 10_000 }),
+      line({ lineNo: 3, amount: 45_000, appropriationRevised: 10_000 }),
+    ]);
+
+    expect(plan.moves.reduce((s, m) => s + m.allotmentDelta, 0)).toBe(0);
   });
 });
