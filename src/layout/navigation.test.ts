@@ -195,6 +195,40 @@ describe('the menu itself', () => {
     expect(both).toEqual([]);
   });
 
+  /**
+   * Three Local Budget Accountability reports, and only three.
+   *
+   * The manual defines six. LBAc 3, 5 and 6 want physical targets and outputs,
+   * which belong to the Planning Office and which CBO holds none of. The
+   * temptation with a numbered series is completeness - build all six, leave
+   * the physical columns blank - and the result is three mostly-empty forms in
+   * the menu that somebody eventually fills the financial half of and submits.
+   *
+   * If a fourth appears here, it should be because the municipality decided to
+   * hold physical performance data, not because the list looked incomplete.
+   */
+  it('lists the three LBAc reports the municipality files, under Budget', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const reports = (budget?.children ?? []).filter((c) => c.group === 'Reports');
+    expect(reports.map((r) => r.to)).toEqual([
+      '/budget/reports/receipts',
+      '/budget/reports/quarterly-financial',
+      '/budget/reports/sre',
+    ]);
+  });
+
+  /**
+   * And they are not also in the Reports menu. That menu holds statements
+   * drawn off the books; these account for the budget, and a report in two
+   * menus tells a clerk they are two different reports.
+   */
+  it('does not leave the accountability reports in the Reports menu as well', () => {
+    const reportsMenu = NAVIGATION.find((i) => i.to === '/reports');
+    const targets = (reportsMenu?.children ?? []).map((c) => c.to);
+    expect(targets).not.toContain('/reports/sre');
+    expect(targets).not.toContain('/reports/quarterly-financial');
+  });
+
   it('every heading holds at least one item', () => {
     for (const item of NAVIGATION) {
       for (const block of toBlocks(item.children ?? [])) {

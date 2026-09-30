@@ -836,6 +836,22 @@ service cloud.firestore {
         (
           key.matches('^statutoryLimits-[0-9]{4}$') &&
           hasAny(['BUDGET_OFFICER', 'MUNICIPAL_TREASURER'])
+        ) ||
+        /*
+         * The estimated income behind LBAc Form No. 1, one document per fiscal
+         * year per fund - incomeEstimates-2026-GF and nothing else.
+         *
+         * The same reasoning as the statutory limits above: this is the figure
+         * the Local Finance Committee certified as reasonably expected, which
+         * the Treasurer states and the Budget Officer works to. It is also the
+         * denominator of every variance on that form, so it is the one setting
+         * where a wrong figure produces a confident wrong report rather than a
+         * missing one - all the more reason it should be entered by the office
+         * that owns it rather than by an administrator on their behalf.
+         */
+        (
+          key.matches('^incomeEstimates-[0-9]{4}-[A-Z]{2,6}$') &&
+          hasAny(['BUDGET_OFFICER', 'MUNICIPAL_TREASURER'])
         )
       );
     }

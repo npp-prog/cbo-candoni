@@ -186,7 +186,7 @@ export default function Sre() {
             ? `For the year ended 31 December ${fiscalYear}`
             : `For the period January to ${monthName(throughPeriod)} ${fiscalYear}`,
       }}
-      breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'SRE' }]}
+      breadcrumbs={[{ label: 'Budget' }, { label: 'Reports' }, { label: 'SRE (LBAc 4)' }]}
       actions={
         canEditMapping ? (
           <Button size="sm" onClick={() => setShowMapping((v) => !v)}>

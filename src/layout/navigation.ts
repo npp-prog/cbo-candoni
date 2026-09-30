@@ -56,19 +56,60 @@ export const NAVIGATION: NavItem[] = [
     to: '/budget',
     module: 'budget',
     icon: 'budget',
+    /*
+     * Three headings, because the Budget menu had to be grouped once the
+     * accountability reports arrived - the sidebar groups a section all or
+     * nothing, and a loose item under the last heading reads as though it
+     * belonged to it.
+     *
+     * The split is the manual's own: the documents the office writes, the
+     * books and tests it keeps, and the forms it submits.
+     */
     children: [
-      { label: 'Appropriation', to: '/budget/appropriations' },
+      { group: 'Budget transactions', label: 'Appropriation', to: '/budget/appropriations' },
       // The order comes before the allotments it creates: the Budget Officer
       // releases by order, and the allotment register is what the order leaves
       // behind. Both are kept - an allotment may still be released singly, and
       // a withdrawal of allotment is not an order at all.
-      { label: 'Allotment Release Orders', to: '/budget/release-orders' },
-      { label: 'Allotments', to: '/budget/allotments' },
-      { label: 'Obligations', to: '/budget/obligations' },
-      { label: 'Registry (RAAO)', to: '/budget/registry' },
+      {
+        group: 'Budget transactions',
+        label: 'Allotment Release Orders',
+        to: '/budget/release-orders',
+      },
+      { group: 'Budget transactions', label: 'Allotments', to: '/budget/allotments' },
+      { group: 'Budget transactions', label: 'Obligations', to: '/budget/obligations' },
+
+      { group: 'Monitoring', label: 'Registry (RAAO)', to: '/budget/registry' },
       // The tests the reviewing authority applies after enactment, run while
       // the budget is still being drafted.
-      { label: 'Statutory Limits', to: '/budget/statutory-limits' },
+      { group: 'Monitoring', label: 'Statutory Limits', to: '/budget/statutory-limits' },
+
+      /*
+       * The Local Budget Accountability reports, and only the three the
+       * municipality will actually file.
+       *
+       * The manual defines six. Three of them - LBAc 3, 5 and 6 - want
+       * physical targets and outputs, which are the Planning Office's to
+       * state and which CBO holds none of. Building shells for them would
+       * put three mostly-empty forms in this menu and invite somebody to
+       * fill the financial half and submit it as though it were complete.
+       *
+       * They sit here rather than under Reports because they are budget
+       * accountability, prepared by the Budget Officer, the Treasurer and
+       * the Accountant against the budget - not statements drawn off the
+       * books, which is what the Reports menu holds.
+       */
+      { group: 'Reports', label: 'Quarterly Report of Receipts (LBAc 1)', to: '/budget/reports/receipts' },
+      {
+        group: 'Reports',
+        label: 'Quarterly Financial Report of Operations (LBAc 2)',
+        to: '/budget/reports/quarterly-financial',
+      },
+      {
+        group: 'Reports',
+        label: 'Receipts and Expenditures (SRE)',
+        to: '/budget/reports/sre',
+      },
     ],
   },
   {
@@ -238,12 +279,9 @@ export const NAVIGATION: NavItem[] = [
       // budget beside the General Ledger, which is the only way a disagreement
       // between the two can show at all.
       { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
-      // The one report that covers all three funds at once, because that is
-      // what is submitted to BLGF.
-      { label: 'Receipts and Expenditures (SRE)', to: '/reports/sre' },
-      // The Local Budget Officer's own quarterly submission to the Local
-      // Finance Committee, in the Budget Operations Manual's own columns.
-      { label: 'Quarterly Financial Report (LBAc 2)', to: '/reports/quarterly-financial' },
+      // The SRE and the two quarterly LBAc forms are NOT here. They are budget
+      // accountability reports, listed under Budget > Reports with the budget
+      // they account for. What is left in this menu is drawn off the books.
       { label: 'Trial Balance', to: '/reports/trial-balance' },
       { label: 'Financial Statements', to: '/reports/financial-statements' },
       { label: 'General Ledger', to: '/reports/general-ledger' },

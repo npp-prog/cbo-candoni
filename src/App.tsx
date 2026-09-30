@@ -79,6 +79,7 @@ const Aging = lazy(() => import('./pages/reports/Aging'));
 const BudgetVsActual = lazy(() => import('./pages/reports/BudgetVsActual'));
 const Sre = lazy(() => import('./pages/reports/Sre'));
 const QuarterlyFinancialReport = lazy(() => import('./pages/reports/QuarterlyFinancialReport'));
+const QuarterlyReceipts = lazy(() => import('./pages/reports/QuarterlyReceipts'));
 const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
@@ -277,10 +278,27 @@ export default function App() {
             path="/reports/budget-vs-actual"
             element={<Guard module="reports"><BudgetVsActual /></Guard>}
           />
-          <Route path="/reports/sre" element={<Guard module="reports"><Sre /></Guard>} />
+          {/* The Local Budget Accountability reports. They live under Budget
+              because they account for the budget; the Reports menu holds the
+              statements drawn off the books. Only the three the municipality
+              files are built - LBAc 3, 5 and 6 want physical targets CBO does
+              not hold, and a shell of one would invite a half-filled
+              submission. */}
+          <Route
+            path="/budget/reports/receipts"
+            element={<Guard module="budget"><QuarterlyReceipts /></Guard>}
+          />
+          <Route
+            path="/budget/reports/quarterly-financial"
+            element={<Guard module="budget"><QuarterlyFinancialReport /></Guard>}
+          />
+          <Route path="/budget/reports/sre" element={<Guard module="budget"><Sre /></Guard>} />
+          {/* They used to sit under Reports. Anything already linking there -
+              a bookmark, an older runbook - still arrives. */}
+          <Route path="/reports/sre" element={<Navigate to="/budget/reports/sre" replace />} />
           <Route
             path="/reports/quarterly-financial"
-            element={<Guard module="reports"><QuarterlyFinancialReport /></Guard>}
+            element={<Navigate to="/budget/reports/quarterly-financial" replace />}
           />
           <Route
             path="/accounting/opening-balances"
