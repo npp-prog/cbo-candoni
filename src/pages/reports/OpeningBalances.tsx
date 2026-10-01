@@ -19,7 +19,7 @@ import type { Centavos } from '@/types/common';
 /**
  * Opening balances.
  *
- * A municipality converting to CBO does not start at zero, so the balances
+ * A municipality converting to CFMS does not start at zero, so the balances
  * carried over have to get in. They get in as a **journal entry**, posted like
  * any other, and never as figures typed onto a statement.
  *
@@ -326,7 +326,7 @@ export default function OpeningBalances() {
                 <TextInput
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
-                  placeholder={`Opening balances of the ${fundCode} fund on conversion to CBO`}
+                  placeholder={`Opening balances of the ${fundCode} fund on conversion to CFMS`}
                 />
               </Field>
             </div>

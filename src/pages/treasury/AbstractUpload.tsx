@@ -23,8 +23,8 @@ import { parseAbstractFile, revenueCodesUsed, type AbstractReceipt } from './par
  * account, so a receipt for two things appears twice; 823 rows are 694
  * receipts, and the count is shown so the office can see that.
  *
- * It asks which CBO fund each of the file's fund labels means. The file says
- * "GF Proper" and "TF"; CBO has fund codes. Guessing at that mapping is how a
+ * It asks which CFMS fund each of the file's fund labels means. The file says
+ * "GF Proper" and "TF"; CFMS has fund codes. Guessing at that mapping is how a
  * month of trust-fund collections quietly lands in the General Fund, so the
  * screen asks instead - two dropdowns, once.
  *
@@ -202,7 +202,7 @@ export default function AbstractUpload() {
             {fileFunds.length > 0 && (
               <Card title="Which fund is which">
                 <p className="mb-3 text-sm text-slate-600">
-                  The file names its own funds. Say which CBO fund each one is - a month of trust
+                  The file names its own funds. Say which CFMS fund each one is - a month of trust
                   fund collections landing in the General Fund is not something the books would
                   flag afterwards.
                 </p>

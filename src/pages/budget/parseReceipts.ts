@@ -6,7 +6,7 @@ import { INCOME_CLASSES, type IncomeClass } from '@/lib/estimatedReceipts';
  * Reading the receipts side of LBP Form No. 1.
  *
  * The Treasurer already keeps this as a spreadsheet - it is the schedule the
- * Local Finance Committee signs - so CBO reads that rather than asking for a
+ * Local Finance Committee signs - so CFMS reads that rather than asking for a
  * hundred lines to be typed a second time.
  *
  * ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ import { INCOME_CLASSES, type IncomeClass } from '@/lib/estimatedReceipts';
  * Where only an annual figure is given it goes ENTIRELY IN THE FOURTH QUARTER
  * rather than being divided by four. Dividing would produce four figures
  * nobody estimated and a Quarterly Report of Receipts showing a tidy shortfall
- * against each of the first three - a variance invented by CBO, reported to
+ * against each of the first three - a variance invented by CFMS, reported to
  * the Local Finance Committee as though the Treasurer had projected it. The
  * screen says plainly that the split is missing and lets the office enter it.
  */
@@ -70,7 +70,7 @@ const COLUMNS = {
 };
 
 /**
- * How an office writes the three classes, mapped to CBO's codes.
+ * How an office writes the three classes, mapped to CFMS's codes.
  *
  * "Non-Income Receipts" and "Non-Regular Income" both begin with "non", and a
  * loose match on that word would put loan proceeds in with grants. Both are
@@ -132,7 +132,7 @@ export async function parseReceiptsFile(file: File): Promise<ParsedReceiptRow[]>
     }
     if (quarterly !== 0 && annual !== 0 && quarterly !== annual) {
       // The file states both, and they disagree. Neither is obviously right,
-      // so CBO refuses rather than choosing - a silently preferred column here
+      // so CFMS refuses rather than choosing - a silently preferred column here
       // is a wrong total on a signed form.
       problems.push(
         `the quarters come to ${(quarterly / 100).toFixed(2)} and the year column says ` +

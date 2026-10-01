@@ -119,7 +119,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
 
       const sector = findSector(row.sector);
       if (!row.sector) problems.push('no sector');
-      else if (!sector) problems.push(`sector "${row.sector}" is not one CBO knows`);
+      else if (!sector) problems.push(`sector "${row.sector}" is not one CFMS knows`);
       else if (sector.fundingSource) {
         const service = findSector(row.serviceSector);
         if (!row.serviceSector) {

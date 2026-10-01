@@ -20,7 +20,7 @@ import type { Centavos } from '@/types/common';
  * ---------------------------------------------------------------------------
  * THE SHARING, AND WHY IT IS NOT SETTINGS
  * ---------------------------------------------------------------------------
- * Every other split in CBO that could not be derived was offered to the office
+ * Every other split in CFMS that could not be derived was offered to the office
  * to nominate. This one is not, because it is not the municipality's to
  * choose. Both rates are in the GAM:
  *
@@ -33,7 +33,7 @@ import type { Centavos } from '@/types/common';
  *       boards" - so 50% and 50%, and no barangay share at all.
  *
  * Candoni is a municipality in a province, which is the case both rules are
- * written for. A city would share differently and CBO would be wrong for one;
+ * written for. A city would share differently and CFMS would be wrong for one;
  * the screen says which case it is applying.
  *
  * The discount follows the tax. Section 43: discounts "shall be apportioned to
@@ -43,14 +43,14 @@ import type { Centavos } from '@/types/common';
  * computed on the gross and reduced by its own part of the discount.
  *
  * ---------------------------------------------------------------------------
- * WHAT CBO CANNOT DO HERE, STATED RATHER THAN GUESSED
+ * WHAT CFMS CANNOT DO HERE, STATED RATHER THAN GUESSED
  * ---------------------------------------------------------------------------
  * Two things, both of them limits of what is recorded rather than of the
  * arithmetic:
  *
  *   THE BARANGAY SHARE CANNOT BE BROKEN DOWN BY BARANGAY. Section 271 of the
  *   Local Government Code gives the 25% to the barangay where the property is
- *   located, and a collection in CBO records the payor and the receipt but not
+ *   located, and a collection in CFMS records the payor and the receipt but not
  *   the property, so there is nothing to group by. The total is right; the
  *   split between barangays has to come from the Treasurer's own register.
  *

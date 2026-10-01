@@ -42,7 +42,7 @@ import { fundLabel } from './Obligations';
  * THE GAP THIS FILLS
  * ---------------------------------------------------------------------------
  * An appropriation ordinance authorises EXPENDITURE. It does not enact the
- * receipts that pay for it. So CBO, which loads the ordinance, had a budget
+ * receipts that pay for it. So CFMS, which loads the ordinance, had a budget
  * figure for every peso going out and none at all for any peso coming in - and
  * both the Statement of Receipts and Expenditures and the Statement of
  * Comparison of Budget and Actual Amounts have a budget column for receipts
@@ -198,7 +198,7 @@ export default function EstimatedReceipts() {
     try {
       const parsed = await parseReceiptsFile(file);
       if (parsed.length === 0) {
-        toast.error('Nothing was read', 'That file has no rows CBO could recognise as receipts.');
+        toast.error('Nothing was read', 'That file has no rows CFMS could recognise as receipts.');
         return;
       }
       setRows(
@@ -412,10 +412,10 @@ export default function EstimatedReceipts() {
             <div className="border-b border-slate-200 p-4">
               <Alert tone="warning" title="The file gave a year total and no quarterly split">
                 {annualOnlyCount} line{annualOnlyCount === 1 ? '' : 's'} arrived with the whole
-                year in one figure, and CBO has put it in the fourth quarter rather than dividing
+                year in one figure, and CFMS has put it in the fourth quarter rather than dividing
                 it by four. Quartering it would invent three figures nobody estimated, and the
                 Quarterly Report of Receipts would then show the Local Finance Committee a
-                shortfall CBO made up. Enter the split below where you have it.
+                shortfall CFMS made up. Enter the split below where you have it.
               </Alert>
             </div>
           )}

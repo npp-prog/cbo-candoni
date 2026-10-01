@@ -1,6 +1,6 @@
 # Security and internal control
 
-Municipal Government of Candoni — CBO
+Municipal Government of Candoni — CFMS
 
 This document describes what protects the municipality's financial records, and — as importantly —
 what does not.
@@ -195,7 +195,7 @@ is worth waking someone for.
 
 Similarly, `trialBalance()` throws if the ledger fails to foot, with a message that says plainly
 what it means: ledger entries can only be written by the posting function, so a difference
-indicates data was altered outside CBO. That is a security incident, not a rounding problem, and
+indicates data was altered outside CFMS. That is a security incident, not a rounding problem, and
 the message says so rather than offering to adjust.
 
 ---
@@ -214,7 +214,7 @@ Stated plainly, because a security document that claims completeness is not usef
   few people as the municipality can manage.
 - **Collusion between an encoder and an approver.** Segregation of duties raises the number of
   people who must agree; it cannot reduce it below two.
-- **Bad data entered in good faith.** CBO checks arithmetic, controls and consistency. It cannot
+- **Bad data entered in good faith.** CFMS checks arithmetic, controls and consistency. It cannot
   know that an invoice is fictitious.
 - **Shared passwords.** The audit trail records the account, not the person at the keyboard.
 

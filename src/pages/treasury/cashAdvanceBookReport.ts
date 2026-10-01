@@ -55,7 +55,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * Instruction 10: "The difference of the totals of Debit and Credit columns
  * should tie-up with the running balance column."
  *
- * CBO can go further than that, because each cash advance already carries an
+ * CFMS can go further than that, because each cash advance already carries an
  * `outstandingBalance` maintained inside the transaction that posts a
  * liquidation. The book's closing balance and the sum of those figures are
  * arrived at by different means and must agree.

@@ -1,6 +1,6 @@
 # Architecture
 
-Municipal Government of Candoni — CBO
+Municipal Government of Candoni — CFMS
 
 Why the system is shaped the way it is. The deployment mechanics are in
 [`deployment.md`](deployment.md); the authorisation model is in [`security.md`](security.md).
@@ -164,10 +164,10 @@ needed at year end, that belongs in a Cloud Function.
 
 ## Designed for the MGO Portal
 
-CBO is one application in a planned municipal ecosystem — `pms`, `ims`, `abo`, eventually
+CFMS is one application in a planned municipal ecosystem — `pms`, `ims`, `abo`, eventually
 `portal.mgocandoni.com`. Three decisions keep that path open:
 
-**Identity is already shared.** Roles live in Firebase Auth custom claims, not in CBO's database.
+**Identity is already shared.** Roles live in Firebase Auth custom claims, not in CFMS's database.
 Another application in the same Firebase project reads the same claims. A portal issuing a single
 session across applications needs no change here.
 

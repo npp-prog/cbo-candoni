@@ -12,7 +12,7 @@ import { parsePeso } from '@/lib/money';
  * Two things about that list are worth stating plainly.
  *
  * The DV number is what the whole upload turns on. It is the only column that
- * names something CBO already knows about, and everything else in the row -
+ * names something CFMS already knows about, and everything else in the row -
  * the payee, the amount, the nature of payment - is checked against the voucher
  * it points to rather than believed. A row without one cannot be placed at all.
  *
@@ -36,7 +36,7 @@ export interface ParsedRow {
   amount: number;
   /**
    * Why this row cannot be sent at all. A row with no amount or no readable
-   * date is not a payment CBO could hold for later - there is nothing in it to
+   * date is not a payment CFMS could hold for later - there is nothing in it to
    * hold. These have to be fixed in the file.
    */
   problem?: string;
@@ -72,7 +72,7 @@ const COLUMNS = {
  * Reads a file into rows, and says of each whether it can be sent.
  *
  * Nothing is rejected here beyond what makes a row unsendable - a row naming a
- * voucher CBO has never heard of still goes up, because only the server can
+ * voucher CFMS has never heard of still goes up, because only the server can
  * know that, and the answer to it is to hold the row rather than to refuse the
  * file. What this catches is the narrower case of a row the server could not
  * even read: no amount, no date, and for an RCI no check number.

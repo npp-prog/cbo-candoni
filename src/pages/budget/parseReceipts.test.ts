@@ -45,7 +45,7 @@ describe('parseReceiptsFile', () => {
   /**
    * The decision this parser exists to get right. An office that holds only
    * the budget-year column must not have it quartered for them: four figures
-   * nobody estimated would produce a variance on LBAc Form No. 1 that CBO
+   * nobody estimated would produce a variance on LBAc Form No. 1 that CFMS
    * invented and the Treasurer signs.
    */
   it('puts an annual-only figure in one quarter rather than dividing it by four', async () => {

@@ -11,7 +11,7 @@
  * WHAT THIS IS FOR
  * ---------------------------------------------------------------------------
  * The municipality's chart arrives as what COA publishes: a code and a title,
- * and nothing else. CBO needs eight more fields per account - what class it
+ * and nothing else. CFMS needs eight more fields per account - what class it
  * is, which way it normally moves, where it lands on the statements, whether
  * it may be posted to at all.
  *
@@ -138,7 +138,7 @@ export function normalBalanceFor(code: string, name: string): NormalBalance | nu
  * Investment Property, Property Plant and Equipment, Biological Assets or
  * Intangible Assets.
  *
- * CBO offered only expense accounts as the object of an obligation, which
+ * CFMS offered only expense accounts as the object of an obligation, which
  * meant a Capital Outlay obligation could not be encoded at all.
  */
 export const CAPITAL_OUTLAY_GROUPS = ['106', '107', '108', '109'];
@@ -190,7 +190,7 @@ export function expenseClassFor(code: string, name: string): ExpenseClass | null
  * The 3-05 series: Fund Balance, Appropriations, Allotments, Obligations and
  * the reversions.
  *
- * These belong to the budget registries, not to the General Ledger. CBO keeps
+ * These belong to the budget registries, not to the General Ledger. CFMS keeps
  * the registry itself - appropriation, allotment and obligation are maintained
  * transactionally in `budgetBalances`, with the controls that go with them -
  * so posting an appropriation to an equity account here would give the
@@ -263,7 +263,7 @@ export function cashFlowClassFor(code: string, name: string): CashFlowClass {
 // ---------------------------------------------------------------------------
 
 /**
- * The accounts CBO posts through a subsidiary ledger.
+ * The accounts CFMS posts through a subsidiary ledger.
  *
  * Deliberately a short, explicit list rather than a pattern. Which accounts
  * need a subsidiary is an office's own decision about how it wants to be able
@@ -271,7 +271,7 @@ export function cashFlowClassFor(code: string, name: string): CashFlowClass {
  * line into a search for a party the account already names - "Due to BIR"
  * does not need a subsidiary saying BIR.
  *
- * These three are the ones CBO itself relies on: the payables it ages, the
+ * These three are the ones CFMS itself relies on: the payables it ages, the
  * receivables it ages, and the cash advances it chases by accountable officer.
  * Everything else arrives with no subsidiary required, and the Chart of
  * Accounts screen is where the office turns others on.
@@ -408,7 +408,7 @@ export function checkChart(rows: ChartRowInput[]): CheckResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Every account CBO writes into a journal entry by a hardcoded code.
+ * Every account CFMS writes into a journal entry by a hardcoded code.
  *
  * These exist because a hardcoded account code with a hardcoded title beside
  * it is a claim about the Chart of Accounts, and nothing was checking it. Four
@@ -489,7 +489,7 @@ export const NAMED_ACCOUNTS: readonly NamedAccount[] = [
 
 /**
  * Every account named above must exist in the loaded chart under exactly that
- * title. A mismatch means CBO is posting to an account that is not the one the
+ * title. A mismatch means CFMS is posting to an account that is not the one the
  * code believes it is - which is not caught by anything else, because the
  * posting is perfectly valid and balances perfectly against the wrong account.
  */
@@ -505,7 +505,7 @@ export function checkNamedAccounts(
       violations.push({
         code: 'NAMED_ACCOUNT_MISSING',
         message:
-          `CBO posts to account ${account.code} (${account.name}) by code, and it is not in the ` +
+          `CFMS posts to account ${account.code} (${account.name}) by code, and it is not in the ` +
           'Chart of Accounts.',
         details: { code: account.code, expected: account.name },
       });
@@ -513,7 +513,7 @@ export function checkNamedAccounts(
       violations.push({
         code: 'NAMED_ACCOUNT_RENAMED',
         message:
-          `CBO posts to account ${account.code} as \u201c${account.name}\u201d, but the Chart of ` +
+          `CFMS posts to account ${account.code} as \u201c${account.name}\u201d, but the Chart of ` +
           `Accounts calls it \u201c${found}\u201d. One of the two is wrong, and the postings have ` +
           'been going to whichever account carries that code.',
         details: { code: account.code, expected: account.name, found },

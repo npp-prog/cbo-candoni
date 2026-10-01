@@ -251,7 +251,7 @@ describe('the revenue half', () => {
   });
 
   /**
-   * CBO holds one estimate per income account and no record of which ordinance
+   * CFMS holds one estimate per income account and no record of which ordinance
    * set it, so it cannot separate an annual budget from a supplemental. The
    * two columns carry the same figure and the flag lets the screen say so.
    */

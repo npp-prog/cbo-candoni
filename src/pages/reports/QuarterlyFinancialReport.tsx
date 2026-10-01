@@ -29,13 +29,13 @@ import { fundLabel } from '../budget/Obligations';
  * quarter reported.
  *
  * ---------------------------------------------------------------------------
- * THE COLUMNS ARE THE MANUAL'S, NOT CBO'S
+ * THE COLUMNS ARE THE MANUAL'S, NOT CFMS'S
  * ---------------------------------------------------------------------------
  * Appropriation continuing and current; allotment released in previous
  * periods, this period, total; balance of appropriation; obligations in
  * previous periods, this period, total; unobligated allotment. In that order,
  * with the manual's own column numbers in the heading, because the officer
- * filling in the submission reads down the form and across CBO's screen at
+ * filling in the submission reads down the form and across CFMS's screen at
  * the same time.
  *
  * The quarter is the SUBMISSION deadline, not the only period anybody asks

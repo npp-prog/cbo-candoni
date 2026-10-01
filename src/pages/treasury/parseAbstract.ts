@@ -17,7 +17,7 @@ import { parsePeso } from '@/lib/money';
  *   7707727  ELSIE TOPES  40601010D/S Miscellaneous Income - D/S    30.00
  *
  * That is one official receipt for 80.00 with two lines, and it has to reach
- * CBO as one. Treating each row as a receipt would put 694 receipts in the
+ * CFMS as one. Treating each row as a receipt would put 694 receipts in the
  * books as 823, and the cash would still foot, which is what would make it hard
  * to find later.
  *
@@ -67,7 +67,7 @@ const COLUMNS = {
 /**
  * A receipt is cancelled when the abstract says so.
  *
- * It still reaches CBO, at zero. The accountable-form series has to be
+ * It still reaches CFMS, at zero. The accountable-form series has to be
  * continuous for COA, and a cancelled receipt that was simply left out leaves a
  * gap in the serial numbers with nothing to explain it - which is exactly the
  * shape that an unrecorded collection also leaves.

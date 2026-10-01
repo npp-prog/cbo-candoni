@@ -84,7 +84,7 @@ describe('the restated balance', () => {
   /**
    * A change of accounting policy is restated through the accounts it affects
    * and no account holds it, so the line prints at nil. Annex 7 prints the
-   * line, so CBO prints it, and the flag lets the screen say why.
+   * line, so CFMS prints it, and the flag lets the screen say why.
    */
   it('reports that a change of accounting policy is not tracked', () => {
     const s = build();

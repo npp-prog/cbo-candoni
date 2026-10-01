@@ -7,7 +7,7 @@
  * all pass.
  *
  * The aqua slot sits just under 3:1 against white, which means colour alone
- * must never be the only way to read a series. Every chart in CBO therefore
+ * must never be the only way to read a series. Every chart in CFMS therefore
  * carries a legend with text labels and a tooltip that names the series, and
  * the figures behind each chart also appear as numbers on the dashboard cards
  * and in the underlying registers. That is the required relief, and it is

@@ -113,7 +113,7 @@ export interface CondensedPosition {
   /** Surplus for the period, passed in - it is not an account balance. */
   unmapped: UnmappedBalance[];
   /**
-   * The 3-05 registry accounts, which carry nothing because CBO does not post
+   * The 3-05 registry accounts, which carry nothing because CFMS does not post
    * to them. Reported so the blank Fund Balance block can say why.
    */
   fundBalanceAccounts: CondensedAccount[];

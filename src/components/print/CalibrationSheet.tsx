@@ -226,7 +226,7 @@ export function AlignmentGuide({ sheet }: { sheet: SheetSize }) {
  *
  * So each printing screen emits its own `@page` while it is mounted. It comes
  * later in the cascade than index.css, so it wins, and it disappears with the
- * screen rather than changing how the rest of CBO prints.
+ * screen rather than changing how the rest of CFMS prints.
  *
  * The zero margin is deliberate and is the point: the sheet is positioned by
  * the measurements in the calibration, from the physical edge of the paper. A

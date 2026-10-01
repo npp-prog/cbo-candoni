@@ -8,7 +8,7 @@ import type { Centavos } from '@/types/common';
  * The specification asks that data entered once flows into succeeding
  * documents rather than being re-keyed, and this is where most of that value
  * sits: an encoder who has chosen an OBR and typed a gross amount should not
- * also have to build the journal entry by hand. CBO proposes it and lets them
+ * also have to build the journal entry by hand. CFMS proposes it and lets them
  * adjust.
  *
  * The shape is the standard LGU disbursement:
@@ -75,7 +75,7 @@ export function proposeDvEntry(input: {
   obligationLines: ObligationLineLite[];
   /**
    * Override the credit account. Left unset - which is the normal case and what
-   * every screen in CBO does - the net is credited to Accounts Payable. This
+   * every screen in CFMS does - the net is credited to Accounts Payable. This
    * exists only for the rare voucher whose liability account is not the general
    * payable, and it must never be pointed at a cash account: cash is credited
    * by the check or ADA, not by the voucher.

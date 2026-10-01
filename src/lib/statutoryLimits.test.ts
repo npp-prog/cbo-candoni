@@ -112,7 +112,7 @@ describe('checkQrf', () => {
   /**
    * Nothing nominated is not the same as nothing appropriated. Calling it a
    * condition would report a finding against an ordinance that may be
-   * perfectly compliant and simply unmarked in CBO.
+   * perfectly compliant and simply unmarked in CFMS.
    */
   it('says it cannot tell when no line has been nominated', () => {
     const r = checkQrf(totals({ quickResponseFund: 0 }));

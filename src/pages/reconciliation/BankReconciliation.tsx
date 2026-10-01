@@ -40,8 +40,8 @@ import { fundLabel } from '../budget/Obligations';
  *     hand-entered book balance reconciles the bank to a number somebody chose.
  *
  *  2. Deposits in transit and outstanding checks are derived from the open
- *     documents, not entered as adjustments. They are the deposits CBO recorded
- *     that the bank has not credited, and the checks CBO issued that the bank
+ *     documents, not entered as adjustments. They are the deposits CFMS recorded
+ *     that the bank has not credited, and the checks CFMS issued that the bank
  *     has not paid.
  *
  *  3. The difference must be exactly zero to finalise. Not "within tolerance".
@@ -355,7 +355,7 @@ export default function BankReconciliation() {
                     {suggested.length > 0 &&
                       `${suggested.length} proposed match${suggested.length === 1 ? '' : 'es'} awaiting your confirmation. `}
                     {unmatched.length > 0 &&
-                      `${unmatched.length} statement line${unmatched.length === 1 ? '' : 's'} could not be matched - classify them as bank charges, interest or errors, or record the missing transaction in CBO.`}
+                      `${unmatched.length} statement line${unmatched.length === 1 ? '' : 's'} could not be matched - classify them as bank charges, interest or errors, or record the missing transaction in CFMS.`}
                   </Alert>
                 )}
 
@@ -825,7 +825,7 @@ function ImportDialog({
       ) : (
         <>
           <p className="mb-3 text-sm text-slate-600">
-            Confirm which column is which. CBO has guessed from the column names.
+            Confirm which column is which. CFMS has guessed from the column names.
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">

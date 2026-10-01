@@ -131,7 +131,7 @@ describe('the Statement of Financial Position', () => {
   });
 
   /**
-   * CBO does not post to the 3-05 registry accounts - the budgetary registry
+   * CFMS does not post to the 3-05 registry accounts - the budgetary registry
    * is kept in budgetBalances and never journalised - so the Fund Balance
    * block of Annex 5 cannot be filled from the ledger. They are set aside so
    * the blank block can say why rather than just being empty.

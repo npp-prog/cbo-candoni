@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /**
- * CBO base styles.
+ * CFMS base styles.
  *
  * The visual language is institutional rather than fashionable: a white
  * working surface, a dark navy rail, one blue accent, and typography that
@@ -122,7 +122,7 @@
 /**
  * Print styles.
  *
- * Every report in CBO is printed and filed. When it is, the chrome must
+ * Every report in CFMS is printed and filed. When it is, the chrome must
  * disappear and the official header must survive onto every page - a report
  * whose heading appears only on page one is not acceptable to COA.
  */

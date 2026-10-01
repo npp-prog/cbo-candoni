@@ -10,11 +10,11 @@ import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period'
  * How this office actually works. The Treasurer's own system produces the
  * Report of Checks Issued and the Report of ADA Issued as files: one row per
  * payment, each naming the voucher it paid. Nobody is going to re-key those
- * rows into CBO - they already exist, correctly, somewhere else, and asking a
+ * rows into CFMS - they already exist, correctly, somewhere else, and asking a
  * clerk to type them again is asking for a second set of figures that disagrees
  * with the first.
  *
- * So the file is the input. CBO reads each row, finds the disbursement voucher
+ * So the file is the input. CFMS reads each row, finds the disbursement voucher
  * it names, and raises the check or the ADA against that voucher. What it will
  * not do is take the file's word for anything that matters: the amount posted
  * is the voucher's net, not the file's figure, and a row whose figure disagrees
@@ -25,7 +25,7 @@ import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period'
  * The rule that shapes the rest of this file
  * ---------------------------------------------------------------------------
  *
- * A row CBO cannot place is HELD, not rejected, and the rest of the file goes
+ * A row CFMS cannot place is HELD, not rejected, and the rest of the file goes
  * through.
  *
  * The temptation is to refuse the whole upload on the first unmatched row -
@@ -156,7 +156,7 @@ function cleanRows(raw: unknown): CleanRow[] {
 /**
  * importTreasuryPayments - reads one RCI or RADAI file into a draft report.
  *
- * Everything the file asserts is checked against CBO's own records inside the
+ * Everything the file asserts is checked against CFMS's own records inside the
  * transaction, never taken on trust. The browser parsed the columns; it did not
  * decide anything.
  */
@@ -565,7 +565,7 @@ export const importTreasuryPayments = onCall(
           recipientRole: 'MUNICIPAL_ACCOUNTANT',
           kind: 'IMPORT_ROWS_PENDING',
           title: `${pendingCount} row${pendingCount === 1 ? '' : 's'} of an uploaded ${importType} could not be placed`,
-          body: `${peso(pendingTotal)} of payments on the Treasurer's ${importType} name vouchers CBO could not match. The report cannot be certified until each is linked or set aside.`,
+          body: `${peso(pendingTotal)} of payments on the Treasurer's ${importType} name vouchers CFMS could not match. The report cannot be certified until each is linked or set aside.`,
           entityType: COL.treasuryImports,
           entityId: importRef.id,
           link: `/treasury/${importType === 'RCI' ? 'checks' : 'ada'}/uploads`,
@@ -616,7 +616,7 @@ function buildEntry(
  *
  * Two answers, and they are different in kind.
  *
- * LINK says the payment is real and CBO now knows which voucher it belongs to,
+ * LINK says the payment is real and CFMS now knows which voucher it belongs to,
  * usually because Accounting has since encoded it. The row is matched, the
  * payment raised and the line added to the report. Every test the upload
  * applied is applied again here, because the voucher named now is not the one

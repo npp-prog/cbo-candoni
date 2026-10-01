@@ -147,7 +147,7 @@ describe('expendituresByFund', () => {
     { fppCode: 'ROAD', sector: '20% Development Fund', serviceSector: 'Economic Services' },
     { fppCode: 'SALARIES', sector: 'General Public Services' },
     { fppCode: 'HEALTH', sector: 'Health, Nutrition and Population Control' },
-    // A funding source with no service named: CBO cannot place it.
+    // A funding source with no service named: CFMS cannot place it.
     { fppCode: 'UNPLACED', sector: 'LDRRMF' },
   ];
 
@@ -173,7 +173,7 @@ describe('expendituresByFund', () => {
   });
 
   /**
-   * An expense CBO cannot classify still foots into the total, on a line of
+   * An expense CFMS cannot classify still foots into the total, on a line of
    * its own. Pushing it into General Services would make the statement foot
    * correctly and say something untrue; dropping it would make the statement
    * foot to less than the municipality spent.

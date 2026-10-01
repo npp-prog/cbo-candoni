@@ -18,7 +18,7 @@
  * received for a stated purpose from a source that keeps the right to ask for
  * it back. There is nothing to appropriate and nothing to allot.
  *
- * CBO nevertheless checked every fund against `allotmentReleased`, the Trust
+ * CFMS nevertheless checked every fund against `allotmentReleased`, the Trust
  * Fund included. That meant a Funding Utilization Request could not be
  * certified at all unless somebody first invented an appropriation and an
  * Allotment Release Order for trust money - and had they done so, the invented
@@ -97,7 +97,7 @@ export interface TrustProgramFigures {
    *
    * STATED, and kept now that `receivedPosted` works the same figure out of
    * the receipts - kept deliberately rather than replaced. A programme usually
-   * exists in CBO before its collections do: the MOA is recorded, then the
+   * exists in CFMS before its collections do: the MOA is recorded, then the
    * money arrives. The stated figure is what the Accountant has been told is
    * coming; the two are compared and the difference shown, and neither
    * overwrites the other.
@@ -134,7 +134,7 @@ export interface TrustProgramFigures {
    * everything the Accountant says has come in.
    *
    * Not an error on its own. A positive figure is money stated as remitted
-   * that no receipt in CBO carries - right while a tranche is still expected,
+   * that no receipt in CFMS carries - right while a tranche is still expected,
    * wrong once it has been banked. A negative one is receipts exceeding what
    * was stated, which usually means the stated figure was never updated after
    * the last tranche arrived.

@@ -18,7 +18,7 @@ import type { Centavos } from '@/types/common';
 /**
  * Chart wrappers.
  *
- * Every chart in CBO plots pesos on a single axis. There is deliberately no
+ * Every chart in CFMS plots pesos on a single axis. There is deliberately no
  * dual-axis option: putting obligations and a utilisation percentage on two
  * y-scales in one frame makes the crossing point look meaningful when it is an
  * artefact of the scales chosen. Where two measures of different kinds need

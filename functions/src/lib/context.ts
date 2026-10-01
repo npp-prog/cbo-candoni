@@ -54,7 +54,7 @@ export async function requireCaller(
   allowedRoles?: Role[],
 ): Promise<Caller> {
   if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Sign in to CBO to perform this operation.');
+    throw new HttpsError('unauthenticated', 'Sign in to CFMS to perform this operation.');
   }
 
   const token = request.auth.token as Record<string, unknown>;
@@ -63,7 +63,7 @@ export async function requireCaller(
   if (token.active === false) {
     throw new HttpsError(
       'permission-denied',
-      'This CBO account has been deactivated. Contact the system administrator.',
+      'This CFMS account has been deactivated. Contact the system administrator.',
     );
   }
 
@@ -169,7 +169,7 @@ export function conflict(message: string, details?: unknown): HttpsError {
  *
  * A callable that throws anything other than an HttpsError reaches the browser
  * as the single word "internal". That is the correct default for a public API -
- * it leaks nothing - but CBO is not a public API. Every caller here is an
+ * it leaks nothing - but CFMS is not a public API. Every caller here is an
  * authenticated municipal officer, and "internal" tells them nothing except
  * that something broke, which costs a round trip to the Cloud Functions log
  * before anybody can even begin.

@@ -13,7 +13,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * word for word identical apart from the title. So this is one computation,
  * and the class is a parameter.
  *
- * They are NOT four views of the summary registry CBO already had. That screen
+ * They are NOT four views of the summary registry CFMS already had. That screen
  * answers "where does this budget line stand"; this one is the book itself:
  * every allotment and every obligation as a dated line, in the order they
  * happened, footed at the end of the month. An auditor reads the second, and
@@ -54,7 +54,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * incurred as supported by a CAFOA".
  *
  * The CAFOA - the Certification on Appropriations, Funds and Obligation of
- * Allotment, Appendix 28 - is suspended, and CBO does not produce one. The
+ * Allotment, Appendix 28 - is suspended, and CFMS does not produce one. The
  * document that carries the obligation here is the Obligation Request, and its
  * number is what goes in the reference column.
  *

@@ -14,12 +14,12 @@ import {
 /**
  * Opening balances.
  *
- * A municipality does not start its books at zero. When CBO takes over from
+ * A municipality does not start its books at zero. When CFMS takes over from
  * whatever came before, every account carries a balance, and those balances
  * have to get into the General Ledger somehow.
  *
  * The tempting way is to let someone type the figures onto the trial balance.
- * CBO does not do that, and this file is where the alternative lives. Opening
+ * CFMS does not do that, and this file is where the alternative lives. Opening
  * balances enter as an ordinary **journal entry**, posted like any other, and
  * every figure on every later report is computed from the ledger as usual. The
  * reasons are worth stating plainly, because the shortcut looks harmless:
@@ -259,7 +259,7 @@ export const postOpeningBalances = onCall(
         referenceNo: `Opening ${fundCode} ${fiscalYear}`,
         particulars:
           remarks?.trim() ||
-          `Opening balances of the ${fundCode} fund as at ${asOfDate}, on conversion to CBO.`,
+          `Opening balances of the ${fundCode} fund as at ${asOfDate}, on conversion to CFMS.`,
         lines,
         totalDebit,
         totalCredit,

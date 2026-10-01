@@ -4,18 +4,18 @@ import type { ActorStamp, Centavos, Id, IsoDate, IsoTimestamp } from './common';
  * Cash in Bank: the running book for one bank account.
  *
  * ---------------------------------------------------------------------------
- * WHAT THIS IS FOR, GIVEN CBO ALREADY HAS A CASH POSITION SCREEN
+ * WHAT THIS IS FOR, GIVEN CFMS ALREADY HAS A CASH POSITION SCREEN
  * ---------------------------------------------------------------------------
  * The Cash Position screen answers "where does the municipality stand today",
  * across every account, from the General Ledger. This answers a different
  * question: "what has moved through THIS account, in order, and does the
  * running balance match what the bank says".
  *
- * Most of what moves through the account CBO already knows: the checks it
+ * Most of what moves through the account CFMS already knows: the checks it
  * released, the ADA it submitted, the deposits it recorded. Those are read
  * here and never typed.
  *
- * What CBO does not know is the handful of things only the bank originates -
+ * What CFMS does not know is the handful of things only the bank originates -
  * interest credited, a service charge, the withholding on that interest, a
  * national tax allotment landing, a bank error and its correction. Those are
  * the entries this file exists to hold, and they are the only ones anybody
@@ -122,7 +122,7 @@ export interface BankLedgerRow {
   reference: string;
   deposit: Centavos;
   withdrawal: Centavos;
-  /** Rows CBO derives are read-only; only keyed entries can be voided. */
+  /** Rows CFMS derives are read-only; only keyed entries can be voided. */
   source: 'MANUAL' | 'DEPOSIT' | 'CHECK' | 'ADA';
   entryId?: Id;
 }

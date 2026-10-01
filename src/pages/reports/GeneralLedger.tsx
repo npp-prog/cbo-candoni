@@ -94,7 +94,7 @@ export default function GeneralLedger() {
       {!accountCode ? (
         <Alert tone="info">
           Choose an account to see its ledger. The ledger is the record of truth for every balance
-          in CBO - every financial statement figure traces back to entries shown here.
+          in CFMS - every financial statement figure traces back to entries shown here.
         </Alert>
       ) : ledger.loading ? (
         <Spinner label="Reading the General Ledger" />

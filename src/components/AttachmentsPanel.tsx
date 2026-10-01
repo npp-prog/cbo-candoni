@@ -80,7 +80,7 @@ export function AttachmentsPanel({
     if (!(ALLOWED_UPLOAD_MIME_TYPES as readonly string[]).includes(file.type)) {
       toast.error(
         'File type not accepted',
-        'CBO accepts PDF, JPG, PNG, XLSX and DOCX files. Convert the file and try again.',
+        'CFMS accepts PDF, JPG, PNG, XLSX and DOCX files. Convert the file and try again.',
       );
       return;
     }

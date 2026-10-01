@@ -1,5 +1,5 @@
 {
-  "//": "Composite indexes required by CBO queries. Firestore needs an explicit index for any query combining an equality filter with a range or an orderBy on a different field. Every index below corresponds to a query in src/data/*.ts; if a query is removed, remove its index too - unused indexes cost storage and slow writes.",
+  "//": "Composite indexes required by CFMS queries. Firestore needs an explicit index for any query combining an equality filter with a range or an orderBy on a different field. Every index below corresponds to a query in src/data/*.ts; if a query is removed, remove its index too - unused indexes cost storage and slow writes.",
   "indexes": [
     {
       "collectionGroup": "accounts",

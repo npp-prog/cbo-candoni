@@ -121,7 +121,7 @@ export default function Users() {
     <div>
       <PageHeader
         title="Users and Roles"
-        subtitle="Access to CBO is granted role by role. A new account can see nothing until a role is assigned."
+        subtitle="Access to CFMS is granted role by role. A new account can see nothing until a role is assigned."
         breadcrumbs={[{ label: 'Administration' }, { label: 'Users and Roles' }]}
         actions={
           <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
@@ -154,7 +154,7 @@ export default function Users() {
         searchPlaceholder="Name, email or role"
         emptyTitle="No users"
         emptyMessage="Add a user by the email address of their Firebase Authentication account, or wait for them to sign in once."
-        exportMeta={{ title: 'CBO User Access Report' }}
+        exportMeta={{ title: 'CFMS User Access Report' }}
       />
 
       {adding && (
@@ -165,7 +165,7 @@ export default function Users() {
             setAdding(false);
             toast.success(
               'Access granted',
-              `${email} can use CBO from their next sign-in. They appear in the list now.`,
+              `${email} can use CFMS from their next sign-in. They appear in the list now.`,
             );
           }}
         />
@@ -197,7 +197,7 @@ export default function Users() {
 /**
  * Granting access to somebody who has not signed in yet.
  *
- * The table can only offer a user it already knows about, and CBO learns about
+ * The table can only offer a user it already knows about, and CFMS learns about
  * a user when they first sign in. That is the wrong way round for an office:
  * the administrator wants to prepare an account before handing it over, and if
  * the sign-in hook ever stops provisioning profiles, the table stays empty and

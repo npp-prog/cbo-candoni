@@ -51,7 +51,7 @@ import {
  *
  * That happens when a voucher's FPP was changed after the obligation was
  * certified, or when a manual journal entry charged a line directly. Neither
- * is caught anywhere else in CBO, and neither shows on any statement that
+ * is caught anywhere else in CFMS, and neither shows on any statement that
  * takes its figures from one side only.
  *
  * ---------------------------------------------------------------------------

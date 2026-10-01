@@ -180,7 +180,7 @@ describe('the notes printed under the form', () => {
   });
 
   /**
-   * The second note is the one CBO used to enforce only half of, so it is
+   * The second note is the one CFMS used to enforce only half of, so it is
    * pinned verbatim: if the wording is ever softened here, the form would stop
    * telling the officer the rule the system now refuses on.
    */

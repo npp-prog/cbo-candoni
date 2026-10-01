@@ -19,7 +19,7 @@ import { bucketFor, type SreBucket } from './sectors';
  * WHICH ACCOUNT CODES BELONG ON EACH LINE is not statutory in the same way -
  * it depends on the municipality's own Chart of Accounts, and it is a
  * judgement the Accountant and the Treasurer make. So it is data, edited on
- * the screen, and CBO ships with none of it filled in.
+ * the screen, and CFMS ships with none of it filled in.
  *
  * That is deliberate and it is the whole reason this file has no default
  * mapping in it. A mapping invented here would produce a statement that foots
@@ -48,7 +48,7 @@ export interface SreLine {
  * "Internal Revenue Allotment" is the circular's own wording. It is the
  * National Tax Allotment since the Mandanas-Garcia ruling took effect, and the
  * label is left as the form has it because the form is what is submitted -
- * renaming it here would make CBO's statement differ from the one BLGF expects
+ * renaming it here would make CFMS's statement differ from the one BLGF expects
  * on the one line that carries the largest single figure.
  */
 export const SRE_RECEIPT_LINES: SreLine[] = [
@@ -322,7 +322,7 @@ export interface SectorOfFpp {
 export interface ExpenditureTotals {
   /** General Fund, by the four buckets of Annex A. */
   generalFund: Record<SreBucket, Centavos>;
-  /** General Fund expenditure CBO cannot place in a bucket. */
+  /** General Fund expenditure CFMS cannot place in a bucket. */
   generalFundUnclassified: Centavos;
   specialEducationFund: Centavos;
   trustFund: Centavos;
@@ -340,7 +340,7 @@ const EMPTY_BUCKETS = (): Record<SreBucket, Centavos> => ({
  * Expenditures by fund, and within the General Fund by the four buckets.
  *
  * The bucket comes from the SECTOR of the budget line the expense was charged
- * to, which is why the FPP had to reach the ledger. An expense CBO cannot
+ * to, which is why the FPP had to reach the ledger. An expense CFMS cannot
  * place - an FPP whose sector is a funding source with no service named, or
  * one with no budget line at all - is counted in `generalFundUnclassified`
  * rather than pushed into General Services. It still foots into the total, so
@@ -350,7 +350,7 @@ const EMPTY_BUCKETS = (): Record<SreBucket, Centavos> => ({
 /**
  * The Budget Year column of the expenditure section.
  *
- * Annex A asks for the budget beside the actual, and on the spending side CBO
+ * Annex A asks for the budget beside the actual, and on the spending side CFMS
  * has it: the appropriation ordinance is loaded, and every line carries the
  * sector that decides its bucket.
  *

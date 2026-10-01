@@ -97,7 +97,7 @@ describe('normalBalanceFor', () => {
 describe('Capital Outlay', () => {
   /**
    * The finding that made this patch necessary. The 5-series has no Capital
-   * Outlay account, so CBO - which offered only expense accounts as the object
+   * Outlay account, so CFMS - which offered only expense accounts as the object
    * of an obligation - could not encode a Capital Outlay obligation at all.
    */
   it('treats the capitalisable asset groups as Capital Outlay', () => {
@@ -167,7 +167,7 @@ describe('expenseClassFor', () => {
 
 describe('isBudgetaryAccount', () => {
   /**
-   * The 3-05 series belongs to the budget registries. CBO keeps the registry
+   * The 3-05 series belongs to the budget registries. CFMS keeps the registry
    * itself, so posting an appropriation to an equity account would give the
    * municipality two records of the same budget with nothing reconciling them.
    */
@@ -237,7 +237,7 @@ describe('cashFlowClassFor', () => {
 });
 
 describe('requiresSubsidiaryFor', () => {
-  it('sets the three CBO itself relies on', () => {
+  it('sets the three CFMS itself relies on', () => {
     expect(requiresSubsidiaryFor('20101010')).toBe(true); // Accounts Payable
     expect(requiresSubsidiaryFor('10301010')).toBe(true); // Accounts Receivable
     expect(requiresSubsidiaryFor('10305040')).toBe(true); // Advances to Officers and Employees
@@ -344,7 +344,7 @@ describe('checkChart', () => {
 
 describe('checkNamedAccounts', () => {
   /**
-   * The accounts CBO hardcodes, held against the chart Candoni actually loads.
+   * The accounts CFMS hardcodes, held against the chart Candoni actually loads.
    *
    * This is the test that would have caught four shipped defects: collections
    * posted to Petty Cash under the title of an account the LGU chart does not

@@ -3,9 +3,9 @@ import * as XLSX from 'xlsx';
 /**
  * Reading spreadsheets the municipality already produces.
  *
- * Every import in CBO reads a file that some other system wrote - the
+ * Every import in CFMS reads a file that some other system wrote - the
  * Treasurer's RCI, the collection abstract, the old ledger's opening balances.
- * None of those were designed with CBO in mind, and none of them will be
+ * None of those were designed with CFMS in mind, and none of them will be
  * changed to suit it.
  *
  * So the rule here is that the file is right and the reader adapts. Column

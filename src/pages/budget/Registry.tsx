@@ -35,7 +35,7 @@ import { fundLabel } from './Obligations';
  * The period the registry covers.
  *
  * "Whole year to date" is the registry as the running balances hold it, and it
- * is what every other screen in CBO shows. A quarter is computed from the
+ * is what every other screen in CFMS shows. A quarter is computed from the
  * allotments and obligations by their own dates, which is the only way to
  * answer "what was released and committed BETWEEN these dates" - a
  * year-to-date total cannot be split after the fact.
@@ -214,7 +214,7 @@ export default function Registry() {
             the registries would be submitting a form that does not exist.
           */}
           <p className="mb-2">
-            This is CBO&apos;s own summary across all four allotment classes. The registries the
+            This is CFMS&apos;s own summary across all four allotment classes. The registries the
             GAM prescribes — Appendices 19 to 22, one per class — are the other four tabs above,
             and those are the ones that are printed and filed.
           </p>

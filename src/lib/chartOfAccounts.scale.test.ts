@@ -52,7 +52,7 @@ describe('the municipality chart of accounts', () => {
   });
 
   /**
-   * The assertion that matters. An account CBO cannot classify is one the
+   * The assertion that matters. An account CFMS cannot classify is one the
    * loader would refuse, and finding that out during the first upload rather
    * than here would be finding it out in front of the Accountant.
    */
@@ -102,7 +102,7 @@ describe('the municipality chart of accounts', () => {
   /**
    * Sixty-nine assets a Capital Outlay appropriation can be charged to, and
    * not one expense account among them - which is the whole finding: before
-   * this, CBO offered only expense accounts and a Capital Outlay obligation
+   * this, CFMS offered only expense accounts and a Capital Outlay obligation
    * could not be encoded at all.
    */
   it('finds 69 things Capital Outlay can buy, all of them assets', () => {
@@ -129,7 +129,7 @@ describe('the municipality chart of accounts', () => {
     expect(notPostable.every((a) => a!.code.startsWith('305'))).toBe(true);
   });
 
-  it('requires a subsidiary on only the six CBO itself chases', () => {
+  it('requires a subsidiary on only the six CFMS itself chases', () => {
     const subsidiary = derived.filter((a) => a!.requiresSubsidiary).map((a) => a!.code);
     expect(subsidiary.sort()).toEqual([
       '10301010',

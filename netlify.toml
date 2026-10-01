@@ -1,4 +1,4 @@
-# Netlify configuration for CBO - Candoni Books Online
+# Netlify configuration for CFMS - Candoni Financial Management System
 # Production custom domain: cbo.mgocandoni.com
 #
 # The root domain mgocandoni.com stays on Squarespace and is NOT touched by this

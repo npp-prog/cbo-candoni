@@ -1,4 +1,4 @@
-# CBO deployment runbook
+# CFMS deployment runbook
 
 Municipal Government of Candoni — from an empty GitHub account to live books at
 `https://cbo.mgocandoni.com`.
@@ -47,7 +47,7 @@ produces failures that are hard to read.
 
 These cannot be deferred — they shape the data:
 
-1. **Which fiscal year does CBO start recording?** Mid-year start is normal but means opening
+1. **Which fiscal year does CFMS start recording?** Mid-year start is normal but means opening
    balances (phase 10).
 2. **Who is the first Super Administrator?** One named person. Not a shared account.
 3. **Which funds are in scope at go-live?** General Fund only is a sensible first step; SEF and
@@ -67,7 +67,7 @@ cd cbo-candoni
 
 git init
 git add .
-git commit -m "CBO — initial system"
+git commit -m "CFMS — initial system"
 git branch -M main
 git remote add origin https://github.com/<your-org>/cbo-candoni.git
 git push -u origin main
@@ -106,7 +106,7 @@ location cannot be changed afterwards without recreating the project.
 
 ### 2.3 Register the web app
 
-Project settings → **Your apps** → Web (`</>`) → nickname `CBO Web`. Do **not** tick Firebase
+Project settings → **Your apps** → Web (`</>`) → nickname `CFMS Web`. Do **not** tick Firebase
 Hosting — this project deploys to Netlify.
 
 Copy the config object. You need six values:
@@ -174,7 +174,7 @@ npm run dev                    # app at http://localhost:5173
 ```
 
 Create a test user: emulator UI → Authentication → **Add user**, any email and password. Sign in
-to CBO — you should see **"Awaiting access"** and nothing else. That is correct.
+to CFMS — you should see **"Awaiting access"** and nothing else. That is correct.
 
 Grant yourself the administrator role:
 
@@ -455,7 +455,7 @@ requests; the site works normally with enforcement on.
 
 > The one phase with no software shortcut. Read it before scheduling go-live.
 
-CBO has no bulk import for historical balances — deliberately, because importing a trial balance
+CFMS has no bulk import for historical balances — deliberately, because importing a trial balance
 from a spreadsheet without the underlying documents produces a ledger that cannot be traced, which
 is exactly what the system exists to prevent. Opening balances are entered as journal entries, by
 the Accountant, from the last audited figures.
@@ -510,14 +510,14 @@ by accident.
 
 ## Phase 11 — Parallel run and cutover
 
-Run CBO alongside the existing manual or spreadsheet process for **one full month**. Not two weeks
+Run CFMS alongside the existing manual or spreadsheet process for **one full month**. Not two weeks
 — a month, so a complete cycle including month-end close and bank reconciliation is exercised.
 
-**Week 1.** Treasury records all collections and deposits in CBO. Budget records obligations.
+**Week 1.** Treasury records all collections and deposits in CFMS. Budget records obligations.
 Accounting records vouchers. Manual records continue in parallel.
 
 **Week 2.** Compare daily: collections total, disbursements total, cash position. Investigate every
-difference — at this stage a difference is usually a missing entry in CBO, which is exactly what
+difference — at this stage a difference is usually a missing entry in CFMS, which is exactly what
 you want to find now.
 
 **Week 3.** Post all journal entries. Run the trial balance and compare against the manual books.
@@ -604,7 +604,7 @@ reversals.
 | `permission-denied` writing a draft | Rules deny the status transition attempted | Correct — that transition belongs to a Cloud Function |
 | Reconciliation will not finalise | Unjournalised book adjustment, or non-zero difference | Post the adjustment JEV; match remaining statement lines |
 | Peso sign garbled in Excel | Opened CSV without UTF-8 | Use the Excel export instead — it carries formatting and a real currency format |
-| Nightly job reports balance discrepancies | Data written outside CBO, or a bug | Treat as a security incident: see `docs/security.md` § Incident response |
+| Nightly job reports balance discrepancies | Data written outside CFMS, or a bug | Treat as a security incident: see `docs/security.md` § Incident response |
 
 ---
 

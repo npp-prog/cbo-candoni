@@ -31,7 +31,7 @@ import { fundLabel } from './Obligations';
  * That is a fact about one ordinance, settled once a year, and it is read off
  * a document. Asking the question again on every augmentation would put it in
  * front of the person least able to answer it and most likely to click past
- * it; asking it nowhere would have CBO assume an authority it has never seen.
+ * it; asking it nowhere would have CFMS assume an authority it has never seen.
  *
  * So it is recorded once for each fiscal year and fund, with the ordinance
  * number and the section that grants it, and `importBudgetLines` refuses an
@@ -40,7 +40,7 @@ import { fundLabel } from './Obligations';
  * ---------------------------------------------------------------------------
  * AND NOT BY THE BUDGET OFFICE
  * ---------------------------------------------------------------------------
- * The Budget Officer may write every other budget setting in CBO and is kept
+ * The Budget Officer may write every other budget setting in CFMS and is kept
  * off this one. They are the office that posts augmentations, and a gate the
  * person passing through can open for themselves is not a gate. Reading the
  * ordinance and recording what it says is the Accountant's kind of work.
@@ -130,7 +130,7 @@ export default function AugmentationAuthority() {
           not, the same movement has to go to the Sanggunian as a Realignment, by ordinance.
         </p>
         <p className="mt-2 text-sm text-navy-800">
-          CBO cannot read an ordinance and will not assume one. Until the authority is recorded
+          CFMS cannot read an ordinance and will not assume one. Until the authority is recorded
           here for a fiscal year and fund, an augmentation in that year does not post &mdash; the
           Budget Office is told why, and pointed at this page.
         </p>

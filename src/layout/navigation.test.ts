@@ -201,7 +201,7 @@ describe('the menu itself', () => {
    * Three Local Budget Accountability reports, and only three.
    *
    * The manual defines six. LBAc 3, 5 and 6 want physical targets and outputs,
-   * which belong to the Planning Office and which CBO holds none of. The
+   * which belong to the Planning Office and which CFMS holds none of. The
    * temptation with a numbered series is completeness - build all six, leave
    * the physical columns blank - and the result is three mostly-empty forms in
    * the menu that somebody eventually fills the financial half of and submits.
@@ -301,7 +301,7 @@ describe('the menu itself', () => {
    *
    * The GAM prescribes four registries whose titles share their first nine
    * words - "Registry of Appropriations, Allotments and Obligations - " - and
-   * CBO adds a summary. Five entries reading almost identically in the sidebar
+   * CFMS adds a summary. Five entries reading almost identically in the sidebar
    * is the arrangement Neil opened the wrong one of when allotment had two,
    * and the words that tell these four apart are at the END of the title,
    * where a narrow sidebar truncates them.

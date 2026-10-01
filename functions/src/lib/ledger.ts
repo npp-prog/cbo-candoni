@@ -8,7 +8,7 @@ import { auditInTransaction } from './audit';
 /**
  * The General Ledger.
  *
- * This module contains the only code in CBO that writes `ledgerEntries`.
+ * This module contains the only code in CFMS that writes `ledgerEntries`.
  * Security rules deny every client write to that collection, so the invariant
  * "a ledger entry exists if and only if a JEV was posted through
  * `postJevInTransaction`" holds by construction rather than by convention.
@@ -364,7 +364,7 @@ export async function trialBalance(input: {
   if (totalDebit !== totalCredit) {
     throw new HttpsError(
       'internal',
-      `The General Ledger does not foot for ${input.fundCode} ${input.fiscalYear} through period ${input.throughPeriod}: debits ${(totalDebit / 100).toFixed(2)} against credits ${(totalCredit / 100).toFixed(2)}. Ledger entries can only be written by the posting function, so this indicates data was altered outside CBO. Report this to the system administrator before relying on any report.`,
+      `The General Ledger does not foot for ${input.fundCode} ${input.fiscalYear} through period ${input.throughPeriod}: debits ${(totalDebit / 100).toFixed(2)} against credits ${(totalCredit / 100).toFixed(2)}. Ledger entries can only be written by the posting function, so this indicates data was altered outside CFMS. Report this to the system administrator before relying on any report.`,
     );
   }
 

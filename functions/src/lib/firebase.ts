@@ -4,7 +4,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getStorage } from 'firebase-admin/storage';
 
 /**
- * Admin SDK initialisation for the CBO accounting engine.
+ * Admin SDK initialisation for the CFMS accounting engine.
  *
  * Everything in this codebase runs with Admin credentials, which BYPASS
  * Firestore Security Rules entirely. That is the point - the rules deny clients
@@ -25,7 +25,7 @@ export { FieldValue, Timestamp };
 
 db.settings({ ignoreUndefinedProperties: true });
 
-/** The region all CBO functions are deployed to. Closest to Negros Occidental. */
+/** The region all CFMS functions are deployed to. Closest to Negros Occidental. */
 export const REGION = 'asia-southeast1';
 
 /**

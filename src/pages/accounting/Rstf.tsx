@@ -103,7 +103,7 @@ export default function Rstf() {
           </p>
           {/*
             Instruction 3, and the reason this screen does not behave like
-            every other register in CBO.
+            every other register in CFMS.
           */}
           <p className="mt-1">
             Instruction 3: <em>the ledger is not closed at the end of the year</em>. The lines
@@ -118,7 +118,7 @@ export default function Rstf() {
           */}
           <p className="mt-1">
             The Receipt column is the Accountant&apos;s statement of what the source has remitted,
-            not a worked figure: CBO does not yet tie a Trust Fund collection to a programme, so
+            not a worked figure: CFMS does not yet tie a Trust Fund collection to a programme, so
             there is one amount rather than the dated receipts the manual asks for. Everything on
             the Utilization side is worked from certified Funding Utilization Requests.
           </p>
@@ -236,7 +236,7 @@ function Sheet({ sheet }: { sheet: RstfSheet }) {
           <span>Source Agency: {p.sourceAgency}</span>
           {/*
             Blank rather than guessed. The manual heads the sheet with an RCA
-            code; CBO cannot derive which trust liability account a programme
+            code; CFMS cannot derive which trust liability account a programme
             belongs to, so an unset one says so and points at where to set it.
           */}
           <span>

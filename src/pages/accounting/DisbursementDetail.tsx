@@ -409,7 +409,7 @@ export default function DisbursementDetail() {
               choice is no longer made.
 
               The ordinary way a payment gets recorded is the upload: the
-              Treasurer's RCI or RADAI arrives as a file and CBO raises the
+              Treasurer's RCI or RADAI arrives as a file and CFMS raises the
               checks and advices from it. These two are for the payment that is
               not on any file - one check drawn on its own, ahead of the report.
             */}

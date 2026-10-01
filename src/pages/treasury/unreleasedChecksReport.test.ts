@@ -60,7 +60,7 @@ describe('which checks belong on the schedule', () => {
   });
 
   /**
-   * Patch 45 left every one of these out and said CBO did not record when a
+   * Patch 45 left every one of these out and said CFMS did not record when a
    * check was cancelled. It does - `cancelledBy` carries the moment - and
    * these are the cases that were being dropped.
    */

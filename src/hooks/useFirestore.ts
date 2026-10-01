@@ -13,7 +13,7 @@ import { db } from '@/lib/firebase';
 /**
  * Live Firestore reads.
  *
- * Everything in CBO reads through a snapshot listener rather than a one-shot
+ * Everything in CFMS reads through a snapshot listener rather than a one-shot
  * fetch. In an accounting office several people work the same queue - an
  * encoder submits, a reviewer reviews, the accountant posts - and a stale list
  * leads directly to someone acting on a voucher that has already moved. Live
@@ -73,7 +73,7 @@ export function useCollection<T = DocumentData>(
               ? 'This view needs a Firestore index that has not been created yet. The browser console has a link that creates it.'
               : err.message;
         setState({ data: [], loading: false, error: message });
-        console.error(`[CBO] Query on ${path} failed:`, err);
+        console.error(`[CFMS] Query on ${path} failed:`, err);
       },
     );
 

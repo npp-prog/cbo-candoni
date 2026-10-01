@@ -166,7 +166,7 @@ export function AmountInput({
 /**
  * Date input. Native, because the browser's own picker is familiar and
  * keyboard-accessible, and because the value is already the `YYYY-MM-DD`
- * string CBO stores.
+ * string CFMS stores.
  */
 export function DateInput({
   value,

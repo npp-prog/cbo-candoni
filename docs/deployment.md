@@ -1,6 +1,6 @@
 # Deployment
 
-Municipal Government of Candoni — CBO
+Municipal Government of Candoni — CFMS
 
 Two environments, two Firebase projects, one Netlify site with two deploy contexts.
 

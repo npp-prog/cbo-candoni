@@ -139,7 +139,7 @@ export function buildReairr(input: {
    * One estimate line, not one per account.
    *
    * The manual's Section A has a line per SOURCE DOCUMENT - the annual budget,
-   * then each supplemental - with the accounts spread across the columns. CBO
+   * then each supplemental - with the accounts spread across the columns. CFMS
    * holds one current figure per account and no history of which ordinance put
    * it there, so there is one line, and it is labelled with what the figures
    * were loaded from rather than being called "Annual Budget" on no evidence.

@@ -252,7 +252,7 @@ export interface JournalEntryVoucher extends Partial<AuditStamps> {
 /**
  * ledgerEntries/{id} - the General Ledger itself.
  *
- * One immutable document per posted JEV line. Nothing in CBO updates or deletes
+ * One immutable document per posted JEV line. Nothing in CFMS updates or deletes
  * a ledger entry: a correction is a new JEV. Security rules deny all client
  * writes to this collection; only the posting function may create them.
  */

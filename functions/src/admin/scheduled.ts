@@ -142,7 +142,7 @@ export const verifyBudgetBalances = onSchedule(
       await db.collection(COL.auditLogs).add({
         at: new Date().toISOString(),
         actorUid: 'system',
-        actorName: 'CBO nightly integrity check',
+        actorName: 'CFMS nightly integrity check',
         actorRoles: ['SYSTEM'],
         event: 'SETTINGS_CHANGE',
         entityType: COL.budgetBalances,

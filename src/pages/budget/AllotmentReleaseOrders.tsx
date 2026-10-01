@@ -48,7 +48,7 @@ import { AllotmentTabs } from './allotmentTabs';
  * of an appropriation and deliberately withholds the rest, "to provide
  * safeguards for shortfalls in the collection of revenues".
  *
- * Until now CBO could not tell a withheld appropriation from a fully released
+ * Until now CFMS could not tell a withheld appropriation from a fully released
  * one. A department reading its available balance saw authority the Budget
  * Officer had decided it could not yet have - and would obligate against it.
  * ---------------------------------------------------------------------------

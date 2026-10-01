@@ -174,7 +174,7 @@ export default function PrintReceipt() {
       />
 
       <Alert tone="info" title="The form already carries its number" className="mb-4 no-print">
-        Put the booklet in the printer at the serial shown beside the collection. CBO prints the
+        Put the booklet in the printer at the serial shown beside the collection. CFMS prints the
         entries only — it never prints an OR number, because the number is on the form and is what
         the RAAF accounts for. Print the alignment guide onto plain paper first and hold it against
         a blank form.
@@ -246,7 +246,7 @@ export default function PrintReceipt() {
               {tooLong.map((c) => c.orNumber).join(', ')} — Accountable Form No. 51 has{' '}
               {OR_LINES_PER_SHEET} ruled lines and these have more. Splitting one receipt over two
               forms would consume a second accountable serial that the RAAF would then have to
-              explain, so CBO will not do it. Either record the collection as two, or write this one
+              explain, so CFMS will not do it. Either record the collection as two, or write this one
               by hand.
             </Alert>
           )}

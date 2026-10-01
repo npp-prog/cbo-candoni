@@ -2,9 +2,9 @@
  * Printing onto paper that is already printed.
  *
  * ---------------------------------------------------------------------------
- * WHY THIS IS DIFFERENT FROM EVERY OTHER PRINT IN CBO
+ * WHY THIS IS DIFFERENT FROM EVERY OTHER PRINT IN CFMS
  * ---------------------------------------------------------------------------
- * Every other report in CBO puts ink on blank paper, so the layout only has to
+ * Every other report in CFMS puts ink on blank paper, so the layout only has to
  * be readable. These two put ink on a form that already exists - an
  * Accountable Form No. 51 with its boxes, a LANDBANK check with its barcode
  * and MICR band - and the layout has to land inside boxes drawn by somebody

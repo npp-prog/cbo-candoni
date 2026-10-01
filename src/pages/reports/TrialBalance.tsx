@@ -27,7 +27,7 @@ interface TbRow {
  *
  * If the two columns ever fail to foot, that is not a rounding problem to be
  * smoothed over - ledger entries can only be written by the posting function,
- * so a difference means data was altered outside CBO. The warning says so
+ * so a difference means data was altered outside CFMS. The warning says so
  * plainly rather than offering to "adjust".
  */
 export default function TrialBalance() {
@@ -124,7 +124,7 @@ export default function TrialBalance() {
       {!check.ok && (
         <Alert tone="error" className="mb-4" title="The General Ledger does not foot">
           {check.violations[0].message} Ledger entries can only be written by the posting function,
-          so a difference here means data was altered outside CBO. Report this to the system
+          so a difference here means data was altered outside CFMS. Report this to the system
           administrator before relying on any report.
         </Alert>
       )}

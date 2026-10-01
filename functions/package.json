@@ -1,7 +1,7 @@
 {
-  "name": "cbo-functions",
+  "name": "cfms-functions",
   "version": "0.1.0",
-  "description": "CBO accounting engine - server-authoritative financial operations.",
+  "description": "CFMS accounting engine - server-authoritative financial operations.",
   "main": "lib/index.js",
   "type": "commonjs",
   "engines": {
@@ -18,7 +18,6 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
-    "candoni-books-online": "file:..",
     "firebase-admin": "^13.0.2",
     "firebase-functions": "^6.2.0"
   },

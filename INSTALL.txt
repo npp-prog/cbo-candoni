@@ -1,118 +1,257 @@
-CBO PATCH 13 — ACCOUNTABLE FORMS AND RAAF
-=========================================
-Municipal Government of Candoni · 28 September 2026
+===========================================================================
+CFMS PATCH 59 - ANG PAG-ILIS SANG NGALAN
+   Candoni Books Online (CBO)  ->  Candoni Financial Management System (CFMS)
+Municipal Government of Candoni
+===========================================================================
 
-Phase 1 of bringing the MTO systems into CBO. Nothing existing was rewritten:
-every file below is either new, or had lines added to it.
+   LAIN INI NGA KLASE SANG PATCH. Indi sia pila ka file - ANG BUG-OS
+   NGA SOURCE sang project. Basaha ang bahin D antes mag-install.
 
+   Wala sing bag-o nga feature. Wala sing pagsulundan nga nagbag-o.
+   Wala sing nagbag-o sa database.
 
-WHAT TO DO
-----------
+---------------------------------------------------------------------------
+A. ANG NAGBAG-O
+---------------------------------------------------------------------------
 
-1. Drag the contents of this folder into your cbo-candoni folder and let
-   Windows replace the files when it asks. Nothing needs deleting this time.
+158 ka file. Ang kada lugar nga may makita nga ngalan:
 
-2. Open a terminal in the project folder and run, in order:
+   ANG SIGN-IN SCREEN
+      Daku nga "CFMS" kag "Candoni Financial Management System"
 
-       npm --prefix functions run build
-       npx tsc -b
-       npm test
+   ANG SIDEBAR
+      "CFMS" kag ang bug-os nga ngalan sa idalom
 
-   All three must be silent or say "passed". If any of them complains, stop and
-   send me what it said.
+   ANG TAB SANG BROWSER
+      "CFMS - Candoni Financial Management System"
 
-3. Deploy the rules and indexes first. The indexes take a few minutes to build
-   and the screens will show a failed-precondition error until they are ready:
+   ANG IDALOM SANG KADA GIN-PRINT NGA REPORT
+      "Generated from CFMS on <petsa>"
 
-       firebase deploy --only firestore:rules,firestore:indexes
+   ANG MGA MENSAHE SA SCREEN
+      "Starting CFMS", "CFMS could not reach the server",
+      "That email address and password do not match an active CFMS
+       account", kag ang tanan nga iban
 
-4. Deploy the five new functions:
+   ANG MGA MENSAHE SANG SERVER
+      "Sign in to CFMS to perform this operation",
+      "This CFMS account has been deactivated", kag iban pa
 
-       firebase deploy --only functions:recordFormMovement,functions:voidFormMovement,functions:prepareRaaf,functions:certifyRaaf,functions:cancelRaaf
+   ANG MGA DOKUMENTO
+      README, ang runbook, ang architecture, security, deployment -
+      tanan
 
-5. Push to GitHub. Netlify rebuilds the site by itself.
+Kag ang mga internal nga ngalan nga indi makita sang bisan sin-o pero
+dapat maathag gihapon: ang ngalan sang package (candoni-fms kag
+cfms-functions), ang CI workflow, ang seal.
 
-6. Grant the new functions their Cloud Run invoker, the same way as before.
-   They are brand new services, so they will not have it:
+---------------------------------------------------------------------------
+B. ANG WALA KO GIN-ILIS, KAG NGAA
+---------------------------------------------------------------------------
 
-       $P = gcloud projects describe cbo-candoni-dev --format="value(projectNumber)"
-       gcloud run services add-iam-policy-binding recordformmovement --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
-       gcloud run services add-iam-policy-binding voidformmovement   --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
-       gcloud run services add-iam-policy-binding preparerraaf       --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
-       gcloud run services add-iam-policy-binding certifyraaf        --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
-       gcloud run services add-iam-policy-binding cancelraaf         --region=asia-southeast1 --member=allUsers --role=roles/run.invoker --project=cbo-candoni-dev
+Lima ka butang ang ginbilin ko nga "cbo". Hungod tanan.
 
-   (Check the service names in the Cloud Run console if one is refused —
-   Firebase lowercases them and occasionally shortens a long one.)
+   1. ANG ADDRESS: cbo.mgocandoni.com
 
+      Amo ini ang ginpili mo. Ang ngalan sa screen CFMS na, pero ang
+      address magapabilin. Wala sing DNS nga gintandog, wala sing
+      downtime, kag ang bookmark sang tanan nagaobra gihapon.
 
-THEN, BEFORE ANYTHING WILL WORK
--------------------------------
+      Kon gusto mo sia ilisan sa ulihi, bulag nga buluhaton ina kag
+      himuon ko ang sunod-sunod nga instruksyon.
 
-Open  Master Data › Accountable Forms  and add the seven forms the office uses.
-Nothing can be received or issued until they exist. The MTO system's own list:
+   2. ANG FOLDER: cbo-candoni
 
-  Code     Name                                          Printed as             Booklet  Serial
-  AF51     Accountable Form No. 51 — Official Receipt    ACCT. FORM NO. 51      50       10
-  AF52     Accountable Form No. 52                       ACCT. FORM NO. 52      50       10
-  AF53     Accountable Form No. 53                       ACCT. FORM NO. 53      50       10
-  AF54     Accountable Form No. 54                       ACCT. FORM NO. 54      50       10
-  AF56     Accountable Form No. 56 — Cash Ticket         ACCT. FORM NO. 56      50       10
-  AF58     Accountable Form No. 58                       ACCT. FORM NO. 58      50       10
-  BIR0016  BIR Form No. 0016                             BIR FORM NO. 0016      50       10
+      Amo man ang ginpili mo. Internal lang sia, kag ang tanan nga
+      runbook nga ginsulat na nagaobra gihapon.
 
-Give AF56 a face value if the office issues cash tickets of a fixed amount;
-leave it blank for everything else.
+   3. ANG FIREBASE PROJECT ID: cbo-candoni-dev / cbo-candoni-prod
 
+      INDI GID INI MAILISAN. Permanente ang project ID sa Firebase -
+      wala sing paagi nga mailisan sia, bisan sang Google. Ang bugtong
+      nga paagi amo ang paghimo sang BAG-O nga project kag pagbalhin
+      sang bug-os nga database, kag indi gid ina dapat himuon para sa
+      ngalan lang.
 
-HOW TO TRY IT
--------------
+   4. ANG FIREBASE CODEBASE: "cbo"
 
-  1. Treasury › Accountable Forms › Record movement
-     Movement: "Received into stock". Form: AF51. Serials 0007705351 to
-     0007705500. Reference: whatever the RIS says. → 150 forms in stock.
+      ANG PINAKAIMPORTANTE DIRI. Ang `firebase.json` may linya nga
+      "codebase": "cbo", kag amo ina ang rason nga ang deploy command
+      naton amo ang:
 
-  2. Record movement again. Movement: "Issued to an officer". Same form,
-     serials 0007705351 to 0007705400, and pick the collecting officer.
-     → the card at the top now shows 50 with her and 100 in stock.
+         firebase deploy --only functions:cbo:postRcd
 
-  3. Try to issue 0007705380 to 0007705420 to somebody else. It will refuse and
-     name the serials that are already in her hands. That refusal is the
-     module.
+      Kon ilisan ko sia sa "cfms", ang Firebase MAGAHUNAHUNA NGA
+      BAG-O NGA CODEBASE INA. Ang buot silingon: panason ang TANAN nga
+      daan nga function, kag himuon tanan liwat. Sa sulod sina nga
+      tion, ANG APP INDI MAKAOBRA.
 
-  4. Treasury › RAAF › Prepare RAAF. Pick her, "Collecting officer", and the
-     month. The report builds itself from the ledger and from the receipts
-     encoded in Collections.
+      Para sa ngalan lang, indi ina angay. Gani nagpabilin sia nga
+      "cbo", kag ang tanan nga deploy command nga ginagamit mo
+      nagapabilin nga pareho.
 
-  5. If she has encoded receipts out of serials she was never issued, the
-     report says so and cannot be certified until a movement explains it.
+   5. ANG MGA CSS CLASS: cbo-td, cbo-th, cbo-label, kag anom pa
 
+      Ginagamit sila sa ginatos ka lugar sa sulod sang code, kag wala
+      gid sing nagakakita sa ila luwas sa browser. Kon ilisan ko sila
+      kag may isa nga malipatan ko, may bahin sang screen nga magawala
+      ang porma - kag amo ina nga klase sang sala nga makita lang kon
+      may mag-print na sang report.
 
-WHAT CHANGED IN FILES YOU ALREADY HAD
--------------------------------------
+      Wala sing makuha, may madula. Gani ginbilin ko sila.
 
-  src/lib/collections.ts          3 collection names, 2 server-only entries
-  src/lib/engine.ts               5 callables appended
-  src/data/queries.ts             3 hooks and their imports
-  src/types/index.ts              1 export line
-  src/layout/navigation.ts        3 menu entries
-  src/App.tsx                     2 lazy imports, 2 routes
-  src/pages/masterdata/MasterData.tsx   1 new entity, above "accounts"
-  functions/src/lib/firebase.ts   the same 3 collection names
-  functions/src/lib/numbering.ts  the RAAF number format
-  functions/src/index.ts          5 exports
-  scripts/sync-rules.mjs          now syncs serials.ts as well as the rules
-  scripts/check-rules.mjs         the two new ledgers added to the CI guard
-  firestore.rules                 3 new blocks
-  firestore.indexes.json          5 new indexes (66 → 71)
+---------------------------------------------------------------------------
+C. GINPAMATUDAN KO ANG DUHA KA KILID
+---------------------------------------------------------------------------
 
-Nothing else was touched.
+Pagkatapos sang pag-ilis, ginlibot ko ang bug-os nga project:
 
+   * WALA NA GID SING "CBO" nga nabilin bilang pulong - wala sa code,
+     wala sa dokumento, wala sa config.
 
-WHAT IS DELIBERATELY NOT IN THIS PATCH
---------------------------------------
+   * ANG LIMA SA IBABAW INTAKTO GIHAPON - ginatan-aw ko sila isa-isa
+     pagkatapos sang pag-ilis.
 
-Printing an OR onto a pre-printed AF 51, the Appendix 34 RCD with its Section C,
-the Abstract with pivoted account columns, and the Primary/Secondary RCD
-hierarchy. Those are the next phase, and the engine underneath them is the
-serial arithmetic this patch installs.
+Kag ang 845 ka test pasado gihapon - ang eksakto nga pareho nga 845
+sang patch 58. Wala gid sing pagsulundan nga nagbag-o.
+
+   (May isa ka sala nga nahimo ko sa tunga: ang nahauna ko nga script
+    naglaktaw sang bug-os nga `src/lib` folder, kay "lib" ang ngalan
+    niya kag ginalaktawan ko ang "lib" agud indi matandog ang compiled
+    nga output. Nakita ko sia sa paglibot, kag gintadlong. Ginasugid
+    ko ini kay kon wala ko nakita, may 37 ka file nga nabilin nga
+    "CBO" kag indi mo mahibal-an kon ngaa ang iban nagbag-o kag ang
+    iban wala.)
+
+===========================================================================
+D. PAG-INSTALL - LAIN SA KINAANDAN, BASAHA ANAY
+===========================================================================
+
+Ang zip may sulod nga BUG-OS NGA SOURCE, indi pila lang ka file.
+
+NGAA: 158 ka file ang nagbag-o. Ang paglista sang 158 ka file kag ang
+pagkopya isa-isa amo ang paagi nga may malipatan, kag ang resulta isa
+ka app nga ang iban nga bahin CFMS kag ang iban CBO.
+
+ANG INDI MATANDOG - importante ini:
+
+   * node_modules     - wala sa zip, wala matandog
+   * dist             - wala sa zip, wala matandog
+   * .env.local       - WALA GID SA ZIP. Ang password kag key mo
+                        nagapabilin. (.env.example lang ang ara, nga
+                        template kag wala sing sekreto.)
+   * .git             - wala sa zip
+
+Gani WALA KA SING I-SETUP LIWAT. Wala ka sing i-type liwat nga key.
+
+ANG LAKAT:
+
+   1. Buksi ang patch59.zip.
+
+   2. Sa sulod may mga folder: src, functions, docs, scripts, public,
+      data, kag mga file sa gwa (package.json, index.html, kag iban
+      pa).
+
+   3. Kopyaha ang TANAN nga sulod sang zip pakadto sa root sang
+      cbo-candoni folder.
+
+   4. Kon mamangkot kon ilisan, pislita ang "Replace" ukon
+      "Yes to All". DAPAT GID ILISAN TANAN.
+
+   5. WALA SING PANASON NGA FILE.
+
+---------------------------------------------------------------------------
+E. PAG-BUILD
+---------------------------------------------------------------------------
+
+   1. PowerShell sa cbo-candoni folder.
+
+   2. I-type, dayon Enter:
+
+         $env:FUNCTIONS_DISCOVERY_TIMEOUT = "120"
+
+   3. I-type, dayon Enter:
+
+         npm run build
+
+   4. I-type, dayon Enter:
+
+         npm test
+
+      Dapat 845 ka test - EKSAKTO NGA PAREHO sang patch 58. Kon lain
+      ang numero, may sala sa pagkopya; sugiri ako.
+
+   5. I-type, dayon Enter:
+
+         node scripts/check-rules.mjs
+
+      Dapat "All security rule checks passed."
+
+   6. Dayon ang normal nga pag-upload sa Netlify.
+
+---------------------------------------------------------------------------
+F. ANG FUNCTION DEPLOY - PUEDE MO ANAY PALIGARON
+---------------------------------------------------------------------------
+
+May pila ka mensahe sang SERVER nga nagsambit sang ngalan, pareho sang
+"Sign in to CFMS to perform this operation". Para magbag-o sila,
+kinahanglan ang function deploy.
+
+PERO WALA SING PAGSULUNDAN NGA NAGBAG-O SA SERVER - mga pulong lang.
+Gani INDI DALIONON ini.
+
+Kon gusto mo himuon subong, ang bug-os nga codebase:
+
+      firebase deploy --only functions:cbo
+
+Mas malawig ini sang sa kinaandan kay tanan nga function ang ginadeploy.
+
+   UKON - kag amo ini ang ginarekomendar ko - paligaron mo lang sia,
+   kag maupod na lang sia sa masunod nga patch nga may matuod nga
+   pagbag-o sa server. Samtang wala pa, ang pila ka mensahe sang
+   server magasiling pa nga "CBO". Indi sia makasamad sang bisan ano.
+
+---------------------------------------------------------------------------
+G. ANG DAPAT TAN-AWON PAGKATAPOS
+---------------------------------------------------------------------------
+
+   1. Buksi ang site. Sa SIGN-IN dapat makita mo ang daku nga "CFMS"
+      kag ang "Candoni Financial Management System".
+
+   2. Tan-awa ang tab sang browser: "CFMS - Candoni Financial
+      Management System".
+
+   3. Mag-sign in. Sa SIDEBAR dapat "CFMS" na.
+
+   4. Buksi ang bisan ano nga report kag pislita ang Print (ukon
+      tan-awa lang ang idalom sang screen). Dapat "Generated from
+      CFMS on <petsa>".
+
+   5. Ang address sa ibabaw sang browser magapabilin nga
+      cbo.mgocandoni.com. HUSTO INA - amo ang ginpili mo.
+
+---------------------------------------------------------------------------
+H. ANG NABILIN NGA HILIKUTON
+---------------------------------------------------------------------------
+
+Wala nagbag-o halin sang patch 58:
+
+   * Ang JEV sa Petty Cash (10101020) pakadto sa Cash Local Treasury
+     (10101010) - patch 52 bahin G
+   * Ang Augmentation Authority para sa 2026 - patch 56
+   * Ang mga resibo sang Trust Fund nga wala pa sing programa - patch 57
+   * Ang function deploy sang patch 58
+     (firebase deploy --only functions:cbo:importBudgetLines)
+
+Ang wala pa nahimo nga feature:
+
+   * Reenacted Budget (LBE Form No. 4)
+   * ARO halin sa bulk allotment upload
+   * Economic-enterprise PS kag Sanggunian marking para sa PS cap
+   * Ang RPT Abstract nga 13 ka kolum
+
+Kag gihapon, kag ini na ang ikaapat nga beses nga ginasulat ko sia:
+ANG BUG-OS NGA WALKTHROUGH SA DEV. Appropriation, allotment,
+obligation, DV, tseke, sa isa ka linya.
+
+===========================================================================

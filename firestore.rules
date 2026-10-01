@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // =============================================================================
-// CBO - Candoni Books Online
+// CFMS - Candoni Financial Management System
 // Cloud Firestore Security Rules
 // Municipal Government of Candoni, Negros Occidental
 // =============================================================================
@@ -44,7 +44,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // App Check: reject requests that do not come from the attested CBO app.
+    // App Check: reject requests that do not come from the attested CFMS app.
     // `request.auth.token` is present for signed-in users; App Check tokens are
     // surfaced separately and are enforced at the project level as well.
     function appChecked() {

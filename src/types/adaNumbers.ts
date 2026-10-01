@@ -12,7 +12,7 @@ import type { ActorStamp, Id, IsoDate, IsoTimestamp } from './common';
  * never reported, or a number the office passed over for a reason it has
  * forgotten.
  *
- * CBO draws ADA numbers from a counter, so it cannot lose one by accident.
+ * CFMS draws ADA numbers from a counter, so it cannot lose one by accident.
  * But offices do not work only inside one system: a batch is prepared and
  * abandoned, a number is promised to the bank for a transfer that falls
  * through, a serial is skipped when the register is written up by hand. Each

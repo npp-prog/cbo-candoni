@@ -38,14 +38,14 @@ import { fundLabel } from '../budget/Obligations';
  * ---------------------------------------------------------------------------
  * Almost every line on this page is read from somewhere else: the checks the
  * office released, the ADA it submitted, the deposits it recorded. Those are
- * shown greyed and cannot be touched, because CBO already holds them and a
+ * shown greyed and cannot be touched, because CFMS already holds them and a
  * second copy typed into a bank book is exactly how two records of one payment
  * come to disagree - the check is cancelled in one place, stands in the other,
  * and the reconciliation absorbs the difference without anybody deciding to.
  *
  * What is keyed is the handful of things only the bank originates: interest,
  * a service charge, the withholding on that interest, a national tax allotment
- * landing. Those exist nowhere else in CBO, and that is the whole test for
+ * landing. Those exist nowhere else in CFMS, and that is the whole test for
  * whether something belongs on the form.
  * ---------------------------------------------------------------------------
  */

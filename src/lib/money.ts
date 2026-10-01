@@ -1,7 +1,7 @@
 import type { Centavos } from '@/types/common';
 
 /**
- * Money handling for CBO.
+ * Money handling for CFMS.
  *
  * Everything is centavos (integers). The only places pesos-as-decimals exist
  * are the user's keyboard and the printed page; both ends are handled here.

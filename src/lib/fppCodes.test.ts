@@ -13,7 +13,7 @@ import {
  * These tests guard a transcription.
  *
  * The list in fppCodes.ts was copied out of Annex A of the GAM for LGUs
- * Volume III. Nothing in CBO can tell whether a code was mistyped on the way
+ * Volume III. Nothing in CFMS can tell whether a code was mistyped on the way
  * in - a wrong digit still looks like a code, still sorts, still prints. It
  * would surface months later as a registry that does not foot, or as an
  * expenditure reported under the wrong sector to the Department of Budget.

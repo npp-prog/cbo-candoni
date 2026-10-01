@@ -30,9 +30,9 @@ export function SignIn() {
       <div className="hidden w-1/2 flex-col justify-between bg-navy-900 p-12 text-white lg:flex">
         <div>
           <div className="flex h-11 w-11 items-center justify-center rounded bg-brand-600 text-base font-bold">
-            CBO
+            CFMS
           </div>
-          <h1 className="mt-8 text-3xl font-semibold leading-tight">Candoni Books Online</h1>
+          <h1 className="mt-8 text-3xl font-semibold leading-tight">Candoni Financial Management System</h1>
           <p className="mt-2 text-base text-slate-300">
             Integrated Municipal Financial Management System
           </p>
@@ -59,14 +59,14 @@ export function SignIn() {
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
             <div className="flex h-10 w-10 items-center justify-center rounded bg-brand-600 text-sm font-bold text-white">
-              CBO
+              CFMS
             </div>
-            <h1 className="mt-4 text-xl font-semibold text-navy-900">Candoni Books Online</h1>
+            <h1 className="mt-4 text-xl font-semibold text-navy-900">Candoni Financial Management System</h1>
             <p className="text-sm text-slate-500">Municipal Government of Candoni</p>
           </div>
 
           <h2 className="text-lg font-semibold text-navy-900">Sign in</h2>
-          <p className="mt-1 text-sm text-slate-500">Use your municipal CBO account.</p>
+          <p className="mt-1 text-sm text-slate-500">Use your municipal CFMS account.</p>
 
           {!IS_PRODUCTION && (
             <Alert tone="warning" className="mt-4">
@@ -143,7 +143,7 @@ export function AwaitingAccess() {
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           Your account <span className="font-medium text-navy-800">{user?.email}</span> has been
           created, but no role has been assigned to it yet. A Super Administrator at the Municipal
-          Accounting Office must grant you access before you can use CBO.
+          Accounting Office must grant you access before you can use CFMS.
         </p>
         <p className="mt-3 text-xs text-slate-500">
           This is deliberate: an account with no role can see nothing at all.

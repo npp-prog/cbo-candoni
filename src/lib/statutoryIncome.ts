@@ -7,14 +7,14 @@ import type { Centavos } from '@/types/common';
  * WHY THIS IS A SUGGESTION AND NOT A VALUE
  * ---------------------------------------------------------------------------
  * statutoryLimits.ts says the denominators are typed in and not derived, and
- * gives the reason: "CBO could compute last year's income from its own ledger.
+ * gives the reason: "CFMS could compute last year's income from its own ledger.
  * It deliberately does not. The reviewing authority will use the figure in the
  * LGU's own statements, and a test run against a different number than the
  * reviewer's is a test that passes here and fails there."
  *
  * That reasoning still holds and nothing here weakens it. What has changed is
- * WHERE the figure would come from. Since patch 36, CBO holds the income
- * estimates of LBP Form No. 1 - which is not CBO's ledger at all. It is the
+ * WHERE the figure would come from. Since patch 36, CFMS holds the income
+ * estimates of LBP Form No. 1 - which is not CFMS's ledger at all. It is the
  * document the reviewing authority reads, the same one the Treasurer states
  * the figure off. Offering it is not deriving the test from the municipality's
  * own books; it is saving the Budget Officer from copying a number between two
@@ -49,8 +49,8 @@ import type { Centavos } from '@/types/common';
  * Fund base is a question about the fund, not about the chart. Section 287 of
  * the Local Government Code sets the fund against the national tax allotment,
  * and whether a municipality's share of national wealth or tobacco excise is
- * part of that base is the Budget Officer's reading, not CBO's. So the office
- * says which codes count and CBO adds up what it was told - and the screen now
+ * part of that base is the Budget Officer's reading, not CFMS's. So the office
+ * says which codes count and CFMS adds up what it was told - and the screen now
  * points at 40106010 rather than at the subsidy account.
  */
 
@@ -136,7 +136,7 @@ export interface IncomeComparison {
  * The typed figure against the figure the estimates support.
  *
  * Deliberately exact: "agrees" means the two are the same to the centavo.
- * A tolerance here would be CBO deciding how wrong a statutory denominator is
+ * A tolerance here would be CFMS deciding how wrong a statutory denominator is
  * allowed to be, which is not its decision to make. The screen may choose to
  * interrupt only on a large `relative` difference; the truth stays exact.
  */

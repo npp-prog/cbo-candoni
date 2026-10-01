@@ -18,7 +18,7 @@
  * account is looking at a municipality treating other people's money as its
  * own budget, and the form name is the first place that shows.
  *
- * CBO records both on the same screen because the act of encoding them is
+ * CFMS records both on the same screen because the act of encoding them is
  * identical. What differs is what the screen calls it, and what the office is
  * asked to attach.
  * ---------------------------------------------------------------------------

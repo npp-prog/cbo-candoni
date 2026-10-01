@@ -14,13 +14,13 @@ export { TRUST_FUND_CODE };
  * employees", "Payments to suppliers and creditors" - captions about what the
  * money was FOR.
  *
- * CBO records a cash-flow class against each journal entry line, and the
+ * CFMS records a cash-flow class against each journal entry line, and the
  * statement it shipped with read that class off the CASH line. That tells you
  * nothing, for two reasons. The class of a cash account is always OPERATING,
  * because that is what the classifier returns for anything that is not an
  * investment or a loan; and every posting routine on the server writes the
  * literal 'OPERATING' anyway. So the investing and financing sections of the
- * statement CBO has been printing are empty - not because Candoni bought no
+ * statement CFMS has been printing are empty - not because Candoni bought no
  * equipment, but because there is no path by which they could ever fill.
  *
  * The captions are all about the counterpart in any case. "Payments to
@@ -129,7 +129,7 @@ export const CASH_FLOW_CAPTIONS: CashFlowCaptionDef[] = [
 
   // --- Operating, outflows ------------------------------------------------
   /*
-   * "Payment of expenses" is the annex's general line and CBO never reaches
+   * "Payment of expenses" is the annex's general line and CFMS never reaches
    * it: every operating payment it can see is already a payment to employees,
    * to suppliers and creditors, or of interest. It is printed because the
    * annex prints it, and it prints at nil.

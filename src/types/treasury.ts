@@ -460,7 +460,7 @@ export type ImportRowReason =
 
 export const IMPORT_ROW_REASON_LABELS: Record<ImportRowReason, string> = {
   NO_DV_NUMBER: 'No DV number in the file',
-  DV_NOT_FOUND: 'No such DV in CBO',
+  DV_NOT_FOUND: 'No such DV in CFMS',
   DV_NOT_APPROVED: 'The DV is not approved',
   DV_ALREADY_PAID: 'The DV already has a payment',
   FUND_MISMATCH: 'The DV belongs to another fund',
@@ -472,7 +472,7 @@ export const IMPORT_ROW_REASON_LABELS: Record<ImportRowReason, string> = {
 /**
  * MATCHED   Linked to a voucher; a check or ADA was created and it is on the report.
  * PENDING   Held for manual handling. It is not on the report and not in the books.
- * MANUAL    Dealt with outside CBO and deliberately set aside, with a reason.
+ * MANUAL    Dealt with outside CFMS and deliberately set aside, with a reason.
  */
 export type ImportRowStatus = 'MATCHED' | 'PENDING' | 'MANUAL';
 
@@ -510,7 +510,7 @@ export interface TreasuryImportRow {
  *
  * The upload is kept whole, rows that matched beside rows that did not. That is
  * deliberate: the file is the Treasurer's statement of what was paid, and a
- * record that silently dropped the rows CBO could not place would leave nobody
+ * record that silently dropped the rows CFMS could not place would leave nobody
  * able to answer why the report totals less than the paper.
  *
  * An unmatched row is held, never rejected. Rejecting the whole file because
@@ -540,7 +540,7 @@ export interface TreasuryImport {
   matchedCount: number;
   pendingCount: number;
 
-  /** What the file said, and what CBO was able to place against vouchers. */
+  /** What the file said, and what CFMS was able to place against vouchers. */
   fileTotal: Centavos;
   matchedTotal: Centavos;
   pendingTotal: Centavos;

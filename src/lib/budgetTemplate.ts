@@ -152,16 +152,16 @@ export function budgetTemplateCsv(kind: TemplateKind): string {
  *
  * A BOM goes first. Without it Excel on a Windows machine set to a Philippine
  * locale reads the file as the legacy code page and mangles any accented
- * character in an office name, and the office would reasonably conclude CBO
+ * character in an office name, and the office would reasonably conclude CFMS
  * had produced a broken file.
  */
 export function downloadBudgetTemplate(kind: TemplateKind, fiscalYear: number, fundCode: string): void {
   const name =
     kind === 'ALLOTMENT'
-      ? `CBO-allotment-upload-${fundCode}-${fiscalYear}.csv`
+      ? `CFMS-allotment-upload-${fundCode}-${fiscalYear}.csv`
       : kind === 'REALIGNMENT'
-        ? `CBO-realignment-upload-${fundCode}-${fiscalYear}.csv`
-        : `CBO-appropriation-upload-${fundCode}-${fiscalYear}.csv`;
+        ? `CFMS-realignment-upload-${fundCode}-${fiscalYear}.csv`
+        : `CFMS-appropriation-upload-${fundCode}-${fiscalYear}.csv`;
 
   const blob = new Blob(['﻿' + budgetTemplateCsv(kind)], {
     type: 'text/csv;charset=utf-8;',

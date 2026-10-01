@@ -3,7 +3,7 @@ import { functions } from './firebase';
 import type { Centavos, Id, IsoDate } from '@/types/common';
 
 /**
- * Typed client for the CBO accounting engine (Cloud Functions).
+ * Typed client for the CFMS accounting engine (Cloud Functions).
  *
  * Every state-changing financial operation goes through here. The frontend
  * never writes to `ledgerEntries`, `budgetBalances`, `counters` or `auditLogs`
@@ -410,7 +410,7 @@ export const engine = {
    *
    * The browser splits the file into rows and nothing more. Which voucher each
    * row paid, whether that voucher is approved, whether the amount agrees and
-   * what is therefore posted are all decided on the server against CBO's own
+   * what is therefore posted are all decided on the server against CFMS's own
    * records - the amount that reaches the books is the voucher's net, never the
    * figure in the file.
    *
@@ -491,7 +491,7 @@ export const engine = {
 
   /**
    * Deals with one held row: links it to the voucher it actually paid, or sets
-   * it aside with a note saying how it was handled outside CBO.
+   * it aside with a note saying how it was handled outside CFMS.
    */
   resolveImportRow: (p: {
     importId: Id;

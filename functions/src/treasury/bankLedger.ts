@@ -9,7 +9,7 @@ import { recordTransition, auditInTransaction } from '../lib/audit';
  * ---------------------------------------------------------------------------
  * WHAT THIS DELIBERATELY WILL NOT ACCEPT
  * ---------------------------------------------------------------------------
- * Checks, ADA and deposits are NOT keyed here. CBO already holds them, and a
+ * Checks, ADA and deposits are NOT keyed here. CFMS already holds them, and a
  * second copy typed into a bank book is the classic way two records of the
  * same payment come to disagree - the check is cancelled in one place and
  * stands in the other, and the reconciliation quietly absorbs the difference.
@@ -17,7 +17,7 @@ import { recordTransition, auditInTransaction } from '../lib/audit';
  * The screen reads those from their own registers. What is keyed here is only
  * what the bank does on its own account: interest, charges, the withholding on
  * that interest, a national tax allotment landing, an error and its
- * correction. Those exist nowhere else in CBO, which is the whole test for
+ * correction. Those exist nowhere else in CFMS, which is the whole test for
  * whether something belongs in this file.
  *
  * ---------------------------------------------------------------------------

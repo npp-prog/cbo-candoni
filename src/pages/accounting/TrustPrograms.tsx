@@ -29,7 +29,7 @@ import type { Centavos } from '@/types/common';
  * ---------------------------------------------------------------------------
  * WHAT IT REPLACES
  * ---------------------------------------------------------------------------
- * Until this existed CBO checked every fund against the released allotment,
+ * Until this existed CFMS checked every fund against the released allotment,
  * the Trust Fund included — so a Funding Utilization Request could not be
  * certified at all unless somebody first invented an appropriation and an
  * Allotment Release Order for money the municipality had not been given. Had

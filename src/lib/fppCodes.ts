@@ -43,7 +43,7 @@
  * code. There is no code in any of the three volumes for the Sangguniang
  * Bayan as an entity, nor for the Office of the Mayor as an entity - the
  * legislature appears only as its functions, 1021 Legislation and 1022
- * Support Services (Secretariat). If CBO ever needs a per-office code, it has
+ * Support Services (Secretariat). If CFMS ever needs a per-office code, it has
  * to come from the DBM budget circulars, and not from here.
  */
 

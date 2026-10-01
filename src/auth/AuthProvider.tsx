@@ -172,8 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             code === 'auth/too-many-requests'
               ? 'Too many attempts. Wait a few minutes before trying again.'
               : code === 'auth/network-request-failed'
-                ? 'CBO could not reach the server. Check the internet connection.'
-                : 'That email address and password do not match an active CBO account.';
+                ? 'CFMS could not reach the server. Check the internet connection.'
+                : 'That email address and password do not match an active CFMS account.';
           setError(message);
           throw new Error(message);
         }

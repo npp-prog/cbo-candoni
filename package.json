@@ -1,8 +1,8 @@
 {
-  "name": "candoni-books-online",
+  "name": "candoni-fms",
   "private": true,
   "version": "0.1.0",
-  "description": "CBO - Candoni Books Online. Integrated Municipal Financial Management System of the Municipal Government of Candoni, Negros Occidental.",
+  "description": "CFMS - Candoni Financial Management System. The integrated financial management and accounting system of the Municipal Government of Candoni, Negros Occidental.",
   "type": "module",
   "engines": {
     "node": ">=20 <23"

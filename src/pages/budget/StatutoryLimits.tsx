@@ -52,11 +52,11 @@ import type { Centavos } from '@/types/common';
  * ---------------------------------------------------------------------------
  * WHY THE DENOMINATORS ARE TYPED IN AND NOT DERIVED
  * ---------------------------------------------------------------------------
- * CBO could compute last year's income from its own ledger. It deliberately
+ * CFMS could compute last year's income from its own ledger. It deliberately
  * does not. The reviewing authority will use the figure in the LGU's own
  * statements, and a test run against a different number than the reviewer's is
  * a test that passes here and fails there. The Treasurer states the figure
- * once a year; CBO checks against what was stated.
+ * once a year; CFMS checks against what was stated.
  * ---------------------------------------------------------------------------
  */
 
@@ -97,7 +97,7 @@ export default function StatutoryLimits() {
   const toast = useToast();
 
   const balances = useBudgetBalances(fiscalYear, fundCode);
-  // The income estimates of LBP Form No. 1. Not CBO's ledger - the document
+  // The income estimates of LBP Form No. 1. Not CFMS's ledger - the document
   // the reviewing authority itself reads.
   const receipts = useEstimatedReceipts(fiscalYear, fundCode);
   const docId = `statutoryLimits-${fiscalYear}`;
@@ -292,7 +292,7 @@ export default function StatutoryLimits() {
         <div className="space-y-5">
           <Card
             title="The figures these are measured against"
-            subtitle="Stated by the Treasurer once a year. CBO does not derive them — see the note below."
+            subtitle="Stated by the Treasurer once a year. CFMS does not derive them — see the note below."
           >
             <div className="space-y-4">
               <Field label="Income class" hint={`Decides the Personal Services cap: ${(psCapRate(form.incomeClass ?? '4') * 100).toFixed(0)}%.`}>
@@ -352,7 +352,7 @@ export default function StatutoryLimits() {
                   check={ntaCheck}
                   canEdit={canEdit}
                   onUse={() => set({ nationalTaxAllotment: ntaSuggested.amount })}
-                  emptyNote="No account has been nominated as the National Tax Allotment yet, so CBO has nothing to add up. Nominate one below."
+                  emptyNote="No account has been nominated as the National Tax Allotment yet, so CFMS has nothing to add up. Nominate one below."
                 />
               </Field>
             </div>
@@ -388,7 +388,7 @@ export default function StatutoryLimits() {
                 </div>
                 <p className="mt-3 text-xs text-slate-500">
                   A rule that guessed the Quick Response Fund from a project name would be wrong on
-                  the first ordinance that spelled it differently, so CBO asks instead.
+                  the first ordinance that spelled it differently, so CFMS asks instead.
                 </p>
               </>
             )}
@@ -438,7 +438,7 @@ export default function StatutoryLimits() {
                 <p className="mt-1 text-xs text-slate-500">
                   It is still nominated rather than assumed, because which of those five belongs in
                   the base is a reading of Section 287 of the Local Government Code and not
-                  something CBO can settle — whether a share of national wealth or tobacco excise
+                  something CFMS can settle — whether a share of national wealth or tobacco excise
                   counts is the Budget Officer&rsquo;s call.
                 </p>
               </>
@@ -447,20 +447,20 @@ export default function StatutoryLimits() {
         </div>
       </div>
 
-      <Card title="What CBO cannot see" className="mt-5">
+      <Card title="What CFMS cannot see" className="mt-5">
         <ul className="space-y-2 text-sm text-slate-600">
           <li>
             The Personal Services cap excludes the salaries of officials and employees of economic
-            enterprises and public utilities the municipality owns. CBO has no marker for those, so
+            enterprises and public utilities the municipality owns. CFMS has no marker for those, so
             the PS total above includes them — if Candoni runs any, the figure shown is higher than
             the one the reviewer will use, and the test is stricter than the law. Tell me and I will
             add the marker.
           </li>
           <li>
-            The figures on the right are not derived from CBO&rsquo;s own ledger on purpose. The
+            The figures on the right are not derived from CFMS&rsquo;s own ledger on purpose. The
             reviewing authority uses the figure in the municipality&rsquo;s own statements, and a
             test run against a different number than the reviewer&rsquo;s is one that passes here
-            and fails there. What CBO now offers beside two of them is not its ledger either: it
+            and fails there. What CFMS now offers beside two of them is not its ledger either: it
             is the income estimate of LBP Form No. 1, the document the reviewer reads. It is
             offered and never applied — the figure under a statutory test stays a person&rsquo;s
             statement.
@@ -468,7 +468,7 @@ export default function StatutoryLimits() {
           <li>
             Regular income realised last year has no such offer. That figure belongs to the year
             before this one and comes off the municipality&rsquo;s own statements, not from
-            anything CBO holds for {fiscalYear}.
+            anything CFMS holds for {fiscalYear}.
           </li>
         </ul>
       </Card>
@@ -521,7 +521,7 @@ function LimitRow({ result }: { result: LimitResult }) {
  * The button is the only way the figure moves. Nothing here writes on its own,
  * and nothing is pre-filled: a denominator under a statutory test is somebody's
  * statement, and a screen that quietly filled it in would turn that statement
- * into CBO's - with the person's name still under it.
+ * into CFMS's - with the person's name still under it.
  */
 function FromEstimates({
   suggestion,

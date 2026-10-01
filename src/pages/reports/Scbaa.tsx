@@ -211,7 +211,7 @@ export default function Scbaa() {
           </p>
           {revenue.originalEqualsFinal && (
             <p className="mt-1">
-              On the revenue half the original and final columns carry the same figure. CBO holds
+              On the revenue half the original and final columns carry the same figure. CFMS holds
               one estimate per income account and no record of which ordinance set it, so it cannot
               separate an annual budget from a supplemental. That is a limitation of the records,
               not a statement that none was enacted.

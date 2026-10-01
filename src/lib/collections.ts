@@ -1,7 +1,7 @@
 /**
  * Canonical Firestore collection names.
  *
- * Every read and write in CBO goes through these constants so that a typo
+ * Every read and write in CFMS goes through these constants so that a typo
  * cannot silently create a parallel collection - in a schemaless database that
  * is the single most expensive class of mistake, because it fails quietly and
  * the data is only discovered missing at report time.

@@ -13,7 +13,7 @@
  * Inventories, Property Plant and Equipment and the rest - each of which is an
  * account GROUP of the Revised Chart of Accounts.
  *
- * CBO used to print every account under seven broad headings. That is a trial
+ * CFMS used to print every account under seven broad headings. That is a trial
  * balance with subtotals, not a statement of financial position, and it is not
  * what is submitted.
  *
@@ -53,11 +53,11 @@
  * ---------------------------------------------------------------------------
  * Annex 5 lists Investments and Receivables under BOTH current and
  * non-current. The major group does not say which, and nothing in the account
- * code does. CBO already answers this per account through
+ * code does. CFMS already answers this per account through
  * `fsClassificationFor`, so the caption comes from the group and the section
  * comes from that existing classification. Neither is invented here.
  *
- * One consequence worth stating: CBO classifies the whole of Investments as
+ * One consequence worth stating: CFMS classifies the whole of Investments as
  * non-current. An LGU holding a time deposit maturing within the year has a
  * current investment, and reporting it would need the account itself to say
  * so - it cannot be read off the code.
@@ -136,7 +136,7 @@ export function majorGroupOf(code: string): MajorGroupKey {
  *
  * Annex 5 prints a Fund Balance block beneath Government Equity -
  * Unappropriated Surplus, Continuing Allotments, Continuing Appropriations,
- * Commitments. In CBO those accounts are NOT POSTABLE: the budgetary registry
+ * Commitments. In CFMS those accounts are NOT POSTABLE: the budgetary registry
  * is kept in `budgetBalances`, maintained by the Cloud Functions, and never
  * journalised. So the ledger carries nothing against them and the block cannot
  * be filled from it.

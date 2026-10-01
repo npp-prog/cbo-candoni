@@ -7,7 +7,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * reprinting for FY 2024". The form the municipality already fills in by hand.
  *
  * ---------------------------------------------------------------------------
- * THE SHAPE, WHICH IS NOT LIKE ANY OTHER FORM IN CBO
+ * THE SHAPE, WHICH IS NOT LIKE ANY OTHER FORM IN CFMS
  * ---------------------------------------------------------------------------
  * Two halves side by side, not one list:
  *
@@ -25,7 +25,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * ---------------------------------------------------------------------------
  * WHERE THE TWO SIDES COME FROM
  * ---------------------------------------------------------------------------
- * CBO already records an augmentation: it is an appropriation of kind
+ * CFMS already records an augmentation: it is an appropriation of kind
  * REALIGNMENT whose instrument is AUGMENTATION, and a realignment is stored as
  * lines of equal magnitude and opposite sign. The negative half is the savings
  * taken - the FROM - and the positive half is the item augmented - the TO.
@@ -177,7 +177,7 @@ export function buildAugmentationForms(input: {
 /**
  * The three notes the manual prints under the form.
  *
- * Reproduced rather than paraphrased. Two of them are rules CBO enforces and
+ * Reproduced rather than paraphrased. Two of them are rules CFMS enforces and
  * the third is one it cannot, and the officer signing the form is entitled to
  * read what the manual actually says rather than a summary of it.
  */

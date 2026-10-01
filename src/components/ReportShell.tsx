@@ -121,7 +121,7 @@ export function ReportHeading({ meta }: { meta: ReportMeta }) {
       {meta.periodLabel && <p className="text-sm text-navy-700">{meta.periodLabel}</p>}
 
       <p className="mt-2 text-2xs text-slate-400">
-        Generated from CBO on {formatLongDate(todayPh())}
+        Generated from CFMS on {formatLongDate(todayPh())}
       </p>
     </header>
   );

@@ -5,7 +5,7 @@ import { parsePeso } from '@/lib/money';
  * Reading the annex to the appropriation ordinance, and allotment releases.
  *
  * The annex is a spreadsheet the Budget Office already maintains: one row per
- * office per account, with the amount. CBO reads that rather than asking for
+ * office per account, with the amount. CFMS reads that rather than asking for
  * six hundred lines to be typed a second time.
  *
  * The office column is matched by code, by name or by short name, because the
@@ -69,7 +69,7 @@ const COLUMNS = {
   particulars: [/purpose/i, /description/i, /remarks/i, /particular/i],
 };
 
-/** The expense classes as they are written in an annex, mapped to CBO's codes. */
+/** The expense classes as they are written in an annex, mapped to CFMS's codes. */
 const EXPENSE_CLASS_ALIASES: Record<string, string> = {
   PS: 'PS',
   'PERSONNEL SERVICES': 'PS',

@@ -1,4 +1,4 @@
-# CBO deployment — step by step for first-timers
+# CFMS deployment — step by step for first-timers
 
 Using **GitHub Desktop** (no git commands).
 
@@ -35,7 +35,7 @@ you like — the code in them is unaffected.
 
 | Word | What it actually means |
 |---|---|
-| **Repository** (repo) | A folder whose history is tracked. Your CBO code lives in one. |
+| **Repository** (repo) | A folder whose history is tracked. Your CFMS code lives in one. |
 | **Commit** | A save point with a note attached. Like "Save As" with a description. |
 | **Push** | Upload your commits to GitHub. GitHub Desktop's button says "Push origin". |
 | **Branch** | A parallel copy of the code. `main` is the real one; `develop` is for testing. |
@@ -166,7 +166,7 @@ needs it until phase 3 — but when it is missing or too old, phase 3 fails.
 
 Get written answers before phase 10. They cannot be changed easily later:
 
-1. **Which fiscal year does CBO start recording?** (e.g. 2026)
+1. **Which fiscal year does CFMS start recording?** (e.g. 2026)
 2. **Who is the first Super Administrator?** One named person with their own email. Not a shared
    account like `accounting@`.
 3. **Which funds at go-live?** General Fund only is the sensible first step.
@@ -268,7 +268,7 @@ is how people end up with a repository wrapped around their project instead of o
    `cbo-candoni` — together they must point at the folder you just verified, with the name appearing
    only once.
    - **Name:** `cbo-candoni`
-   - **Description:** `Candoni Books Online — Municipal Financial Management System`
+   - **Description:** `Candoni Financial Management System — Municipal Financial Management System`
    - **Git ignore:** leave as **None** (the code already includes the right one)
    - **License:** None
 6. Click **Create Repository**.
@@ -288,7 +288,7 @@ is how people end up with a repository wrapped around their project instead of o
 
 ### 1.3 Make your first commit and publish
 
-1. Bottom-left, in the **Summary** box, type: `CBO initial system`
+1. Bottom-left, in the **Summary** box, type: `CFMS initial system`
 2. Click **Commit to main**.
 3. Top of the window, click **Publish repository**.
 4. **IMPORTANT — the dialog has a tick box "Keep this code private". MAKE SURE IT IS TICKED.**
@@ -386,7 +386,7 @@ into it and read the error — but this normally passes.
 
 1. Click the **gear icon** (top left, next to "Project Overview") → **Project settings**.
 2. Scroll to **Your apps** → click the **`</>`** (web) icon.
-3. App nickname: `CBO Web`
+3. App nickname: `CFMS Web`
 4. **Do NOT tick "Also set up Firebase Hosting"** — we use Netlify.
 5. **Register app**.
 6. You now see a code block. Find these six lines and **copy them into Notepad**:
@@ -654,7 +654,7 @@ npm run dev
 
 **You should see:** `Local: http://localhost:5173/`
 
-Open **http://localhost:5173** in your browser. You should see the CBO sign-in page with the navy
+Open **http://localhost:5173** in your browser. You should see the CFMS sign-in page with the navy
 panel on the left.
 
 ### 3.7 Create a test user
@@ -680,7 +680,7 @@ panel on the left.
 ```
 
 4. **Save**.
-5. In the CBO tab, sign out (click your name, top right → Sign out) and sign in again.
+5. In the CFMS tab, sign out (click your name, top right → Sign out) and sign in again.
 
 **You should now see the dashboard.**
 
@@ -846,7 +846,7 @@ Officer and the Treasurer, in one room, on staging.
 ### 6.1 Create one user per role
 
 For each person: Firebase console → Authentication → **Add user** → their email and a temporary
-password. Then in CBO: **Administration → Users and Roles** → find them → **Manage access** → tick
+password. Then in CFMS: **Administration → Users and Roles** → find them → **Manage access** → tick
 their role → **Save access**. They sign in and change nothing else.
 
 ### 6.2 Walk the list
@@ -1017,7 +1017,7 @@ Press Enter. Then type `.exit` and press Enter.
 
 4. They sign out and in again. They now have full access.
 
-**This is the only time you will ever do this.** Every other role is granted inside CBO under
+**This is the only time you will ever do this.** Every other role is granted inside CFMS under
 **Administration → Users and Roles**.
 
 ### 9.2 Switch on App Check — last
@@ -1076,9 +1076,9 @@ so nothing can be posted into them by accident.
 
 Not two weeks. A full month, so month-end close and bank reconciliation are actually exercised.
 
-- **Week 1** — record everything in CBO *and* keep the existing records.
+- **Week 1** — record everything in CFMS *and* keep the existing records.
 - **Week 2** — compare daily: collections, disbursements, cash position. Every difference is
-  usually something missing from CBO. Finding them now is the point.
+  usually something missing from CFMS. Finding them now is the point.
 - **Week 3** — post all journal entries; compare the trial balance to the manual books.
 - **Week 4** — import the bank statement, reconcile to zero, close the period, generate every
   report and compare against the manual ones.

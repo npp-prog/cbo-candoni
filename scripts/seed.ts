@@ -1,5 +1,5 @@
 /**
- * Seeds the reference data a fresh CBO environment needs before anyone can
+ * Seeds the reference data a fresh CFMS environment needs before anyone can
  * record a transaction: the funds, the chart of accounts, the offices, the
  * withholding tax codes and the numbering rules.
  *
@@ -273,7 +273,7 @@ const NUMBERING = [
 // ---------------------------------------------------------------------------
 
 async function seed() {
-  console.log(`Seeding CBO reference data into ${projectId}${useEmulator ? ' (emulator)' : ''}\n`);
+  console.log(`Seeding CFMS reference data into ${projectId}${useEmulator ? ' (emulator)' : ''}\n`);
 
   await writeBatch('funds', FUNDS, (f) => f.code, (f) => ({ ...f, id: f.code, active: true }));
 

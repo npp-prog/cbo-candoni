@@ -5,7 +5,7 @@
 // functions run sync:rules`) to regenerate. CI fails if the two diverge.
 // =============================================================================
 /**
- * CBO accounting invariants - pure functions, no I/O, no Firebase.
+ * CFMS accounting invariants - pure functions, no I/O, no Firebase.
  *
  * ------------------------------------------------------------------------
  * THIS FILE IS VENDORED INTO THE CLOUD FUNCTIONS BUILD.
@@ -182,7 +182,7 @@ export interface AllotmentCheckInput {
  * WHY THE HOLD IS SUBTRACTED HERE AND NOT SHOWN AS A SMALLER APPROPRIATION
  * ---------------------------------------------------------------------------
  * A department reading its available balance must see what it may actually
- * commit. If the hold were left out of this test, CBO would let the Budget
+ * commit. If the hold were left out of this test, CFMS would let the Budget
  * Officer release authority they had explicitly decided to withhold - and it
  * would do so silently, because everything else would still foot.
  *
@@ -477,7 +477,7 @@ export interface RealignmentLine {
  * The two acts that move authority between budget lines.
  *
  * They look identical in the books, they are not the same act in law, and the
- * office names them differently. CBO used to present them as one transaction
+ * office names them differently. CFMS used to present them as one transaction
  * with a choice of "instrument" buried inside it, which is not how anybody in
  * the Budget Office thinks about them.
  *
@@ -495,7 +495,7 @@ export interface RealignmentLine {
  * So the rule of thumb the office uses: same class, the Mayor may sign it;
  * different class, it goes to the Sanggunian.
  *
- * 'SUPPLEMENTAL' is the value CBO stored for a realignment before this was
+ * 'SUPPLEMENTAL' is the value CFMS stored for a realignment before this was
  * straightened out, and it is still read so that records made under it keep
  * their meaning. Nothing writes it any more. It was a poor name in any case -
  * a supplemental BUDGET appropriates new money from new revenue, which is a
@@ -527,10 +527,10 @@ export interface AugmentationLine {
  *
  * Posted, it is indistinguishable in the books from a lawful one, and a
  * reviewer finding it months later disallows it after the money is spent. So
- * CBO refuses it and names the other instrument.
+ * CFMS refuses it and names the other instrument.
  *
  * ---------------------------------------------------------------------------
- * THE SECOND LIMIT, WHICH CBO USED TO MISS
+ * THE SECOND LIMIT, WHICH CFMS USED TO MISS
  * ---------------------------------------------------------------------------
  * Note 2 under LBE Form No. 2 of the Budget Operations Manual for LGUs (2023
  * edition, page 186, revised as of reprinting for FY2024) is two rules in one
@@ -540,7 +540,7 @@ export interface AugmentationLine {
  *    (e.g., PS to PS and MOOE to MOOE). SAVINGS FROM CO CANNOT BE USED FOR
  *    AUGMENTATION PURPOSES."
  *
- * CBO enforced the first half and not the second, so a Capital Outlay line
+ * CFMS enforced the first half and not the second, so a Capital Outlay line
  * could be drained into another Capital Outlay line and nothing objected: the
  * set never crossed a class, so the old check was satisfied.
  *
@@ -705,7 +705,7 @@ export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
  * as a realignment, and the convenience Section 336 offers - a signature of
  * the Local Chief Executive - is simply not available that year.
  *
- * CBO cannot read an ordinance, so it cannot work this out. What it can do is
+ * CFMS cannot read an ordinance, so it cannot work this out. What it can do is
  * refuse to assume. The office records, once for each fiscal year and fund,
  * the ordinance and the section of its General Provisions that carry the
  * authority, and until that is recorded an augmentation does not post.
@@ -746,7 +746,7 @@ export function checkAugmentationAuthority(input: {
       'AUGMENTATION_NOT_AUTHORISED',
       `No one has recorded that the ${input.fiscalYear} appropriation ordinance for the ` +
         `${input.fundCode} allows augmentation. Section 336 permits it only where the annual ` +
-        'budget\u2019s General Provisions carry the omnibus authority, and CBO will not assume ' +
+        'budget\u2019s General Provisions carry the omnibus authority, and CFMS will not assume ' +
         'they do. Record the ordinance number and the section that grants it, or move this ' +
         'appropriation by Realignment instead, which is an ordinance of the Sanggunian.',
       { fiscalYear: input.fiscalYear, fundCode: input.fundCode, key },

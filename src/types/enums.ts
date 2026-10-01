@@ -1,5 +1,5 @@
 /**
- * Controlled vocabularies used across CBO.
+ * Controlled vocabularies used across CFMS.
  *
  * These are `as const` objects rather than TypeScript `enum`s so that the exact
  * string is what lands in Firestore. A Firestore document written today must

@@ -172,7 +172,7 @@ export default function AuditTrail() {
     <div>
       <PageHeader
         title="Audit Trail"
-        subtitle="Every consequential action in CBO, recorded permanently and readable by the Commission on Audit."
+        subtitle="Every consequential action in CFMS, recorded permanently and readable by the Commission on Audit."
         breadcrumbs={[{ label: 'Audit Trail' }]}
       />
 

@@ -1,6 +1,6 @@
 # Data model
 
-Municipal Government of Candoni — CBO
+Municipal Government of Candoni — CFMS
 
 Every collection, who may write it, and how the chain links together. Types are defined in
 `src/types/`; collection names are constants in `src/lib/collections.ts` and are referenced by
@@ -110,7 +110,7 @@ ledger → the JEV → the voucher → the scanned invoice.
 | `collections` | auto | C | One official receipt with its revenue distribution. Immutable once issued except for non-monetary corrections — an OR in a citizen's hands is not editable. |
 | `rcds` | auto | C (draft) | Gathers a collecting officer's receipts. Posting verifies each receipt exists, belongs to this fund, and is not already in another RCD. |
 | `deposits` | auto | C | `RECORDED → IN_TRANSIT → CREDITED`. In transit until reconciliation matches the bank credit — which is what makes deposits-in-transit a derived figure rather than a manual adjustment. |
-| `accountableForms` | auto | C | Quantities in pieces, not centavos. The one place in CBO where an amount is not money. |
+| `accountableForms` | auto | C | Quantities in pieces, not centavos. The one place in CFMS where an amount is not money. |
 | `bankTransactions` | auto | **S** (create) | Imported statement lines, each with a content fingerprint so a re-import is detected. Clients may confirm or reject a proposed match. |
 | `bankReconciliations` | auto | C (draft) | Finalisation is server-side: the book balance is re-read from the ledger and the difference must be zero. |
 | `importBatches` | auto | **S** | Import provenance. |

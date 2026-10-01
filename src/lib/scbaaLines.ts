@@ -30,7 +30,7 @@
  *                     the budget."
  *   Difference        Final budget less Actual.
  *
- * The first two map onto figures CBO already maintains: `appropriationOriginal`
+ * The first two map onto figures CFMS already maintains: `appropriationOriginal`
  * plus `appropriationContinuing` for the original - the continuing part is in
  * the definition, not an addition here - and `appropriationRevised` for the
  * final, which is precisely "adjusted for supplemental budgets, realignments
@@ -70,7 +70,7 @@ export interface ScbaaRevenueLine {
  * gain; drawing a loan debits cash and credits a payable. Neither reaches an
  * income account, and the actual column of this statement is built from the
  * collections the Treasury reported - which are keyed by income account. They
- * are printed because the annex prints them, and they stay empty until CBO
+ * are printed because the annex prints them, and they stay empty until CFMS
  * records a non-income receipt in a way this statement can read.
  */
 export const SCBAA_REVENUE: ScbaaRevenueLine[] = [

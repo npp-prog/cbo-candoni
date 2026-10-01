@@ -1,5 +1,5 @@
 /**
- * Grants the first Super Administrator on a fresh CBO project.
+ * Grants the first Super Administrator on a fresh CFMS project.
  *
  *   npx tsx scripts/grant-admin.ts --project cbo-candoni-dev --email you@example.org
  *
@@ -8,7 +8,7 @@
  *
  * WHY THIS SCRIPT EXISTS
  *
- * Roles in CBO are granted by `setUserRoles`, and that function requires the
+ * Roles in CFMS are granted by `setUserRoles`, and that function requires the
  * caller to already be a SUPER_ADMIN - which is what makes it impossible for a
  * user to promote themselves. On a brand-new project nobody holds that role
  * yet, so there is nothing to call it with. Something outside the application

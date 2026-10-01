@@ -51,7 +51,7 @@ function readEnv(): FirebaseEnv {
     // Fail loudly and early. A half-configured accounting system that appears
     // to work is far worse than one that refuses to start.
     console.error(
-      `[CBO] Missing Firebase configuration: ${missing.join(', ')}. ` +
+      `[CFMS] Missing Firebase configuration: ${missing.join(', ')}. ` +
         'Set the VITE_FIREBASE_* environment variables in Netlify for this deploy context.',
     );
   }
@@ -71,7 +71,7 @@ const region = import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION ?? 'asia-southeast
 export const app: FirebaseApp = initializeApp(readEnv());
 
 /**
- * Firestore with a persistent cache. CBO is used in offices where connectivity
+ * Firestore with a persistent cache. CFMS is used in offices where connectivity
  * is not always reliable; the cache keeps master data and recently-viewed
  * transactions readable during a drop. Writes are still online-only in
  * practice, because every state change goes through a Cloud Function.
@@ -88,7 +88,7 @@ export const storage: FirebaseStorage = getStorage(app);
 export const functions: Functions = getFunctions(app, region);
 
 /**
- * App Check. Attests that requests come from the real CBO application at
+ * App Check. Attests that requests come from the real CFMS application at
  * cbo.mgocandoni.com rather than from a script holding a copied web config.
  * Not a substitute for security rules - it is an additional gate in front of
  * them.
@@ -106,10 +106,10 @@ if (appCheckSiteKey && !useEmulators) {
       isTokenAutoRefreshEnabled: true,
     });
   } catch (err) {
-    console.error('[CBO] App Check failed to initialise', err);
+    console.error('[CFMS] App Check failed to initialise', err);
   }
 } else if (IS_PRODUCTION) {
-  console.error('[CBO] App Check is not configured in a production build.');
+  console.error('[CFMS] App Check is not configured in a production build.');
 }
 
 if (useEmulators) {
@@ -117,5 +117,5 @@ if (useEmulators) {
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
   connectStorageEmulator(storage, '127.0.0.1', 9199);
   connectFunctionsEmulator(functions, '127.0.0.1', 5001);
-  console.info('[CBO] Connected to the Firebase emulator suite.');
+  console.info('[CFMS] Connected to the Firebase emulator suite.');
 }

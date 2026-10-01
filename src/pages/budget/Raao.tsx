@@ -25,7 +25,7 @@ import { fundLabel } from './Obligations';
  * ---------------------------------------------------------------------------
  * WHY THIS DEFAULTS TO A MONTH
  * ---------------------------------------------------------------------------
- * Every other register in CBO opens on the year to date, and this one does
+ * Every other register in CFMS opens on the year to date, and this one does
  * not. The form is headed "For the Month of ____" and instruction 7 is about
  * carrying one month's totals onto the next month's first line: it is a
  * monthly book. Opening it on the year would show a sheet with no brought
@@ -42,7 +42,7 @@ export default function Raao() {
   const [officeId, setOfficeId] = useState<string | null>(null);
   const [period, setPeriod] = useState<ReportPeriod>(() => ({
     mode: 'MONTHLY',
-    // The month CBO is in, when the fiscal year is the current one. Opening a
+    // The month CFMS is in, when the fiscal year is the current one. Opening a
     // past year on "September" because today is September would show an empty
     // sheet and look broken, so an old year opens on January.
     index: Number(todayPh().slice(0, 4)) === fiscalYear ? Number(todayPh().slice(5, 7)) : 1,
@@ -136,7 +136,7 @@ export default function Raao() {
           */}
           <p className="mt-1">
             The reference in Section B is the Obligation Request number. The manual names the CAFOA
-            there; the CAFOA (Appendix 28) is suspended and CBO does not raise one.
+            there; the CAFOA (Appendix 28) is suspended and CFMS does not raise one.
           </p>
         </>
       }

@@ -8,7 +8,7 @@ import { ToastProvider } from './components/ui/Toast';
 import './index.css';
 
 const root = document.getElementById('root');
-if (!root) throw new Error('CBO could not start: the #root element is missing from index.html.');
+if (!root) throw new Error('CFMS could not start: the #root element is missing from index.html.');
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>

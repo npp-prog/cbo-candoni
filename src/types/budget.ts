@@ -363,7 +363,7 @@ export interface BudgetSummary {
  *
  * Not an appropriation and not an authority to spend: an estimate of what will
  * come in. It is here rather than beside the appropriations because the
- * ordinance does not enact it - which is exactly why CBO had no budget column
+ * ordinance does not enact it - which is exactly why CFMS had no budget column
  * for receipts on any statement until this existed.
  */
 export interface EstimatedReceipt {
@@ -419,7 +419,7 @@ export interface TrustProgram {
    * GAM Appendix 18 heads the Registry of Special Trust Fund with "Account -
    * Code assigned in the RCA". Optional, and stated by the Accountant: a
    * programme's liability account is a classification decision, and nothing in
-   * CBO can derive it from the source agency or the purpose.
+   * CFMS can derive it from the source agency or the purpose.
    */
   accountCode?: string;
   /** When the programme started, for sorting and reporting. Not a control. */

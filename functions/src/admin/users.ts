@@ -39,7 +39,7 @@ const SEGREGATION_CONFLICTS: Array<[string, string, string]> = [
 ];
 
 /**
- * setUserRoles - the only way roles are granted in CBO.
+ * setUserRoles - the only way roles are granted in CFMS.
  *
  * Roles live in Firebase Auth custom claims because that is what Firestore
  * Security Rules can read and what a client cannot forge. The `users` document
@@ -112,7 +112,7 @@ export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_AP
     if (admins.size <= 1) {
       throw new HttpsError(
         'failed-precondition',
-        'You are the only active Super Administrator. Grant the role to another user before removing it from your own account, or CBO will have no administrator.',
+        'You are the only active Super Administrator. Grant the role to another user before removing it from your own account, or CFMS will have no administrator.',
       );
     }
   }
@@ -232,7 +232,7 @@ export const onBeforeSignIn = beforeUserSignedIn({ region: REGION }, async (even
   }
 
   if (profile?.exists && profile.data()?.active === false) {
-    throw new AuthBlockingError('permission-denied', 'This CBO account has been deactivated.');
+    throw new AuthBlockingError('permission-denied', 'This CFMS account has been deactivated.');
   }
 
   // ---- bookkeeping, which may never deny -----------------------------------

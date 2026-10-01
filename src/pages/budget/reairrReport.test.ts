@@ -33,7 +33,7 @@ describe('Section A, the estimates', () => {
    * The whole point of the asymmetry. Instruction 2 totals Section A at the
    * END OF THE YEAR; a March filter must not cut the estimate to a quarter of
    * itself, because the Local Finance Committee never certified a March
-   * estimate and CBO must not invent one.
+   * estimate and CFMS must not invent one.
    */
   it('carries the whole year estimate whatever period is filtered', () => {
     const march = build([est()], []);
@@ -62,7 +62,7 @@ describe('Section A, the estimates', () => {
 
   /**
    * The line is labelled with what the figures came from, not called "Annual
-   * Budget" on no evidence - CBO holds no record of which ordinance set them.
+   * Budget" on no evidence - CFMS holds no record of which ordinance set them.
    */
   it('labels the line with the source given, and says so plainly otherwise', () => {
     expect(build([est()], []).estimates[0].particulars).toBe('Income estimates on record');

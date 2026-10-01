@@ -1,4 +1,4 @@
-name: CBO CI
+name: CFMS CI
 
 on:
   push:

@@ -44,7 +44,7 @@ import type { Centavos, PeriodNo } from '@/types/common';
  * ---------------------------------------------------------------------------
  * WHY THIS ONE IGNORES THE FUND FILTER
  * ---------------------------------------------------------------------------
- * Every other report in CBO is for one fund, because every other report
+ * Every other report in CFMS is for one fund, because every other report
  * answers a question about one fund. The SRE is not: its expenditure section
  * has a line for the General Fund, a line for the Special Education Fund and a
  * line for the Trust Fund, and it is submitted for the municipality as a
@@ -56,7 +56,7 @@ import type { Centavos, PeriodNo } from '@/types/common';
  * WHY THE BEGINNING AND ENDING CASH BALANCES ARE NOT FILLED IN
  * ---------------------------------------------------------------------------
  * Annex A opens with the beginning cash balance and closes with the ending
- * one. Both are cash figures, and CBO's cash position is built from the bank
+ * one. Both are cash figures, and CFMS's cash position is built from the bank
  * ledgers and the treasury's own books rather than from the General Ledger
  * entries this statement reads. Deriving them here from a different source
  * than the rest of the statement would produce two figures that look like a
@@ -90,7 +90,7 @@ export default function Sre() {
   /*
    * The Budget Year column.
    *
-   * Annex A asks for it on both sides. On the spending side CBO has always had
+   * Annex A asks for it on both sides. On the spending side CFMS has always had
    * it - the appropriation ordinance is loaded. On the receiving side it did
    * not exist anywhere in the system, because an ordinance authorises
    * expenditure and says nothing about what will pay for it; the figures now
@@ -274,7 +274,7 @@ export default function Sre() {
         <>
           DBM-DOF-DILG Joint Memorandum Circular No. 2018-1, Annex A. All three funds, whatever the
           fund filter above says — the statement is submitted for the municipality as a whole. The
-          beginning and ending cash balances are left blank: they are cash figures and CBO builds
+          beginning and ending cash balances are left blank: they are cash figures and CFMS builds
           its cash position from the bank ledgers rather than from the entries this statement reads,
           so deriving them here would put two figures that look like a pair, and are not, at the top
           and bottom of the form.
@@ -292,7 +292,7 @@ export default function Sre() {
           {Object.keys(mapping).length === 0 && (
             <Alert tone="warning" title="No revenue account has been mapped yet" className="mb-4 no-print">
               The receipts section will be empty until each revenue account is put on one of the
-              twenty lines of Annex A. CBO ships with none of that filled in on purpose: which of
+              twenty lines of Annex A. CFMS ships with none of that filled in on purpose: which of
               your account codes belongs on "Regulatory Fees" rather than "Service/User Charges" is
               a judgement for the Accountant and the Treasurer, and a mapping invented for you would
               give a statement that foots correctly and reports the wrong figures to BLGF.

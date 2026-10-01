@@ -23,7 +23,7 @@ import { PERIOD_MODE_LABELS, type PeriodMode } from '@/lib/reportPeriods';
  *      while the control next to it stayed put.
  *
  * The fix is in ONE place - the `.cbo-filter-row` class - so that it applies
- * to every filter row in CBO rather than the one screen that was complained
+ * to every filter row in CFMS rather than the one screen that was complained
  * about. These tests exist because that is exactly the kind of fix that gets
  * undone by a later edit to a single screen.
  */

@@ -8,7 +8,7 @@ import type { RaaoClass } from './raaoReport';
  * ---------------------------------------------------------------------------
  * WHY TABS AND NOT FIVE MENU ENTRIES
  * ---------------------------------------------------------------------------
- * The GAM prescribes four registries, one per allotment class, and CBO already
+ * The GAM prescribes four registries, one per allotment class, and CFMS already
  * had a fifth view - the summary, which is not in the manual but is the one
  * screen that answers "where does this budget line stand" across all four.
  *

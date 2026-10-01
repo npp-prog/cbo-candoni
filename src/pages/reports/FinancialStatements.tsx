@@ -34,7 +34,7 @@ import { fundLabel } from '../budget/Obligations';
  *
  * All five are built from the same source: posted ledger entries, grouped by
  * each account's financial-statement classification as recorded in the Chart
- * of Accounts. No statement balance is stored anywhere in CBO, so there is no
+ * of Accounts. No statement balance is stored anywhere in CFMS, so there is no
  * possibility of the statements and the ledger disagreeing.
  *
  * The sign convention is the one thing worth explaining. Ledger entries carry
@@ -196,7 +196,7 @@ export default function FinancialStatements() {
       footnote={
         <>
           <p>
-            Prepared from posted journal entries. No statement balance is stored anywhere in CBO,
+            Prepared from posted journal entries. No statement balance is stored anywhere in CFMS,
             so the statements cannot disagree with the ledger.
           </p>
           {(statement === 'position' || statement === 'performance') && (
@@ -318,7 +318,7 @@ function GrandTotal({ label, value }: { label: string; value: Centavos }) {
 /**
  * The Statement of Cash Flows, Annex 9.
  *
- * The statement CBO shipped with read the cash-flow class off the cash line of
+ * The statement CFMS shipped with read the cash-flow class off the cash line of
  * each entry and printed three net figures. That could not work: the class of
  * a cash account is always OPERATING, and every posting routine on the server
  * writes that literal in any case, so the investing and financing lines were
@@ -379,7 +379,7 @@ function CashFlowStatement({
       {openedTwice && (
         <Alert tone="warning" className="mb-4">
           {fiscalYear} carries an opening-balance journal entry of{' '}
-          {formatPeso(data.openingFromOpeningEntry)} even though {fiscalYear - 1} is already in CBO
+          {formatPeso(data.openingFromOpeningEntry)} even though {fiscalYear - 1} is already in CFMS
           and closed with {formatPeso(data.priorClosingCash)} in cash. Opening balances are encoded
           once, on conversion; the year opened twice over and the opening line below is the sum of
           both.
@@ -467,7 +467,7 @@ function CashFlowStatement({
         Until this release the investing and financing sections of this statement could never carry
         anything, whatever Candoni bought or borrowed, because they were read from a classification
         the server writes as &ldquo;operating&rdquo; on every line it posts. Any Statement of Cash
-        Flows printed from CBO before this release showed the whole year under operating activities
+        Flows printed from CFMS before this release showed the whole year under operating activities
         and should not be relied on.
       </Alert>
     </>
@@ -838,7 +838,7 @@ function PositionStatement({
       )}
 
       {/*
-        Annex 5 prints a Fund Balance block beneath Government Equity. CBO
+        Annex 5 prints a Fund Balance block beneath Government Equity. CFMS
         cannot fill it from the ledger and says so rather than leaving four
         blank lines for the reader to wonder about.
       */}
@@ -860,7 +860,7 @@ function PositionStatement({
           </tbody>
         </table>
         <p className="mt-2 text-xs text-slate-500">
-          Blank on purpose. The budgetary registry accounts (3-05) are not postable in CBO — the
+          Blank on purpose. The budgetary registry accounts (3-05) are not postable in CFMS — the
           registry is kept in the budget balances the Cloud Functions maintain and is never
           journalised — so the general ledger carries nothing against them. These figures can be
           derived from the Registry instead, but which registry figure answers to which caption is

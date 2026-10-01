@@ -111,7 +111,7 @@ export default function ObligationDetail() {
   /**
    * The signed form has to be on file before the number is issued.
    *
-   * What CBO holds is an encoding of a document the office prepared and had
+   * What CFMS holds is an encoding of a document the office prepared and had
    * approved on paper. Certifying without that document attached creates a
    * numbered commitment in the books whose authority exists only in somebody's
    * memory - and the number cannot be reused afterwards, so the gap it leaves
@@ -770,7 +770,7 @@ export default function ObligationDetail() {
               {hasSupportingDocument
                 ? `The ${form.short} is on file. This obligation can be certified.`
                 : `Attach the signed and approved ${form.short} before certifying. ` +
-                  `What CBO holds is an encoding of that document; a certified number with no ` +
+                  `What CFMS holds is an encoding of that document; a certified number with no ` +
                   `approved form behind it is a commitment in the books whose authority is in ` +
                   `nobody's file, and the number cannot be given back.`}
             </Alert>

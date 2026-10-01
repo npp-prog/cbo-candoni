@@ -372,7 +372,7 @@ export const importBudgetLines = onCall(
       }
       const sectorDef = findSector(sector);
       if (!sectorDef) {
-        add(`sector "${sector}" is not one CBO knows`);
+        add(`sector "${sector}" is not one CFMS knows`);
         return;
       }
       const serviceSector = String(row.serviceSector ?? '').trim() || null;
@@ -460,7 +460,7 @@ export const importBudgetLines = onCall(
          * all this year?
          *
          * Section 336 grants the power only where the annual budget's General
-         * Provisions carry the omnibus authority. CBO cannot read an ordinance
+         * Provisions carry the omnibus authority. CFMS cannot read an ordinance
          * and will not assume one, so the office records the ordinance and the
          * section once per fiscal year and fund, and this refuses until it has.
          *

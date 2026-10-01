@@ -237,8 +237,8 @@ export default function QuarterlyReceipts() {
               className="mb-4 no-print"
             >
               The Local Finance Committee certifies estimated income <strong>by quarter</strong>,
-              and {periodLabel(period).toLowerCase()} does not close on one. CBO will not divide a
-              quarter into months: that would produce figures nobody certified and a variance CBO
+              and {periodLabel(period).toLowerCase()} does not close on one. CFMS will not divide a
+              quarter into months: that would produce figures nobody certified and a variance CFMS
               had invented, reported to the Committee as though the Treasurer had projected it. The
               collections below are real; the estimate and variance columns are blank until the
               period closes a quarter.

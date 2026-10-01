@@ -49,8 +49,8 @@ import {
  * WHY A MONTHLY REPORT HAS NO VARIANCE
  * ---------------------------------------------------------------------------
  * The Local Finance Committee certifies estimated income BY QUARTER. There is
- * no monthly estimate anywhere, and CBO does not make one up: dividing a
- * quarter by three would produce figures nobody certified and a variance CBO
+ * no monthly estimate anywhere, and CFMS does not make one up: dividing a
+ * quarter by three would produce figures nobody certified and a variance CFMS
  * invented, reported to the Committee as though the Treasurer had projected
  * it.
  *
@@ -88,7 +88,7 @@ export interface QuarterEstimate {
 /**
  * The estimates, keyed by account code.
  *
- * CBO does not derive these from anything. Estimated income is a budget
+ * CFMS does not derive these from anything. Estimated income is a budget
  * PREPARATION figure - what the Local Finance Committee certified as the
  * income reasonably expected - and it is the denominator of the variance this
  * whole form exists to show. Guessing it from last year's collections would

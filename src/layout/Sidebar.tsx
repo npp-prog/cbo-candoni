@@ -147,11 +147,11 @@ export function Sidebar({
         {/* Wordmark */}
         <div className={clsx('flex items-center gap-2.5 border-b border-navy-800 px-4 py-4', collapsed && 'justify-center px-2')}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-brand-600 text-sm font-bold text-white">
-            CBO
+            CFMS
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">Candoni Books Online</p>
+              <p className="truncate text-sm font-semibold text-white">Candoni Financial Management System</p>
               <p className="truncate text-2xs text-slate-400">Municipal Government of Candoni</p>
             </div>
           )}

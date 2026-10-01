@@ -1,9 +1,9 @@
 /**
- * CBO shared primitives.
+ * CFMS shared primitives.
  *
  * MONEY REPRESENTATION
  * --------------------
- * Every monetary value in CBO is stored as an integer number of centavos
+ * Every monetary value in CFMS is stored as an integer number of centavos
  * (`Centavos`), never as a floating-point peso amount. ₱1,234,567.89 is stored
  * as 123456789. This is not stylistic: IEEE-754 doubles cannot represent 0.1
  * exactly, so a trial balance built from float pesos will eventually fail to
@@ -54,7 +54,7 @@ export interface AuditStamps {
 }
 
 /**
- * CBO never hard-deletes a financial record. A document is either cancelled
+ * CFMS never hard-deletes a financial record. A document is either cancelled
  * (a business act, with reason and audit trail) or, for master data only,
  * soft-deleted by setting `active: false`.
  */
@@ -70,7 +70,7 @@ export interface PagedResult<T> {
   cursor?: string;
 }
 
-/** Result shape returned by every Cloud Function callable in CBO. */
+/** Result shape returned by every Cloud Function callable in CFMS. */
 export interface EngineResult<T = unknown> {
   ok: true;
   data: T;

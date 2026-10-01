@@ -27,7 +27,7 @@ import type { Centavos } from '@/types/common';
  * inside the transactions that certify a utilisation and approve a voucher, so
  * they cannot drift from the documents that moved them.
  *
- * "Received" is none of those. CBO does not yet tie a Trust Fund collection to
+ * "Received" is none of those. CFMS does not yet tie a Trust Fund collection to
  * a programme, so the figure is the Accountant's statement of what the source
  * has remitted. Printing it beside three worked figures without saying so
  * would be the quiet kind of wrong: four columns that look equally solid, one
@@ -167,7 +167,7 @@ export default function FundUtilization() {
           against. <strong>Utilised</strong> is what certified utilisations have committed and{' '}
           <strong>disbursed</strong> what approved vouchers have paid; both are maintained inside
           the transactions that wrote those documents. <strong>Received</strong> is stated by the
-          Accountant and is not derived from the ledger &mdash; CBO does not yet tie a Trust Fund
+          Accountant and is not derived from the ledger &mdash; CFMS does not yet tie a Trust Fund
           collection to a programme &mdash; so it is the one column here that nothing in the
           system verifies. A programme is not tied to a fiscal year, so the figures are the life
           of the programme; the {fiscalYear} column is the movement within the year.

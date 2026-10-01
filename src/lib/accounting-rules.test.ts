@@ -717,7 +717,7 @@ describe('checkAugmentationExpenseClass', () => {
    * LBE Form No. 2, Note 2, second sentence: "Savings from CO cannot be used
    * for augmentation purposes."
    *
-   * This is a SEPARATE prohibition from the same-class rule, and the one CBO
+   * This is a SEPARATE prohibition from the same-class rule, and the one CFMS
    * used to miss: a set drawn from Capital Outlay and applied to Capital
    * Outlay never crosses a class, so the class rule passed it.
    */
@@ -805,7 +805,7 @@ describe('checkAllotmentAgainstAppropriation with a hold', () => {
   });
 
   /**
-   * The whole point of the hold. Without this, CBO would let the Budget
+   * The whole point of the hold. Without this, CFMS would let the Budget
    * Officer release authority they had explicitly decided to withhold, and
    * would do it silently because everything else still foots.
    */
@@ -1197,7 +1197,7 @@ describe('planAugmentationAllotment', () => {
 describe('checkAugmentationAuthority', () => {
   /**
    * Section 336 grants the power only where the annual budget's General
-   * Provisions carry the omnibus authority. CBO cannot read an ordinance, so
+   * Provisions carry the omnibus authority. CFMS cannot read an ordinance, so
    * the whole of this rule is: do not assume one.
    */
   const authorised = {
@@ -1272,7 +1272,7 @@ describe('the two acts, told apart', () => {
   /**
    * An augmentation stays inside one expense class and the Local Chief
    * Executive signs it; a realignment crosses classes and takes an ordinance
-   * of the Sanggunian. CBO used to call them one thing with a choice of
+   * of the Sanggunian. CFMS used to call them one thing with a choice of
    * instrument inside it, and 'SUPPLEMENTAL' was the stored name for what the
    * office calls a realignment.
    */

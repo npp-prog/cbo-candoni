@@ -19,14 +19,14 @@
  * An appropriation ordinance authorises EXPENDITURE. It does not enact the
  * receipts that will pay for it - those are estimates, certified by the Local
  * Finance Committee as "reasonably projected as collectible for the Budget
- * Year" on LBP Form No. 1, and nothing in the ordinance CBO loads carries
+ * Year" on LBP Form No. 1, and nothing in the ordinance CFMS loads carries
  * them.
  *
- * So CBO could compare budget with actual on the spending side and had
+ * So CFMS could compare budget with actual on the spending side and had
  * nothing at all on the receiving side. The SRE has a column for estimated
  * receipts and the Statement of Comparison of Budget and Actual Amounts has a
  * whole receipts section, and both were empty - not because the figures were
- * missing from the municipality, but because there was nowhere in CBO to put
+ * missing from the municipality, but because there was nowhere in CFMS to put
  * them.
  *
  * ---------------------------------------------------------------------------

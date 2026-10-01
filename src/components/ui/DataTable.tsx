@@ -5,7 +5,7 @@ import { EmptyState, Spinner } from './Layout';
 import { exportCsv, exportXlsx, printReport, type ExportColumn, type ReportMeta } from '@/lib/export';
 
 /**
- * The table every register and listing in CBO is built on.
+ * The table every register and listing in CFMS is built on.
  *
  * Search, sort, filter, paginate, choose columns, export and print - the
  * specification asks for all of these on every major table, so they live here

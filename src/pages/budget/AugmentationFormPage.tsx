@@ -22,7 +22,7 @@ import { fundLabel } from './Obligations';
  * ordinance, laid out as the manual lays it out: savings on the left, the
  * items they augment on the right, and the two totals which must agree.
  *
- * The signature block is the manual's own and not CBO's usual one - the
+ * The signature block is the manual's own and not CFMS's usual one - the
  * Accountant signs "Certified Correct by" on this form, which is not the
  * wording ReportShell prints.
  */

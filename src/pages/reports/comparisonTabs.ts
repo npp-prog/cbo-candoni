@@ -2,7 +2,7 @@
  * The two ways of putting the budget beside what happened.
  *
  * The statement is GAM Annex 8 - the form that is submitted, with its five
- * columns and its sector-by-expense-class shape. The comparison is CBO's own
+ * columns and its sector-by-expense-class shape. The comparison is CFMS's own
  * control report: the budget module beside the general ledger, line by line,
  * which is the screen that finds a disagreement between the two records.
  *

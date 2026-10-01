@@ -4,7 +4,7 @@ import { todayPh } from '@/lib/dates';
 /**
  * The fiscal year and fund a user is currently working in.
  *
- * These two dimensions govern nearly every screen in CBO, so they live in one
+ * These two dimensions govern nearly every screen in CFMS, so they live in one
  * place and are shown permanently in the header rather than being re-selected
  * on each page. Each fund keeps a complete, independent set of books; posting
  * to the wrong one is a real and costly mistake, so the current fund is always

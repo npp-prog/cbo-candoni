@@ -131,7 +131,7 @@ export default function RptAbstract() {
               <Alert tone="warning" className="mt-2">
                 Section 44 shares fines and penalties on the same basis as the tax they arose from
                 &mdash; but the basic tax and the Special Education Fund share differently, and the
-                chart carries a single account, 40105020, for the penalties on both. CBO cannot
+                chart carries a single account, 40105020, for the penalties on both. CFMS cannot
                 tell which part of this figure belongs to which tax, so it is left unallocated
                 rather than put through one of the two rates. The Treasurer&rsquo;s own register is
                 what splits it.
@@ -174,13 +174,13 @@ export default function RptAbstract() {
             <p>
               <strong>The barangay share is a total, not a list.</strong> Section 271 of the Local
               Government Code gives the 25 per cent to the barangay where the property stands, and a
-              collection in CBO records the payor and the receipt but not the property &mdash; so
+              collection in CFMS records the payor and the receipt but not the property &mdash; so
               there is nothing here to group by. The {formatPeso(
                 data.basic.rows.find((r) => r.label === 'Barangays')?.netShare ?? 0,
               )}{' '}
               above is right in total; which barangay each peso belongs to has to come from the
               Treasurer&rsquo;s Real Property Tax Account Register. Recording the barangay on the
-              collection is the change that would let CBO print the list.
+              collection is the change that would let CFMS print the list.
             </p>
           </Alert>
 

@@ -39,7 +39,7 @@ import { checkAllotmentAgainstAppropriation } from '../lib/rules';
  * the collection of revenues": the Budget Officer releases part of an
  * appropriation and deliberately withholds the rest.
  *
- * Until now CBO could not tell a withheld appropriation from a fully released
+ * Until now CFMS could not tell a withheld appropriation from a fully released
  * one - a department reading its available balance would see authority the
  * Budget Officer had decided it could not yet have, and would obligate against
  * it. The hold is recorded on the budget line and subtracted from what may be

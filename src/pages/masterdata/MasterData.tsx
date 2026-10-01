@@ -389,7 +389,7 @@ const CONFIGS: Record<string, EntityConfig> = {
     title: 'Bank Accounts',
     singular: 'bank account',
     description:
-      'Every bank account belongs to exactly one fund - CBO refuses a payment or deposit that would move money between funds through a single account.',
+      'Every bank account belongs to exactly one fund - CFMS refuses a payment or deposit that would move money between funds through a single account.',
     defaultSort: 'bankName',
     fields: [
       { key: 'bankName', label: 'Bank', type: 'text', required: true, inTable: true },

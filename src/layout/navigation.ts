@@ -131,7 +131,7 @@ export const NAVIGATION: NavItem[] = [
        *
        * The manual defines six. Three of them - LBAc 3, 5 and 6 - want
        * physical targets and outputs, which are the Planning Office's to
-       * state and which CBO holds none of. Building shells for them would
+       * state and which CFMS holds none of. Building shells for them would
        * put three mostly-empty forms in this menu and invite somebody to
        * fill the financial half and submit it as though it were complete.
        *

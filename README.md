@@ -1,11 +1,11 @@
-# CBO — Candoni Books Online
+# CFMS — Candoni Financial Management System
 
 Integrated Municipal Financial Management System
 **Municipal Government of Candoni, Province of Negros Occidental**
 
 Production: **https://cbo.mgocandoni.com**
 
-CBO connects the Municipal Budget Office, the Municipal Accounting Office and the Municipal
+CFMS connects the Municipal Budget Office, the Municipal Accounting Office and the Municipal
 Treasurer's Office in one record, from appropriation through obligation, disbursement, the General
 Ledger, bank reconciliation and financial reporting.
 
@@ -22,7 +22,7 @@ Everything else follows from these. If you change one thing in this codebase, do
 
 **1. The General Ledger is the only source of truth.** No financial statement balance is stored
 anywhere. Every figure on a trial balance, a statement of financial position or a SAOB is computed
-from posted `ledgerEntries` at the moment it is displayed. There is no screen in CBO where a
+from posted `ledgerEntries` at the moment it is displayed. There is no screen in CFMS where a
 statement balance can be typed in, and there is no cached balance that could disagree with the
 ledger.
 

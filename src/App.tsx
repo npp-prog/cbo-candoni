@@ -111,7 +111,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <Spinner label="Starting CBO" />
+        <Spinner label="Starting CFMS" />
       </div>
     );
   }
@@ -323,7 +323,7 @@ export default function App() {
             path="/reports/budget-vs-actual"
             element={<Guard module="reports"><Scbaa /></Guard>}
           />
-          {/* CBO's own control report: the budget module beside the ledger. */}
+          {/* CFMS's own control report: the budget module beside the ledger. */}
           <Route
             path="/reports/budget-vs-actual/lines"
             element={<Guard module="reports"><BudgetVsActual /></Guard>}
@@ -331,7 +331,7 @@ export default function App() {
           {/* The Local Budget Accountability reports. They live under Budget
               because they account for the budget; the Reports menu holds the
               statements drawn off the books. Only the three the municipality
-              files are built - LBAc 3, 5 and 6 want physical targets CBO does
+              files are built - LBAc 3, 5 and 6 want physical targets CFMS does
               not hold, and a shell of one would invite a half-filled
               submission. */}
           <Route
@@ -464,7 +464,7 @@ function NotFound() {
   return (
     <EmptyState
       title="Page not found"
-      message="That address does not correspond to a screen in CBO."
+      message="That address does not correspond to a screen in CFMS."
       action={
         <Button variant="primary" onClick={() => (window.location.href = '/')}>
           Go to the dashboard

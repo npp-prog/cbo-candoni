@@ -78,7 +78,7 @@ export interface Office extends SoftDeletable {
    *
    * Annex A of GAM Volume III, and OPTIONAL on purpose. Candoni's own
    * appropriation ordinance identifies a budget line by object code or project
-   * name, not by a function code, so nothing in CBO can derive this - it is a
+   * name, not by a function code, so nothing in CFMS can derive this - it is a
    * judgement about which function of the manual an office performs, and it
    * belongs to the Budget Officer, not to a default.
    *

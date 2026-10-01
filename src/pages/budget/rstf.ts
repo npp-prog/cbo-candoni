@@ -8,7 +8,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * recorded in the RSTF and all charges to the specific trust receipt as
  * supported by FURS shall be recognized in the RSTF."
  *
- * In CBO the unit "each trust receipt for specific purpose" names is the Trust
+ * In CFMS the unit "each trust receipt for specific purpose" names is the Trust
  * Fund programme built in patch 38: a source agency, a purpose, a reference
  * document and a programmed ceiling. So one sheet per programme.
  *
@@ -17,7 +17,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * ---------------------------------------------------------------------------
  * Instruction 3, in full: "The SL shall not be closed at the end of the year."
  *
- * That is not a detail. Every other register in CBO is a fiscal-year document
+ * That is not a detail. Every other register in CFMS is a fiscal-year document
  * and is filtered by the year on the toolbar; this one is a programme's whole
  * life, and a trust programme routinely runs across three or four years. A
  * balance that reset each January would say a programme had been fully
@@ -54,7 +54,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * the face of the register:
  *
  *   THE STATED FIGURE IS KEPT BESIDE THE WORKED ONE. A programme is recorded
- *   in CBO when its memorandum of agreement is signed, and the money arrives
+ *   in CFMS when its memorandum of agreement is signed, and the money arrives
  *   afterwards - so the Accountant's figure is what the source has promised
  *   and the worked figure is what has actually been receipted. Neither
  *   overwrites the other; the difference is shown. A programme whose receipts
@@ -97,7 +97,7 @@ export interface RstfProgram {
    * Optional because a programme recorded before this field existed carries no
    * value for it, and `undefined - utilised` is NaN - a balance column of
    * "NaN" on every old sheet. It reads as nil until the next receipt posts,
-   * which is true: no receipt in CBO has yet named the programme.
+   * which is true: no receipt in CFMS has yet named the programme.
    */
   receivedPosted?: Centavos;
   utilised: Centavos;

@@ -97,7 +97,7 @@ export function isFundingSource(name: string | undefined | null): boolean {
  *
  * Returns null when the line cannot be placed - an unknown sector, or a
  * funding-source sector with no service sector named. Null is not a bucket and
- * must never be treated as one: a line CBO cannot classify has to be shown as
+ * must never be treated as one: a line CFMS cannot classify has to be shown as
  * unclassified on the SRE, because silently dropping it makes the statement
  * foot to less than the municipality spent, and silently putting it in General
  * Services makes it foot correctly while saying something untrue.

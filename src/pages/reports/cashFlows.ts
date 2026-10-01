@@ -108,7 +108,7 @@ export function buildCashFlows(input: {
   throughPeriod: number;
   /**
    * The cash balance carried in from the preceding year. Zero for a fund whose
-   * first year in CBO this is - there the opening balance arrives as an
+   * first year in CFMS this is - there the opening balance arrives as an
    * OPENING journal entry inside this year instead, and is picked up below.
    */
   priorClosingCash: Centavos;

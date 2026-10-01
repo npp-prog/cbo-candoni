@@ -69,7 +69,7 @@ describe('the estimate, where it exists', () => {
   /**
    * The Local Finance Committee certifies income BY QUARTER. There is no
    * monthly estimate anywhere, and dividing a quarter by three would produce
-   * figures nobody certified and a variance CBO had invented - reported to the
+   * figures nobody certified and a variance CFMS had invented - reported to the
    * Committee as though the Treasurer had projected it.
    */
   it('does not exist for a month, and is not invented', () => {
@@ -170,8 +170,8 @@ describe('buildReceiptsReport', () => {
 
   /**
    * A monthly report shows real collections and no variance. Showing one would
-   * mean CBO had divided a certified quarter, and the Treasurer would sign for
-   * a shortfall that CBO made up.
+   * mean CFMS had divided a certified quarter, and the Treasurer would sign for
+   * a shortfall that CFMS made up.
    */
   it('reports a month with collections and no variance', () => {
     const report = buildReceiptsReport([credit('40101010', 8, 90_000)], estimates, month(8));

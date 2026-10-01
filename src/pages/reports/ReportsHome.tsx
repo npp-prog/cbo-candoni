@@ -8,7 +8,7 @@ import { fundLabel } from '../budget/Obligations';
  *
  * Organised into the four categories the specification sets out. Every report
  * in the first three categories is derived from posted journal entries -
- * there is no screen anywhere in CBO where a financial statement balance can
+ * there is no screen anywhere in CFMS where a financial statement balance can
  * be typed in, and that is the single most important property of the
  * reporting engine.
  */
@@ -138,7 +138,7 @@ export default function ReportsHome() {
       />
 
       <Alert tone="info" className="mb-5">
-        Every financial report in CBO is derived from posted journal entries in the General Ledger.
+        Every financial report in CFMS is derived from posted journal entries in the General Ledger.
         No statement balance is stored or entered anywhere, so a report run today and the same
         report run next year will agree unless an entry was posted or reversed in between.
       </Alert>

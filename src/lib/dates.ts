@@ -1,7 +1,7 @@
 import type { IsoDate, PeriodNo } from '@/types/common';
 
 /**
- * Dates in CBO are Philippine local dates (UTC+8), stored as plain `YYYY-MM-DD`
+ * Dates in CFMS are Philippine local dates (UTC+8), stored as plain `YYYY-MM-DD`
  * strings rather than Firestore Timestamps.
  *
  * The reason is specific: a voucher dated 30 September must belong to

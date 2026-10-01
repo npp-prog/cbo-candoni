@@ -192,7 +192,7 @@ export const certifyTreasuryReport = onCall(
        * A report built from an upload cannot be certified while rows of that
        * upload are still held.
        *
-       * The upload is deliberately lenient - a row naming a voucher CBO cannot
+       * The upload is deliberately lenient - a row naming a voucher CFMS cannot
        * find is held rather than rejecting the whole file - and this is what
        * keeps that leniency honest. The report is a signed statement of what the
        * office paid, and it is made from a file that said so. Certifying it with

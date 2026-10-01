@@ -27,12 +27,12 @@ import { parsePaymentFile, type ParsedRow } from './parsePayments';
  * Uploading the Treasurer's own RCI and RADAI files.
  *
  * The office already produces these reports correctly, in another system. This
- * screen reads one and turns it into a draft report in CBO, raising a check or
+ * screen reads one and turns it into a draft report in CFMS, raising a check or
  * an ADA against each voucher the file names.
  *
  * What it does not do is decide anything. The browser splits the file into rows
  * and shows what it read; every judgment about whether a row can be posted is
- * made on the server against CBO's own records, and the amount that reaches the
+ * made on the server against CFMS's own records, and the amount that reaches the
  * books is the voucher's, not the file's. If this page and the engine ever
  * disagree, the engine is right - that is the point of it being there.
  *
@@ -147,7 +147,7 @@ export default function PaymentUploads({ importType }: { importType: 'RCI' | 'RA
         title={`Upload ${isRci ? 'RCI' : 'RADAI'}`}
         subtitle={
           isRci
-            ? "The Report of Checks Issued as the Treasurer's office produces it. Each row names the voucher its check paid; CBO raises the check against that voucher and builds the RCI from what it could place."
+            ? "The Report of Checks Issued as the Treasurer's office produces it. Each row names the voucher its check paid; CFMS raises the check against that voucher and builds the RCI from what it could place."
             : "The Report of ADA Issued as the Treasurer's office produces it. One ADA number covers the whole batch sent to the bank, and each row names the voucher it paid."
         }
         breadcrumbs={[{ label: 'Treasury' }, { label: isRci ? 'Checks' : 'ADA' }, { label: 'Upload' }]}
@@ -628,7 +628,7 @@ function ResolveDialog({
       <Field label="What should happen to this row" required>
         <Select value={action} onChange={(e) => setAction(e.target.value as 'LINK' | 'SET_ASIDE')}>
           <option value="LINK">Link it to the voucher it paid</option>
-          <option value="SET_ASIDE">Set it aside - handled outside CBO</option>
+          <option value="SET_ASIDE">Set it aside - handled outside CFMS</option>
         </Select>
       </Field>
 

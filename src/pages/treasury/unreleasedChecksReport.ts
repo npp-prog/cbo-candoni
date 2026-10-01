@@ -40,7 +40,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * ---------------------------------------------------------------------------
  * A CANCELLED CHECK IS NOT AUTOMATICALLY OFF THE SCHEDULE
  * ---------------------------------------------------------------------------
- * Patch 45 left out every cancelled, stale and replaced check, and said CBO
+ * Patch 45 left out every cancelled, stale and replaced check, and said CFMS
  * does not record WHEN a check was cancelled so the as-at test could not be
  * made. That was wrong, and it was wrong because the claim was never checked:
  * every cancellation writes a `cancelledBy` stamp carrying the moment it

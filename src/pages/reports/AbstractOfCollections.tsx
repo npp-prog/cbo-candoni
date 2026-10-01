@@ -19,7 +19,7 @@ import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
  * ---------------------------------------------------------------------------
  * WHY THE COLUMNS ARE NOT FIXED
  * ---------------------------------------------------------------------------
- * This is the one report in CBO whose shape is decided by its own data. The
+ * This is the one report in CFMS whose shape is decided by its own data. The
  * abstract proves, receipt by receipt, that the collections of a period add up
  * two ways: across, to each receipt's own total, and down, to each revenue
  * account's total for the period. To do that it needs one column per account

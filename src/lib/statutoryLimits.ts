@@ -5,7 +5,7 @@ import type { Centavos } from '@/types/common';
  *
  * Budget Operations Manual for LGUs, 2023 Edition, Chapter 3 of Part II — the
  * budget review checklist. These are the tests the reviewing authority applies
- * to an ordinance after it is enacted, and every one of them is a test CBO can
+ * to an ordinance after it is enacted, and every one of them is a test CFMS can
  * apply while it is still being drafted.
  *
  * ---------------------------------------------------------------------------
@@ -22,12 +22,12 @@ import type { Centavos } from '@/types/common';
  * before enactment.
  *
  * ---------------------------------------------------------------------------
- * WHAT CBO CANNOT CHECK, AND SAYS SO
+ * WHAT CFMS CANNOT CHECK, AND SAYS SO
  * ---------------------------------------------------------------------------
- * Every limit needs a denominator CBO does not hold - income realised last
+ * Every limit needs a denominator CFMS does not hold - income realised last
  * year, income estimated this year, the National Tax Allotment. Those are
  * figures the Treasurer states, and they are entered once a year rather than
- * derived, because deriving them from CBO's own ledger would test the budget
+ * derived, because deriving them from CFMS's own ledger would test the budget
  * against the municipality's own books instead of against the figures the
  * reviewing authority will use.
  * ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ export function checkLdrrmf(
  * review rather than a breach that voids anything - the reviewer cites it, the
  * ordinance stands - so it is reported as a condition here too.
  *
- * Which lines are the QRF is not something CBO can work out. It is nominated
+ * Which lines are the QRF is not something CFMS can work out. It is nominated
  * by the office on the screen, because a rule that guessed from a project name
  * would be wrong on the first ordinance that spelled it differently.
  */

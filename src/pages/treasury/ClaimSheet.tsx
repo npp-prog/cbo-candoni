@@ -18,7 +18,7 @@ import { CHECK_TABS, CHECK_CRUMBS } from './sections';
  * ---------------------------------------------------------------------------
  * A FORM THAT IS ONLY USEFUL ON PAPER
  * ---------------------------------------------------------------------------
- * Everything else CBO prints is a record of something that has happened. This
+ * Everything else CFMS prints is a record of something that has happened. This
  * one is the opposite: it is printed empty on purpose, carried to the counter,
  * and filled in by hand as each payee collects their check. The signature is
  * the whole document - it is what the municipality produces when a supplier

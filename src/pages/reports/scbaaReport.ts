@@ -76,7 +76,7 @@ export interface ScbaaRevenue {
    */
   unmapped: Array<{ accountCode: string; accountName: string; budget: Centavos; actual: Centavos }>;
   /**
-   * True while CBO holds one estimate per account and no record of which
+   * True while CFMS holds one estimate per account and no record of which
    * ordinance set it, so the original and final revenue budgets are the same
    * figure.
    */
@@ -119,7 +119,7 @@ export function buildScbaaRevenue(input: {
     /*
      * The original and the final revenue budget are the same figure, and that
      * is a limitation rather than a claim that no supplemental budget was
-     * enacted. CBO holds ONE estimate per income account with no record of
+     * enacted. CFMS holds ONE estimate per income account with no record of
      * which ordinance set it, so it cannot separate the annual budget from a
      * supplemental. The screen says so beside the columns.
      */

@@ -1,5 +1,5 @@
 /**
- * CBO - Candoni Books Online
+ * CFMS - Candoni Financial Management System
  * Cloud Functions accounting engine.
  *
  * Municipal Government of Candoni, Province of Negros Occidental

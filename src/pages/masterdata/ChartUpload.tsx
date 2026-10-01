@@ -24,7 +24,7 @@ import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
  * ---------------------------------------------------------------------------
  * WHY THIS SCREEN PREVIEWS BEFORE IT LOADS
  * ---------------------------------------------------------------------------
- * COA publishes a code and a title. Everything else CBO needs — the account
+ * COA publishes a code and a title. Everything else CFMS needs — the account
  * class, which way the account normally moves, where it lands on the
  * statements, whether it may be posted to at all — is derived from the code.
  *
@@ -77,7 +77,7 @@ export default function ChartUpload() {
   const check = useMemo(() => (rows.length ? checkChart(rows) : null), [rows]);
   /*
    * A chart can be perfectly well formed and still not contain the accounts
-   * CBO posts to by code - or contain them under different titles, which is
+   * CFMS posts to by code - or contain them under different titles, which is
    * worse, because the postings then go to the wrong account and balance
    * while doing it.
    */
@@ -132,7 +132,7 @@ export default function ChartUpload() {
       if (parsed.length === 0) {
         toast.error(
           'Nothing was read',
-          'CBO could not find an account code and an account title in that file. The first row should be the column headings.',
+          'CFMS could not find an account code and an account title in that file. The first row should be the column headings.',
         );
         return;
       }
@@ -252,7 +252,7 @@ export default function ChartUpload() {
             so a code of another shape cannot be classified at all.
           </p>
           <p className="mt-2 text-sm text-slate-700">
-            The municipality&rsquo;s own chart ships with CBO as{' '}
+            The municipality&rsquo;s own chart ships with CFMS as{' '}
             <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">
               data/chart-of-accounts.csv
             </code>
@@ -277,7 +277,7 @@ export default function ChartUpload() {
           {namedAccounts.length > 0 && (
             <Alert
               tone="warning"
-              title="CBO posts to accounts this chart does not have under those titles"
+              title="CFMS posts to accounts this chart does not have under those titles"
               className="mb-4"
             >
               <ul className="mt-1 list-disc space-y-1 pl-5">
@@ -359,7 +359,7 @@ export default function ChartUpload() {
               <Stat
                 label="Registry accounts"
                 value={summary.notPostable}
-                hint="Loaded but not postable — CBO keeps the budget registry itself"
+                hint="Loaded but not postable — CFMS keeps the budget registry itself"
               />
               <Stat
                 label="Need a subsidiary"

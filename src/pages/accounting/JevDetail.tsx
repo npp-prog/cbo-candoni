@@ -25,7 +25,7 @@ import { useFppOptions } from '@/data/useFppOptions';
  * The Journal Entry Voucher.
  *
  * Posting is the moment a transaction enters the General Ledger, and it is
- * the one act in CBO that cannot be undone. Everything about this screen
+ * the one act in CFMS that cannot be undone. Everything about this screen
  * follows from that: a posted entry is read-only, the posting button is
  * restricted to the Municipal Accountant, and the only route to a correction
  * is a reversing entry that leaves both the error and the fix visible.

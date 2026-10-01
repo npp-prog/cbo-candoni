@@ -88,7 +88,7 @@ describe('checkTrustProgram', () => {
     );
   });
 
-  /** Centavos are integers throughout CBO; a float would round elsewhere. */
+  /** Centavos are integers throughout CFMS; a float would round elsewhere. */
   it('refuses a fractional centavo', () => {
     expect(checkTrustProgram(program({ programmed: 100.5 })).violations[0].code).toBe(
       'TRUST_PROGRAMMED_NOT_POSITIVE',

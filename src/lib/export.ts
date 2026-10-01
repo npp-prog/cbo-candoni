@@ -8,7 +8,7 @@ import { toPesos } from './money';
  *
  * Two rules govern everything here:
  *
- *   1. Amounts leave CBO as numbers, not as pre-formatted strings. An
+ *   1. Amounts leave CFMS as numbers, not as pre-formatted strings. An
  *      accountant who receives "₱1,234,567.89" in a spreadsheet cell cannot
  *      add it up. Centavos are converted to a peso number with two decimals
  *      and the cell is given a Philippine currency format instead.
@@ -45,7 +45,7 @@ export interface ReportMeta {
 const DEFAULT_MUNICIPALITY = 'Municipality of Candoni';
 const DEFAULT_PROVINCE = 'Province of Negros Occidental';
 
-/** The official four-line heading every CBO report carries. */
+/** The official four-line heading every CFMS report carries. */
 export function reportHeadingLines(meta: ReportMeta): string[] {
   return [
     'Republic of the Philippines',

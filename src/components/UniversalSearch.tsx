@@ -77,7 +77,7 @@ export function UniversalSearch() {
         ]);
         if (!cancelled) setHits(results.flat().slice(0, 25));
       } catch (err) {
-        console.error('[CBO] Search failed', err);
+        console.error('[CFMS] Search failed', err);
         if (!cancelled) setHits([]);
       } finally {
         if (!cancelled) setSearching(false);
