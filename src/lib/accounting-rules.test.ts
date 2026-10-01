@@ -9,6 +9,7 @@ import {
   checkExpenseDebitsHaveFpp,
   checkRealignmentSet,
   planAugmentationAllotment,
+  isRealignmentInstrument,
   checkAugmentationAuthority,
   augmentationAuthorityKey,
   checkDvMath,
@@ -681,14 +682,14 @@ describe('checkAugmentationExpenseClass', () => {
    * that does not reach it. The right instrument exists and is one ordinance
    * away, so the message names it.
    */
-  it('refuses a move across expense classes and names the other instrument', () => {
+  it('refuses a move across expense classes and names the act that is allowed', () => {
     const result = checkAugmentationExpenseClass([
       { lineNo: 1, expenseClass: 'MOOE', amount: -50_000_00 },
       { lineNo: 2, expenseClass: 'CO', amount: 50_000_00 },
     ]);
     expect(result.ok).toBe(false);
     expect(result.violations[0].code).toBe('AUGMENTATION_CROSSES_EXPENSE_CLASS');
-    expect(result.violations[0].message).toContain('supplemental budget');
+    expect(result.violations[0].message).toContain('Realignment');
     expect(result.violations[0].details?.expenseClasses).toEqual(['CO', 'MOOE']);
   });
 
@@ -727,7 +728,7 @@ describe('checkAugmentationExpenseClass', () => {
     ]);
     expect(result.ok).toBe(false);
     expect(result.violations[0].code).toBe('AUGMENTATION_FROM_CAPITAL_OUTLAY');
-    expect(result.violations[0].message).toContain('supplemental budget');
+    expect(result.violations[0].message).toContain('Realignment');
     expect(result.violations[0].details?.lineNos).toEqual([1]);
   });
 
@@ -1262,5 +1263,73 @@ describe('checkAugmentationAuthority', () => {
     });
     expect(result.violations[0].message).toContain('2026');
     expect(result.violations[0].message).toContain('SEF');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the two acts, told apart', () => {
+  /**
+   * An augmentation stays inside one expense class and the Local Chief
+   * Executive signs it; a realignment crosses classes and takes an ordinance
+   * of the Sanggunian. CBO used to call them one thing with a choice of
+   * instrument inside it, and 'SUPPLEMENTAL' was the stored name for what the
+   * office calls a realignment.
+   */
+  it('recognises a realignment under either the new name or the old one', () => {
+    expect(isRealignmentInstrument('REALIGNMENT')).toBe(true);
+    expect(isRealignmentInstrument('SUPPLEMENTAL')).toBe(true);
+  });
+
+  it('does not mistake an augmentation for one', () => {
+    expect(isRealignmentInstrument('AUGMENTATION')).toBe(false);
+    expect(isRealignmentInstrument(undefined)).toBe(false);
+  });
+
+  it('treats a realignment exactly as the old stored name was treated', () => {
+    const lines = [
+      {
+        lineNo: 1,
+        accountCode: '50203010',
+        accountName: 'Office Supplies Expenses',
+        officeName: 'Mayor',
+        amount: -50_000,
+        appropriationRevised: 100_000,
+        allotmentReleased: 30_000,
+        obligated: 0,
+        forLaterRelease: 0,
+      },
+      {
+        lineNo: 2,
+        accountCode: '50101010',
+        accountName: 'Salaries and Wages - Regular',
+        officeName: 'Mayor',
+        amount: 50_000,
+        appropriationRevised: 20_000,
+        allotmentReleased: 0,
+        obligated: 0,
+        forLaterRelease: 0,
+      },
+    ];
+
+    const asRealignment = planAugmentationAllotment(lines, 'REALIGNMENT');
+    const asSupplemental = planAugmentationAllotment(lines, 'SUPPLEMENTAL');
+
+    expect(asRealignment).toEqual(asSupplemental);
+    // And neither is treated as an augmentation, which would refuse a source
+    // whose allotment is not released.
+    expect(asRealignment.ok).toBe(true);
+    expect(planAugmentationAllotment(lines, 'AUGMENTATION').ok).toBe(false);
+  });
+
+  it('lets a realignment cross expense classes, which is what it is for', () => {
+    // Personal Services to MOOE. An augmentation may not; the class check is
+    // only ever run for an augmentation, and this records that intent.
+    const crossing = checkAugmentationExpenseClass([
+      { lineNo: 1, expenseClass: 'PS', amount: -50_000 },
+      { lineNo: 2, expenseClass: 'MOOE', amount: 50_000 },
+    ]);
+    expect(crossing.ok).toBe(false);
+    expect(crossing.violations[0].message).toContain('Realignment');
   });
 });

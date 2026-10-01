@@ -143,7 +143,7 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
    * budget, Section 321 of the Local Government Code: an ordinance of the
    * Sanggunian, which may move authority across expense classes.
    *
-   * AUGMENTATION is Section 336: no supplemental budget is needed where the
+   * AUGMENTATION is Section 336: no ordinance of its own is needed where the
    * annual budget's General Provisions carry the omnibus authority, and the
    * price of that is that it may only move savings within the same expense
    * class. The two are identical in the books and are not the same act in law,

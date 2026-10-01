@@ -468,23 +468,39 @@ export interface RealignmentLine {
  * ---------------------------------------------------------------------------
  */
 /**
- * The two instruments that move authority between budget lines.
+ * The two acts that move authority between budget lines.
  *
- * They look identical in the books and are not the same act in law.
+ * They look identical in the books, they are not the same act in law, and the
+ * office names them differently. CBO used to present them as one transaction
+ * with a choice of "instrument" buried inside it, which is not how anybody in
+ * the Budget Office thinks about them.
  *
- * SUPPLEMENTAL - re-appropriation of savings through a supplemental budget,
- * Section 321 of the Local Government Code. It needs an appropriation
- * ordinance of its own, and because the Sanggunian is enacting it, it may move
- * authority across expense classes.
+ * AUGMENTATION - Section 336. WITHIN ONE EXPENSE CLASS: Personal Services to
+ * Personal Services, MOOE to MOOE, Capital Outlay to Capital Outlay. Approved
+ * by the LOCAL CHIEF EXECUTIVE alone, and only where the annual budget's
+ * General Provisions carry the omnibus authority - which is the convenience it
+ * exists for, and the reason for its limits.
  *
- * AUGMENTATION - Section 336. It needs NO supplemental budget where the annual
- * budget's General Provisions carry the omnibus authority, which is why it is
- * the instrument an office reaches for. The price of that convenience is that
- * the Local Chief Executive or the Presiding Officer may only augment "from
- * savings in other items WITHIN THE SAME EXPENSE CLASS of their respective
- * appropriations".
+ * REALIGNMENT - Section 321. ACROSS EXPENSE CLASSES: Personal Services to
+ * MOOE, and anything else an augmentation may not reach. Approved by the
+ * SANGGUNIAN, by ordinance, because moving authority between classes changes
+ * what the Sanggunian appropriated and only the Sanggunian may do that.
+ *
+ * So the rule of thumb the office uses: same class, the Mayor may sign it;
+ * different class, it goes to the Sanggunian.
+ *
+ * 'SUPPLEMENTAL' is the value CBO stored for a realignment before this was
+ * straightened out, and it is still read so that records made under it keep
+ * their meaning. Nothing writes it any more. It was a poor name in any case -
+ * a supplemental BUDGET appropriates new money from new revenue, which is a
+ * third thing again and has its own appropriation kind.
  */
-export type RealignmentInstrument = 'SUPPLEMENTAL' | 'AUGMENTATION';
+export type RealignmentInstrument = 'AUGMENTATION' | 'REALIGNMENT' | 'SUPPLEMENTAL';
+
+/** True for the Sanggunian's act, under either the new name or the old one. */
+export function isRealignmentInstrument(instrument: string | undefined): boolean {
+  return instrument === 'REALIGNMENT' || instrument === 'SUPPLEMENTAL';
+}
 
 export interface AugmentationLine {
   lineNo: number;
@@ -500,8 +516,8 @@ export interface AugmentationLine {
  * ---------------------------------------------------------------------------
  * An augmentation that moves MOOE savings into Capital Outlay is not a
  * borderline case. It is spending the Sanggunian never authorised, made under
- * an omnibus authority that does not reach it - and the correct instrument for
- * it, a supplemental budget, exists and is one ordinance away.
+ * an omnibus authority that does not reach it - and the act that does reach
+ * it, a Realignment, exists and is one ordinance away.
  *
  * Posted, it is indistinguishable in the books from a lawful one, and a
  * reviewer finding it months later disallows it after the money is spent. So
@@ -525,14 +541,16 @@ export interface AugmentationLine {
  * It is a separate prohibition and a stricter one. Capital Outlay savings
  * arise because a project was not built, and the authority to build it does
  * not become authority to build something else under an omnibus clause. The
- * instrument for that is a supplemental budget.
+ * act for that is a Realignment, by ordinance.
  *
  * A source is a line with a NEGATIVE amount: a realignment is recorded as
  * pairs of equal magnitude and opposite sign, and the negative half is the one
  * the authority is taken from.
  *
- * Nothing is checked for a SUPPLEMENTAL: the Sanggunian enacting a
- * supplemental budget may move authority wherever the ordinance says.
+ * Nothing is checked for a REALIGNMENT: the Sanggunian, enacting the
+ * ordinance, may move authority wherever the ordinance says - across expense
+ * classes included, which is the whole reason a realignment is the act for
+ * Personal Services to MOOE.
  * ---------------------------------------------------------------------------
  */
 export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckResult {
@@ -549,7 +567,7 @@ export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckR
         `Operations Manual says so in terms: "Savings from CO cannot be used for augmentation ` +
         `purposes." Capital Outlay savings arise because a project was not built, and the ` +
         `authority to build it does not become authority to build something else under the ` +
-        `omnibus clause. Use a supplemental budget, which is an ordinance of the Sanggunian.`,
+        `omnibus clause. Move it by Realignment instead, which is an ordinance of the Sanggunian.`,
       { lineNos: fromCapitalOutlay.map((l) => l.lineNo) },
     );
   }
@@ -562,8 +580,10 @@ export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckR
     `An augmentation may only move savings within one expense class, and this one spans ${classes
       .sort()
       .join(', ')}. Section 336 of the Local Government Code limits the omnibus authority to items ` +
-      `"within the same expense class". Moving authority between classes needs a supplemental ` +
-      `budget, which is an ordinance of the Sanggunian.`,
+      `"within the same expense class" - Personal Services to Personal Services, MOOE to MOOE, ` +
+      `Capital Outlay to Capital Outlay. Moving authority between classes is a Realignment, and ` +
+      `that is an ordinance of the Sanggunian rather than a signature of the Local Chief ` +
+      `Executive. Change the type at the top of this form to Realignment.`,
     { expenseClasses: classes.sort() },
   );
 }
@@ -633,7 +653,7 @@ export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
  * ---------------------------------------------------------------------------
  * An earlier version of this file had one rule for both instruments: take the
  * savings from unreleased appropriation first, and move only the shortfall.
- * That is right for a supplemental budget and WRONG for an augmentation, and
+ * That is right for a realignment and WRONG for an augmentation, and
  * the difference is not a detail.
  *
  * AN AUGMENTATION IS MADE AFTER THE ALLOTMENT. Savings are the balance of a
@@ -675,9 +695,9 @@ export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
  *
  * Section 336 grants the power on a condition, and the condition is not about
  * the lines being moved: the annual budget's General Provisions must carry the
- * omnibus authority. Without it an augmentation needs a supplemental budget
- * like any other transfer, and the convenience Section 336 offers is simply
- * not available that year.
+ * omnibus authority. Without it the same movement has to go to the Sanggunian
+ * as a realignment, and the convenience Section 336 offers - a signature of
+ * the Local Chief Executive - is simply not available that year.
  *
  * CBO cannot read an ordinance, so it cannot work this out. What it can do is
  * refuse to assume. The office records, once for each fiscal year and fund,
@@ -722,7 +742,7 @@ export function checkAugmentationAuthority(input: {
         `${input.fundCode} allows augmentation. Section 336 permits it only where the annual ` +
         'budget\u2019s General Provisions carry the omnibus authority, and CBO will not assume ' +
         'they do. Record the ordinance number and the section that grants it, or move this ' +
-        'appropriation by supplemental budget instead.',
+        'appropriation by Realignment instead, which is an ordinance of the Sanggunian.',
       { fiscalYear: input.fiscalYear, fundCode: input.fundCode, key },
     );
   }
@@ -801,7 +821,7 @@ export function planAugmentationAllotment(
             'released, so it has no savings to give. An augmentation is made from savings, and ' +
             'savings are what is left of a released allotment once the activity is finished or ' +
             'abandoned - so the allotment comes first. Release the allotment, or move this ' +
-            'appropriation by supplemental budget instead.',
+            'appropriation by Realignment instead, which is an ordinance of the Sanggunian.',
           details: {
             lineNo: line.lineNo,
             accountCode: line.accountCode,

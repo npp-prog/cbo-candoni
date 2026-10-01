@@ -189,21 +189,25 @@ export const importBudgetLines = onCall(
     const isRealignment = kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT';
 
     /**
-     * Which instrument the realignment was made under.
+     * Which of the two acts this is.
      *
-     * Defaulting to SUPPLEMENTAL would be the permissive choice - a
-     * supplemental budget may cross expense classes - and it would let a call
-     * that simply omitted the field escape the augmentation rule. So a
-     * realignment must SAY, and an unrecognised value is refused rather than
-     * falling back to the one that checks less.
+     * Defaulting to the realignment would be the permissive choice - a
+     * realignment may cross expense classes - and it would let a call that
+     * simply omitted the field escape the augmentation rule entirely. So it
+     * must SAY, and an unrecognised value is refused rather than falling back
+     * to the one that checks less.
      */
     const instrument = String(data.instrument ?? '').trim().toUpperCase();
-    if (isRealignment && !['SUPPLEMENTAL', 'AUGMENTATION'].includes(instrument)) {
+    // SUPPLEMENTAL is the value this field carried for a realignment before
+    // the two acts were named properly. Still accepted so that anything
+    // recorded under it keeps working; nothing writes it any more.
+    if (isRealignment && !['REALIGNMENT', 'SUPPLEMENTAL', 'AUGMENTATION'].includes(instrument)) {
       throw invalid(
-        'A realignment must say which instrument it was made under: a supplemental budget under ' +
-          'Section 321, which is an ordinance of the Sanggunian, or an augmentation under ' +
-          'Section 336, which needs no ordinance where the annual budget carries the omnibus ' +
-          'authority but may only move savings within one expense class.',
+        'This must say which of the two acts it is. An AUGMENTATION under Section 336 moves ' +
+          'savings within ONE expense class - Personal Services to Personal Services, MOOE to ' +
+          'MOOE, Capital Outlay to Capital Outlay - and the Local Chief Executive signs it under ' +
+          'the omnibus authority in the General Provisions. A REALIGNMENT under Section 321 moves ' +
+          'authority ACROSS expense classes and takes an ordinance of the Sanggunian.',
       );
     }
 

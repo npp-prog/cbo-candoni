@@ -162,7 +162,8 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   /**
    * An augmentation may only move savings within one expense class. Section 336
    * limits the omnibus authority to items "within the same expense class"; a
-   * supplemental budget, being an ordinance, may cross them.
+   * realignment, being an ordinance of the Sanggunian, may cross them - which
+   * is what a realignment is for.
    */
   const classCheck = useMemo(
     () =>
@@ -300,20 +301,20 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
 
           {isRealignment && (
             <Field
-              label="Under which instrument"
+              label="Which act is this"
               required
               hint={
                 instrument === 'AUGMENTATION'
-                  ? 'Section 336. No ordinance where the annual budget carries the omnibus authority — and only within ONE expense class.'
-                  : 'Section 321. An ordinance of the Sanggunian, which may cross expense classes.'
+                  ? 'Section 336. Savings moved WITHIN one expense class — PS to PS, MOOE to MOOE, CO to CO. Signed by the Local Chief Executive.'
+                  : 'Section 321. Authority moved ACROSS expense classes — PS to MOOE and the rest. By ordinance of the Sanggunian.'
               }
             >
               <Select
                 value={instrument}
                 onChange={(e) => setInstrument(e.target.value as RealignmentInstrument)}
               >
-                <option value="AUGMENTATION">Augmentation, under the omnibus authority</option>
-                <option value="SUPPLEMENTAL">Supplemental budget, by ordinance</option>
+                <option value="AUGMENTATION">Augmentation — within one expense class, by the LCE</option>
+                <option value="REALIGNMENT">Realignment — across expense classes, by ordinance</option>
               </Select>
             </Field>
           )}

@@ -127,7 +127,7 @@ export default function AugmentationAuthority() {
           Section 336 of the Local Government Code lets the Local Chief Executive augment an item
           from savings in other items of the same expense class &mdash; but only where the annual
           budget&rsquo;s General Provisions carry the omnibus authority to do so. Where they do
-          not, the same movement needs a supplemental budget by ordinance.
+          not, the same movement has to go to the Sanggunian as a Realignment, by ordinance.
         </p>
         <p className="mt-2 text-sm text-navy-800">
           CBO cannot read an ordinance and will not assume one. Until the authority is recorded

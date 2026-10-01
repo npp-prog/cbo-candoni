@@ -72,17 +72,41 @@ const KIND_LABELS: Record<AppropriationKind, string> = {
  * a budget act - and half of one sitting in the books until somebody remembers
  * the other half is exactly the state the rule exists to prevent.
  */
-const KINDS: Array<{ value: AppropriationKind; label: string; hint: string }> = [
+/**
+ * What the form offers, which is not quite the list of stored kinds.
+ *
+ * Augmentation and Realignment are stored as one kind, REALIGNMENT, told apart
+ * by the instrument. They were presented that way too - pick Realignment, then
+ * pick an instrument - and that is not how the Budget Office thinks about
+ * them. They are two different acts with two different approving authorities,
+ * and asking for one then the other made the second question look like a
+ * detail of the first.
+ *
+ * So the form asks once, in the office's own words, and works out what to
+ * store. Nothing about the stored shape changed.
+ */
+type FormKind = AppropriationKind | 'AUGMENTATION';
+
+const KINDS: Array<{ value: FormKind; label: string; hint: string }> = [
   { value: 'ORIGINAL', label: 'Original', hint: 'The annual budget as enacted.' },
-  { value: 'SUPPLEMENTAL', label: 'Supplemental', hint: 'Additional authority enacted during the year.' },
+  { value: 'SUPPLEMENTAL', label: 'Supplemental', hint: 'Additional authority enacted during the year, from new revenue.' },
   { value: 'CONTINUING', label: 'Continuing', hint: 'Prior-year authority carried forward.' },
+  {
+    value: 'AUGMENTATION',
+    label: 'Augmentation',
+    hint: 'Savings moved WITHIN one expense class - PS to PS, MOOE to MOOE, CO to CO. Signed by the Local Chief Executive, under the omnibus authority in the General Provisions.',
+  },
   {
     value: 'REALIGNMENT',
     label: 'Realignment',
-    hint: 'Two or more lines that come to zero. Take away with a negative amount, give with a positive one.',
+    hint: 'Authority moved ACROSS expense classes - PS to MOOE, and anything an augmentation may not reach. By ordinance of the Sanggunian.',
   },
   { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. May be negative.' },
 ];
+
+/** What the chosen act is stored as. */
+const storedKind = (k: FormKind): AppropriationKind =>
+  k === 'AUGMENTATION' ? 'REALIGNMENT' : k;
 
 /**
  * One row of a realignment being built on screen.
@@ -181,7 +205,9 @@ export default function Appropriations() {
               says which one this was. */}
           {a.instrument && (
             <span className="block text-2xs text-slate-500">
-              {a.instrument === 'AUGMENTATION' ? 'Augmentation (Sec. 336)' : 'Supplemental (Sec. 321)'}
+              {a.instrument === 'AUGMENTATION'
+                ? 'Augmentation (Sec. 336) - LCE'
+                : 'Realignment (Sec. 321) - Sanggunian'}
             </span>
           )}
         </div>
@@ -387,7 +413,7 @@ function AppropriationForm({
   actor: ReturnType<typeof actorStamp> | null;
 }) {
   const toast = useToast();
-  const [kind, setKind] = useState<AppropriationKind>('ORIGINAL');
+  const [kind, setKind] = useState<FormKind>('ORIGINAL');
   const [authorityReference, setAuthorityReference] = useState('');
   const [authorityDate, setAuthorityDate] = useState(todayPh());
   const [officeId, setOfficeId] = useState<string | null>(null);
@@ -401,11 +427,14 @@ function AppropriationForm({
   const [particulars, setParticulars] = useState('');
   const [saving, setSaving] = useState(false);
   const [realignLines, setRealignLines] = useState<RealignLine[]>(() => [blankLine(), blankLine()]);
-  const [instrument, setInstrument] = useState<RealignmentInstrument>('AUGMENTATION');
   // The lines a realignment may move authority between: the ones that exist.
   const balances = useBudgetBalances(fiscalYear, fundCode);
 
-  const isRealignment = kind === 'REALIGNMENT';
+  /** Both acts are recorded the same way: lines that come to zero. */
+  const isRealignment = kind === 'REALIGNMENT' || kind === 'AUGMENTATION';
+  /** Which of the two the user chose, which is now a single question. */
+  const instrument: RealignmentInstrument =
+    kind === 'AUGMENTATION' ? 'AUGMENTATION' : 'REALIGNMENT';
   const allowsNegative = kind === 'ADJUSTMENT' || isRealignment;
   const selectedKind = KINDS.find((k) => k.value === kind)!;
 
@@ -589,7 +618,7 @@ function AppropriationForm({
           accountCode,
           accountName,
           expenseClass,
-          kind,
+          kind: storedKind(kind),
           authorityReference: authorityReference.trim() || null,
           authorityDate,
           amount,
@@ -633,7 +662,7 @@ function AppropriationForm({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Type" required htmlFor="kind" hint={selectedKind.hint}>
-          <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as AppropriationKind)}>
+          <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as FormKind)}>
             {KINDS.map((k) => (
               <option key={k.value} value={k.value}>
                 {k.label}
@@ -644,16 +673,24 @@ function AppropriationForm({
 
         <div className="grid grid-cols-2 gap-3">
           <Field
-            label="Authority reference"
+            label={
+              kind === 'AUGMENTATION' ? 'Authority of the Local Chief Executive' : 'Authority reference'
+            }
             htmlFor="authority"
             required={isRealignment}
-            hint="Ordinance or resolution number"
+            hint={
+              kind === 'AUGMENTATION'
+                ? 'The office order or memorandum the Mayor signed it under'
+                : kind === 'REALIGNMENT'
+                  ? 'The ordinance of the Sanggunian authorising it'
+                  : 'Ordinance or resolution number'
+            }
           >
             <TextInput
               id="authority"
               value={authorityReference}
               onChange={(e) => setAuthorityReference(e.target.value)}
-              placeholder="Ord. No. 2026-01"
+              placeholder={kind === 'AUGMENTATION' ? 'Office Order No. 2026-__' : 'Ord. No. 2026-01'}
             />
           </Field>
           <Field label="Authority date" htmlFor="authorityDate">
@@ -763,26 +800,37 @@ function AppropriationForm({
 
       {isRealignment && (
         <div className="mt-5">
-          <Field
-            label="Under which instrument"
-            required
-            htmlFor="instrument"
-            className="mb-4 max-w-xl"
-            hint={
+          {/*
+            The instrument selector that used to sit here is gone. It asked a
+            second time what the Type at the top of the form already settled,
+            and the two questions could disagree.
+          */}
+          <Alert
+            tone={instrument === 'AUGMENTATION' ? 'info' : 'warning'}
+            title={
               instrument === 'AUGMENTATION'
-                ? 'Section 336. No ordinance is needed where the annual budget carries the omnibus authority — and it may only move savings within ONE expense class.'
-                : 'Section 321. An ordinance of the Sanggunian, which may move authority across expense classes.'
+                ? 'Augmentation — signed by the Local Chief Executive'
+                : 'Realignment — by ordinance of the Sanggunian'
             }
+            className="mb-4"
           >
-            <Select
-              id="instrument"
-              value={instrument}
-              onChange={(e) => setInstrument(e.target.value as RealignmentInstrument)}
-            >
-              <option value="AUGMENTATION">Augmentation, under the omnibus authority</option>
-              <option value="SUPPLEMENTAL">Supplemental budget, by ordinance</option>
-            </Select>
-          </Field>
+            {instrument === 'AUGMENTATION' ? (
+              <p>
+                Section 336. Savings moved <strong>within one expense class</strong> — Personal
+                Services to Personal Services, MOOE to MOOE, Capital Outlay to Capital Outlay. No
+                ordinance of its own is needed, because the General Provisions of the annual budget
+                already carry the authority. If this needs to cross a class, change the Type above
+                to Realignment.
+              </p>
+            ) : (
+              <p>
+                Section 321. Authority moved <strong>across expense classes</strong> — Personal
+                Services to MOOE, and anything an augmentation may not reach. This takes an
+                ordinance of the Sanggunian, so record its number in the authority reference below;
+                the Local Chief Executive cannot sign it alone.
+              </p>
+            )}
+          </Alert>
 
           {authorityCheck && !authorityCheck.ok && (
             <Alert
@@ -818,7 +866,7 @@ function AppropriationForm({
             title={
               instrument === 'AUGMENTATION'
                 ? 'An augmentation is made after the allotment'
-                : 'The allotment moves with the appropriation'
+                : 'A realignment carries its allotment with it'
             }
             className="mb-4"
           >
@@ -835,14 +883,15 @@ function AppropriationForm({
                 once an activity is finished, abandoned or discontinued — so the allotment comes
                 first, and the allotment moves peso for peso with the appropriation. A line with
                 no allotment released has no savings to give and is refused: move that
-                appropriation by supplemental budget instead.
+                appropriation by Realignment instead, which is an ordinance of the Sanggunian.
               </p>
             ) : (
               <p className="mt-1">
-                A supplemental budget is the Sanggunian re-appropriating under Section 321, and it
-                may move appropriation that was never released. So the savings are taken from the
-                unreleased part first, since moving that costs the account no spending authority it
-                holds today, and only the shortfall comes back out of the released allotment.
+                A realignment is the Sanggunian re-appropriating under Section 321, and it may move
+                appropriation that was never released as allotment at all. So the authority is taken
+                from the unreleased part first, since moving that costs the account no spending
+                authority it holds today, and only the shortfall comes back out of the released
+                allotment.
               </p>
             )}
             <p className="mt-1">
@@ -1006,8 +1055,9 @@ function AppropriationForm({
 
           {!authorityReference.trim() && (
             <Alert tone="warning" className="mt-2">
-              The authority reference is required for a realignment. It is what stops the same
-              ordinance being posted twice.
+              {kind === 'AUGMENTATION'
+                ? 'The authority the Local Chief Executive signed this under is required. It is what stops the same augmentation being posted twice, and it is what a reviewer asks for first.'
+                : 'The ordinance of the Sanggunian is required. It is what stops the same ordinance being posted twice, and a realignment made without one is not a realignment.'}
             </Alert>
           )}
         </div>
