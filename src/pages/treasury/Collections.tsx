@@ -10,10 +10,11 @@ import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useCollections } from '@/data/queries';
+import { useCollections, useTrustPrograms } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
+import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
@@ -216,6 +217,17 @@ function CollectionForm({
   const toast = useToast();
   const { user, profile } = useAuth();
 
+  /*
+   * The Trust Fund's money arrived for a stated purpose, and the programme is
+   * what names it. Asked for on the receipt itself, because the receipt is the
+   * only moment anyone knows which programme the payor is remitting against -
+   * by the time the registry is read, the answer is a phone call away.
+   *
+   * Only on the Trust Fund: no other fund has programmes.
+   */
+  const isTrust = fundCode === TRUST_FUND_CODE;
+  const programs = useTrustPrograms();
+
   const [orNumber, setOrNumber] = useState('');
   const [orDate, setOrDate] = useState(todayPh());
   const [officerId, setOfficerId] = useState<string | null>(null);
@@ -256,6 +268,10 @@ function CollectionForm({
             accountName: l.accountName ?? '',
             amount: l.amount ?? 0,
             particulars: l.particulars ?? null,
+            // Trust Fund only. A programme on a General Fund receipt would be
+            // a mistake, and the server ignores it rather than acting on it.
+            trustProgramId: isTrust ? (l.trustProgramId ?? null) : null,
+            trustProgramName: isTrust ? (l.trustProgramName ?? null) : null,
           })),
           totalAmount: total,
           paymentForm,
@@ -357,6 +373,7 @@ function CollectionForm({
           <thead>
             <tr>
               <th className="cbo-th min-w-[18rem]">Account</th>
+              {isTrust && <th className="cbo-th min-w-[16rem]">Trust programme</th>}
               <th className="cbo-th w-36 text-right">Amount</th>
               <th className="cbo-th w-8" />
             </tr>
@@ -376,6 +393,33 @@ function CollectionForm({
                     }
                   />
                 </td>
+                {isTrust && (
+                  <td className="cbo-td">
+                    <Select
+                      value={line.trustProgramId ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value || undefined;
+                        const chosen = programs.data.find((pr) => pr.id === id);
+                        setLines((ls) =>
+                          ls.map((l, i) =>
+                            i === index
+                              ? { ...l, trustProgramId: id, trustProgramName: chosen?.programName }
+                              : l,
+                          ),
+                        );
+                      }}
+                    >
+                      <option value="">Not yet known</option>
+                      {programs.data
+                        .filter((pr) => pr.status === 'ACTIVE')
+                        .map((pr) => (
+                          <option key={pr.id} value={pr.id}>
+                            {pr.programCode} - {pr.programName}
+                          </option>
+                        ))}
+                    </Select>
+                  </td>
+                )}
                 <td className="cbo-td">
                   <AmountInput
                     value={line.amount ?? null}
@@ -398,7 +442,9 @@ function CollectionForm({
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 font-medium">
-              <td className="cbo-td">Total collected</td>
+              <td className="cbo-td" colSpan={isTrust ? 2 : 1}>
+                Total collected
+              </td>
               <td className="cbo-td cbo-amount font-semibold">{formatPeso(total, { symbol: false })}</td>
               <td className="cbo-td" />
             </tr>

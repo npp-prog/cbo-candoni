@@ -6,6 +6,12 @@ import { recordTransition } from '../lib/audit';
 import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevLineData } from '../lib/ledger';
+import { TRUST_FUND_CODE } from '../lib/trustPrograms';
+import {
+  applyTrustDelta,
+  readTrustProgram,
+  type TrustProgramData,
+} from '../accounting/trustPrograms';
 
 const TREASURY_APPROVERS: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT'];
 
@@ -71,6 +77,8 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
 
     // Verify each collection: exists, right fund, not already in another RCD.
     let verifiedTotal = 0;
+    /** Trust Fund only: what each programme received on this report. */
+    const receivedByProgram = new Map<string, number>();
     const collectionDocs = await Promise.all(
       rcd.collectionIds.map((id) => tx.get(db.collection(COL.collections).doc(id))),
     );
@@ -86,6 +94,7 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
         totalAmount: number;
         status: string;
         rcdId?: string;
+        lines?: Array<{ amount: number; trustProgramId?: string | null }>;
       };
       if (c.status === 'CANCELLED') {
         throw invalid(`Official Receipt ${c.orNumber} has been cancelled and cannot be reported.`);
@@ -101,12 +110,42 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
         );
       }
       verifiedTotal += c.totalAmount;
+
+      /*
+       * The Trust Fund's Receipt side, worked rather than stated.
+       *
+       * Taken from the collection documents themselves, which this loop is
+       * already reading to verify them - so it costs nothing, and more to the
+       * point the figures come from the receipts rather than from a summary
+       * the browser assembled. The programme a peso of trust money arrived
+       * under is not something the client gets to assert.
+       *
+       * Only the Trust Fund has programmes. A link on a General Fund receipt
+       * would be a mistake, and it is ignored rather than acted on.
+       */
+      if (rcd.fundCode === TRUST_FUND_CODE) {
+        for (const line of c.lines ?? []) {
+          const programId = line.trustProgramId;
+          if (!programId) continue;
+          receivedByProgram.set(programId, (receivedByProgram.get(programId) ?? 0) + line.amount);
+        }
+      }
     }
 
     if (verifiedTotal !== rcd.totalCollections) {
       throw invalid(
         `The collections listed total ${(verifiedTotal / 100).toFixed(2)} but the report states ${(rcd.totalCollections / 100).toFixed(2)}.`,
       );
+    }
+
+    /*
+     * Every read must come before any write, and issuing the RCD and JEV
+     * numbers below writes to the counters - so the programmes are read here,
+     * while reading is still allowed.
+     */
+    const trustPrograms = new Map<string, TrustProgramData>();
+    for (const programId of receivedByProgram.keys()) {
+      trustPrograms.set(programId, await readTrustProgram(tx, programId));
     }
 
     const bookCode = await bookCodeForFund(rcd.fundCode);
@@ -182,6 +221,19 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
 
     for (const id of rcd.collectionIds) {
       tx.update(db.collection(COL.collections).doc(id), { rcdId, rcdNo, status: 'IN_RCD' });
+    }
+
+    /*
+     * The Trust Fund's Receipt side. Written here, after every read, from the
+     * figures this transaction took off the collection documents.
+     *
+     * Nothing else writes `receivedPosted`, and there is no path that takes it
+     * back: an RCD has no cancellation, and a correction to posted collections
+     * goes through a reversing journal voucher like any other. So this is the
+     * sum of the receipts actually reported, which is what the registry wants.
+     */
+    for (const [programId, amount] of receivedByProgram) {
+      applyTrustDelta(tx, programId, trustPrograms.get(programId)!, { receivedPosted: amount });
     }
 
     tx.update(ref, { rcdNo, status: 'POSTED', jevId });

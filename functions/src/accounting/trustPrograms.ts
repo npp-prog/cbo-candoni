@@ -226,7 +226,10 @@ export interface TrustProgramData {
   programCode: string;
   programName: string;
   programmed: number;
+  /** Stated by the Accountant. */
   received: number;
+  /** Worked from the receipts by postRcd. */
+  receivedPosted: number;
   utilised: number;
   disbursed: number;
   status: string;
@@ -249,6 +252,7 @@ export async function readTrustProgram(
     programName: String(d.programName ?? ''),
     programmed: d.programmed ?? 0,
     received: d.received ?? 0,
+    receivedPosted: d.receivedPosted ?? 0,
     utilised: d.utilised ?? 0,
     disbursed: d.disbursed ?? 0,
     status: String(d.status ?? 'ACTIVE'),
@@ -263,11 +267,12 @@ export function applyTrustDelta(
   tx: FirebaseFirestore.Transaction,
   programId: string,
   current: TrustProgramData,
-  delta: { utilised?: number; disbursed?: number },
+  delta: { utilised?: number; disbursed?: number; receivedPosted?: number },
 ): void {
   const figures = deriveTrustFigures({
     programmed: current.programmed,
     received: current.received,
+    receivedPosted: current.receivedPosted + (delta.receivedPosted ?? 0),
     utilised: current.utilised + (delta.utilised ?? 0),
     disbursed: current.disbursed + (delta.disbursed ?? 0),
   });

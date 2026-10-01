@@ -1,4 +1,7 @@
 import { cashFlowClassFor } from '@/lib/chartOfAccounts';
+import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
+
+export { TRUST_FUND_CODE };
 
 /**
  * The lines of Annex 9, the Statement of Cash Flows.
@@ -245,7 +248,6 @@ export const CASH_FLOW_CAPTIONS: CashFlowCaptionDef[] = [
  * with nothing in those sections therefore looks exactly like the annex, and
  * one with something in them shows it rather than losing it.
  */
-export const TRUST_FUND_CODE = 'TF';
 
 export const TRUST_FUND_OPERATING: CashFlowCaptionDef[] = [
   { section: 'OPERATING', direction: 'IN', caption: 'Other Receipts', prefixes: [], fallback: true },

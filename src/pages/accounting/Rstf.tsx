@@ -4,12 +4,13 @@ import { PeriodPicker } from '@/components/PeriodPicker';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
-import { useObligations, useTrustPrograms } from '@/data/queries';
+import { useCollections, useObligations, useTrustPrograms } from '@/data/queries';
 import { periodHeading, periodRange, type ReportPeriod } from '@/lib/reportPeriods';
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildRstf, totalRstf, type RstfSheet } from '@/pages/budget/rstf';
+import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
 
 /**
  * Registry of Special Trust Fund.
@@ -35,20 +36,29 @@ export default function Rstf() {
 
   const range = periodRange(period, fiscalYear);
 
-  const sheets = useMemo(
+  /*
+   * The receipts the register is now struck on. Trust Fund collections for the
+   * year, read here rather than summed on the programme, because the register
+   * wants the dated lines and not only the total.
+   */
+  const collections = useCollections(fiscalYear, TRUST_FUND_CODE);
+
+  const registry = useMemo(
     () =>
       buildRstf({
         programs: programs.data,
         obligations: obligations.data,
+        collections: collections.data,
         from: range.from,
         to: range.to,
         activeOnly: show === 'ACTIVE',
       }),
-    [programs.data, obligations.data, range.from, range.to, show],
+    [programs.data, obligations.data, collections.data, range.from, range.to, show],
   );
+  const sheets = registry.sheets;
 
   const totals = useMemo(() => totalRstf(sheets), [sheets]);
-  const loading = programs.loading || obligations.loading;
+  const loading = programs.loading || obligations.loading || collections.loading;
 
   const exportRows = sheets.flatMap((s) =>
     s.utilisations.map((u) => ({ sheet: s, u })),
@@ -125,6 +135,47 @@ export default function Rstf() {
         </Alert>
       ) : (
         <>
+          {registry.unattributed.length > 0 && (
+            <Alert
+              tone="warning"
+              title={`${registry.unattributed.length} reported receipt${
+                registry.unattributed.length === 1 ? '' : 's'
+              } name no programme`}
+              className="mb-4"
+            >
+              <p>
+                {formatPeso(registry.unattributedTotal)} of Trust Fund money has been receipted and
+                reported without saying which programme it was received under, so it is on none of
+                the sheets below. Every peso of it belongs on one of them.
+              </p>
+              <p className="mt-1">
+                Open each receipt under Treasury &rarr; Collections and set the programme on its
+                line. The registry picks it up as soon as the receipt is saved &mdash; the
+                programme total catches up when the report it sits on is posted.
+              </p>
+              <table className="mt-2 w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-600">
+                    <th className="cbo-th">Date</th>
+                    <th className="cbo-th">O.R. No.</th>
+                    <th className="cbo-th">Payor</th>
+                    <th className="cbo-th text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registry.unattributed.map((u) => (
+                    <tr key={u.orNumber}>
+                      <td className="cbo-td font-mono">{u.orDate}</td>
+                      <td className="cbo-td font-mono">{u.orNumber}</td>
+                      <td className="cbo-td">{u.payorName}</td>
+                      <td className="cbo-td cbo-amount">{formatPeso(u.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Alert>
+          )}
+
           <Cover totals={totals} count={sheets.length} />
           {sheets.map((s) => (
             <Sheet key={s.program.id} sheet={s} />
@@ -224,19 +275,31 @@ function Sheet({ sheet }: { sheet: RstfSheet }) {
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b border-slate-100">
-              <td className="cbo-td">-</td>
-              <td className="cbo-td">
-                Received from {p.sourceAgency}
-                <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-2xs text-amber-800">
-                  stated
-                </span>
-              </td>
-              <td className="cbo-td">{p.reference}</td>
-              <td className="cbo-td cbo-amount">{formatPeso(sheet.receiptTotal)}</td>
-              <td className="cbo-td text-right font-mono">{sheet.receiptYear ?? '-'}</td>
-              <td className="cbo-td" />
-            </tr>
+            {/*
+              One line per official receipt, which is what instruction 1 asks
+              for. These are receipts reported on a posted RCD: a receipt still
+              in the drawer is not in the total beside them, so listing it here
+              would give the sheet lines that do not add up to its own total.
+            */}
+            {sheet.receipts.map((r, i) => (
+              <tr key={`${r.reference}-${i}`} className="border-b border-slate-100">
+                <td className="cbo-td font-mono">{r.date}</td>
+                <td className="cbo-td">{r.particulars || `Received from ${p.sourceAgency}`}</td>
+                <td className="cbo-td font-mono">O.R. {r.reference}</td>
+                <td className="cbo-td cbo-amount">{formatPeso(r.amount)}</td>
+                <td className="cbo-td text-right font-mono">{sheet.receiptYear ?? '-'}</td>
+                <td className="cbo-td" />
+              </tr>
+            ))}
+
+            {sheet.receipts.length === 0 && (
+              <tr className="border-b border-slate-100 text-slate-500">
+                <td className="cbo-td">-</td>
+                <td className="cbo-td" colSpan={5}>
+                  No official receipt on a posted report names this programme.
+                </td>
+              </tr>
+            )}
 
             {sheet.utilisations.map((u, i) => (
               <tr key={`${u.reference}-${i}`} className="border-b border-slate-100">
@@ -273,6 +336,19 @@ function Sheet({ sheet }: { sheet: RstfSheet }) {
         <Figure label="Utilised and not yet paid" value={sheet.unpaidUtilisations} />
         <Figure label="Balance of the trust" value={sheet.balance} emphasis />
       </dl>
+
+      {sheet.receiptDrift !== 0 && (
+        <Alert tone="warning" className="mt-2">
+          The Accountant states {formatPeso(sheet.receiptStated)} received against this programme,
+          and the official receipts reported come to {formatPeso(sheet.receiptTotal)} &mdash;{' '}
+          {formatPeso(Math.abs(sheet.receiptDrift))}{' '}
+          {sheet.receiptDrift > 0 ? 'more stated than receipted' : 'more receipted than stated'}.
+          The register above is struck on the receipts, because that is what came in.{' '}
+          {sheet.receiptDrift > 0
+            ? 'A tranche still expected reads exactly like this, and so does one that arrived before a receipt carried its programme.'
+            : 'This usually means the stated figure was not updated after the last tranche arrived.'}
+        </Alert>
+      )}
     </section>
   );
 }

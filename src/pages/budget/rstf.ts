@@ -44,13 +44,28 @@ import type { Centavos, IsoDate } from '@/types/common';
  * life-to-date total is the figure the Cloud Function maintains inside the
  * transaction that certifies one.
  *
- * The Receipt side is NOT. CBO still does not tie a Trust Fund collection to a
- * programme, so `received` is the Accountant's statement of what the source
- * has remitted. The manual wants a dated line per receipt with its own
- * reference and the year the trust was granted; what CBO can produce is one
- * figure. It is carried here flagged as stated, and the screen says so - four
- * columns that look equally solid, one of which nothing verifies, is the
- * quiet kind of wrong.
+ * The Receipt side is worked too, now that a Trust Fund collection line
+ * carries the programme it was received under. Every receipt reported on a
+ * posted RCD lands here as its own dated line with its own official receipt
+ * number, which is what instruction 1 asks for, and the total is the figure
+ * `postRcd` maintained inside the transaction that posted it.
+ *
+ * Two things are still reported rather than relied on, and both are visible on
+ * the face of the register:
+ *
+ *   THE STATED FIGURE IS KEPT BESIDE THE WORKED ONE. A programme is recorded
+ *   in CBO when its memorandum of agreement is signed, and the money arrives
+ *   afterwards - so the Accountant's figure is what the source has promised
+ *   and the worked figure is what has actually been receipted. Neither
+ *   overwrites the other; the difference is shown. A programme whose receipts
+ *   were all taken in before this existed reads as nil received against a
+ *   stated figure, which is true and is the thing to go and fix.
+ *
+ *   A COLLECTION CARRYING NO PROGRAMME IS NAMED, NOT DROPPED. The link is
+ *   optional, because refusing a receipt for want of master data would stop
+ *   the Treasury taking money in. What that costs is a receipt that belongs on
+ *   some sheet and is on none, so those are listed by receipt number on the
+ *   register rather than left out of it.
  */
 
 /**
@@ -74,8 +89,17 @@ export interface RstfProgram {
   accountCode?: string;
   startYear?: number;
   programmed: Centavos;
-  /** Stated, not worked. See above. */
+  /** Stated by the Accountant. Carried beside the worked figure, not used. */
   received: Centavos;
+  /**
+   * Worked from the receipts by postRcd. The register is struck on this.
+   *
+   * Optional because a programme recorded before this field existed carries no
+   * value for it, and `undefined - utilised` is NaN - a balance column of
+   * "NaN" on every old sheet. It reads as nil until the next receipt posts,
+   * which is true: no receipt in CBO has yet named the programme.
+   */
+  receivedPosted?: Centavos;
   utilised: Centavos;
   disbursed: Centavos;
   status: string;
@@ -101,12 +125,47 @@ export interface RstfEntry {
   amount: Centavos;
 }
 
+/** One line of one official receipt, as the collection records it. */
+export interface RstfCollectionLine {
+  trustProgramId?: string;
+  amount: Centavos;
+  accountName?: string;
+}
+
+export interface RstfCollection {
+  orNumber: string;
+  orDate: IsoDate;
+  payorName: string;
+  status: string;
+  /** Set when the receipt has been reported on an RCD. */
+  rcdNo?: string;
+  lines: RstfCollectionLine[];
+}
+
+/**
+ * Receipts on the register are receipts that have been REPORTED.
+ *
+ * `receivedPosted` on the programme is written by `postRcd`, so a collection
+ * still sitting in the drawer is not in that figure. Listing it here would put
+ * a line on the sheet that the total beside it does not include, and a sheet
+ * whose lines do not add up to its own total is worse than one that is a day
+ * behind.
+ */
+export const REPORTED = new Set(['IN_RCD', 'DEPOSITED']);
+
 export interface RstfSheet {
   program: RstfProgram;
 
-  /** The Receipt side: one line, and it is a statement, not a document. */
+  /** The Receipt side, one dated line per official receipt reported. */
+  receipts: RstfEntry[];
+  /** Receipts falling inside the period on the filter. */
+  receivedThisPeriod: Centavos;
+  /** The programme's whole life, maintained by postRcd. The balance uses this. */
   receiptTotal: Centavos;
-  receiptIsStated: true;
+  /** What the Accountant states the source has remitted. */
+  receiptStated: Centavos;
+  /** stated less worked. Zero where the receipts account for all of it. */
+  receiptDrift: Centavos;
   /** Instruction 1's "Year - the year when the special trust fund is granted". */
   receiptYear: number | null;
 
@@ -125,16 +184,86 @@ export interface RstfSheet {
   availableToUtilise: Centavos;
 }
 
+/** A reported Trust Fund receipt that names no programme. */
+export interface UnattributedReceipt {
+  orNumber: string;
+  orDate: IsoDate;
+  payorName: string;
+  amount: Centavos;
+}
+
+export interface RstfRegistry {
+  sheets: RstfSheet[];
+  /**
+   * Reported receipts carrying no programme, newest first. Every one of these
+   * belongs on a sheet above and is on none of them.
+   */
+  unattributed: UnattributedReceipt[];
+  unattributedTotal: Centavos;
+}
+
 export function buildRstf(input: {
   programs: RstfProgram[];
   obligations: RstfObligation[];
+  /** Trust Fund collections. Omit where the register is read without them. */
+  collections?: RstfCollection[];
   from: IsoDate;
   to: IsoDate;
   /** Omit to show every programme, including closed ones. */
   activeOnly?: boolean;
-}): RstfSheet[] {
+}): RstfRegistry {
   const byProgram = new Map<string, RstfEntry[]>();
   const totals = new Map<string, Centavos>();
+
+  // --- the Receipt side ----------------------------------------------------
+  const receiptsByProgram = new Map<string, RstfEntry[]>();
+  const receivedInPeriod = new Map<string, Centavos>();
+  const unattributed: UnattributedReceipt[] = [];
+
+  for (const c of input.collections ?? []) {
+    if (!REPORTED.has(c.status)) continue;
+
+    for (const l of c.lines ?? []) {
+      if (!l.trustProgramId) {
+        /*
+         * No programme. The money came in and is on no sheet, so it is named
+         * here with its receipt number - the one thing that lets somebody find
+         * the receipt and say which programme it belongs to.
+         */
+        const existing = unattributed.find((u) => u.orNumber === c.orNumber);
+        if (existing) existing.amount += l.amount;
+        else
+          unattributed.push({
+            orNumber: c.orNumber,
+            orDate: c.orDate,
+            payorName: c.payorName,
+            amount: l.amount,
+          });
+        continue;
+      }
+
+      const list = receiptsByProgram.get(l.trustProgramId) ?? [];
+      // One receipt may carry two lines against one programme. The register
+      // lists documents, so they merge into the one line the reader wants.
+      const existing = list.find((e) => e.reference === c.orNumber);
+      if (existing) existing.amount += l.amount;
+      else
+        list.push({
+          date: c.orDate,
+          reference: c.orNumber,
+          particulars: c.payorName || l.accountName || '',
+          amount: l.amount,
+        });
+      receiptsByProgram.set(l.trustProgramId, list);
+
+      if (c.orDate >= input.from && c.orDate <= input.to) {
+        receivedInPeriod.set(
+          l.trustProgramId,
+          (receivedInPeriod.get(l.trustProgramId) ?? 0) + l.amount,
+        );
+      }
+    }
+  }
 
   for (const o of input.obligations) {
     if (!UTILISED.has(o.status)) continue;
@@ -160,22 +289,36 @@ export function buildRstf(input: {
     }
   }
 
-  return input.programs
+  const byDateThenRef = (a: RstfEntry, b: RstfEntry) =>
+    a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference);
+
+  const sheets = input.programs
     .filter((p) => !input.activeOnly || p.status === 'ACTIVE')
     .map((p) => {
-      const utilisations = (byProgram.get(p.id) ?? []).sort(
-        (a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference),
-      );
+      const utilisations = (byProgram.get(p.id) ?? []).sort(byDateThenRef);
+      const receipts = (receiptsByProgram.get(p.id) ?? []).sort(byDateThenRef);
+      const posted = p.receivedPosted ?? 0;
+
+      /*
+       * The balance is struck against the WORKED figure, not the stated one.
+       * The register is a record of what came in and what was committed
+       * against it, and what came in is the receipts. The stated figure is
+       * carried beside it so the difference is visible, and takes no part in
+       * the arithmetic.
+       */
       return {
         program: p,
-        receiptTotal: p.received,
-        receiptIsStated: true as const,
+        receipts,
+        receivedThisPeriod: receivedInPeriod.get(p.id) ?? 0,
+        receiptTotal: posted,
+        receiptStated: p.received,
+        receiptDrift: p.received - posted,
         receiptYear: p.startYear ?? null,
         utilisations,
         utilisedThisPeriod: totals.get(p.id) ?? 0,
         utilisedToDate: p.utilised,
         disbursedToDate: p.disbursed,
-        balance: p.received - p.utilised,
+        balance: posted - p.utilised,
         unpaidUtilisations: p.utilised - p.disbursed,
         availableToUtilise: p.programmed - p.utilised,
       };
@@ -185,6 +328,12 @@ export function buildRstf(input: {
         a.program.sourceAgency.localeCompare(b.program.sourceAgency) ||
         a.program.programName.localeCompare(b.program.programName),
     );
+
+  return {
+    sheets,
+    unattributed: unattributed.sort((a, b) => b.orDate.localeCompare(a.orDate)),
+    unattributedTotal: unattributed.reduce((t, u) => t + u.amount, 0),
+  };
 }
 
 /** Every sheet added up, for the cover of the registry. */

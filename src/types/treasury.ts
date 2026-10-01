@@ -66,6 +66,22 @@ export interface CollectionLine {
   accountName: string;
   amount: Centavos;
   particulars?: string;
+  /**
+   * The trust programme this money was received under. Trust Fund only.
+   *
+   * The Trust Fund's money is not the municipality's: it arrived for a stated
+   * purpose from a source that keeps the right to ask for it back, and the
+   * programme is what names that purpose. Carrying it on the receipt is what
+   * lets the Registry of Special Trust Fund report a Receipt side worked out
+   * of the receipts instead of a figure somebody typed.
+   *
+   * Optional, and deliberately so. A collection recorded before the programme
+   * exists would otherwise have nowhere to go, and refusing it would stop the
+   * Treasury taking money in. What is unattributed is listed by name on the
+   * registry rather than quietly left out of it.
+   */
+  trustProgramId?: Id;
+  trustProgramName?: string;
 }
 
 export interface Collection extends Partial<AuditStamps> {

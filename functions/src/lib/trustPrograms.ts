@@ -54,6 +54,16 @@
  * the utilisations and the vouchers, which have their own dates.
  */
 
+/**
+ * The Trust Fund's code.
+ *
+ * Here rather than beside the other fund codes because it is the one fund with
+ * programmes, and every rule in this file is about it. Defined once: the cash
+ * flow statement imports it from here too, and two spellings of 'TF' in two
+ * files is the kind of thing that works until somebody changes one of them.
+ */
+export const TRUST_FUND_CODE = 'TF';
+
 export type Centavos = number;
 
 export interface Violation {
@@ -91,14 +101,32 @@ export interface TrustProgramFigures {
   /**
    * What the source has actually remitted.
    *
-   * STATED, not derived. CBO does not yet tie a Trust Fund collection to a
-   * programme, so this is the Accountant's figure rather than a sum of
-   * receipts, and the Fund Utilization Report says so on its face. It is
-   * reported and never controlled on: a programme is commonly spent against
-   * before the last tranche arrives, and refusing a utilisation for that
-   * reason would stop work the source agency expects to be done.
+   * STATED, and kept now that `receivedPosted` works the same figure out of
+   * the receipts - kept deliberately rather than replaced. A programme usually
+   * exists in CBO before its collections do: the MOA is recorded, then the
+   * money arrives. The stated figure is what the Accountant has been told is
+   * coming; the two are compared and the difference shown, and neither
+   * overwrites the other.
+   *
+   * Reported and never controlled on, under either figure: a programme is
+   * commonly spent against before the last tranche arrives, and refusing a
+   * utilisation for that reason would stop work the source agency expects to
+   * be done.
    */
   received: Centavos;
+  /**
+   * What the receipts actually say, worked out of the collections.
+   *
+   * Maintained by `postRcd` inside the transaction that posts a Report of
+   * Collections and Deposits: every Trust Fund collection line carrying a
+   * programme adds to this, and nothing else writes it. So it is a sum of
+   * official receipts rather than anybody's recollection, and it is the figure
+   * the Registry of Special Trust Fund reports on its Receipt side.
+   *
+   * A programme whose collections were all recorded before this existed sits
+   * at nil with a stated figure beside it, which is what the drift is for.
+   */
+  receivedPosted: Centavos;
   /** Committed by a certified FURS. */
   utilised: Centavos;
   /** Paid out on an approved voucher. */
@@ -107,30 +135,46 @@ export interface TrustProgramFigures {
   availableToUtilise: Centavos;
   /** utilised - disbursed. Derived. */
   unpaidUtilisations: Centavos;
+  /**
+   * stated less posted. Derived. Zero where the receipts account for
+   * everything the Accountant says has come in.
+   *
+   * Not an error on its own. A positive figure is money stated as remitted
+   * that no receipt in CBO carries - right while a tranche is still expected,
+   * wrong once it has been banked. A negative one is receipts exceeding what
+   * was stated, which usually means the stated figure was never updated after
+   * the last tranche arrived.
+   */
+  receiptDrift: Centavos;
 }
 
 export const EMPTY_TRUST_FIGURES: TrustProgramFigures = {
   programmed: 0,
   received: 0,
+  receivedPosted: 0,
   utilised: 0,
   disbursed: 0,
   availableToUtilise: 0,
   unpaidUtilisations: 0,
+  receiptDrift: 0,
 };
 
-/** Recomputes the two derived figures from the four stored ones. */
+/** Recomputes the three derived figures from the five stored ones. */
 export function deriveTrustFigures(f: Partial<TrustProgramFigures>): TrustProgramFigures {
   const programmed = f.programmed ?? 0;
   const received = f.received ?? 0;
+  const receivedPosted = f.receivedPosted ?? 0;
   const utilised = f.utilised ?? 0;
   const disbursed = f.disbursed ?? 0;
   return {
     programmed,
     received,
+    receivedPosted,
     utilised,
     disbursed,
     availableToUtilise: programmed - utilised,
     unpaidUtilisations: utilised - disbursed,
+    receiptDrift: received - receivedPosted,
   };
 }
 

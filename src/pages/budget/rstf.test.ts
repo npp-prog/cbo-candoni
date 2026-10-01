@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildRstf, totalRstf, type RstfObligation, type RstfProgram } from './rstf';
+import {
+  buildRstf,
+  totalRstf,
+  type RstfCollection,
+  type RstfObligation,
+  type RstfProgram,
+} from './rstf';
 
 const prog = (over: Partial<RstfProgram> = {}): RstfProgram => ({
   id: 'TP1',
@@ -11,6 +17,7 @@ const prog = (over: Partial<RstfProgram> = {}): RstfProgram => ({
   startYear: 2025,
   programmed: 10_000_000_00,
   received: 10_000_000_00,
+  receivedPosted: 10_000_000_00,
   utilised: 6_000_000_00,
   disbursed: 4_500_000_00,
   status: 'ACTIVE',
@@ -28,11 +35,28 @@ const furs = (over: Partial<RstfObligation> = {}): RstfObligation => ({
 
 const MARCH = { from: '2026-03-01', to: '2026-03-31' };
 
+/** The sheets alone, which is what most of these tests are about. */
 const build = (
   programs: RstfProgram[],
   obligations: RstfObligation[],
   over: Partial<Parameters<typeof buildRstf>[0]> = {},
+) => buildRstf({ programs, obligations, ...MARCH, ...over }).sheets;
+
+/** The whole register, for the tests about receipts that reach no sheet. */
+const buildAll = (
+  programs: RstfProgram[],
+  obligations: RstfObligation[],
+  over: Partial<Parameters<typeof buildRstf>[0]> = {},
 ) => buildRstf({ programs, obligations, ...MARCH, ...over });
+
+const receipt = (over: Partial<RstfCollection> = {}): RstfCollection => ({
+  orNumber: '7707731',
+  orDate: '2026-03-10',
+  payorName: 'Department of Agriculture',
+  status: 'DEPOSITED',
+  lines: [{ trustProgramId: 'TP1', amount: 2_000_000_00 }],
+  ...over,
+});
 
 describe('one sheet per trust programme', () => {
   it('opens a sheet even for a programme with no activity in the period', () => {
@@ -173,8 +197,18 @@ describe('the balances', () => {
   });
 
   it('goes negative when more was committed than was received', () => {
-    const [sheet] = build([prog({ received: 5_000_000_00 })], []);
+    const [sheet] = build([prog({ receivedPosted: 5_000_000_00 })], []);
     expect(sheet.balance).toBe(-1_000_000_00);
+  });
+
+  it('strikes the balance on the receipts, not on the stated figure', () => {
+    // The source promised ten million and has receipted five. Six is already
+    // committed, so the programme is overdrawn against what actually arrived -
+    // and striking the balance on the promise would hide that.
+    const [sheet] = build([prog({ received: 10_000_000_00, receivedPosted: 5_000_000_00 })], []);
+    expect(sheet.balance).toBe(-1_000_000_00);
+    expect(sheet.receiptStated).toBe(10_000_000_00);
+    expect(sheet.receiptDrift).toBe(5_000_000_00);
   });
 
   it('reports what is committed and not yet paid', () => {
@@ -187,13 +221,67 @@ describe('the balances', () => {
 });
 
 describe('the receipt side', () => {
-  /**
-   * Flagged, every time. CBO does not tie a Trust Fund collection to a
-   * programme, so this figure is the Accountant's statement and the screen has
-   * to say so beside it.
-   */
-  it('is always marked as stated rather than worked', () => {
-    expect(build([prog()], [])[0].receiptIsStated).toBe(true);
+  it('lists one dated line per official receipt reported', () => {
+    const [sheet] = build([prog()], [], {
+      collections: [
+        receipt({ orNumber: '7707731', orDate: '2026-03-10', lines: [{ trustProgramId: 'TP1', amount: 2_000_000_00 }] }),
+        receipt({ orNumber: '7707728', orDate: '2026-03-04', lines: [{ trustProgramId: 'TP1', amount: 500_000_00 }] }),
+      ],
+    });
+
+    // Oldest first, which is the order a register is written up in.
+    expect(sheet.receipts.map((r) => r.reference)).toEqual(['7707728', '7707731']);
+    expect(sheet.receipts[0].date).toBe('2026-03-04');
+    expect(sheet.receivedThisPeriod).toBe(2_500_000_00);
+  });
+
+  it('merges two lines of one receipt into the one line', () => {
+    const [sheet] = build([prog()], [], {
+      collections: [
+        receipt({
+          lines: [
+            { trustProgramId: 'TP1', amount: 1_000_000_00 },
+            { trustProgramId: 'TP1', amount: 250_000_00 },
+          ],
+        }),
+      ],
+    });
+
+    expect(sheet.receipts).toHaveLength(1);
+    expect(sheet.receipts[0].amount).toBe(1_250_000_00);
+  });
+
+  it('leaves out a receipt that has not been reported on an RCD', () => {
+    // receivedPosted is written when the RCD is posted, so a receipt still in
+    // the drawer is not in the total. Listing it would put a line on the sheet
+    // that the total beside it does not include.
+    const [sheet] = build([prog()], [], {
+      collections: [receipt({ status: 'ISSUED' })],
+    });
+
+    expect(sheet.receipts).toEqual([]);
+  });
+
+  it('counts only the receipts falling inside the period', () => {
+    const [sheet] = build([prog()], [], {
+      collections: [
+        receipt({ orNumber: 'A', orDate: '2026-02-20', lines: [{ trustProgramId: 'TP1', amount: 900_000_00 }] }),
+        receipt({ orNumber: 'B', orDate: '2026-03-20', lines: [{ trustProgramId: 'TP1', amount: 100_000_00 }] }),
+      ],
+    });
+
+    // Both are on the sheet - the register is life-to-date - but only one
+    // falls in March.
+    expect(sheet.receipts).toHaveLength(2);
+    expect(sheet.receivedThisPeriod).toBe(100_000_00);
+  });
+
+  it('keeps a receipt for another programme off this sheet', () => {
+    const [sheet] = build([prog()], [], {
+      collections: [receipt({ lines: [{ trustProgramId: 'TP-OTHER', amount: 300_000_00 }] })],
+    });
+
+    expect(sheet.receipts).toEqual([]);
   });
 
   it('carries the year the trust was granted', () => {
@@ -213,6 +301,7 @@ describe('the registry total', () => {
             id: 'TP2',
             sourceAgency: 'DILG',
             received: 2_000_000_00,
+            receivedPosted: 2_000_000_00,
             utilised: 1_000_000_00,
             disbursed: 1_000_000_00,
           }),
@@ -225,5 +314,103 @@ describe('the registry total', () => {
     expect(t.utilisedToDate).toBe(7_000_000_00);
     expect(t.balance).toBe(5_000_000_00);
     expect(t.unpaidUtilisations).toBe(1_500_000_00);
+  });
+});
+
+describe('a receipt that names no programme', () => {
+  /**
+   * The link is optional, because refusing a receipt for want of master data
+   * would stop the Treasury taking money in. What that costs is a receipt that
+   * belongs on some sheet and is on none - so it is named here rather than
+   * quietly left out, which is the only way anybody finds it.
+   */
+  it('is listed by receipt number, not dropped', () => {
+    const r = buildAll([prog()], [], {
+      collections: [
+        receipt({
+          orNumber: '7707740',
+          orDate: '2026-03-18',
+          payorName: 'Provincial Government',
+          lines: [{ amount: 750_000_00 }],
+        }),
+      ],
+    });
+
+    expect(r.unattributed).toEqual([
+      {
+        orNumber: '7707740',
+        orDate: '2026-03-18',
+        payorName: 'Provincial Government',
+        amount: 750_000_00,
+      },
+    ]);
+    expect(r.unattributedTotal).toBe(750_000_00);
+    // And it is on no sheet.
+    expect(r.sheets[0].receipts).toEqual([]);
+  });
+
+  it('counts only the lines that name no programme, not the whole receipt', () => {
+    const r = buildAll([prog()], [], {
+      collections: [
+        receipt({
+          lines: [
+            { trustProgramId: 'TP1', amount: 400_000_00 },
+            { amount: 100_000_00 },
+          ],
+        }),
+      ],
+    });
+
+    expect(r.sheets[0].receipts[0].amount).toBe(400_000_00);
+    expect(r.unattributedTotal).toBe(100_000_00);
+  });
+
+  it('ignores one that has not been reported yet', () => {
+    const r = buildAll([prog()], [], {
+      collections: [receipt({ status: 'ISSUED', lines: [{ amount: 50_000_00 }] })],
+    });
+
+    expect(r.unattributed).toEqual([]);
+  });
+
+  it('lists the newest first, because that is the one still fixable', () => {
+    const r = buildAll([prog()], [], {
+      collections: [
+        receipt({ orNumber: 'OLD', orDate: '2026-01-05', lines: [{ amount: 10_000_00 }] }),
+        receipt({ orNumber: 'NEW', orDate: '2026-03-22', lines: [{ amount: 20_000_00 }] }),
+      ],
+    });
+
+    expect(r.unattributed.map((u) => u.orNumber)).toEqual(['NEW', 'OLD']);
+  });
+
+  it('is empty when every reported receipt names its programme', () => {
+    const r = buildAll([prog()], [], { collections: [receipt()] });
+    expect(r.unattributed).toEqual([]);
+    expect(r.unattributedTotal).toBe(0);
+  });
+});
+
+describe('a programme recorded before the receipts were worked', () => {
+  /**
+   * Its document carries no `receivedPosted`, and `undefined - utilised` is
+   * NaN - which would print as "NaN" in the balance column of every sheet in
+   * the register rather than failing anywhere a test would see it.
+   */
+  it('reads as nil received rather than as nothing at all', () => {
+    const old = { ...prog(), receivedPosted: undefined };
+    const [sheet] = build([old], []);
+
+    expect(sheet.receiptTotal).toBe(0);
+    expect(sheet.balance).toBe(-6_000_000_00);
+    expect(Number.isNaN(sheet.balance)).toBe(false);
+    // And the whole stated figure shows as drift, which is the thing to fix.
+    expect(sheet.receiptDrift).toBe(10_000_000_00);
+  });
+
+  it('keeps the registry total a number', () => {
+    const t = totalRstf(build([{ ...prog(), receivedPosted: undefined }], []));
+    expect(Number.isNaN(t.received)).toBe(false);
+    expect(t.received).toBe(0);
   });
 });

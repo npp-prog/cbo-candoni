@@ -427,10 +427,16 @@ export interface TrustProgram {
 
   /** The ceiling. Every utilisation is checked against it. */
   programmed: Centavos;
-  /** What the source has actually remitted. Stated by the Accountant, not
-   *  derived from the ledger — CBO does not yet tie a collection to a
-   *  programme. Reported, never controlled on. */
+  /** What the source has remitted, as the Accountant states it. Kept beside
+   *  the worked figure below rather than replaced by it: a programme usually
+   *  exists before its collections do. Reported, never controlled on. */
   received: Centavos;
+  /** The same thing worked out of the receipts: every Trust Fund collection
+   *  line carrying this programme, summed by postRcd inside the transaction
+   *  that posts the RCD. Nothing else writes it. */
+  receivedPosted: Centavos;
+  /** received - receivedPosted. Derived. */
+  receiptDrift: Centavos;
   /** Committed by a certified FURS. Maintained only by Cloud Functions. */
   utilised: Centavos;
   /** Paid out on an approved voucher. Maintained only by Cloud Functions. */
