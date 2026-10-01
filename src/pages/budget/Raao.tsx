@@ -12,7 +12,7 @@ import { fppLabel } from '@/lib/fppCodes';
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
-import { RAAO_FORMS, buildRaao, totalRaao, type RaaoSection, type RaaoSheet } from './raao';
+import { RAAO_FORMS, buildRaao, totalRaao, type RaaoSection, type RaaoSheet } from './raaoReport';
 import { RAAO_SLUGS, RegistryTabs } from './registryTabs';
 import { fundLabel } from './Obligations';
 

@@ -17,7 +17,7 @@ import {
   type RptAbstractMonth,
   type RptLedgerEntry,
   type RptTaxBlock,
-} from './rptAbstract';
+} from './rptAbstractReport';
 
 /**
  * The Abstract of Real Property Tax Collections, GAM Appendix 45.

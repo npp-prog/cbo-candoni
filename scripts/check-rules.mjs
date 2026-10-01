@@ -16,7 +16,7 @@
  *   node scripts/check-rules.mjs
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -190,6 +190,104 @@ for (const file of KEY_CONSUMERS) {
 
 if (!failures.some((f) => f.includes("joining fields with '__'"))) {
   console.log(`budget keys: ${KEY_CONSUMERS.length} consumers all use budgetKeyId`);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Two files in one folder whose names differ only in case
+// ---------------------------------------------------------------------------
+//
+// This one does not look like a security check and is here because it broke
+// the build on the only machine that matters - the Municipal Accountant's.
+//
+// The convention in src/pages is a lowercase module holding the arithmetic
+// beside an Uppercase component holding the screen: `scbaa.ts` next to
+// `Scbaa.tsx`. On Linux, where this repository is developed, those are two
+// files and `import './Scbaa'` finds the component. On Windows they are one
+// name in two spellings, and because TypeScript tries `.ts` before `.tsx`,
+// `import './pages/reports/Scbaa'` resolves to `scbaa.ts` - the arithmetic
+// module, which has no default export and is not a React component.
+//
+// Eight such pairs had accumulated. The build failed with 23 errors on the
+// accountant's machine while passing here, which is the worst shape a defect
+// can take: invisible to the person who wrote it.
+//
+// Turning off forceConsistentCasingInFileNames would silence the errors and
+// leave the real fault in place - the lazy route would import the wrong module
+// and fail at run time instead. So the names have to stay distinct, and this
+// is what keeps them so.
+
+const CASE_SCAN_DIRS = ['src', 'functions/src', 'scripts'];
+const CODE_EXT = /\.(ts|tsx|mjs|js)$/;
+
+function scanForCaseCollisions(dir, out) {
+  let entries;
+  try {
+    entries = readdirSync(resolve(root, dir), { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  const stems = new Map();
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'lib') continue;
+      scanForCaseCollisions(`${dir}/${entry.name}`, out);
+      continue;
+    }
+    if (!CODE_EXT.test(entry.name)) continue;
+    const stem = entry.name.replace(CODE_EXT, '');
+    const key = stem.toLowerCase();
+    const seen = stems.get(key);
+    if (seen && seen !== stem) out.push({ dir, a: seen, b: stem });
+    else if (!seen) stems.set(key, stem);
+  }
+}
+
+const collisions = [];
+for (const dir of CASE_SCAN_DIRS) scanForCaseCollisions(dir, collisions);
+
+/*
+ * The eight that patch 54 renamed. A patch zip can add and replace a file but
+ * cannot delete one, so installing it leaves the old name on disk beside the
+ * new - which is a collision again, and the old test file runs as well. When
+ * the pair we have found is one of those, say what to run rather than leaving
+ * the reader to work out that the fix is a deletion.
+ */
+const RENAMED_BY_PATCH_54 = new Set([
+  'raao',
+  'reairr',
+  'scbaa',
+  'rptAbstract',
+  'quarterlyReceipts',
+  'budgetVsActual',
+  'unreleasedChecks',
+  'cashAdvanceBook',
+]);
+
+const leftovers = collisions.filter((c) => RENAMED_BY_PATCH_54.has(c.a) || RENAMED_BY_PATCH_54.has(c.b));
+
+for (const c of collisions) {
+  const stale = RENAMED_BY_PATCH_54.has(c.a) ? c.a : RENAMED_BY_PATCH_54.has(c.b) ? c.b : null;
+  failures.push(
+    `${c.dir} holds both ${c.a} and ${c.b}, which differ only in case. On Windows and macOS ` +
+      'those are one file name, so an extensionless import of either resolves to whichever ' +
+      'extension TypeScript tries first - and the build fails there while passing on Linux. ' +
+      (stale
+        ? `${stale} was renamed to ${stale}Report and the old file is still here.`
+        : 'Give one of them a distinct name.'),
+  );
+}
+
+if (leftovers.length > 0) {
+  failures.push(
+    `Run  node scripts/remove-legacy-modules.mjs  to delete the ${leftovers.length} leftover ` +
+      'file(s) above and their tests. It removes nothing else, and it refuses to run unless the ' +
+      'files that replaced them are already in place.',
+  );
+}
+
+if (collisions.length === 0) {
+  console.log('file names: no two differ only in case');
 }
 
 // ---------------------------------------------------------------------------

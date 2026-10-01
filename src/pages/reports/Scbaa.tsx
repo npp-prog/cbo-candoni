@@ -28,10 +28,10 @@ import {
   buildScbaaRevenue,
   type ScbaaFigures,
   type ScbaaRevenueRow,
-} from './scbaa';
+} from './scbaaReport';
 import { COMPARISON_TABS } from './comparisonTabs';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTED } from '../budget/reairr';
+import { COLLECTED } from '../budget/reairrReport';
 
 /**
  * Statement of Comparison of Budget and Actual Amounts - GAM Annex 8.

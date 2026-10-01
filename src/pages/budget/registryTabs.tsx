@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Tabs } from '@/components/ui/Layout';
-import type { RaaoClass } from './raao';
+import type { RaaoClass } from './raaoReport';
 
 /**
  * Five registries on one menu item.

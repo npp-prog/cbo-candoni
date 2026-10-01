@@ -9,7 +9,7 @@ import { periodHeading, periodRange, type ReportPeriod } from '@/lib/reportPerio
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
-import { buildCashAdvanceBook, type CbcaBook } from './cashAdvanceBook';
+import { buildCashAdvanceBook, type CbcaBook } from './cashAdvanceBookReport';
 import { fundLabel } from '@/pages/budget/Obligations';
 
 /**

@@ -5,7 +5,7 @@ import {
   buildScbaaExpenditure,
   buildScbaaRevenue,
   type ScbaaBudgetLine,
-} from './scbaa';
+} from './scbaaReport';
 import { SCBAA_REVENUE, autoMatchSector, revenueLineFor } from '@/lib/scbaaLines';
 import { SECTORS } from '@/lib/sectors';
 

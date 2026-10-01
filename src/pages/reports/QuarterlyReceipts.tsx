@@ -20,7 +20,7 @@ import {
   type IncomeEstimates,
   type ReceiptEntry,
   type ReceiptRow,
-} from './quarterlyReceipts';
+} from './quarterlyReceiptsReport';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';

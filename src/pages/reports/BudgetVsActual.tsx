@@ -21,7 +21,7 @@ import {
   unbudgetedActual,
   type ComparisonRow as Row,
   type GroupBy,
-} from './budgetVsActual';
+} from './budgetVsActualReport';
 
 /**
  * Statement of Comparison of Budget and Actual Amounts.

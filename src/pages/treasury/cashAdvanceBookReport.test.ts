@@ -3,7 +3,7 @@ import {
   buildCashAdvanceBook,
   type CbcaAdvance,
   type CbcaLiquidation,
-} from './cashAdvanceBook';
+} from './cashAdvanceBookReport';
 
 const adv = (over: Partial<CbcaAdvance> = {}): CbcaAdvance => ({
   id: 'CA1',

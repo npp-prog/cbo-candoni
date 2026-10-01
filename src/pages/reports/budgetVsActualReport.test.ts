@@ -6,7 +6,7 @@ import {
   unbudgetedActual,
   type ComparisonBalance,
   type ComparisonEntry,
-} from './budgetVsActual';
+} from './budgetVsActualReport';
 
 const line = (over: Partial<ComparisonBalance> = {}): ComparisonBalance => ({
   fppCode: '5-02-03-010',

@@ -8,7 +8,7 @@ import {
   monthsOfQuarter,
   type IncomeEstimates,
   type ReceiptEntry,
-} from './quarterlyReceipts';
+} from './quarterlyReceiptsReport';
 
 /**
  * LBAc Form No. 1.

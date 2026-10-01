@@ -6,7 +6,7 @@ import {
   buildRptAbstract,
   splitByShares,
   type RptLedgerEntry,
-} from './rptAbstract';
+} from './rptAbstractReport';
 
 /**
  * The worked example in GAM Volume I, Section 69, is the fixture that matters:

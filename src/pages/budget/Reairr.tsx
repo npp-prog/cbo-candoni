@@ -8,7 +8,7 @@ import { periodHeading, periodRange, type ReportPeriod } from '@/lib/reportPerio
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
-import { buildReairr, type ReairrEntry } from './reairr';
+import { buildReairr, type ReairrEntry } from './reairrReport';
 import { fundLabel } from './Obligations';
 
 /**

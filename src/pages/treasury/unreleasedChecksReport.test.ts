@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildUnreleasedChecks, totalUnreleased, type SucCheck } from './unreleasedChecks';
+import { buildUnreleasedChecks, totalUnreleased, type SucCheck } from './unreleasedChecksReport';
 
 const chk = (over: Partial<SucCheck> = {}): SucCheck => ({
   id: 'C1',
