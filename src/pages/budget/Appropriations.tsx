@@ -12,13 +12,17 @@ import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAppropriations, useBudgetBalances } from '@/data/queries';
+import { useDocument } from '@/hooks/useFirestore';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import {
+  augmentationAuthorityKey,
+  checkAugmentationAuthority,
   checkAugmentationExpenseClass,
   checkRealignmentSet,
+  type AugmentationAuthority,
   type RealignmentInstrument,
 } from '@/lib/accounting-rules';
 import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
@@ -436,6 +440,33 @@ function AppropriationForm({
    * rule the server runs, shown here so the Budget Officer sees which classes
    * the set spans before sending rather than after.
    */
+  /**
+   * Is the municipality allowed to augment at all this year?
+   *
+   * Section 336 grants the power only where the annual budget's General
+   * Provisions carry the omnibus authority, so it is a fact about the
+   * ordinance rather than about these lines. The server refuses without it;
+   * this is here so the Budget Officer is told before filling the form in
+   * rather than after sending it.
+   */
+  const authorityDoc = useDocument<{ entries?: AugmentationAuthority }>(
+    COL.settings,
+    'augmentationAuthority',
+  );
+  const authorityEntry =
+    authorityDoc.data?.entries?.[augmentationAuthorityKey(fiscalYear, fundCode)];
+  const authorityCheck = useMemo(
+    () =>
+      isRealignment && instrument === 'AUGMENTATION'
+        ? checkAugmentationAuthority({
+            authority: authorityDoc.data?.entries,
+            fiscalYear,
+            fundCode,
+          })
+        : null,
+    [isRealignment, instrument, authorityDoc.data, fiscalYear, fundCode],
+  );
+
   const classCheck = useMemo(
     () =>
       isRealignment && instrument === 'AUGMENTATION' && filledLines.length > 0
@@ -456,6 +487,9 @@ function AppropriationForm({
     balance !== null &&
     balance.ok &&
     (classCheck === null || classCheck.ok) &&
+    // Section 336 authority. The server refuses without it; the button is
+    // disabled here so nobody fills in eight lines to be told at the end.
+    (authorityCheck === null || authorityCheck.ok) &&
     authorityReference.trim().length > 0;
 
   /**
@@ -750,13 +784,44 @@ function AppropriationForm({
             </Select>
           </Field>
 
+          {authorityCheck && !authorityCheck.ok && (
+            <Alert
+              tone="error"
+              title={`No one has recorded that augmentation is allowed in ${fiscalYear}`}
+              className="mb-4"
+            >
+              <p>{authorityCheck.violations[0].message}</p>
+              <p className="mt-1">
+                It is recorded once for the year, in Budget &rarr; Monitoring &rarr; Augmentation Authority, by the
+                Municipal Accountant or an administrator &mdash; deliberately not by the Budget
+                Office, which is the office that posts augmentations.
+              </p>
+            </Alert>
+          )}
+
+          {authorityCheck && authorityCheck.ok && authorityEntry && (
+            <Alert tone="success" className="mb-4">
+              Augmentation is authorised for {fiscalYear} by Ordinance{' '}
+              {authorityEntry.ordinanceNo}, {authorityEntry.generalProvisionsSection}. That
+              reference is carried onto the LBE Form No. 2.
+            </Alert>
+          )}
+
           {classCheck && !classCheck.ok && (
             <Alert tone="error" title="An augmentation cannot cross an expense class" className="mb-4">
               {classCheck.violations[0].message}
             </Alert>
           )}
 
-          <Alert tone="info" title="The allotment moves with the appropriation" className="mb-4">
+          <Alert
+            tone="info"
+            title={
+              instrument === 'AUGMENTATION'
+                ? 'An augmentation is made after the allotment'
+                : 'The allotment moves with the appropriation'
+            }
+            className="mb-4"
+          >
             <p>
               This is one budget transaction, not a record of one. Posting it moves the
               appropriation and, where it has to, the allotment as well — withdrawn from the line
@@ -764,13 +829,22 @@ function AppropriationForm({
               total allotment of the fund does not change, because an augmentation creates no new
               spending authority.
             </p>
-            <p className="mt-1">
-              Savings are taken from appropriation that has <em>not</em> yet been released as
-              allotment first, since moving that costs the account no spending authority it holds
-              today. Only what cannot be found there comes back out of the released allotment — so
-              a line whose allotment is fully released gives up allotment peso for peso, and a line
-              still holding unreleased appropriation gives up none.
-            </p>
+            {instrument === 'AUGMENTATION' ? (
+              <p className="mt-1">
+                Savings are the balance of a <em>released</em> allotment left free of obligation
+                once an activity is finished, abandoned or discontinued — so the allotment comes
+                first, and the allotment moves peso for peso with the appropriation. A line with
+                no allotment released has no savings to give and is refused: move that
+                appropriation by supplemental budget instead.
+              </p>
+            ) : (
+              <p className="mt-1">
+                A supplemental budget is the Sanggunian re-appropriating under Section 321, and it
+                may move appropriation that was never released. So the savings are taken from the
+                unreleased part first, since moving that costs the account no spending authority it
+                holds today, and only the shortfall comes back out of the released allotment.
+              </p>
+            )}
             <p className="mt-1">
               Allotment that is already obligated cannot be taken back. Where it would have to be,
               nothing is posted and the line is named, so the obligations can be cancelled or less

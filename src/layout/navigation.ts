@@ -108,6 +108,21 @@ export const NAVIGATION: NavItem[] = [
       // LBE Form No. 2. The form the office already fills in by hand when
       // savings are used to augment an existing item.
       { group: 'Monitoring', label: 'Augmentation Form (LBE 2)', to: '/budget/augmentation-form' },
+      /*
+       * The standing fact that form depends on, so it sits beside it.
+       *
+       * Section 336 allows augmentation only where the annual budget's General
+       * Provisions grant it, so the ordinance is read and recorded once a year
+       * before any augmentation will post. It is deliberately NOT in the
+       * Budget transactions group: that group is the order the work happens
+       * in, and this is not a step in it. The Appropriation screen names this
+       * page when it refuses, which is how the person blocked by it arrives.
+       */
+      {
+        group: 'Monitoring',
+        label: 'Augmentation Authority',
+        to: '/budget/augmentation-authority',
+      },
       { group: 'Monitoring', label: 'Statutory Limits', to: '/budget/statutory-limits' },
 
       /*

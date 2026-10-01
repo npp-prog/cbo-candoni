@@ -629,28 +629,106 @@ export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
  * account to another, and the allotment is part of that authority.
  *
  * ---------------------------------------------------------------------------
- * HOW MUCH ALLOTMENT MOVES
+ * HOW MUCH ALLOTMENT MOVES DEPENDS ON THE INSTRUMENT
  * ---------------------------------------------------------------------------
- * Not always the whole amount, and the reason is worth stating.
+ * An earlier version of this file had one rule for both instruments: take the
+ * savings from unreleased appropriation first, and move only the shortfall.
+ * That is right for a supplemental budget and WRONG for an augmentation, and
+ * the difference is not a detail.
  *
- * An account may hold appropriation that has never been released as allotment.
- * Savings are taken from THAT first, because moving unreleased appropriation
- * costs the account no spending authority it currently has. Only what cannot
- * be found there has to come out of the released allotment:
+ * AN AUGMENTATION IS MADE AFTER THE ALLOTMENT. Savings are the balance of a
+ * released allotment left free of obligation once an activity is completed,
+ * abandoned or discontinued. Before the allotment is released there is nothing
+ * that answers to that description - the money has not been made available to
+ * spend, so none of it can be left over. An augmentation therefore moves the
+ * allotment peso for peso with the appropriation, and a source line carrying
+ * no released allotment is refused rather than quietly contributing nothing.
+ *
+ * Under the old rule such a line passed, moved no allotment, and left the
+ * augmented item holding appropriation it could not obligate - the exact
+ * outcome this work set out to prevent.
+ *
+ * A SUPPLEMENTAL BUDGET under Section 321 is a different act. The Sanggunian
+ * is re-appropriating, and it may move appropriation that was never released.
+ * There the older rule stands:
  *
  *     unreleased = appropriation - allotment released
  *     withdrawn  = max(0, amount moved - unreleased)
  *
- * So an account whose allotment is fully released gives up allotment peso for
- * peso with the appropriation - the common case, and what the office expects.
- * An account still holding unreleased appropriation gives up none, because it
- * has lost no spending authority. Neither result is a policy this file
- * invented; both fall out of taking the savings from the loosest money first.
+ * Whatever is withdrawn is released on the receiving side, under either
+ * instrument. The fund's total allotment does not change, because neither act
+ * creates new spending authority - both move what was already there.
  *
- * Whatever is withdrawn is released on the augmented side. The fund's total
- * allotment does not change, because an augmentation creates no new spending
- * authority - it moves what was already there.
+ * ---------------------------------------------------------------------------
+ * THE AUTHORITY IS A SEPARATE QUESTION, AND IT IS NOT THIS FILE'S
+ * ---------------------------------------------------------------------------
+ * Section 336 lets the Local Chief Executive augment only where the annual
+ * budget's General Provisions carry the omnibus authority. That is a fact
+ * about the appropriation ordinance for a fiscal year, not about these lines,
+ * so it is checked on the server against what the office has recorded, before
+ * any of the arithmetic below is reached.
  */
+
+/**
+ * Whether the appropriation ordinance lets the Local Chief Executive augment
+ * at all.
+ *
+ * Section 336 grants the power on a condition, and the condition is not about
+ * the lines being moved: the annual budget's General Provisions must carry the
+ * omnibus authority. Without it an augmentation needs a supplemental budget
+ * like any other transfer, and the convenience Section 336 offers is simply
+ * not available that year.
+ *
+ * CBO cannot read an ordinance, so it cannot work this out. What it can do is
+ * refuse to assume. The office records, once for each fiscal year and fund,
+ * the ordinance and the section of its General Provisions that carry the
+ * authority, and until that is recorded an augmentation does not post.
+ *
+ * Recording it is a small act done once a year. Not recording it and posting
+ * anyway is an augmentation made without authority, which is the kind of thing
+ * that is only ever discovered by somebody else.
+ */
+export interface AugmentationAuthorityEntry {
+  /** The appropriation ordinance carrying the General Provisions. */
+  ordinanceNo: string;
+  /** Which section of them grants the authority. */
+  generalProvisionsSection: string;
+  remarks?: string;
+  recordedBy?: { uid: string; name: string; at: string };
+}
+
+export type AugmentationAuthority = Record<string, AugmentationAuthorityEntry>;
+
+/** One entry per fiscal year and fund. Both sides build the key here. */
+export function augmentationAuthorityKey(fiscalYear: number, fundCode: string): string {
+  return `${fiscalYear}__${String(fundCode ?? '').trim().toUpperCase()}`;
+}
+
+export function checkAugmentationAuthority(input: {
+  authority: AugmentationAuthority | undefined;
+  fiscalYear: number;
+  fundCode: string;
+}): CheckResult {
+  const key = augmentationAuthorityKey(input.fiscalYear, input.fundCode);
+  const entry = input.authority?.[key];
+
+  const ordinance = entry?.ordinanceNo?.trim() ?? '';
+  const section = entry?.generalProvisionsSection?.trim() ?? '';
+
+  if (!ordinance || !section) {
+    return fail(
+      'AUGMENTATION_NOT_AUTHORISED',
+      `No one has recorded that the ${input.fiscalYear} appropriation ordinance for the ` +
+        `${input.fundCode} allows augmentation. Section 336 permits it only where the annual ` +
+        'budget\u2019s General Provisions carry the omnibus authority, and CBO will not assume ' +
+        'they do. Record the ordinance number and the section that grants it, or move this ' +
+        'appropriation by supplemental budget instead.',
+      { fiscalYear: input.fiscalYear, fundCode: input.fundCode, key },
+    );
+  }
+
+  return ok;
+}
 
 export interface AugmentationAllotmentLine {
   lineNo: number;
@@ -681,6 +759,7 @@ export interface AugmentationAllotmentPlan extends CheckResult {
 
 export function planAugmentationAllotment(
   lines: AugmentationAllotmentLine[],
+  instrument: RealignmentInstrument = 'AUGMENTATION',
 ): AugmentationAllotmentPlan {
   const violations: Violation[] = [];
   const moves: AllotmentMove[] = [];
@@ -692,8 +771,52 @@ export function planAugmentationAllotment(
   let totalMoved = 0;
   for (const line of sources) {
     const taken = -line.amount;
-    const unreleased = line.appropriationRevised - line.allotmentReleased;
-    const withdrawn = Math.max(0, taken - unreleased);
+    const free = line.allotmentReleased - line.obligated;
+
+    /*
+     * How much allotment must come back depends on which instrument this is,
+     * and the two are genuinely different acts.
+     *
+     * AN AUGMENTATION IS MADE AFTER THE ALLOTMENT. Savings are the balance of
+     * a released allotment left free of obligation once an activity is done,
+     * abandoned or discontinued - so until the allotment is released there is
+     * nothing to call savings, and nothing to augment from. The allotment
+     * therefore moves peso for peso with the appropriation, and a line with no
+     * released allotment cannot be a source at all.
+     *
+     * A SUPPLEMENTAL BUDGET IS A DIFFERENT THING. The Sanggunian is enacting a
+     * re-appropriation under Section 321, and it may move appropriation that
+     * was never released as allotment. There the savings come out of the
+     * unreleased part first, because moving that costs the account no spending
+     * authority it currently holds, and only the shortfall is taken back out
+     * of the allotment.
+     */
+    let withdrawn: number;
+    if (instrument === 'AUGMENTATION') {
+      if (line.allotmentReleased === 0) {
+        violations.push({
+          code: 'AUGMENTATION_BEFORE_ALLOTMENT',
+          message:
+            `${line.accountCode} ${line.accountName} in ${line.officeName} has no allotment ` +
+            'released, so it has no savings to give. An augmentation is made from savings, and ' +
+            'savings are what is left of a released allotment once the activity is finished or ' +
+            'abandoned - so the allotment comes first. Release the allotment, or move this ' +
+            'appropriation by supplemental budget instead.',
+          details: {
+            lineNo: line.lineNo,
+            accountCode: line.accountCode,
+            taken,
+            appropriationRevised: line.appropriationRevised,
+          },
+        });
+        continue;
+      }
+      withdrawn = taken;
+    } else {
+      const unreleased = line.appropriationRevised - line.allotmentReleased;
+      withdrawn = Math.max(0, taken - unreleased);
+    }
+
     if (withdrawn === 0) continue;
 
     const check = checkAllotmentWithdrawal({
@@ -702,7 +825,6 @@ export function planAugmentationAllotment(
       requestedWithdrawal: withdrawn,
     });
     if (!check.ok) {
-      const free = line.allotmentReleased - line.obligated;
       violations.push({
         code: 'AUGMENTATION_ALLOTMENT_OBLIGATED',
         message:

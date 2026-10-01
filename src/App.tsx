@@ -94,6 +94,7 @@ const Rstf = lazy(() => import('./pages/accounting/Rstf'));
 const UnreleasedChecks = lazy(() => import('./pages/treasury/UnreleasedChecks'));
 const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
 const RptAbstract = lazy(() => import('./pages/reports/RptAbstract'));
+const AugmentationAuthority = lazy(() => import('./pages/budget/AugmentationAuthority'));
 const AugmentationFormPage = lazy(() => import('./pages/budget/AugmentationFormPage'));
 const Scbaa = lazy(() => import('./pages/reports/Scbaa'));
 const Documents = lazy(() => import('./pages/Documents'));
@@ -172,6 +173,7 @@ export default function App() {
           {/* Appendix 26, the third cash book beside Cash in Bank and Cash in Treasury. */}
           <Route path="/treasury/cash-advance-book" element={<Guard module="treasury"><CashAdvanceBook /></Guard>} />
           <Route path="/reports/rpt-abstract" element={<Guard module="reports"><RptAbstract /></Guard>} />
+          <Route path="/budget/augmentation-authority" element={<Guard module="budget"><AugmentationAuthority /></Guard>} />
           {/* LBE Form No. 2, Budget Operations Manual page 186. */}
           <Route path="/budget/augmentation-form" element={<Guard module="budget"><AugmentationFormPage /></Guard>} />
           <Route

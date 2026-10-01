@@ -9,6 +9,8 @@ import {
   checkExpenseDebitsHaveFpp,
   checkRealignmentSet,
   planAugmentationAllotment,
+  checkAugmentationAuthority,
+  augmentationAuthorityKey,
   checkDvMath,
   checkLiquidation,
   computeReconciliation,
@@ -1029,31 +1031,86 @@ describe('planAugmentationAllotment', () => {
     ]);
   });
 
-  it('moves no allotment when the savings fit inside unreleased appropriation', () => {
-    // 100,000 appropriated, only 30,000 released. Taking 50,000 costs the
-    // account no spending authority it currently holds.
+  it('refuses an augmentation from a line whose allotment is not released', () => {
+    // An augmentation is made AFTER the allotment: savings are what is left of
+    // a released allotment. A line with none has nothing to call savings, and
+    // letting it through would leave the augmented item unable to obligate.
     const plan = planAugmentationAllotment([
-      line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 30_000 }),
+      line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 0 }),
       line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
     ]);
 
-    expect(plan.ok).toBe(true);
-    expect(plan.totalMoved).toBe(0);
+    expect(plan.ok).toBe(false);
+    expect(plan.violations[0].code).toBe('AUGMENTATION_BEFORE_ALLOTMENT');
     expect(plan.moves).toEqual([]);
   });
 
-  it('moves only the part that cannot come from unreleased appropriation', () => {
-    // 20,000 unreleased, so 30,000 of the 50,000 has to come out of allotment.
+  it('moves the full amount even where appropriation is left unreleased', () => {
+    // 20,000 of the appropriation was never released. That is not savings, so
+    // the whole 50,000 still comes out of the released allotment.
     const plan = planAugmentationAllotment([
       line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 80_000 }),
       line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
     ]);
 
-    expect(plan.totalMoved).toBe(30_000);
+    expect(plan.totalMoved).toBe(50_000);
     expect(plan.moves).toEqual([
-      { lineNo: 1, allotmentDelta: -30_000 },
-      { lineNo: 2, allotmentDelta: 30_000 },
+      { lineNo: 1, allotmentDelta: -50_000 },
+      { lineNo: 2, allotmentDelta: 50_000 },
     ]);
+  });
+
+  it('refuses where the released allotment cannot cover what is taken', () => {
+    const plan = planAugmentationAllotment([
+      line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 30_000 }),
+      line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+    ]);
+
+    expect(plan.ok).toBe(false);
+    expect(plan.violations[0].code).toBe('AUGMENTATION_ALLOTMENT_OBLIGATED');
+  });
+
+  describe('under a supplemental budget, which is a different act', () => {
+    // Section 321: the Sanggunian is re-appropriating and may move
+    // appropriation that was never released as allotment.
+    it('takes the savings from unreleased appropriation first', () => {
+      const plan = planAugmentationAllotment(
+        [
+          line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 30_000 }),
+          line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+        ],
+        'SUPPLEMENTAL',
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.totalMoved).toBe(0);
+      expect(plan.moves).toEqual([]);
+    });
+
+    it('moves only the shortfall', () => {
+      const plan = planAugmentationAllotment(
+        [
+          line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 80_000 }),
+          line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+        ],
+        'SUPPLEMENTAL',
+      );
+
+      expect(plan.totalMoved).toBe(30_000);
+    });
+
+    it('allows a source with no allotment released at all', () => {
+      const plan = planAugmentationAllotment(
+        [
+          line({ lineNo: 1, amount: -50_000, appropriationRevised: 100_000, allotmentReleased: 0 }),
+          line({ lineNo: 2, amount: 50_000, appropriationRevised: 20_000 }),
+        ],
+        'SUPPLEMENTAL',
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.totalMoved).toBe(0);
+    });
   });
 
   it('refuses to take allotment that is already obligated', () => {
@@ -1087,11 +1144,16 @@ describe('planAugmentationAllotment', () => {
   });
 
   it('apportions across several augmented items and keeps the centavos exact', () => {
-    const plan = planAugmentationAllotment([
-      line({ lineNo: 1, amount: -100_000, appropriationRevised: 100_000, allotmentReleased: 70_000 }),
-      line({ lineNo: 2, amount: 33_333, appropriationRevised: 10_000 }),
-      line({ lineNo: 3, amount: 66_667, appropriationRevised: 10_000 }),
-    ]);
+    // Under a supplemental budget the withdrawn total can be less than the
+    // appropriation moved, which is when the apportionment becomes visible.
+    const plan = planAugmentationAllotment(
+      [
+        line({ lineNo: 1, amount: -100_000, appropriationRevised: 130_000, allotmentReleased: 100_000 }),
+        line({ lineNo: 2, amount: 33_333, appropriationRevised: 10_000 }),
+        line({ lineNo: 3, amount: 66_667, appropriationRevised: 10_000 }),
+      ],
+      'SUPPLEMENTAL',
+    );
 
     expect(plan.ok).toBe(true);
     expect(plan.totalMoved).toBe(70_000);
@@ -1106,16 +1168,15 @@ describe('planAugmentationAllotment', () => {
   it('takes from several sources at once', () => {
     const plan = planAugmentationAllotment([
       line({ lineNo: 1, amount: -30_000, appropriationRevised: 30_000, allotmentReleased: 30_000 }),
-      // This one has 25,000 unreleased, so only 5,000 comes out of allotment.
-      line({ lineNo: 2, amount: -30_000, appropriationRevised: 30_000, allotmentReleased: 5_000 }),
-      line({ lineNo: 3, amount: 60_000, appropriationRevised: 10_000 }),
+      line({ lineNo: 2, amount: -20_000, appropriationRevised: 40_000, allotmentReleased: 25_000 }),
+      line({ lineNo: 3, amount: 50_000, appropriationRevised: 10_000 }),
     ]);
 
-    expect(plan.totalMoved).toBe(35_000);
+    expect(plan.totalMoved).toBe(50_000);
     expect(plan.moves).toEqual([
       { lineNo: 1, allotmentDelta: -30_000 },
-      { lineNo: 2, allotmentDelta: -5_000 },
-      { lineNo: 3, allotmentDelta: 35_000 },
+      { lineNo: 2, allotmentDelta: -20_000 },
+      { lineNo: 3, allotmentDelta: 50_000 },
     ]);
   });
 
@@ -1127,5 +1188,79 @@ describe('planAugmentationAllotment', () => {
     ]);
 
     expect(plan.moves.reduce((s, m) => s + m.allotmentDelta, 0)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('checkAugmentationAuthority', () => {
+  /**
+   * Section 336 grants the power only where the annual budget's General
+   * Provisions carry the omnibus authority. CBO cannot read an ordinance, so
+   * the whole of this rule is: do not assume one.
+   */
+  const authorised = {
+    [augmentationAuthorityKey(2026, 'GF')]: {
+      ordinanceNo: 'No. 2025-14',
+      generalProvisionsSection: 'Section 12',
+    },
+  };
+
+  it('allows an augmentation once the ordinance and section are recorded', () => {
+    expect(
+      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2026, fundCode: 'GF' }).ok,
+    ).toBe(true);
+  });
+
+  it('refuses when nothing has been recorded at all', () => {
+    const result = checkAugmentationAuthority({
+      authority: undefined,
+      fiscalYear: 2026,
+      fundCode: 'GF',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.violations[0].code).toBe('AUGMENTATION_NOT_AUTHORISED');
+  });
+
+  it('refuses for a year that has not been recorded, even though another has', () => {
+    // The authority is granted by one annual ordinance and does not carry over.
+    expect(
+      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2027, fundCode: 'GF' }).ok,
+    ).toBe(false);
+  });
+
+  it('refuses for a fund that has not been recorded', () => {
+    // The SEF has its own budget and its own General Provisions.
+    expect(
+      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2026, fundCode: 'SEF' }).ok,
+    ).toBe(false);
+  });
+
+  it('refuses a half-filled entry', () => {
+    const half = {
+      [augmentationAuthorityKey(2026, 'GF')]: {
+        ordinanceNo: 'No. 2025-14',
+        generalProvisionsSection: '   ',
+      },
+    };
+    expect(
+      checkAugmentationAuthority({ authority: half, fiscalYear: 2026, fundCode: 'GF' }).ok,
+    ).toBe(false);
+  });
+
+  it('matches the fund code whatever case it is given in', () => {
+    expect(
+      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2026, fundCode: 'gf' }).ok,
+    ).toBe(true);
+  });
+
+  it('names the year and the fund in the message, so it says what to record', () => {
+    const result = checkAugmentationAuthority({
+      authority: undefined,
+      fiscalYear: 2026,
+      fundCode: 'SEF',
+    });
+    expect(result.violations[0].message).toContain('2026');
+    expect(result.violations[0].message).toContain('SEF');
   });
 });

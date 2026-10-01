@@ -933,6 +933,26 @@ service cloud.firestore {
         hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'MUNICIPAL_TREASURER', 'BUDGET_OFFICER']);
     }
 
+    /*
+     * Whether the appropriation ordinance allows augmentation at all.
+     *
+     * Section 336 lets the Local Chief Executive augment only where the annual
+     * budget's General Provisions carry the omnibus authority. The office
+     * records that here, once per fiscal year and fund, and importBudgetLines
+     * refuses an augmentation until it has been.
+     *
+     * The Budget Officer is deliberately NOT on this list, though they are on
+     * every other budget setting. They are the one who posts the augmentation,
+     * and a gate the person passing through it can open for themselves is not
+     * a gate. Recording the authority is reading the ordinance and saying what
+     * it says - the Accountant's kind of work, not the Budget Office's.
+     */
+    match /settings/augmentationAuthority {
+      allow read: if canRead();
+      allow write: if signedIn() &&
+        hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT']);
+    }
+
     // =========================================================================
     // DEFAULT DENY
     // Any collection not named above is inaccessible. New collections must be
