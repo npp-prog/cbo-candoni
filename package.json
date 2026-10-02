@@ -13,14 +13,15 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false",
     "lint": "eslint . --ext .ts,.tsx",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "vitest run --config vitest.config.ts && npm --prefix functions test",
     "test:watch": "vitest --config vitest.config.ts",
     "emulators": "firebase emulators:start",
     "seed": "tsx scripts/seed.ts",
     "functions:build": "npm --prefix functions run build",
     "functions:test": "npm --prefix functions test",
     "check:rules": "node scripts/check-rules.mjs",
-    "verify": "npm run check:rules && tsc --noEmit && npm test && npm run build && npm --prefix functions run build && npm --prefix functions test"
+    "verify": "npm run check:rules && tsc --noEmit && npm test && npm run build && npm --prefix functions run build && npm --prefix functions test",
+    "test:frontend": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

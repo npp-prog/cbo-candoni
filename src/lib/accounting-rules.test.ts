@@ -1257,3 +1257,74 @@ describe('the two acts, told apart', () => {
     expect(crossing.violations[0].message).toContain('Realignment');
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('the guards fail closed', () => {
+  /**
+   * A control that stops controlling when its input is wrong is worse than no
+   * control, because the screen still reports that the check was made.
+   *
+   * This is not hypothetical. `checkAllotmentAgainstAppropriation` computed
+   * `appropriationRevised - forLaterRelease`, and a caller that omitted the
+   * hold made that NaN - every comparison with NaN is false, so the guard
+   * returned ok for any amount against any appropriation. TypeScript marks
+   * the field required, which is why nothing complained; these functions are
+   * vendored into the Cloud Functions build and run against data assembled
+   * from Firestore documents, where a field never written reads as undefined.
+   */
+  const notANumber = undefined as unknown as number;
+
+  it('refuses an allotment release when a figure is missing', () => {
+    const r = checkAllotmentAgainstAppropriation({
+      appropriationRevised: 1_000_000_00,
+      allotmentAlreadyReleased: 999_999_99,
+      requestedRelease: 2,
+      forLaterRelease: notANumber,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.violations[0].code).toBe('CHECK_INPUT_NOT_A_NUMBER');
+    expect(r.violations[0].message).toContain('forLaterRelease');
+  });
+
+  it('refuses an allotment withdrawal when a figure is missing', () => {
+    const r = checkAllotmentWithdrawal({
+      allotmentAlreadyReleased: 100_000_00,
+      obligated: notANumber,
+      requestedWithdrawal: 50_000_00,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.violations[0].code).toBe('CHECK_INPUT_NOT_A_NUMBER');
+  });
+
+  it('refuses an obligation when a figure is missing', () => {
+    const r = checkObligationAgainstAllotment({
+      allotmentReleased: notANumber,
+      alreadyObligated: 0,
+      requestedObligation: 500_000_00,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.violations[0].code).toBe('CHECK_INPUT_NOT_A_NUMBER');
+  });
+
+  it('names every field that was not a number, not just the first', () => {
+    const r = checkObligationAgainstAllotment({
+      allotmentReleased: notANumber,
+      alreadyObligated: Number.NaN,
+      requestedObligation: 500_000_00,
+    });
+    expect(r.violations[0].message).toContain('allotmentReleased');
+    expect(r.violations[0].message).toContain('alreadyObligated');
+  });
+
+  it('still lets a well-formed check through', () => {
+    expect(
+      checkAllotmentAgainstAppropriation({
+        appropriationRevised: 1_000_000_00,
+        allotmentAlreadyReleased: 0,
+        requestedRelease: 500_000_00,
+        forLaterRelease: 0,
+      }).ok,
+    ).toBe(true);
+  });
+});

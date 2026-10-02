@@ -24,7 +24,13 @@ jobs:
       - name: Typecheck
         run: npx tsc -b --noEmit
       - name: Unit tests (accounting invariants)
-        run: npm test
+        # test:frontend, not test. The root `npm test` now also runs the Cloud
+        # Functions suite, so that one command covers both on a developer's
+        # machine - the server copy of the invariants went untested for weeks
+        # because nobody's habit included a second command. This job installs
+        # only the root dependencies, so it runs the frontend half; the
+        # functions job below runs the other half with its own install.
+        run: npm run test:frontend
       - name: Production build
         run: npm run build
         env:

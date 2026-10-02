@@ -35,6 +35,41 @@ export interface CheckResult {
 
 const ok: CheckResult = { ok: true, violations: [] };
 
+/**
+ * Every figure a guard compares must be a real number, and a guard handed
+ * something else must REFUSE rather than pass.
+ *
+ * This exists because of a defect that sat in the build for weeks without
+ * failing anything visible. `checkAllotmentAgainstAppropriation` computed
+ *
+ *     releasable = appropriationRevised - forLaterRelease
+ *
+ * and a caller that omitted `forLaterRelease` made that NaN. The test below
+ * it is `resulting > releasable`, and EVERY comparison with NaN is false - so
+ * the guard returned ok, for any amount, against any appropriation. A control
+ * that stops controlling when its input is wrong is worse than no control,
+ * because the screen still says the release was checked.
+ *
+ * TypeScript marks these fields required, which is why nothing complained.
+ * But these functions are vendored into the Cloud Functions build and run
+ * against data assembled from Firestore documents, where a field that was
+ * never written reads as undefined and no type annotation is present to stop
+ * it. So the arithmetic is guarded at run time as well.
+ */
+function nonFinite(values: Record<string, unknown>): CheckResult | null {
+  const bad = Object.entries(values).filter(
+    ([, v]) => typeof v !== 'number' || !Number.isFinite(v),
+  );
+  if (bad.length === 0) return null;
+
+  return fail(
+    'CHECK_INPUT_NOT_A_NUMBER',
+    `This check was given ${bad.map(([k]) => k).join(', ')} as something other than a number, ` +
+      'so it cannot be made. Nothing is approved on a check that could not run.',
+    { fields: bad.map(([k, v]) => ({ field: k, value: String(v) })) },
+  );
+}
+
 function fail(code: string, message: string, details?: Record<string, unknown>): CheckResult {
   return { ok: false, violations: [{ code, message, details }] };
 }
@@ -192,6 +227,15 @@ export interface AllotmentCheckInput {
 export function checkAllotmentAgainstAppropriation(input: AllotmentCheckInput): CheckResult {
   const { appropriationRevised, allotmentAlreadyReleased, requestedRelease } = input;
   const heldBack = input.forLaterRelease;
+
+  const unusable = nonFinite({
+    appropriationRevised,
+    allotmentAlreadyReleased,
+    requestedRelease,
+    forLaterRelease: heldBack,
+  });
+  if (unusable) return unusable;
+
   const releasable = appropriationRevised - heldBack;
   const resulting = allotmentAlreadyReleased + requestedRelease;
 
@@ -221,6 +265,13 @@ export function checkAllotmentWithdrawal(input: {
   obligated: Centavos;
   requestedWithdrawal: Centavos;
 }): CheckResult {
+  const unusable = nonFinite({
+    allotmentAlreadyReleased: input.allotmentAlreadyReleased,
+    obligated: input.obligated,
+    requestedWithdrawal: input.requestedWithdrawal,
+  });
+  if (unusable) return unusable;
+
   const resulting = input.allotmentAlreadyReleased - Math.abs(input.requestedWithdrawal);
   if (resulting < input.obligated) {
     return fail(
@@ -249,6 +300,9 @@ export interface ObligationCheckInput {
  */
 export function checkObligationAgainstAllotment(input: ObligationCheckInput): CheckResult {
   const { allotmentReleased, alreadyObligated, requestedObligation } = input;
+
+  const unusable = nonFinite({ allotmentReleased, alreadyObligated, requestedObligation });
+  if (unusable) return unusable;
 
   if (requestedObligation <= 0) {
     return fail('OBLIGATION_NOT_POSITIVE', 'An obligation must be greater than zero.');
