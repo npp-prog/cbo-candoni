@@ -338,6 +338,20 @@ const CONFIGS: Record<string, EntityConfig> = {
     ],
   },
 
+  barangays: {
+    slug: 'barangays',
+    collection: COL.barangays,
+    title: 'Barangays',
+    singular: 'barangay',
+    description:
+      'The barangays of Candoni. Used to split the barangay share of the basic real property tax, which follows the property rather than the payor.',
+    defaultSort: 'sortOrder',
+    fields: [
+      { key: 'code', label: 'Barangay code', type: 'text', required: true, inTable: true, mono: true, width: '7rem' },
+      { key: 'name', label: 'Barangay name', type: 'text', required: true, inTable: true },
+      { key: 'sortOrder', label: 'Sort order', type: 'number', width: '7rem' },
+    ],
+  },
   offices: {
     slug: 'offices',
     collection: COL.offices,

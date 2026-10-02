@@ -14,6 +14,16 @@ export const COL = {
   funds: 'funds',
   accounts: 'accounts',
   offices: 'offices',
+  /**
+   * The barangays of the municipality.
+   *
+   * Not offices. An office is a department OF the municipality; a barangay is
+   * a separate local government unit that the municipality collects real
+   * property tax on behalf of and remits a share to. Putting them in the same
+   * list would have the Office picker on every voucher offering Barangay
+   * Payauan as somewhere to charge an expense.
+   */
+  barangays: 'barangays',
   responsibilityCenters: 'responsibilityCenters',
   programs: 'programs',
   projects: 'projects',

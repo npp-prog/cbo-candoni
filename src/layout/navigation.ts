@@ -351,6 +351,11 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Payees', to: '/master-data/payees' },
       { label: 'Employees', to: '/master-data/employees' },
       { label: 'Offices', to: '/master-data/offices' },
+      // A barangay is not an office. It is a separate local government unit
+      // that the municipality collects real property tax for and remits a
+      // share to, and it is listed so the Abstract of RPT Collections can
+      // name which barangay each peso belongs to.
+      { label: 'Barangays', to: '/master-data/barangays' },
       { label: 'Budget Structure', to: '/master-data/ppa' },
       { label: 'Banks', to: '/master-data/banks' },
       { label: 'Tax Codes', to: '/master-data/tax-codes' },

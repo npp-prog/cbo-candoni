@@ -74,6 +74,14 @@ export const useAccounts = (postableOnly = true) =>
 export const useOffices = () =>
   useCollection<Office>(COL.offices, [ACTIVE, orderBy('sortOrder')], ['offices']);
 
+/** The barangays, for the real property tax share that follows the property. */
+export const useBarangays = () =>
+  useCollection<{ id: string; code: string; name: string; sortOrder?: number }>(
+    COL.barangays,
+    [ACTIVE, orderBy('sortOrder')],
+    ['barangays'],
+  );
+
 export const usePayees = () =>
   useCollection<Payee>(COL.payees, [ACTIVE, orderBy('name')], ['payees']);
 

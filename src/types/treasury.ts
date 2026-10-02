@@ -82,6 +82,26 @@ export interface CollectionLine {
    */
   trustProgramId?: Id;
   trustProgramName?: string;
+  /**
+   * Which tax year this payment settles. Real property tax only.
+   *
+   * GAM Appendix 45 splits both the basic tax and the Special Education Fund
+   * into a current-year and a preceding-year column, because a payment on an
+   * arrear is not this year's collection even though it arrives this year.
+   * Nothing in a receipt says which it is - the Treasurer knows from the Real
+   * Property Tax Account Register - so it is asked for on the receipt.
+   */
+  rptTaxYear?: 'CURRENT' | 'PRECEDING';
+  /**
+   * The barangay the property stands in. Real property tax only.
+   *
+   * Section 271 of the Local Government Code gives the barangay share of the
+   * basic tax to the barangay where the property is located, NOT to the one
+   * the payor lives in. So it cannot be derived from the payor, and the
+   * abstract cannot say which barangay is owed what without it.
+   */
+  barangayId?: Id;
+  barangayName?: string;
 }
 
 export interface Collection extends Partial<AuditStamps> {

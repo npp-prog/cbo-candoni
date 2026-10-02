@@ -718,6 +718,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    /*
+     * The barangays, for the real property tax shares.
+     *
+     * The Treasurer keeps this list: the barangay share of the basic tax
+     * follows the property, and which barangay a property stands in is read
+     * off the Real Property Tax Account Register, which is the Treasurer's
+     * book. The Accountant writes it too, because the Accountant is the one
+     * who draws the abstract that remits the shares.
+     */
+    match /barangays/{id} {
+      allow read: if masterRead();
+      allow create, update: if signedIn() &&
+        hasAny(['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT']);
+      allow delete: if false;
+    }
+
     match /responsibilityCenters/{id} {
       allow read: if masterRead();
       allow create, update: if masterWrite();

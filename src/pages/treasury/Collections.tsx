@@ -10,11 +10,12 @@ import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useCollections, useTrustPrograms } from '@/data/queries';
+import { useBarangays, useCollections, useTrustPrograms } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
+import { isRptAccount, sharesWithBarangay } from '@/pages/reports/rptAbstractReport';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
@@ -227,6 +228,8 @@ function CollectionForm({
    */
   const isTrust = fundCode === TRUST_FUND_CODE;
   const programs = useTrustPrograms();
+  /* The barangays, for the share that follows the property. */
+  const barangays = useBarangays();
 
   const [orNumber, setOrNumber] = useState('');
   const [orDate, setOrDate] = useState(todayPh());
@@ -241,6 +244,13 @@ function CollectionForm({
   const [saving, setSaving] = useState(false);
 
   const total = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
+
+  /*
+   * The tax year and barangay column appears only once a real property tax
+   * account is on the receipt. Showing it on every collection would put two
+   * empty boxes beside every permit fee in the municipality.
+   */
+  const anyRpt = useMemo(() => lines.some((l) => isRptAccount(l.accountCode ?? '')), [lines]);
 
   const save = async () => {
     if (!orNumber.trim() || !officerId || !payorName.trim() || total <= 0 || !user) {
@@ -272,6 +282,11 @@ function CollectionForm({
             // a mistake, and the server ignores it rather than acting on it.
             trustProgramId: isTrust ? (l.trustProgramId ?? null) : null,
             trustProgramName: isTrust ? (l.trustProgramName ?? null) : null,
+            // Real property tax only. A tax year or a barangay on a permit fee
+            // would be noise the abstract then has to ignore.
+            rptTaxYear: isRptAccount(l.accountCode ?? '') ? (l.rptTaxYear ?? null) : null,
+            barangayId: isRptAccount(l.accountCode ?? '') ? (l.barangayId ?? null) : null,
+            barangayName: isRptAccount(l.accountCode ?? '') ? (l.barangayName ?? null) : null,
           })),
           totalAmount: total,
           paymentForm,
@@ -374,6 +389,7 @@ function CollectionForm({
             <tr>
               <th className="cbo-th min-w-[18rem]">Account</th>
               {isTrust && <th className="cbo-th min-w-[16rem]">Trust programme</th>}
+              {anyRpt && <th className="cbo-th min-w-[18rem]">Tax year and barangay</th>}
               <th className="cbo-th w-36 text-right">Amount</th>
               <th className="cbo-th w-8" />
             </tr>
@@ -420,6 +436,60 @@ function CollectionForm({
                     </Select>
                   </td>
                 )}
+                {anyRpt && (
+                  <td className="cbo-td">
+                    {isRptAccount(line.accountCode ?? '') ? (
+                      <div className="flex gap-2">
+                        <Select
+                          value={line.rptTaxYear ?? ''}
+                          onChange={(e) =>
+                            setLines((ls) =>
+                              ls.map((l, i) =>
+                                i === index
+                                  ? { ...l, rptTaxYear: (e.target.value || undefined) as 'CURRENT' | 'PRECEDING' | undefined }
+                                  : l,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="">Year not stated</option>
+                          <option value="CURRENT">Current year</option>
+                          <option value="PRECEDING">Preceding year</option>
+                        </Select>
+
+                        {/* Only the basic tax is shared with the barangays:
+                            the Special Education Fund is divided equally
+                            between the two school boards and the barangays
+                            have no part of it. */}
+                        {sharesWithBarangay(line.accountCode ?? '') && (
+                          <Select
+                            value={line.barangayId ?? ''}
+                            onChange={(e) => {
+                              const id = e.target.value || undefined;
+                              const chosen = barangays.data.find((b) => b.id === id);
+                              setLines((ls) =>
+                                ls.map((l, i) =>
+                                  i === index
+                                    ? { ...l, barangayId: id, barangayName: chosen?.name }
+                                    : l,
+                                ),
+                              );
+                            }}
+                          >
+                            <option value="">Barangay not stated</option>
+                            {barangays.data.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </Select>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">&mdash;</span>
+                    )}
+                  </td>
+                )}
                 <td className="cbo-td">
                   <AmountInput
                     value={line.amount ?? null}
@@ -442,7 +512,7 @@ function CollectionForm({
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 font-medium">
-              <td className="cbo-td" colSpan={isTrust ? 2 : 1}>
+              <td className="cbo-td" colSpan={1 + (isTrust ? 1 : 0) + (anyRpt ? 1 : 0)}>
                 Total collected
               </td>
               <td className="cbo-td cbo-amount font-semibold">{formatPeso(total, { symbol: false })}</td>

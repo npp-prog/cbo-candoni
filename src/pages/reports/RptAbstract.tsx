@@ -4,9 +4,15 @@ import { Alert, Spinner } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
-import { useLedgerEntries } from '@/data/queries';
+import { useCollections, useLedgerEntries } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import { monthName } from '@/lib/dates';
+
+/** The last day of a month, so the schedule's range closes on it. */
+function lastDayOf(year: number, month: number): string {
+  const d = new Date(Date.UTC(year, month, 0));
+  return `${year}-${String(month).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
@@ -14,6 +20,8 @@ import { fundLabel } from '../budget/Obligations';
 import {
   BASIS,
   buildRptAbstract,
+  buildRptSchedule,
+  type RptCollection,
   type RptAbstractMonth,
   type RptLedgerEntry,
   type RptTaxBlock,
@@ -33,6 +41,28 @@ export default function RptAbstract() {
   const [throughPeriod, setThroughPeriod] = useState(12);
 
   const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
+
+  /*
+   * The receipts behind the schedule.
+   *
+   * Scoped to the fund on the filter, like everything else on this page. The
+   * Special Education Fund is recognised in its own books (GAM Volume I,
+   * Section 108), so the SEF columns fill when the Special Education Fund is
+   * selected and the basic columns when the General Fund is. One receipt
+   * collects both (Section 113), but CFMS records a collection against one
+   * fund, so each half appears on the fund it was recorded in.
+   */
+  const collections = useCollections(fiscalYear, fundCode);
+
+  const schedule = useMemo(
+    () =>
+      buildRptSchedule({
+        collections: (collections.data ?? []) as unknown as RptCollection[],
+        fromDate: `${fiscalYear}-${String(fromPeriod).padStart(2, '0')}-01`,
+        toDate: lastDayOf(fiscalYear, throughPeriod),
+      }),
+    [collections.data, fiscalYear, fromPeriod, throughPeriod],
+  );
 
   const data = useMemo(
     () =>
@@ -119,6 +149,124 @@ export default function RptAbstract() {
         </p>
       ) : (
         <>
+          {(schedule.withoutBarangay > 0 || schedule.withoutTaxYear > 0) && (
+            <Alert tone="warning" title="Some receipts leave a column blank" className="mb-4">
+              {schedule.withoutBarangay > 0 && (
+                <p>
+                  {schedule.withoutBarangay} receipt
+                  {schedule.withoutBarangay === 1 ? '' : 's'} carrying basic real property tax
+                  name no barangay, so {formatPeso(schedule.withoutBarangayAmount)} of barangay
+                  share is on the form without an owner. The barangay is set on the receipt, in
+                  Treasury &rarr; Collections &mdash; and it is the barangay the{' '}
+                  <em>property</em> stands in, not the one the payor lives in.
+                </p>
+              )}
+              {schedule.withoutTaxYear > 0 && (
+                <p className={schedule.withoutBarangay > 0 ? 'mt-1' : ''}>
+                  {schedule.withoutTaxYear} receipt
+                  {schedule.withoutTaxYear === 1 ? '' : 's'} do not say which tax year they
+                  settle. They are shown under the current year, which is the common case, but a
+                  payment on an arrear belongs in the preceding-year column.
+                </p>
+              )}
+            </Alert>
+          )}
+
+          <section className="mb-6">
+            <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+              Abstract of collections
+            </h3>
+            {schedule.rows.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-500">
+                No reported receipt in this period carries real property tax.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr>
+                      <th className="cbo-th">Date</th>
+                      <th className="cbo-th">O.R. No.</th>
+                      <th className="cbo-th">Taxpayer</th>
+                      <th className="cbo-th">Period covered</th>
+                      <th className="cbo-th text-right">Basic &mdash; current</th>
+                      <th className="cbo-th text-right">Basic &mdash; preceding</th>
+                      <th className="cbo-th text-right">Penalties</th>
+                      <th className="cbo-th text-right">SEF &mdash; current</th>
+                      <th className="cbo-th text-right">SEF &mdash; preceding</th>
+                      <th className="cbo-th text-right">Total</th>
+                      <th className="cbo-th">Barangay</th>
+                      <th className="cbo-th text-right">Barangay share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedule.rows.map((r) => (
+                      <tr key={r.orNumber}>
+                        <td className="cbo-td font-mono">{r.orDate}</td>
+                        <td className="cbo-td font-mono">{r.orNumber}</td>
+                        <td className="cbo-td">{r.payorName}</td>
+                        <td className="cbo-td">
+                          {r.periodCovered || (
+                            <span className="text-amber-700">not stated</span>
+                          )}
+                        </td>
+                        <td className="cbo-td cbo-amount">{formatPeso(r.basicCurrent, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount">{formatPeso(r.basicPreceding, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount">{formatPeso(r.penalties, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount">{formatPeso(r.sefCurrent, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount">{formatPeso(r.sefPreceding, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount font-medium">{formatPeso(r.total, { symbol: false })}</td>
+                        <td className="cbo-td">
+                          {r.barangayName || (
+                            r.barangayMissing ? <span className="text-amber-700">not stated</span> : '—'
+                          )}
+                        </td>
+                        <td className="cbo-td cbo-amount">{formatPeso(r.barangayShare, { symbol: false })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 font-semibold">
+                      <td className="cbo-td" colSpan={4}>
+                        Total
+                      </td>
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.basicCurrent, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.basicPreceding, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.penalties, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.sefCurrent, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.sefPreceding, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.total, { symbol: false })}</td>
+                      <td className="cbo-td" />
+                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.barangayShare, { symbol: false })}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {schedule.byBarangay.length > 0 && (
+            <section className="mb-6">
+              <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+                Due to each barangay
+              </h3>
+              <table className="w-full border-collapse">
+                <tbody>
+                  {schedule.byBarangay.map((b) => (
+                    <tr key={b.barangayName}>
+                      <td className="cbo-td">{b.barangayName}</td>
+                      <td className="cbo-td cbo-amount w-44">{formatPeso(b.share, { symbol: false })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-2 text-xs text-slate-500">
+                This is the list Section 68 says the abstract exists to produce: what each barangay
+                is owed out of the basic real property tax, ready to remit.
+              </p>
+            </section>
+          )}
+
           <TaxBlock block={data.basic} />
           <TaxBlock block={data.sef} />
 
@@ -170,19 +318,6 @@ export default function RptAbstract() {
             )}
           </Alert>
 
-          <Alert tone="info">
-            <p>
-              <strong>The barangay share is a total, not a list.</strong> Section 271 of the Local
-              Government Code gives the 25 per cent to the barangay where the property stands, and a
-              collection in CFMS records the payor and the receipt but not the property &mdash; so
-              there is nothing here to group by. The {formatPeso(
-                data.basic.rows.find((r) => r.label === 'Barangays')?.netShare ?? 0,
-              )}{' '}
-              above is right in total; which barangay each peso belongs to has to come from the
-              Treasurer&rsquo;s Real Property Tax Account Register. Recording the barangay on the
-              collection is the change that would let CFMS print the list.
-            </p>
-          </Alert>
 
           <section className="mt-6">
             <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">

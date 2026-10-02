@@ -1,4 +1,4 @@
-import type { Centavos } from '@/types/common';
+import type { Centavos, IsoDate } from '@/types/common';
 
 /**
  * The Abstract of Real Property Tax Collections, GAM Appendix 45.
@@ -72,6 +72,34 @@ export const RPT_ACCOUNTS = {
   /** Where the province's and barangays' shares are recognised. */
   dueToLgus: '20201070',
 } as const;
+
+/**
+ * True where a collection line is real property tax, and so needs the tax year
+ * and the barangay recorded against it.
+ *
+ * The receivables are here as well as the income accounts: where the tax was
+ * accrued first, the receipt credits Real Property Tax Receivable and the
+ * income account never appears on it.
+ */
+const RPT_LINE_ACCOUNTS: readonly string[] = [
+  RPT_ACCOUNTS.basic,
+  RPT_ACCOUNTS.basicDiscount,
+  RPT_ACCOUNTS.sef,
+  RPT_ACCOUNTS.sefDiscount,
+  RPT_ACCOUNTS.penalties,
+  '10301020', // Real Property Tax Receivable
+  '10301030', // Special Education Tax Receivable
+];
+
+export function isRptAccount(code: string): boolean {
+  return RPT_LINE_ACCOUNTS.includes(String(code ?? '').trim());
+}
+
+/** Only the basic tax is shared with the barangays. */
+export function sharesWithBarangay(code: string): boolean {
+  const c = String(code ?? '').trim();
+  return c === RPT_ACCOUNTS.basic || c === RPT_ACCOUNTS.basicDiscount || c === '10301020';
+}
 
 export interface ShareRate {
   label: string;
@@ -283,3 +311,211 @@ export function buildRptAbstract(input: {
     dueToLgusDifference: dueToLgusMovement - totalToRemit,
   };
 }
+
+// ---------------------------------------------------------------------------
+// The prescribed form: one line per official receipt
+// ---------------------------------------------------------------------------
+
+/**
+ * Appendix 45 is a listing, not a summary.
+ *
+ * The sharing computation above is what Section 68 says the abstract is FOR,
+ * and it was built first because it is the part the remittance depends on.
+ * But the form itself is a schedule: a line per receipt, with the basic tax
+ * and the Special Education Fund each split between the current year and the
+ * preceding year, the penalties, the total, and the barangay the property
+ * stands in with its share.
+ *
+ * Two of those columns could not be filled until now, and both because
+ * nothing on a receipt recorded them:
+ *
+ *   THE TAX YEAR. A payment on an arrear arrives this year and is not this
+ *   year's collection. Only the Real Property Tax Account Register knows
+ *   which, so the receipt now asks.
+ *
+ *   THE BARANGAY. Section 271 of the Local Government Code gives the barangay
+ *   share to the barangay where the PROPERTY stands, not where the payor
+ *   lives, so it can never be derived from the payor. The receipt now asks.
+ *
+ * Both are optional on the receipt, deliberately: refusing a collection for
+ * want of them would stop the Treasury taking money in. What that costs is a
+ * line on the form with a blank column, so every such line is counted and
+ * named rather than quietly printed blank.
+ */
+
+export type RptTaxYear = 'CURRENT' | 'PRECEDING';
+
+export interface RptCollectionLine {
+  accountCode: string;
+  amount: Centavos;
+  rptTaxYear?: RptTaxYear;
+  barangayId?: string;
+  barangayName?: string;
+}
+
+export interface RptCollection {
+  orNumber: string;
+  orDate: IsoDate;
+  payorName: string;
+  status: string;
+  lines: RptCollectionLine[];
+}
+
+/** One row of the schedule - one official receipt. */
+export interface RptAbstractRow {
+  orDate: IsoDate;
+  orNumber: string;
+  payorName: string;
+  /** Blank where no line on the receipt said which year it settles. */
+  periodCovered: string;
+  basicCurrent: Centavos;
+  basicPreceding: Centavos;
+  penalties: Centavos;
+  sefCurrent: Centavos;
+  sefPreceding: Centavos;
+  total: Centavos;
+  barangayName: string;
+  /** 25% of the basic tax on this receipt, net of its discount. */
+  barangayShare: Centavos;
+  /** True where the receipt carries basic tax but names no barangay. */
+  barangayMissing: boolean;
+  /** True where a line carries no tax year, so a column could not be filled. */
+  taxYearMissing: boolean;
+}
+
+export interface RptSchedule {
+  rows: RptAbstractRow[];
+  totals: Omit<RptAbstractRow, 'orDate' | 'orNumber' | 'payorName' | 'periodCovered' | 'barangayName' | 'barangayMissing' | 'taxYearMissing'>;
+  /** Barangay shares added up by barangay: what each one is owed. */
+  byBarangay: Array<{ barangayName: string; share: Centavos }>;
+  /** Receipts carrying basic tax that name no barangay. */
+  withoutBarangay: number;
+  withoutBarangayAmount: Centavos;
+  /** Receipts with a line that names no tax year. */
+  withoutTaxYear: number;
+}
+
+const PERIOD_LABEL: Record<RptTaxYear, string> = {
+  CURRENT: 'Current year',
+  PRECEDING: 'Preceding year',
+};
+
+export function buildRptSchedule(input: {
+  collections: RptCollection[];
+  fromDate: IsoDate;
+  toDate: IsoDate;
+}): RptSchedule {
+  const rows: RptAbstractRow[] = [];
+
+  for (const c of input.collections) {
+    if (!REPORTED_RPT.has(c.status)) continue;
+    if (c.orDate < input.fromDate || c.orDate > input.toDate) continue;
+
+    const rptLines = (c.lines ?? []).filter((l) => isRptAccount(l.accountCode));
+    if (rptLines.length === 0) continue;
+
+    const row: RptAbstractRow = {
+      orDate: c.orDate,
+      orNumber: c.orNumber,
+      payorName: c.payorName,
+      periodCovered: '',
+      basicCurrent: 0,
+      basicPreceding: 0,
+      penalties: 0,
+      sefCurrent: 0,
+      sefPreceding: 0,
+      total: 0,
+      barangayName: '',
+      barangayShare: 0,
+      barangayMissing: false,
+      taxYearMissing: false,
+    };
+
+    const years = new Set<RptTaxYear>();
+    /* Basic tax net of its discount, which is what the barangay share is struck on. */
+    let basicNet = 0;
+
+    for (const l of rptLines) {
+      const code = l.accountCode.trim();
+      /*
+       * A discount is a debit against revenue, so it reduces what was
+       * collected and reduces every share with it - Section 43 apportions the
+       * discount on the same sharing as the tax.
+       */
+      const isDiscount = code === RPT_ACCOUNTS.basicDiscount || code === RPT_ACCOUNTS.sefDiscount;
+      const amount = isDiscount ? -Math.abs(l.amount) : l.amount;
+
+      if (l.rptTaxYear) years.add(l.rptTaxYear);
+      else if (code !== RPT_ACCOUNTS.penalties) row.taxYearMissing = true;
+
+      const preceding = l.rptTaxYear === 'PRECEDING';
+
+      if (code === RPT_ACCOUNTS.basic || code === RPT_ACCOUNTS.basicDiscount || code === '10301020') {
+        if (preceding) row.basicPreceding += amount;
+        else row.basicCurrent += amount;
+        basicNet += amount;
+        if (l.barangayName) row.barangayName = l.barangayName;
+        else row.barangayMissing = true;
+      } else if (code === RPT_ACCOUNTS.sef || code === RPT_ACCOUNTS.sefDiscount || code === '10301030') {
+        if (preceding) row.sefPreceding += amount;
+        else row.sefCurrent += amount;
+      } else if (code === RPT_ACCOUNTS.penalties) {
+        row.penalties += amount;
+      }
+    }
+
+    row.periodCovered = [...years].map((y) => PERIOD_LABEL[y]).join(' and ');
+    row.total = row.basicCurrent + row.basicPreceding + row.penalties + row.sefCurrent + row.sefPreceding;
+
+    /*
+     * The barangay's 25% of the basic tax, taken with the same
+     * largest-remainder split the summary uses so the two cannot disagree by
+     * a centavo.
+     */
+    const barangayRate = BASIC_SHARES.find((r) => r.label === 'Barangays')!;
+    row.barangayShare = splitByShares(basicNet, BASIC_SHARES)[BASIC_SHARES.indexOf(barangayRate)];
+
+    rows.push(row);
+  }
+
+  rows.sort((a, b) => a.orDate.localeCompare(b.orDate) || a.orNumber.localeCompare(b.orNumber));
+
+  const totals = {
+    basicCurrent: rows.reduce((t, r) => t + r.basicCurrent, 0),
+    basicPreceding: rows.reduce((t, r) => t + r.basicPreceding, 0),
+    penalties: rows.reduce((t, r) => t + r.penalties, 0),
+    sefCurrent: rows.reduce((t, r) => t + r.sefCurrent, 0),
+    sefPreceding: rows.reduce((t, r) => t + r.sefPreceding, 0),
+    total: rows.reduce((t, r) => t + r.total, 0),
+    barangayShare: rows.reduce((t, r) => t + r.barangayShare, 0),
+  };
+
+  const shares = new Map<string, Centavos>();
+  for (const r of rows) {
+    if (!r.barangayName) continue;
+    shares.set(r.barangayName, (shares.get(r.barangayName) ?? 0) + r.barangayShare);
+  }
+
+  const missing = rows.filter((r) => r.barangayMissing);
+
+  return {
+    rows,
+    totals,
+    byBarangay: [...shares.entries()]
+      .map(([barangayName, share]) => ({ barangayName, share }))
+      .sort((a, b) => a.barangayName.localeCompare(b.barangayName)),
+    withoutBarangay: missing.length,
+    withoutBarangayAmount: missing.reduce((t, r) => t + r.barangayShare, 0),
+    withoutTaxYear: rows.filter((r) => r.taxYearMissing).length,
+  };
+}
+
+/**
+ * A receipt belongs on the schedule once it has been reported on an RCD.
+ *
+ * The same rule the Registry of Special Trust Fund uses, and for the same
+ * reason: the totals the abstract is checked against come from posted
+ * entries, so a receipt still in the drawer would be a line the totals beside
+ * it do not include.
+ */
+export const REPORTED_RPT = new Set(['IN_RCD', 'DEPOSITED']);

@@ -2,6 +2,48 @@
   "//": "Composite indexes required by CFMS queries. Firestore needs an explicit index for any query combining an equality filter with a range or an orderBy on a different field. Every index below corresponds to a query in src/data/*.ts; if a query is removed, remove its index too - unused indexes cost storage and slow writes.",
   "indexes": [
     {
+      "collectionGroup": "accountableFormMovements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "movementDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "accountableFormMovements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "formCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "accountableFormTypes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sortOrder",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "accounts",
       "queryScope": "COLLECTION",
       "fields": [
@@ -64,6 +106,38 @@
         {
           "fieldPath": "adaDate",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "ada",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "adaNo",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "adaNumbers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "adaNo",
+          "order": "ASCENDING"
         }
       ]
     },
@@ -218,6 +292,24 @@
       ]
     },
     {
+      "collectionGroup": "bankLedgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bankAccountId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "entryDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "bankReconciliations",
       "queryScope": "COLLECTION",
       "fields": [
@@ -269,6 +361,20 @@
         },
         {
           "fieldPath": "transactionDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "barangays",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sortOrder",
           "order": "ASCENDING"
         }
       ]
@@ -433,6 +539,20 @@
         },
         {
           "fieldPath": "netAmount",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "collections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "collectingOfficerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orDate",
           "order": "ASCENDING"
         }
       ]
@@ -696,6 +816,38 @@
         {
           "fieldPath": "uploadedBy.at",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "employees",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "estimatedReceipts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
         }
       ]
     },
@@ -1085,6 +1237,20 @@
       ]
     },
     {
+      "collectionGroup": "offices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sortOrder",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "//": "Active payees by name - the payee picker.",
       "collectionGroup": "payees",
       "queryScope": "COLLECTION",
@@ -1137,6 +1303,38 @@
       ]
     },
     {
+      "collectionGroup": "primaryReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reportDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "raafReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "periodTo",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "//": "RCD register.",
       "collectionGroup": "rcds",
       "queryScope": "COLLECTION",
@@ -1152,6 +1350,20 @@
         {
           "fieldPath": "rcdDate",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "taxCodes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "code",
+          "order": "ASCENDING"
         }
       ]
     },
@@ -1220,6 +1432,20 @@
       ]
     },
     {
+      "collectionGroup": "trustPrograms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "programCode",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "//": "Workflow timeline for one document.",
       "collectionGroup": "workflowHistory",
       "queryScope": "COLLECTION",
@@ -1234,218 +1460,6 @@
         },
         {
           "fieldPath": "at",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "accountableFormMovements",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "movementDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "accountableFormMovements",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "formCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "raafReports",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "periodTo",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "collections",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "collectingOfficerId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "orDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "accountableFormTypes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "sortOrder",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "offices",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "sortOrder",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "employees",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "displayName",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "taxCodes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "active",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "code",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "primaryReports",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "reportDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "adaNumbers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "adaNo",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "ada",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "adaNo",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "bankLedgerEntries",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "bankAccountId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "entryDate",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "estimatedReceipts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "accountCode",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "trustPrograms",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "programCode",
           "order": "ASCENDING"
         }
       ]
