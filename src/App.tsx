@@ -30,7 +30,6 @@ const FundUtilization = lazy(() => import('./pages/reports/FundUtilization'));
 const Obligations = lazy(() => import('./pages/budget/Obligations'));
 const ObligationDetail = lazy(() => import('./pages/budget/ObligationDetail'));
 const BudgetRegistry = lazy(() => import('./pages/budget/Registry'));
-const StatutoryLimits = lazy(() => import('./pages/budget/StatutoryLimits'));
 const BudgetUpload = lazy(() => import('./pages/budget/BudgetUpload'));
 
 const Disbursements = lazy(() => import('./pages/accounting/Disbursements'));
@@ -94,8 +93,6 @@ const Rstf = lazy(() => import('./pages/accounting/Rstf'));
 const UnreleasedChecks = lazy(() => import('./pages/treasury/UnreleasedChecks'));
 const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
 const RptAbstract = lazy(() => import('./pages/reports/RptAbstract'));
-const AugmentationAuthority = lazy(() => import('./pages/budget/AugmentationAuthority'));
-const AugmentationFormPage = lazy(() => import('./pages/budget/AugmentationFormPage'));
 const Scbaa = lazy(() => import('./pages/reports/Scbaa'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Users = lazy(() => import('./pages/admin/Users'));
@@ -173,13 +170,6 @@ export default function App() {
           {/* Appendix 26, the third cash book beside Cash in Bank and Cash in Treasury. */}
           <Route path="/treasury/cash-advance-book" element={<Guard module="treasury"><CashAdvanceBook /></Guard>} />
           <Route path="/reports/rpt-abstract" element={<Guard module="reports"><RptAbstract /></Guard>} />
-          <Route path="/budget/augmentation-authority" element={<Guard module="budget"><AugmentationAuthority /></Guard>} />
-          {/* LBE Form No. 2, Budget Operations Manual page 186. */}
-          <Route path="/budget/augmentation-form" element={<Guard module="budget"><AugmentationFormPage /></Guard>} />
-          <Route
-            path="/budget/statutory-limits"
-            element={<Guard module="budget"><StatutoryLimits /></Guard>}
-          />
 
           {/* Accounting */}
           <Route path="/accounting" element={<Navigate to="/accounting/disbursements" replace />} />

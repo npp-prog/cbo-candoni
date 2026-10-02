@@ -10,8 +10,6 @@ import {
   checkRealignmentSet,
   planAugmentationAllotment,
   isRealignmentInstrument,
-  checkAugmentationAuthority,
-  augmentationAuthorityKey,
   checkDvMath,
   checkLiquidation,
   computeReconciliation,
@@ -1189,80 +1187,6 @@ describe('planAugmentationAllotment', () => {
     ]);
 
     expect(plan.moves.reduce((s, m) => s + m.allotmentDelta, 0)).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-
-describe('checkAugmentationAuthority', () => {
-  /**
-   * Section 336 grants the power only where the annual budget's General
-   * Provisions carry the omnibus authority. CFMS cannot read an ordinance, so
-   * the whole of this rule is: do not assume one.
-   */
-  const authorised = {
-    [augmentationAuthorityKey(2026, 'GF')]: {
-      ordinanceNo: 'No. 2025-14',
-      generalProvisionsSection: 'Section 12',
-    },
-  };
-
-  it('allows an augmentation once the ordinance and section are recorded', () => {
-    expect(
-      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2026, fundCode: 'GF' }).ok,
-    ).toBe(true);
-  });
-
-  it('refuses when nothing has been recorded at all', () => {
-    const result = checkAugmentationAuthority({
-      authority: undefined,
-      fiscalYear: 2026,
-      fundCode: 'GF',
-    });
-    expect(result.ok).toBe(false);
-    expect(result.violations[0].code).toBe('AUGMENTATION_NOT_AUTHORISED');
-  });
-
-  it('refuses for a year that has not been recorded, even though another has', () => {
-    // The authority is granted by one annual ordinance and does not carry over.
-    expect(
-      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2027, fundCode: 'GF' }).ok,
-    ).toBe(false);
-  });
-
-  it('refuses for a fund that has not been recorded', () => {
-    // The SEF has its own budget and its own General Provisions.
-    expect(
-      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2026, fundCode: 'SEF' }).ok,
-    ).toBe(false);
-  });
-
-  it('refuses a half-filled entry', () => {
-    const half = {
-      [augmentationAuthorityKey(2026, 'GF')]: {
-        ordinanceNo: 'No. 2025-14',
-        generalProvisionsSection: '   ',
-      },
-    };
-    expect(
-      checkAugmentationAuthority({ authority: half, fiscalYear: 2026, fundCode: 'GF' }).ok,
-    ).toBe(false);
-  });
-
-  it('matches the fund code whatever case it is given in', () => {
-    expect(
-      checkAugmentationAuthority({ authority: authorised, fiscalYear: 2026, fundCode: 'gf' }).ok,
-    ).toBe(true);
-  });
-
-  it('names the year and the fund in the message, so it says what to record', () => {
-    const result = checkAugmentationAuthority({
-      authority: undefined,
-      fiscalYear: 2026,
-      fundCode: 'SEF',
-    });
-    expect(result.violations[0].message).toContain('2026');
-    expect(result.violations[0].message).toContain('SEF');
   });
 });
 

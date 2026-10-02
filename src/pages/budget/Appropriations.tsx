@@ -18,11 +18,8 @@ import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import {
-  augmentationAuthorityKey,
-  checkAugmentationAuthority,
   checkAugmentationExpenseClass,
   checkRealignmentSet,
-  type AugmentationAuthority,
   type RealignmentInstrument,
 } from '@/lib/accounting-rules';
 import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
@@ -469,33 +466,6 @@ function AppropriationForm({
    * rule the server runs, shown here so the Budget Officer sees which classes
    * the set spans before sending rather than after.
    */
-  /**
-   * Is the municipality allowed to augment at all this year?
-   *
-   * Section 336 grants the power only where the annual budget's General
-   * Provisions carry the omnibus authority, so it is a fact about the
-   * ordinance rather than about these lines. The server refuses without it;
-   * this is here so the Budget Officer is told before filling the form in
-   * rather than after sending it.
-   */
-  const authorityDoc = useDocument<{ entries?: AugmentationAuthority }>(
-    COL.settings,
-    'augmentationAuthority',
-  );
-  const authorityEntry =
-    authorityDoc.data?.entries?.[augmentationAuthorityKey(fiscalYear, fundCode)];
-  const authorityCheck = useMemo(
-    () =>
-      isRealignment && instrument === 'AUGMENTATION'
-        ? checkAugmentationAuthority({
-            authority: authorityDoc.data?.entries,
-            fiscalYear,
-            fundCode,
-          })
-        : null,
-    [isRealignment, instrument, authorityDoc.data, fiscalYear, fundCode],
-  );
-
   const classCheck = useMemo(
     () =>
       isRealignment && instrument === 'AUGMENTATION' && filledLines.length > 0
@@ -516,9 +486,6 @@ function AppropriationForm({
     balance !== null &&
     balance.ok &&
     (classCheck === null || classCheck.ok) &&
-    // Section 336 authority. The server refuses without it; the button is
-    // disabled here so nobody fills in eight lines to be told at the end.
-    (authorityCheck === null || authorityCheck.ok) &&
     authorityReference.trim().length > 0;
 
   /**
@@ -831,29 +798,6 @@ function AppropriationForm({
               </p>
             )}
           </Alert>
-
-          {authorityCheck && !authorityCheck.ok && (
-            <Alert
-              tone="error"
-              title={`No one has recorded that augmentation is allowed in ${fiscalYear}`}
-              className="mb-4"
-            >
-              <p>{authorityCheck.violations[0].message}</p>
-              <p className="mt-1">
-                It is recorded once for the year, in Budget &rarr; Monitoring &rarr; Augmentation Authority, by the
-                Municipal Accountant or an administrator &mdash; deliberately not by the Budget
-                Office, which is the office that posts augmentations.
-              </p>
-            </Alert>
-          )}
-
-          {authorityCheck && authorityCheck.ok && authorityEntry && (
-            <Alert tone="success" className="mb-4">
-              Augmentation is authorised for {fiscalYear} by Ordinance{' '}
-              {authorityEntry.ordinanceNo}, {authorityEntry.generalProvisionsSection}. That
-              reference is carried onto the LBE Form No. 2.
-            </Alert>
-          )}
 
           {classCheck && !classCheck.ok && (
             <Alert tone="error" title="An augmentation cannot cross an expense class" className="mb-4">

@@ -14,10 +14,8 @@ import {
 import {
   checkAllotmentAgainstAppropriation,
   checkAugmentationExpenseClass,
-  checkAugmentationAuthority,
   checkRealignmentSet,
   planAugmentationAllotment,
-  type AugmentationAuthority,
 } from '../lib/rules';
 import { findSector } from '../lib/sectors';
 
@@ -455,34 +453,6 @@ export const importBudgetLines = onCall(
        * augmentation.
        */
       if (instrument === 'AUGMENTATION') {
-        /*
-         * And before any of that: is the municipality allowed to augment at
-         * all this year?
-         *
-         * Section 336 grants the power only where the annual budget's General
-         * Provisions carry the omnibus authority. CFMS cannot read an ordinance
-         * and will not assume one, so the office records the ordinance and the
-         * section once per fiscal year and fund, and this refuses until it has.
-         *
-         * Read here on the server rather than trusted from the browser: the
-         * screen checks it too so the Budget Officer is told early, but the
-         * authority to move public money is not something a client gets to
-         * assert about itself.
-         */
-        const authoritySnap = await db.collection(COL.settings).doc('augmentationAuthority').get();
-        const authorised = checkAugmentationAuthority({
-          authority: (authoritySnap.data()?.entries ?? {}) as AugmentationAuthority,
-          fiscalYear,
-          fundCode,
-        });
-        if (!authorised.ok) {
-          throw new HttpsError(
-            'failed-precondition',
-            `${authorised.violations[0].message} Nothing was posted.`,
-            { violations: authorised.violations },
-          );
-        }
-
         const withinClass = checkAugmentationExpenseClass(
           resolved.map((r) => ({
             lineNo: r.lineNo,

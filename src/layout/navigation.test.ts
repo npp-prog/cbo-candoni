@@ -281,6 +281,18 @@ describe('the menu itself', () => {
     ]);
   });
 
+  it('offers no augmentation item anywhere in the menu', () => {
+    /*
+     * An augmentation is recorded on the Appropriation screen, as one of the
+     * types in the Type list. A menu entry of its own would be a second door
+     * into the same room, and there were briefly three of them - a form, an
+     * authority and a limits screen - spread across two groups.
+     */
+    const everything = NAVIGATION.flatMap((i) => [i, ...(i.children ?? [])]);
+    expect(everything.filter((c) => /augmentation/i.test(c.label ?? ''))).toEqual([]);
+    expect(everything.filter((c) => /statutory/i.test(c.label ?? ''))).toEqual([]);
+  });
+
   /**
    * The forms are submitted quarterly and looked at far more often than that.
    * The period is chosen on the screen now, so a label saying "Quarterly"

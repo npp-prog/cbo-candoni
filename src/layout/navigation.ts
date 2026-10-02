@@ -93,6 +93,15 @@ export const NAVIGATION: NavItem[] = [
        */
       { group: 'Budget transactions', label: 'Allotments', to: '/budget/allotments' },
       { group: 'Budget transactions', label: 'Obligations', to: '/budget/obligations' },
+      /*
+       * There is no Augmentation item in this menu, and that is deliberate.
+       *
+       * An augmentation is recorded on the Appropriation screen - it is one
+       * of the types in the Type list there, beside Original, Supplemental
+       * and Realignment. A second menu entry for it would be a second door
+       * into the same room, and the question "which one do I use?" has no
+       * good answer.
+       */
 
       { group: 'Monitoring', label: 'Registry (RAAO)', to: '/budget/registry' },
       /*
@@ -103,27 +112,6 @@ export const NAVIGATION: NavItem[] = [
        * expenditure register is how it would never be opened.
        */
       { group: 'Monitoring', label: 'Registry of Income (REAIRR)', to: '/budget/registry-income' },
-      // The tests the reviewing authority applies after enactment, run while
-      // the budget is still being drafted.
-      // LBE Form No. 2. The form the office already fills in by hand when
-      // savings are used to augment an existing item.
-      { group: 'Monitoring', label: 'Augmentation Form (LBE 2)', to: '/budget/augmentation-form' },
-      /*
-       * The standing fact that form depends on, so it sits beside it.
-       *
-       * Section 336 allows augmentation only where the annual budget's General
-       * Provisions grant it, so the ordinance is read and recorded once a year
-       * before any augmentation will post. It is deliberately NOT in the
-       * Budget transactions group: that group is the order the work happens
-       * in, and this is not a step in it. The Appropriation screen names this
-       * page when it refuses, which is how the person blocked by it arrives.
-       */
-      {
-        group: 'Monitoring',
-        label: 'Augmentation Authority',
-        to: '/budget/augmentation-authority',
-      },
-      { group: 'Monitoring', label: 'Statutory Limits', to: '/budget/statutory-limits' },
 
       /*
        * The Local Budget Accountability reports, and only the three the

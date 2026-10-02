@@ -689,67 +689,6 @@ export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
  * any of the arithmetic below is reached.
  */
 
-/**
- * Whether the appropriation ordinance lets the Local Chief Executive augment
- * at all.
- *
- * Section 336 grants the power on a condition, and the condition is not about
- * the lines being moved: the annual budget's General Provisions must carry the
- * omnibus authority. Without it the same movement has to go to the Sanggunian
- * as a realignment, and the convenience Section 336 offers - a signature of
- * the Local Chief Executive - is simply not available that year.
- *
- * CFMS cannot read an ordinance, so it cannot work this out. What it can do is
- * refuse to assume. The office records, once for each fiscal year and fund,
- * the ordinance and the section of its General Provisions that carry the
- * authority, and until that is recorded an augmentation does not post.
- *
- * Recording it is a small act done once a year. Not recording it and posting
- * anyway is an augmentation made without authority, which is the kind of thing
- * that is only ever discovered by somebody else.
- */
-export interface AugmentationAuthorityEntry {
-  /** The appropriation ordinance carrying the General Provisions. */
-  ordinanceNo: string;
-  /** Which section of them grants the authority. */
-  generalProvisionsSection: string;
-  remarks?: string;
-  recordedBy?: { uid: string; name: string; at: string };
-}
-
-export type AugmentationAuthority = Record<string, AugmentationAuthorityEntry>;
-
-/** One entry per fiscal year and fund. Both sides build the key here. */
-export function augmentationAuthorityKey(fiscalYear: number, fundCode: string): string {
-  return `${fiscalYear}__${String(fundCode ?? '').trim().toUpperCase()}`;
-}
-
-export function checkAugmentationAuthority(input: {
-  authority: AugmentationAuthority | undefined;
-  fiscalYear: number;
-  fundCode: string;
-}): CheckResult {
-  const key = augmentationAuthorityKey(input.fiscalYear, input.fundCode);
-  const entry = input.authority?.[key];
-
-  const ordinance = entry?.ordinanceNo?.trim() ?? '';
-  const section = entry?.generalProvisionsSection?.trim() ?? '';
-
-  if (!ordinance || !section) {
-    return fail(
-      'AUGMENTATION_NOT_AUTHORISED',
-      `No one has recorded that the ${input.fiscalYear} appropriation ordinance for the ` +
-        `${input.fundCode} allows augmentation. Section 336 permits it only where the annual ` +
-        'budget\u2019s General Provisions carry the omnibus authority, and CFMS will not assume ' +
-        'they do. Record the ordinance number and the section that grants it, or move this ' +
-        'appropriation by Realignment instead, which is an ordinance of the Sanggunian.',
-      { fiscalYear: input.fiscalYear, fundCode: input.fundCode, key },
-    );
-  }
-
-  return ok;
-}
-
 export interface AugmentationAllotmentLine {
   lineNo: number;
   accountCode: string;
