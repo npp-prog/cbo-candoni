@@ -381,7 +381,7 @@ function LiquidationForm({
               <th className="cbo-th min-w-[14rem]">Particulars</th>
               <th className="cbo-th min-w-[14rem]">Account</th>
               <th className="cbo-th w-28">OR number</th>
-              <th className="cbo-th w-32 text-right">Amount</th>
+              <th className="cbo-th cbo-amount-col">Amount</th>
               <th className="cbo-th w-8" />
             </tr>
           </thead>

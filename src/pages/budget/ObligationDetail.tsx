@@ -521,13 +521,21 @@ export default function ObligationDetail() {
                   <thead>
                     <tr>
                       <th className="cbo-th w-10">#</th>
-                      <th className="cbo-th min-w-[13rem]">Office</th>
-                      <th className="cbo-th min-w-[18rem]">
+                      {/*
+                        The three pickers each truncate with an ellipsis and
+                        show the whole value when opened, so they can give room
+                        up. The amount cannot: a figure cut off mid-way is not
+                        a smaller figure, it is a wrong one. These minimums are
+                        set so the amount and the availability beside it are
+                        both whole on an ordinary laptop screen.
+                      */}
+                      <th className="cbo-th min-w-[11rem]">Office</th>
+                      <th className="cbo-th min-w-[15rem]">
                         {trust ? 'Trust programme' : 'Budget line (FPP)'}
                       </th>
-                      <th className="cbo-th min-w-[16rem]">Object of expenditure</th>
-                      <th className="cbo-th w-36 text-right">Amount</th>
-                      <th className="cbo-th w-44 text-right">
+                      <th className="cbo-th min-w-[13rem]">Object of expenditure</th>
+                      <th className="cbo-th cbo-amount-col">Amount</th>
+                      <th className="cbo-th w-44 min-w-[11rem] text-right">
                         {trust ? 'Available to utilise' : 'Available allotment'}
                       </th>
                       {canEdit && <th className="cbo-th w-10" />}
@@ -693,7 +701,14 @@ export default function ObligationDetail() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-50">
-                      <td className="cbo-td font-medium" colSpan={3}>
+                      {/*
+                        Four, not three: #, Office, Budget line AND Object of
+                        expenditure. At three the total was printed in the
+                        Object column - one place left of the figures it adds
+                        up - and a total that does not sit under its own column
+                        is read as belonging to the wrong one.
+                      */}
+                      <td className="cbo-td font-medium" colSpan={4}>
                         Total obligation
                       </td>
                       <td className="cbo-td cbo-amount font-semibold text-navy-900">

@@ -390,7 +390,7 @@ function CollectionForm({
               <th className="cbo-th min-w-[18rem]">Account</th>
               {isTrust && <th className="cbo-th min-w-[16rem]">Trust programme</th>}
               {anyRpt && <th className="cbo-th min-w-[18rem]">Tax year and barangay</th>}
-              <th className="cbo-th w-36 text-right">Amount</th>
+              <th className="cbo-th cbo-amount-col">Amount</th>
               <th className="cbo-th w-8" />
             </tr>
           </thead>

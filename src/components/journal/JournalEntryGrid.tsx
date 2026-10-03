@@ -142,8 +142,8 @@ export function JournalEntryGrid({
               <th className="cbo-th min-w-[18rem]">Account</th>
               {fppOptions && <th className="cbo-th min-w-[16rem]">Budget line (FPP)</th>}
               {showParticulars && <th className="cbo-th min-w-[12rem]">Particulars</th>}
-              <th className="cbo-th w-36 text-right">Debit</th>
-              <th className="cbo-th w-36 text-right">Credit</th>
+              <th className="cbo-th cbo-amount-col">Debit</th>
+              <th className="cbo-th cbo-amount-col">Credit</th>
               {!readOnly && <th className="cbo-th w-10" />}
             </tr>
           </thead>
@@ -277,7 +277,17 @@ export function JournalEntryGrid({
 
           <tfoot>
             <tr className="bg-slate-50 font-medium">
-              <td className="cbo-td" colSpan={showParticulars ? 3 : 2}>
+              {/*
+                Every optional column has to be counted here or the totals
+                slide out from under the Debit and Credit they add up. The
+                budget line column was being missed, so on a JEV that charges
+                a budget line - which is most of them - Total sat one column
+                to the left of its own figures.
+              */}
+              <td
+                className="cbo-td"
+                colSpan={2 + (fppOptions ? 1 : 0) + (showParticulars ? 1 : 0)}
+              >
                 <span className="text-sm text-navy-900">Total</span>
               </td>
               <td className="cbo-td cbo-amount text-navy-900">

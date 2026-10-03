@@ -117,6 +117,28 @@
   .cbo-amount {
     @apply font-mono text-sm tabular text-right whitespace-nowrap;
   }
+
+  /**
+   * The column an amount is TYPED into, on an editable line table.
+   *
+   * WHY min-width AND NOT width ALONE. In a table laid out automatically -
+   * which is every line table in CFMS - a `width` on a column is a suggestion.
+   * The browser gives each column the space its content demands first, and
+   * shares out what is left. A picker demands the width of the longest office
+   * name in it; the words "Select an office and account" demand their own
+   * width. An `<input>` set to `w-full` demands NOTHING, because it will take
+   * whatever it is given.
+   *
+   * So the amount is the first thing a crowded row squeezes, and it squeezes
+   * it to nothing: the figure that matters most on an Obligation Request was
+   * showing as "P 20" with the rest cut off.
+   *
+   * A min-width is not a suggestion. 10rem holds 999,999,999.00 in full, which
+   * is past anything a municipality of this size obligates on one line.
+   */
+  .cbo-amount-col {
+    @apply w-40 min-w-[10rem] text-right;
+  }
 }
 
 /**
