@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -12,11 +12,32 @@ import { useReportsAwaitingJev } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
-import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
+import {
+  TREASURY_REPORT_LABELS,
+  TREASURY_REPORT_SHORT,
+  TREASURY_REPORT_TYPES,
+} from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
+import type { TreasuryReportType } from '@/types/enums';
 
 /**
- * Treasury reports awaiting their journal entry.
+ * Treasury reports received from the Treasurer.
+ *
+ * ---------------------------------------------------------------------------
+ * ONE TAB PER REPORT, AND WHY
+ * ---------------------------------------------------------------------------
+ * Four different documents arrive here - the RCI of the day's checks, the
+ * RADAI, the RCD of collections, the RCDisb of cash paid out - and they used
+ * to arrive into one undifferentiated list that emptied itself as the entries
+ * were posted. A report that had been journalized was then not visible in
+ * Accounting at all, so "show me the RCDs we received in March" had no answer
+ * on this screen, and the obvious place to look next was Treasury's own
+ * register, which is another office's book.
+ *
+ * So the list keeps the journalized ones, and there is a tab per report type
+ * for finding one again. The count on each tab is what is still waiting, not
+ * how many there are, because that is the number anybody is acting on.
+ *
  *
  * Accounting's side of the handover. The Treasurer certifies a report - an RCI
  * of the day's checks, a RADAI, an RCD, an RCDisb - and it lands here. The
@@ -41,8 +62,27 @@ export default function TreasuryReportJev() {
   const { data, loading, error } = useReportsAwaitingJev(fiscalYear);
 
   const [reviewing, setReviewing] = useState<TreasuryReport | null>(null);
+  const [tab, setTab] = useState('');
 
   const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+
+  const rows = useMemo(() => (tab ? data.filter((r) => r.reportType === tab) : data), [data, tab]);
+
+  const waitingIn = (type: string) =>
+    data.filter((r) => r.status === 'CERTIFIED' && (!type || r.reportType === type)).length;
+
+  const tabs = useMemo(
+    () => [
+      { id: '', label: 'All reports', count: waitingIn('') },
+      ...TREASURY_REPORT_TYPES.map((t) => ({
+        id: t,
+        label: TREASURY_REPORT_SHORT[t],
+        count: waitingIn(t),
+      })),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data],
+  );
 
   const columns: Column<TreasuryReport>[] = [
     {
@@ -69,6 +109,21 @@ export default function TreasuryReportJev() {
       width: '8rem',
       value: (r) => r.reportDate,
       cell: (r) => <span className="text-sm">{formatShortDate(r.reportDate)}</span>,
+    },
+    {
+      // The answer to "was this one booked, and under what number". Without it
+      // the only way back from a report to its entry was to search the journal
+      // for the amount.
+      key: 'jevNo',
+      header: 'JEV No.',
+      width: '10rem',
+      value: (r) => r.jevNo ?? '',
+      cell: (r) =>
+        r.jevNo ? (
+          <span className="font-mono text-xs text-navy-900">{r.jevNo}</span>
+        ) : (
+          <span className="text-xs italic text-slate-400">not yet journalized</span>
+        ),
     },
     {
       key: 'fundCode',
@@ -111,8 +166,8 @@ export default function TreasuryReportJev() {
       cell: (r) => (
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
-          <Button size="sm" onClick={() => setReviewing(r)} disabled={!canPost}>
-            {canPost ? 'Journalize' : 'View'}
+          <Button size="sm" variant={r.status === 'CERTIFIED' ? 'primary' : 'secondary'} onClick={() => setReviewing(r)}>
+            {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'View'}
           </Button>
         </div>
       ),
@@ -124,8 +179,10 @@ export default function TreasuryReportJev() {
       <PageHeader
         title="Treasury reports for journalizing"
         breadcrumbs={[{ label: 'Accounting' }, { label: 'Treasury reports' }]}
-        subtitle="Reports the Treasurer has certified and forwarded. Each one is journalized as a single entry that foots to the report total, so the journals agree with the registers."
+        subtitle="Reports the Treasurer has certified and forwarded. Each one is journalized as a single entry that foots to the report total, so the journals agree with the registers. The ones already journalized stay on the list, under their own tab, so a received report can be found again."
       />
+
+      <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {!canPost && (
         <Alert tone="info">
@@ -136,21 +193,23 @@ export default function TreasuryReportJev() {
 
       <Card>
         <DataTable
-          rows={data}
+          rows={rows}
           columns={columns}
           rowKey={(r) => r.id}
           loading={loading}
           error={error}
           searchPlaceholder="Report number or serial"
-          emptyTitle="Nothing waiting"
-          emptyMessage={`No certified treasury report for fiscal year ${fiscalYear} is awaiting a journal entry. When the Treasurer certifies one it appears here.`}
+          emptyTitle={tab ? `No ${TREASURY_REPORT_SHORT[tab as TreasuryReportType]} received` : 'Nothing received'}
+          emptyMessage={`No ${
+            tab ? TREASURY_REPORT_LABELS[tab as TreasuryReportType] : 'treasury report'
+          } for fiscal year ${fiscalYear} has reached Accounting. A report appears here the moment the Treasurer certifies it, and stays here after it is journalized.`}
         />
       </Card>
 
       {reviewing && (
         <JournalizeReport
           report={reviewing}
-          readOnly={!canPost}
+          readOnly={!canPost || reviewing.status !== 'CERTIFIED'}
           onClose={() => setReviewing(null)}
           onPosted={() => setReviewing(null)}
           toastError={(t, m) => toast.error(t, m)}
@@ -265,6 +324,13 @@ function JournalizeReport({
           </div>
         </div>
       </div>
+
+      {report.jevNo && (
+        <Alert tone="success" className="mt-3">
+          Journalized as JEV {report.jevNo}. The entry below is the one that was posted, and a
+          posted entry is never edited - a correction is a reversing entry in Other Transactions.
+        </Alert>
+      )}
 
       {report.bankName && (
         <p className="mt-3 text-sm text-slate-600">

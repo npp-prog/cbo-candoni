@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { awaitingPosting } from '@/lib/postingQueue';
+import { directEntries } from '@/lib/jevSources';
+import { hasJevNumber } from '@/lib/jevNumbers';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -24,7 +26,25 @@ const BOOK_LABELS: Record<string, string> = {
   PROCUREMENT_RECEIVED_JOURNAL: 'Procurement Received',
 };
 
-/** The JEV register. */
+/**
+ * The entries Accounting writes itself.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS NOT HERE ANY MORE
+ * ---------------------------------------------------------------------------
+ * The entries raised by a document - every disbursement voucher, every
+ * treasury report, every liquidation - used to be listed here as well, and
+ * there are hundreds of them in a year. The dozen entries somebody actually
+ * had to sit down and write were lost among them.
+ *
+ * Those entries each have a screen of their own already: the voucher's screen,
+ * the report's screen. This one is for the entries that have no document
+ * behind them - adjusting, closing, reversing, prior-period, and the bank
+ * adjustments - which is to say the ones that begin here.
+ *
+ * Every entry in the books, whatever raised it, is in the JOURNAL ENTRIES
+ * REGISTER, the next item on the menu.
+ */
 export default function Jevs() {
   const { fiscalYear, fundCode, period } = useFilters();
   const { can } = useAuth();
@@ -33,10 +53,10 @@ export default function Jevs() {
 
   const { data, loading, error } = useJevs(fiscalYear, fundCode, status || undefined);
 
-  const rows = useMemo(
-    () => (period ? data.filter((j) => j.period === period) : data),
-    [data, period],
-  );
+  const rows = useMemo(() => {
+    const inPeriod = period ? data.filter((j) => j.period === period) : data;
+    return directEntries(inPeriod);
+  }, [data, period]);
 
   const unposted = awaitingPosting(rows);
 
@@ -45,8 +65,15 @@ export default function Jevs() {
       key: 'jevNo',
       header: 'JEV No.',
       width: '10rem',
-      value: (j) => j.jevNo,
-      cell: (j) => <span className="font-mono text-xs text-navy-900">{j.jevNo}</span>,
+      value: (j) => (hasJevNumber(j.jevNo) ? j.jevNo : ''),
+      cell: (j) =>
+        hasJevNumber(j.jevNo) ? (
+          <span className="font-mono text-xs text-navy-900">{j.jevNo}</span>
+        ) : (
+          // An entry draws its number from the journal series when it is
+          // posted, so one that is waiting has none.
+          <span className="text-xs italic text-slate-400">not yet posted</span>
+        ),
     },
     {
       key: 'jevDate',
@@ -111,7 +138,7 @@ export default function Jevs() {
   return (
     <div>
       <PageHeader
-        title="Other journal entries"
+        title="Other transactions"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}${period ? `, ${monthName(period)}` : ''}${
           unposted.length ? ` - ${unposted.length} awaiting posting` : ''
         }`}
@@ -133,8 +160,8 @@ export default function Jevs() {
         error={error}
         onRowClick={(j) => navigate(`/accounting/others/${j.id}`)}
         searchPlaceholder="JEV number, reference or particulars"
-        emptyTitle="No journal entries"
-        emptyMessage="Journal entries are generated when vouchers and collection reports are approved, and can also be raised manually for adjusting and closing entries."
+        emptyTitle="No entries written here"
+        emptyMessage="This screen holds the entries Accounting writes itself - adjusting, closing, reversing and prior-period entries, and bank adjustments. Entries raised by a voucher or a treasury report are on the document's own screen, and all of them together are in the Journal Entries Register."
         filters={
           <Select
             value={status}

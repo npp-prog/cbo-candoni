@@ -32,15 +32,35 @@ export interface PayableVoucher {
 }
 
 /**
- * Approved, and nothing drawn against it yet.
+ * Statuses a voucher can be in and still be owed to somebody.
+ *
+ * APPROVED is the ordinary one. PAID is here for a voucher whose record says
+ * it is paid while carrying neither a check nor an advice - which, under the
+ * rules CFMS enforces now, cannot happen: a voucher is set to PAID by the act
+ * of drawing the instrument, in the same transaction.
+ *
+ * It could happen before. Posting the journal entry used to set the voucher to
+ * PAID, so an entry posted by the Accountant took the voucher out of this
+ * queue with nothing drawn against it, and the Treasurer simply could not see
+ * a voucher nobody had paid. Those vouchers are still in the database, and the
+ * queue has to show them or they are owed to a supplier and invisible.
+ */
+const UNPAID_STATUSES = new Set<string>(['APPROVED', 'PAID']);
+
+/**
+ * Owed, and nothing drawn against it yet.
  *
  * A voucher that already has a check or an advice is NOT shown. It has been
  * paid once; offering it again is offering to pay it twice, and the server
  * would refuse but the Treasurer should never be put in front of the button.
+ *
+ * Note what is NOT a condition: whether the journal entry has been posted.
+ * Posting writes the books and paying moves the money; they are two officers'
+ * acts and neither waits for the other.
  */
 export function awaitingPayment<T extends PayableVoucher>(vouchers: T[]): T[] {
   return vouchers
-    .filter((v) => v.status === 'APPROVED')
+    .filter((v) => UNPAID_STATUSES.has(v.status))
     .filter((v) => !v.checkId && !v.adaId)
     .slice()
     .sort(byOldestFirst);

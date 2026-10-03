@@ -570,6 +570,80 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 14. Only Treasury marks a voucher paid ---------------------------------
+/*
+ * A disbursement voucher is PAID when the Treasurer draws a check or an advice
+ * against it, and at no other moment.
+ *
+ * This is not a point of style. The Treasury payment queue lists the vouchers
+ * that are owed, and it finds them by status. Posting the journal entry used
+ * to set a voucher to PAID, so an entry posted by the Accountant - which patch
+ * 75 moved on to the voucher screen, where it happens seconds after approval -
+ * took the voucher out of the Treasurer's queue before anybody had paid it.
+ * The supplier was owed money and the voucher was invisible.
+ *
+ * The word means "the money has gone out". Any other act that writes it is the
+ * same defect again under a different name, so the build refuses it.
+ */
+if (existsSync(functionsSrc)) {
+  const allowed = 'functions/src/accounting/payments.ts';
+  let offenders = 0;
+
+  for (const file of walkTs(functionsSrc)) {
+    const name = file.slice(root.length + 1).split('\\').join('/');
+    if (name === allowed) continue;
+
+    const source = readFileSync(file, 'utf8');
+
+    // Each tx.update(...) call, taken whole, so that the collection and the
+    // status it writes are read together rather than anywhere in the file.
+    const updates = source.match(/tx\.update\(([\s\S]*?)\n\s*\}\s*\)/g) ?? [];
+    for (const call of updates) {
+      if (!call.includes('disbursementVouchers')) continue;
+      if (!/status:\s*'PAID'/.test(call)) continue;
+      offenders += 1;
+      failures.push(
+        `${name}: sets a disbursement voucher to PAID. Only ${allowed} may do that, when the ` +
+          'check or the advice is drawn. The Treasury payment queue finds what is owed by ' +
+          'status, so a voucher marked paid by any other act disappears from it with nothing ' +
+          'having been paid.',
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('payments: only the drawing of a check or an advice marks a voucher paid');
+  }
+}
+
+// --- 15. The voucher does not draw journal numbers --------------------------
+/*
+ * Approving a voucher PREPARES its journal entry; posting MAKES it. The number
+ * is drawn from the journal series at posting, in functions/src/accounting/jev.ts.
+ *
+ * A number drawn at approval is spent whether or not the entry is ever posted,
+ * and an approval that is undone then leaves a gap in the series that the
+ * office cannot account for. dv.ts therefore has no business importing the
+ * numbering helpers at all - the voucher's own number is typed in by staff,
+ * and the journal's is not its to give.
+ */
+{
+  const dvFile = resolve(root, 'functions/src/accounting/dv.ts');
+  if (existsSync(dvFile)) {
+    const source = readFileSync(dvFile, 'utf8');
+    if (/from '\.\.\/lib\/numbering'/.test(source)) {
+      failures.push(
+        'functions/src/accounting/dv.ts imports the numbering helpers. The voucher number is ' +
+          'typed in by accounting staff and the JEV number is drawn when the entry is POSTED, ' +
+          'in functions/src/accounting/jev.ts. A number drawn at approval is lost from the ' +
+          'series if the approval is ever undone.',
+      );
+    } else {
+      console.log('numbering: the voucher draws no journal number at approval');
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

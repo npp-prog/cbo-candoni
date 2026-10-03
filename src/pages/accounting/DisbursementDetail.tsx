@@ -197,11 +197,22 @@ export default function DisbursementDetail() {
   const canReview = !isNew && status === 'SUBMITTED' && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER');
   const canApprove = !isNew && ['REVIEWED', 'SUBMITTED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
-  /** The entry this voucher raised, still waiting to be posted. */
+  /**
+   * The entry this voucher raised, still waiting to be posted.
+   *
+   * PAID counts. Posting the books and paying the supplier are two officers'
+   * acts and neither waits for the other: a voucher paid by check this morning
+   * may still be posted this afternoon, and refusing it here would leave the
+   * entry unposted with no way to post it.
+   *
+   * `jevPostedAt` is the voucher's own record of having been posted, written
+   * by the engine in the posting transaction.
+   */
   const canPost =
     !isNew &&
-    status === 'APPROVED' &&
+    (status === 'APPROVED' || status === 'PAID') &&
     Boolean(existing?.jevId) &&
+    !existing?.jevPostedAt &&
     hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   /**
@@ -462,14 +473,24 @@ export default function DisbursementDetail() {
         </Alert>
       )}
 
-      {existing?.jevNo && (
-        <Alert tone="info" className="mb-4">
-          Journal entry{' '}
-          <Link to={`/accounting/others/${existing.jevId}`} className="font-medium underline">
+      {existing?.jevId && existing.jevNo && (
+        <Alert tone="success" className="mb-4">
+          In the General Ledger as{' '}
+          <Link
+            to={`/accounting/journal-entries/${existing.jevId}`}
+            className="font-medium underline"
+          >
             JEV {existing.jevNo}
-          </Link>{' '}
-          was generated from this voucher.
-          {status !== 'PAID' && ' It must be posted by the Municipal Accountant before it reaches the General Ledger.'}
+          </Link>
+          . A posted entry is never edited - a correction is a reversing entry.
+        </Alert>
+      )}
+
+      {existing?.jevId && !existing.jevNo && (
+        <Alert tone="warning" className="mb-4">
+          A journal entry is prepared from this voucher and is{' '}
+          <strong>not yet in the General Ledger</strong>. It takes its JEV number from the journal
+          series when the Municipal Accountant posts it, which is done from this screen.
         </Alert>
       )}
 
@@ -737,7 +758,7 @@ export default function DisbursementDetail() {
                     <StatusBadge status={existing.status} />
                   </DetailField>
                   <DetailField label="Journal entry" mono>
-                    {existing.jevNo ?? 'Not yet generated'}
+                    {existing.jevNo ?? 'Not yet posted'}
                   </DetailField>
                 </dl>
               )}
@@ -882,7 +903,7 @@ export default function DisbursementDetail() {
           void run(async () => {
             const result = await engine.postJev({ jevId: existing!.jevId! });
             toast.success(
-              `JEV ${existing?.jevNo ?? ''} posted`.trim(),
+              `Posted as JEV ${result.jevNo}`,
               `${result.ledgerEntryCount} ledger entries written. The General Ledger, the Trial Balance and the financial statements now carry this voucher.`,
             );
           }, 'The entry was not posted')
@@ -894,9 +915,13 @@ export default function DisbursementDetail() {
         message={
           <>
             <p>
-              Journal entry <strong className="font-mono">{existing?.jevNo}</strong> is written to
-              the General Ledger. From that moment it is in the Trial Balance, the financial
-              statements and every report drawn from the ledger.
+              The journal entry prepared from this voucher is written to the General Ledger. From
+              that moment it is in the Trial Balance, the financial statements and every report
+              drawn from the ledger.
+            </p>
+            <p className="mt-2">
+              It takes its JEV number now, from the journal series. An entry that has not been
+              posted has not been made, so it does not hold a number in the series.
             </p>
             <p className="mt-2 text-xs text-slate-500">
               A posted entry is never edited or deleted. Correcting it means a reversing entry.
@@ -930,8 +955,8 @@ export default function DisbursementDetail() {
             <p>
               The voucher becomes a draft again so the figures can be corrected.{' '}
               {existing?.obrNo ? `OBR ${existing.obrNo}` : 'The obligation'} gets its unpaid
-              balance back, and journal entry{' '}
-              <strong className="font-mono">{existing?.jevNo}</strong> is cancelled.
+              balance back, and the journal entry prepared from it is cancelled. It never reached
+              the books and it holds no journal number, so nothing is left out of the series.
             </p>
             <p className="mt-2">
               It keeps its number, <strong className="font-mono">{existing?.dvNo}</strong>, and
@@ -953,7 +978,7 @@ export default function DisbursementDetail() {
             const result = await engine.approveDv({ dvId: id! });
             toast.success(
               `Approved as DV ${result.dvNo}`,
-              `Journal entry ${result.jevNo} is prepared. Post it from this screen to put it in the General Ledger.`,
+              'Its journal entry is prepared. Post it from this screen to put it in the General Ledger - it takes its JEV number then.',
             );
           }, 'The voucher was not approved')
         }

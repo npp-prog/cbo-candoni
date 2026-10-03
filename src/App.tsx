@@ -36,6 +36,7 @@ const Disbursements = lazy(() => import('./pages/accounting/Disbursements'));
 const DisbursementDetail = lazy(() => import('./pages/accounting/DisbursementDetail'));
 const Jevs = lazy(() => import('./pages/accounting/Jevs'));
 const JevDetail = lazy(() => import('./pages/accounting/JevDetail'));
+const JournalEntriesRegister = lazy(() => import('./pages/accounting/JournalEntriesRegister'));
 const Checks = lazy(() => import('./pages/treasury/Checks'));
 const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'));
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
@@ -184,6 +185,14 @@ export default function App() {
           <Route path="/accounting/others" element={<Guard module="accounting"><Jevs /></Guard>} />
           <Route path="/accounting/others/new" element={<Guard module="accounting" action="create"><JevDetail /></Guard>} />
           <Route path="/accounting/others/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
+          <Route
+            path="/accounting/journal-entries"
+            element={<Guard module="accounting"><JournalEntriesRegister /></Guard>}
+          />
+          <Route
+            path="/accounting/journal-entries/:id"
+            element={<Guard module="accounting"><JevDetail /></Guard>}
+          />
           <Route path="/accounting/jev" element={<Navigate to="/accounting/others" replace />} />
           <Route path="/accounting/jev/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
           {/* Checks and ADA are Treasury's work: the Treasurer draws them against a

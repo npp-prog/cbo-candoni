@@ -4,7 +4,8 @@ import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, POSTING_ROLES, assertFundInScope, notFound, invalid } from '../lib/context';
 import { recordTransition } from '../lib/audit';
 import { checkExpenseDebitsHaveFpp } from '../lib/rules';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { issueNumber, issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { hasJevNumber } from '../lib/jevNumbers';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
 import {
   postJevInTransaction,
@@ -38,18 +39,46 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
 
     const period = jev.period ?? periodOf(jev.jevDate);
     await assertFiscalYearOpen(jev.fiscalYear, tx);
-    await assertPeriodOpen(jev.fiscalYear, period, jev.fundCode, `JEV ${jev.jevNo}`, tx);
+    await assertPeriodOpen(jev.fiscalYear, period, jev.fundCode, `JEV ${jev.jevNo || jevId}`, tx);
 
     await assertExpenseDebitsCarryAnFpp(jev);
 
-    const result = postJevInTransaction(tx, caller, jevId, jev);
+    /*
+     * ---- THE JEV NUMBER IS DRAWN HERE, AT POSTING --------------------
+     *
+     * Not when the voucher that raised the entry was approved. An entry that
+     * has not been posted is not in the journal, and a number taken from the
+     * journal series for an entry that may never be posted - a voucher whose
+     * approval is undone, say - leaves a hole in the series that nobody can
+     * account for.
+     *
+     * Only when the entry has none. Every other path in CFMS creates and posts
+     * an entry in one act and brings its number with it; this touches nothing
+     * there.
+     *
+     * Drawn before any write, as the ordering requires.
+     */
+    let jevNo = jev.jevNo;
+    if (!hasJevNumber(jevNo)) {
+      const cfg = await loadNumberingConfig('JEV');
+      const bookCode = await bookCodeForFund(jev.fundCode);
+      const [issued] = await issueNumbers(tx, [
+        {
+          cfg,
+          parts: { bookCode, fundCode: jev.fundCode, fiscalYear: jev.fiscalYear, month: period },
+        },
+      ]);
+      jevNo = issued as string;
+    }
+
+    const result = postJevInTransaction(tx, caller, jevId, { ...jev, jevNo });
 
     recordTransition(tx, {
       caller,
       event: 'POST',
       entityType: COL.jevs,
       entityId: jevId,
-      entityRef: `JEV ${jev.jevNo}`,
+      entityRef: `JEV ${jevNo}`,
       fiscalYear: jev.fiscalYear,
       fundCode: jev.fundCode,
       action: 'POST',
@@ -58,10 +87,29 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
       remarks: `${result.ledgerEntryCount} ledger entries, ${(jev.totalDebit / 100).toFixed(2)}.`,
     });
 
-    // Mark the source document as posted so its screen reflects reality.
+    /*
+     * Tell the source document that its entry is now in the books.
+     *
+     * ---- WHY THIS NO LONGER SETS THE VOUCHER TO PAID ------------------
+     *
+     * It used to, and that was two different facts wearing one word. Posting
+     * writes the books; it does not pay anybody. A voucher is paid when the
+     * Treasurer draws a check or an advice against it, which is a different
+     * officer on a different day.
+     *
+     * The cost of conflating them was concrete: the Treasury payment queue
+     * lists APPROVED vouchers, so an entry posted by the Accountant took the
+     * voucher out of the queue before any check had been drawn, and the
+     * Treasurer could no longer see a voucher that nobody had paid.
+     *
+     * What is written instead is the number the entry has just been given and
+     * the moment it was posted, so the voucher's own screen can say "in the
+     * General Ledger as JEV ..." without asking the entry.
+     */
     if (jev.sourceType === 'DV' && jev.sourceId) {
       tx.update(db.collection(COL.disbursementVouchers).doc(jev.sourceId), {
-        status: 'PAID',
+        jevNo,
+        jevPostedAt: result.postedAt,
       });
     }
     if (jev.sourceType === 'RCD' && jev.sourceId) {
@@ -76,7 +124,7 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
 
     return {
       jevId,
-      jevNo: jev.jevNo,
+      jevNo,
       ledgerEntryCount: result.ledgerEntryCount,
       postedAt: result.postedAt,
     };

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { hasJevNumber } from '@/lib/jevNumbers';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { PageHeader, Card, Alert, Spinner } from '@/components/ui/Layout';
@@ -358,11 +359,13 @@ export default function Dashboard() {
                   .slice(0, 6)
                   .map((j) => ({
                     id: j.id,
-                    primary: j.jevNo,
+                    // Unposted, so it has no journal number yet - naming what
+                    // it is beats an empty line or a placeholder word.
+                    primary: hasJevNumber(j.jevNo) ? j.jevNo : j.sourceType,
                     secondary: `${j.particulars?.slice(0, 60) ?? ''} - ${formatShortDate(j.jevDate)}`,
                     amount: j.totalDebit,
                     status: j.status,
-                    to: `/accounting/others/${j.id}`,
+                    to: `/accounting/journal-entries/${j.id}`,
                   }))}
                 emptyMessage="Nothing is waiting to be posted."
               />

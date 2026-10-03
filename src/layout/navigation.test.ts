@@ -159,6 +159,23 @@ describe('the menu itself', () => {
     }
   });
 
+  /**
+   * The register is read after the fact, so it comes after the four screens
+   * that raise entries rather than before them - and it is in that group at
+   * all because an accountant looking for an entry looks where entries are
+   * made.
+   */
+  it('puts the Journal Entries Register straight after Other Transactions', () => {
+    const accounting = NAVIGATION.find((i) => i.to === '/accounting');
+    const children = accounting?.children ?? [];
+    const others = children.findIndex((c) => c.to === '/accounting/others');
+    const register = children.findIndex((c) => c.to === '/accounting/journal-entries');
+
+    expect(others, 'Other Transactions is not in the Accounting menu').toBeGreaterThan(-1);
+    expect(register, 'the Journal Entries Register is not in the Accounting menu').toBe(others + 1);
+    expect(children[register].group).toBe('Journal Entry Transactions');
+  });
+
   it('keeps the Treasury registers to the books the office writes in', () => {
     const treasury = NAVIGATION.find((i) => i.to === '/treasury');
     const registers = (treasury?.children ?? []).filter((c) => c.group === 'Registers');

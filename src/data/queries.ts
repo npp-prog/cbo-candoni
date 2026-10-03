@@ -456,20 +456,38 @@ export const useTreasuryReports = (
   );
 
 /**
- * Accounting's queue: every certified report of any type still waiting for its
- * journal entry, oldest first. Oldest first is deliberate - a report that has
- * sat for a week is the one that matters, and sorting newest-first would bury
- * it. Index: status, fiscalYear, reportDate asc.
+ * Every treasury report that has reached Accounting - the ones still waiting
+ * for their journal entry and the ones already journalized.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE JOURNALIZED ONES ARE HERE TOO
+ * ---------------------------------------------------------------------------
+ * This was the queue and nothing else: a report left it the moment its entry
+ * was posted, and there was then no screen in Accounting that would show it
+ * again. "Which RCDs did the Treasurer send us in March" could not be answered
+ * from Accounting at all - the reports were still in Treasury's own registers,
+ * but an accountant does not go looking for a received document in the sending
+ * office's menu.
+ *
+ * Drafts are NOT here. A draft report has not been certified, so it has not
+ * been sent, and Accounting showing it would be Accounting reading another
+ * office's unfinished work. Cancelled ones are out for the same reason: a
+ * report withdrawn before journalizing never arrived.
+ *
+ * Oldest first is deliberate - a report that has sat for a week is the one
+ * that matters, and sorting newest-first would bury it. The `in` filter is
+ * served by the same index the single-status query used: status, fiscalYear,
+ * reportDate asc.
  */
 export const useReportsAwaitingJev = (fiscalYear: number) =>
   useCollection<TreasuryReport>(
     COL.treasuryReports,
     [
-      where('status', '==', 'CERTIFIED'),
+      where('status', 'in', ['CERTIFIED', 'JOURNALIZED']),
       where('fiscalYear', '==', fiscalYear),
       orderBy('reportDate', 'asc'),
     ],
-    ['treasuryReportsAwaitingJev', fiscalYear],
+    ['treasuryReportsReceived', fiscalYear],
   );
 
 /**

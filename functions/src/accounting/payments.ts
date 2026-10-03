@@ -187,7 +187,19 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       },
     });
 
-    tx.update(dvRef, { checkId: checkDocId, checkNo: normalisedCheckNo, bankAccountId });
+    /*
+     * The voucher is PAID from here, and only from here.
+     *
+     * Drawing the instrument is the act that pays. Posting the journal entry
+     * writes the books and used to set this status, which took the voucher out
+     * of the Treasury payment queue before anybody had paid it.
+     */
+    tx.update(dvRef, {
+      checkId: checkDocId,
+      checkNo: normalisedCheckNo,
+      bankAccountId,
+      status: 'PAID',
+    });
 
     if (objection) {
       // A decision this deliberate belongs in the audit trail at the level an
@@ -337,10 +349,14 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
       cancelledBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
 
-    // Free the voucher so a replacement check can be drawn.
+    // Free the voucher so a replacement check can be drawn. It goes back to
+    // APPROVED - unpaid and in the Treasurer's queue - because the check that
+    // paid it has been cancelled. Leaving it PAID would hide it from the queue
+    // with nothing having been paid.
     tx.update(db.collection(COL.disbursementVouchers).doc(check.dvId), {
       checkId: null,
       checkNo: null,
+      status: 'APPROVED',
     });
 
     recordTransition(tx, {
@@ -525,7 +541,8 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       },
     });
 
-    tx.update(dvRef, { adaId: adaRef.id, adaNo, bankAccountId });
+    // Paid, for the same reason as a check: the advice is the instrument.
+    tx.update(dvRef, { adaId: adaRef.id, adaNo, bankAccountId, status: 'PAID' });
 
     if (reservationRef) {
       tx.update(reservationRef, {
@@ -588,7 +605,11 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       cancelledReason: reason.trim(),
       cancelledBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
-    tx.update(db.collection(COL.disbursementVouchers).doc(ada.dvId), { adaId: null, adaNo: null });
+    tx.update(db.collection(COL.disbursementVouchers).doc(ada.dvId), {
+      adaId: null,
+      adaNo: null,
+      status: 'APPROVED',
+    });
 
     recordTransition(tx, {
       caller,

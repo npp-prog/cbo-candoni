@@ -69,7 +69,7 @@ export function UniversalSearch() {
         const results = await Promise.all([
           searchBy(COL.disbursementVouchers, 'dvNo', upper, 'Disbursement Voucher', '/accounting/disbursements'),
           searchBy(COL.obligations, 'obrNo', upper, 'Obligation', '/budget/obligations'),
-          searchBy(COL.jevs, 'jevNo', upper, 'Journal Entry', '/accounting/others'),
+          searchBy(COL.jevs, 'jevNo', upper, 'Journal Entry', '/accounting/journal-entries'),
           searchBy(COL.checks, 'checkNo', upper, 'Check', '/accounting/checks'),
           searchBy(COL.ada, 'adaNo', upper, 'ADA', '/accounting/ada'),
           searchBy(COL.rcds, 'rcdNo', upper, 'RCD', '/treasury/rcd'),

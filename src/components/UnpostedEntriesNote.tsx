@@ -68,10 +68,12 @@ export function UnpostedEntriesNote({
         Accountant posts it.
       </p>
       <p className="mt-2">
-        <Link to="/accounting/others" className="font-medium underline">
-          Open the journal entries and post them
+        <Link to="/accounting/journal-entries" className="font-medium underline">
+          Open the Journal Entries Register
         </Link>
-        {' '}&mdash; the ones raised from vouchers are there too, not only the manual entries.
+        {' '}&mdash; every entry in the books is listed there, whatever raised it. An entry raised
+        by a voucher is posted on the voucher itself; one written in Accounting is posted from
+        Other Transactions.
       </p>
     </Alert>
   );

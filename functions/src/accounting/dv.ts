@@ -12,11 +12,11 @@ import {
   type Role,
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
-import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
 import { checkDvCategory, checkDvMath } from '../lib/rules';
 import { createJevInTransaction, type JevLineData } from '../lib/ledger';
+import { UNNUMBERED_JEV } from '../lib/jevNumbers';
 import {
   readTrustProgram,
   applyTrustDelta,
@@ -400,8 +400,6 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
   const { dvId } = (request.data ?? {}) as { dvId?: string };
   if (!dvId) throw invalid('A disbursement voucher id is required.');
 
-  const jevConfig = await loadNumberingConfig('JEV');
-
   return db.runTransaction(async (tx) => {
     // ---- READ PHASE ---------------------------------------------------------
     const ref = db.collection(COL.disbursementVouchers).doc(dvId);
@@ -514,14 +512,6 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       }
     }
 
-    const bookCode = await bookCodeForFund(dv.fundCode);
-    const parts = {
-      bookCode,
-      fundCode: dv.fundCode,
-      fiscalYear: dv.fiscalYear,
-      month: period,
-    };
-
     /*
      * ---- THE DV NUMBER IS TYPED IN, NOT DRAWN -------------------------
      *
@@ -562,8 +552,21 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       );
     }
 
-    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
-    const jevNo = issuedJevNo as string;
+    /*
+     * ---- THE JEV HAS NO NUMBER YET ------------------------------------
+     *
+     * Approving a voucher PREPARES its journal entry; it does not make it.
+     * The entry is made when the Municipal Accountant posts it, and that is
+     * where the number is drawn from the journal series.
+     *
+     * A number drawn here would be spent whether or not the entry was ever
+     * posted. An approval that is undone cancels the entry, and the number it
+     * held becomes a gap in the series that the office cannot account for -
+     * which is exactly the kind of gap an auditor asks about.
+     *
+     * The placeholder is the word both sides of CFMS recognise as "none yet";
+     * see src/lib/jevNumbers.ts.
+     */
 
     // ---- WRITE PHASE --------------------------------------------------------
 
@@ -591,7 +594,7 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     }));
 
     const { jevId } = createJevInTransaction(tx, caller, {
-      jevNo,
+      jevNo: UNNUMBERED_JEV,
       jevDate: dv.dvDate,
       fiscalYear: dv.fiscalYear,
       period,
@@ -728,7 +731,9 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       status: 'APPROVED',
       assignedToRole: 'MUNICIPAL_TREASURER',
       jevId,
-      jevNo,
+      // Deliberately not `jevNo`. The voucher learns its entry's number when
+      // the entry is posted and the screen reads it from the entry itself.
+      jevNo: null,
       approvedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
 
@@ -744,20 +749,20 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       previousStatus: dv.status,
       newStatus: 'APPROVED',
       assignedToRole: 'MUNICIPAL_TREASURER',
-      remarks: `Approved for payment. JEV ${jevNo} prepared for posting.`,
+      remarks: 'Approved for payment. Its journal entry is prepared and awaiting posting.',
     });
 
     notifyInTransaction(tx, {
       recipientRole: 'MUNICIPAL_ACCOUNTANT',
       kind: 'PENDING_REVIEW',
       title: 'Journal entry awaiting posting',
-      body: `JEV ${jevNo} was generated from DV ${dvNo} and is ready to post.`,
+      body: `The journal entry for DV ${dvNo} is prepared and ready to post. It takes its JEV number when you post it.`,
       entityType: COL.jevs,
       entityId: jevId,
       link: `/accounting/jev/${jevId}`,
     });
 
-    return { dvId, dvNo, jevId, jevNo };
+    return { dvId, dvNo, jevId, jevNo: null };
   });
 });
 

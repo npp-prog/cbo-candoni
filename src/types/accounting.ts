@@ -14,6 +14,7 @@ import type {
   CheckStatus,
   DvCategory,
   DvStatus,
+  JevSourceType,
   JevStatus,
   JournalBook,
   LiquidationStatus,
@@ -136,9 +137,16 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
   adaNo?: string;
 
   status: DvStatus;
-  /** Set once the JEV generated from this DV has been posted. */
+  /** The entry prepared from this voucher. Set when the voucher is approved. */
   jevId?: Id;
-  jevNo?: string;
+  /**
+   * The entry's journal number, and the moment it was posted. Both are set
+   * when the Accountant posts, and not before: the number is drawn from the
+   * journal series at posting, so a prepared entry has none. These two fields
+   * are therefore also the voucher's own answer to "is it in the books".
+   */
+  jevNo?: string | null;
+  jevPostedAt?: string;
 
   attachmentCount: number;
   /** Document types the workflow requires before this DV may be submitted. */
@@ -210,23 +218,7 @@ export interface JournalEntryVoucher extends Partial<AuditStamps> {
   book: JournalBook;
 
   /** What generated this JEV. */
-  sourceType:
-    | 'DV'
-    | 'CHECK'
-    | 'ADA'
-    | 'RCI'
-    | 'RADAI'
-    | 'RCD'
-    | 'RCDISB'
-    | 'PAYROLL'
-    | 'LIQUIDATION'
-    | 'BANK_ADJUSTMENT'
-    | 'ADJUSTING'
-    | 'CLOSING'
-    | 'REVERSING'
-    | 'PRIOR_PERIOD'
-    | 'OPENING'
-    | 'MANUAL';
+  sourceType: JevSourceType;
   sourceId?: Id;
   referenceNo?: string;
 

@@ -51,6 +51,14 @@ const PAIRS = [
   // browser shows the officer what a file will load as, and the engine writes
   // it; a drifted copy would preview one chart and store another.
   { source: 'src/lib/chartOfAccounts.ts', target: 'functions/src/lib/chartOfAccounts.ts' },
+  // `jevNumbers` is one sentinel value and one function, and it is here for
+  // the same reason as the rest: the browser writes a prepared entry carrying
+  // the placeholder and the engine decides, at posting, whether a number still
+  // has to be issued. If the two copies ever disagreed about what "no number
+  // yet" looks like, entries would post into the General Ledger with the
+  // placeholder printed in the JEV No. column of every line, and nothing
+  // anywhere would refuse it.
+  { source: 'src/lib/jevNumbers.ts', target: 'functions/src/lib/jevNumbers.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

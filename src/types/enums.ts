@@ -148,6 +148,63 @@ export const JEV_STATUSES = [
 ] as const;
 export type JevStatus = (typeof JEV_STATUSES)[number];
 
+/**
+ * What raised a journal entry.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A LIST AND NOT A TYPE WRITTEN OUT IN PLACE
+ * ---------------------------------------------------------------------------
+ * CFMS has to answer one question about every entry: did a document raise it,
+ * or did the Accountant write it? Other Transactions shows the second kind and
+ * the Journal Entries Register shows both, so the answer decides which screen
+ * an entry appears on.
+ *
+ * A union typed into the interface cannot be read at run time, so each screen
+ * would have had to carry its own copy of the list - and the copy that was
+ * forgotten when a new source type arrived would have hidden entries from the
+ * screen that was supposed to show them, silently.
+ */
+export const JEV_SOURCE_TYPES = [
+  // Raised by a document somewhere else in CFMS.
+  'DV',
+  'CHECK',
+  'ADA',
+  'RCI',
+  'RADAI',
+  'RCD',
+  'RCDISB',
+  'PAYROLL',
+  'LIQUIDATION',
+  // Written in Accounting itself.
+  'BANK_ADJUSTMENT',
+  'ADJUSTING',
+  'CLOSING',
+  'REVERSING',
+  'PRIOR_PERIOD',
+  'OPENING',
+  'MANUAL',
+] as const;
+export type JevSourceType = (typeof JEV_SOURCE_TYPES)[number];
+
+export const JEV_SOURCE_LABELS: Record<JevSourceType, string> = {
+  DV: 'Disbursement Voucher',
+  CHECK: 'Check',
+  ADA: 'ADA',
+  RCI: 'Report of Checks Issued',
+  RADAI: 'Report of ADA Issued',
+  RCD: 'Report of Collections and Deposits',
+  RCDISB: 'Report of Cash Disbursement',
+  PAYROLL: 'Payroll',
+  LIQUIDATION: 'Liquidation Report',
+  BANK_ADJUSTMENT: 'Bank Adjustment',
+  ADJUSTING: 'Adjusting Entry',
+  CLOSING: 'Closing Entry',
+  REVERSING: 'Reversing Entry',
+  PRIOR_PERIOD: 'Prior Period Adjustment',
+  OPENING: 'Opening Balance',
+  MANUAL: 'Manual Entry',
+};
+
 export const CHECK_STATUSES = [
   'PREPARED',
   'FOR_SIGNATURE',

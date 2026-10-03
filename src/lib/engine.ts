@@ -261,7 +261,8 @@ export const engine = {
    * posting to the ledger are two distinct acts by two distinct roles.
    */
   approveDv: (p: { dvId: Id }) =>
-    call<typeof p, { dvId: Id; dvNo: string; jevId: Id; jevNo: string }>('approveDv', p),
+    // `jevNo` is null: the entry takes its journal number when it is POSTED.
+    call<typeof p, { dvId: Id; dvNo: string; jevId: Id; jevNo: string | null }>('approveDv', p),
 
   /**
    * The Accountant takes an approval back so the voucher can be corrected.

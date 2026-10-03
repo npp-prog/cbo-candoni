@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { isDirectEntry } from '@/lib/jevSources';
+import { UNNUMBERED_JEV, hasJevNumber } from '@/lib/jevNumbers';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, TextArea, DateInput, Select } from '@/components/ui/Field';
@@ -151,7 +153,10 @@ export default function JevDetail() {
       if (isNew) {
         // A manual JEV has no number until it is posted; the number is drawn
         // in the posting transaction so a discarded draft never consumes one.
-        const newId = await createDraft(COL.jevs, { ...payload, jevNo: '(unnumbered)' }, actor);
+        // The engine gives the entry its number when it is posted; the rules
+        // forbid the browser to touch `jevNo` at all, which is what keeps that
+        // true. The placeholder is the agreed word for "none yet".
+        const newId = await createDraft(COL.jevs, { ...payload, jevNo: UNNUMBERED_JEV }, actor);
         toast.success('Journal entry saved as a draft');
         navigate(`/accounting/others/${newId}`, { replace: true });
       } else {
@@ -182,12 +187,17 @@ export default function JevDetail() {
   return (
     <div>
       <PageHeader
-        title={existing?.jevNo && existing.jevNo !== '(unnumbered)' ? `JEV ${existing.jevNo}` : 'Journal entry (draft)'}
+        title={hasJevNumber(existing?.jevNo) ? `JEV ${existing?.jevNo}` : 'Journal entry (not yet posted)'}
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
         breadcrumbs={[
           { label: 'Accounting' },
-          { label: 'Other Transactions', to: '/accounting/others' },
-          { label: existing?.jevNo ?? 'New' },
+          // An entry raised by a voucher or a treasury report is not an "other
+          // transaction", and sending the reader back there from one would be
+          // sending them to a screen that no longer lists it.
+          existing && !isDirectEntry(existing.sourceType)
+            ? { label: 'Journal Entries Register', to: '/accounting/journal-entries' }
+            : { label: 'Other Transactions', to: '/accounting/others' },
+          { label: hasJevNumber(existing?.jevNo) ? (existing?.jevNo as string) : 'New' },
         ]}
         actions={
           <>

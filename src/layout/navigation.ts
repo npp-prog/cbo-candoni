@@ -169,6 +169,17 @@ export const NAVIGATION: NavItem[] = [
       // prior-period adjustments.
       { group: 'Journal Entry Transactions', label: 'Other Transactions', to: '/accounting/others' },
 
+      /*
+       * The book of every entry, after the four screens that make them.
+       *
+       * It is last in the group because it is the only one that is read rather
+       * than worked in: the four above are where an entry is raised, and this
+       * is where they are all found afterwards. An accountant asked "what
+       * entries were made in March" used to have to open each of the four and
+       * add them up.
+       */
+      { group: 'Journal Entry Transactions', label: 'Journal Entries Register', to: '/accounting/journal-entries' },
+
       // Everything below is looked at or set up, never posted. The heading is
       // not decoration: without it these would sit directly under the group
       // above and read as though they too journalized something.

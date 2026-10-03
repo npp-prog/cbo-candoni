@@ -12,16 +12,38 @@ const dv = (over: Partial<PayableVoucher> & { id: string }): PayableVoucher => (
 });
 
 describe('awaitingPayment', () => {
-  it('takes only approved vouchers', () => {
+  it('leaves out everything that has not been approved', () => {
     const rows = awaitingPayment([
       dv({ id: 'a', status: 'DRAFT' }),
       dv({ id: 'b', status: 'SUBMITTED' }),
       dv({ id: 'c', status: 'REVIEWED' }),
       dv({ id: 'd', status: 'APPROVED' }),
       dv({ id: 'e', status: 'CANCELLED' }),
+      dv({ id: 'f', status: 'RETURNED' }),
+      dv({ id: 'g', status: 'CLOSED' }),
     ]);
 
     expect(rows.map((r) => r.id)).toEqual(['d']);
+  });
+
+  /**
+   * The defect this test exists for: an Accountant posts the journal entry on
+   * the voucher - which patch 75 moved on to the voucher screen, so it now
+   * happens immediately after approval - and the voucher vanished from the
+   * Treasurer's queue. Nobody had paid it. It was simply gone, and the only
+   * way to find it again was to know its number.
+   */
+  it('keeps a voucher whose record says paid but which carries no instrument', () => {
+    const rows = awaitingPayment([dv({ id: 'posted-not-paid', status: 'PAID' })]);
+    expect(rows.map((r) => r.id)).toEqual(['posted-not-paid']);
+  });
+
+  it('drops a voucher marked paid that does carry a check', () => {
+    const rows = awaitingPayment([
+      dv({ id: 'really-paid', status: 'PAID', checkId: 'chk1' }),
+      dv({ id: 'unpaid' }),
+    ]);
+    expect(rows.map((r) => r.id)).toEqual(['unpaid']);
   });
 
   it('drops a voucher that already has a check', () => {
