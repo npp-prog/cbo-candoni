@@ -128,6 +128,34 @@ describe('the menu itself', () => {
    * These five are books the office WRITES IN. A document drawn off one of
    * them is a tab on it, however much it looks like a register from outside.
    */
+  /**
+   * A register is a book the office keeps. The queue of vouchers waiting to be
+   * paid is not one - it empties as the work is done - so it has its own
+   * heading rather than being filed among the books.
+   */
+  it('offers the Treasurer the queue of approved vouchers, outside the registers', () => {
+    const treasury = NAVIGATION.find((i) => i.to === '/treasury');
+    const queue = (treasury?.children ?? []).find((c) => c.to === '/treasury/disbursements');
+
+    expect(queue, 'Treasury has no Disbursements for Payment item').toBeTruthy();
+    expect(queue?.group).toBe('Payment');
+    expect(queue?.group).not.toBe('Registers');
+  });
+
+  /**
+   * Paying a voucher is a Treasury act. It is reachable under /treasury and
+   * nowhere under /accounting, because the Accountant approves a payment and
+   * the Treasurer makes one.
+   */
+  it('puts no payment queue in the Accounting menu', () => {
+    const accounting = NAVIGATION.find((i) => i.to === '/accounting');
+    for (const child of accounting?.children ?? []) {
+      expect(child.to).not.toContain('disbursements-for-payment');
+      expect(child.label.toLowerCase()).not.toContain('issue check');
+      expect(child.label.toLowerCase()).not.toContain('prepare ada');
+    }
+  });
+
   it('keeps the Treasury registers to the books the office writes in', () => {
     const treasury = NAVIGATION.find((i) => i.to === '/treasury');
     const registers = (treasury?.children ?? []).filter((c) => c.group === 'Registers');

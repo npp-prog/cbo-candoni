@@ -216,6 +216,19 @@ export const NAVIGATION: NavItem[] = [
     // the office that prepares it.
     children: [
       // ----------------------------------------------------------------
+      // Payment: the queue, not a book.
+      //
+      // Deliberately NOT one of the registers. A register is a book the office
+      // writes in and keeps; this is a list of work waiting to be done, and it
+      // empties as the work is done. It sits first because it is where the
+      // Treasurer's day starts - and because the act it carries, drawing a
+      // check against an approved voucher, used to sit on the Accountant's
+      // screen, where the separation between approving a payment and making
+      // one was not visible.
+      // ----------------------------------------------------------------
+      { group: 'Payment', label: 'Disbursements for Payment', to: '/treasury/disbursements' },
+
+      // ----------------------------------------------------------------
       // Registers: the four books the office keeps, and nothing else.
       //
       // Four, not eight. ADA Numbers, Primary Reports and the Claim Sheet were

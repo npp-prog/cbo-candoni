@@ -4,7 +4,7 @@ import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/component
 import { Button } from '@/components/ui/Button';
 import { Field, TextInput, TextArea, DateInput, AmountInput, Select } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/Badge';
-import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import {
@@ -20,12 +20,11 @@ import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useTaxCodes, useDisbursementVouchers, useAdaNumbers } from '@/data/queries';
+import { useTaxCodes, useDisbursementVouchers } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
 import { formatPeso, amountInWords } from '@/lib/money';
-import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '@/lib/clearing';
 import { formatLongDate, todayPh } from '@/lib/dates';
 import { checkDvCategory, checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
 import {
@@ -89,19 +88,6 @@ export default function DisbursementDetail() {
   const [confirm, setConfirm] = useState<
     null | 'submit' | 'approve' | 'return' | 'cancel' | 'check' | 'ada'
   >(null);
-
-  /**
-   * A reserved ADA number chosen for this voucher.
-   *
-   * Empty means draw the next one. Choosing a reservation is what stops it
-   * being left behind as a hole in the series that somebody has to explain.
-   */
-  const [adaReservationId, setAdaReservationId] = useState('');
-  const adaNumbers = useAdaNumbers(fiscalYear, fundCode);
-  const reservedAdaNumbers = useMemo(
-    () => adaNumbers.data.filter((r) => r.state === 'RESERVED'),
-    [adaNumbers.data],
-  );
 
   // --- Form state ----------------------------------------------------------
 
@@ -200,7 +186,6 @@ export default function DisbursementDetail() {
   const canSubmit = !isNew && editable && can('accounting', 'create');
   const canReview = !isNew && status === 'SUBMITTED' && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER');
   const canApprove = !isNew && ['REVIEWED', 'SUBMITTED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
-  const canPay = !isNew && ['APPROVED', 'PAID'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT');
 
   // --- Validation ----------------------------------------------------------
 
@@ -404,26 +389,17 @@ export default function DisbursementDetail() {
               </Button>
             )}
             {/*
-              Both are offered, to Treasury, once the voucher is approved and
-              nothing has been paid against it yet. Neither is offered on the
-              strength of a choice made earlier on the voucher, because that
-              choice is no longer made.
+              Issue check and Prepare ADA were here, and are not any more.
 
-              The ordinary way a payment gets recorded is the upload: the
-              Treasurer's RCI or RADAI arrives as a file and CFMS raises the
-              checks and advices from it. These two are for the payment that is
-              not on any file - one check drawn on its own, ahead of the report.
+              The Accountant approves a voucher; the Treasurer pays it. Two
+              officers, two acts, and the second is the one that moves money
+              out of the municipality. Offering the button on this screen made
+              drawing a check something done by whoever had the voucher open,
+              which is where that separation stopped being visible.
+
+              The voucher now appears on TREASURY > DISBURSEMENTS FOR PAYMENT
+              as soon as it is approved, and is paid from there.
             */}
-            {canPay && !existing?.checkId && !existing?.adaId && (
-              <>
-                <Button variant="success" onClick={() => setConfirm('check')}>
-                  Issue check
-                </Button>
-                <Button variant="success" onClick={() => setConfirm('ada')}>
-                  Prepare ADA
-                </Button>
-              </>
-            )}
             {!isNew && can('accounting', 'cancel') && status !== 'CANCELLED' && (
               <Button variant="danger" onClick={() => setConfirm('cancel')}>
                 Cancel
@@ -893,73 +869,6 @@ export default function DisbursementDetail() {
         }
       />
 
-      {confirm === 'check' && (
-        <IssueCheckDialog
-          dvId={id!}
-          fundCode={fundCode}
-          netAmount={netAmount}
-          payeeName={existing?.payeeName ?? ''}
-          defaultBankAccountId={bankAccountId}
-          onClose={() => setConfirm(null)}
-          onIssued={(checkNo) => {
-            setConfirm(null);
-            toast.success(`Check ${checkNo} issued`, 'It is now in the check register, ready for signature.');
-          }}
-        />
-      )}
-
-      <ConfirmDialog
-        open={confirm === 'ada'}
-        onCancel={() => {
-          setConfirm(null);
-          setAdaReservationId('');
-        }}
-        onConfirm={() =>
-          void run(async () => {
-            if (!bankAccountId) throw new Error('Select the bank account the ADA is drawn on.');
-            const result = await engine.issueAda({
-              dvId: id!,
-              bankAccountId,
-              adaDate: todayPh(),
-              reservationId: adaReservationId || undefined,
-            });
-            setAdaReservationId('');
-            toast.success(`ADA ${result.adaNo} prepared`, 'Submit it to the bank to have the account debited.');
-          }, 'Could not prepare the ADA')
-        }
-        loading={busy}
-        title="Prepare Advice to Debit Account"
-        confirmLabel="Prepare ADA"
-        variant="success"
-        message={
-          <>
-            <p>
-              An ADA for {formatPeso(netAmount)} in favour of {payeeName} will be prepared against
-              the selected bank account.
-            </p>
-            {reservedAdaNumbers.length > 0 && (
-              <Field
-                label="Use a reserved number"
-                className="mt-3"
-                hint="Leave this as the next number unless the office reserved one for this batch. Using a reservation is the only thing that stops it becoming a gap to explain later."
-              >
-                <Select
-                  value={adaReservationId}
-                  onChange={(e) => setAdaReservationId(e.target.value)}
-                >
-                  <option value="">Draw the next number</option>
-                  {reservedAdaNumbers.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.adaNo}
-                      {r.note ? ` — ${r.note}` : ''}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-          </>
-        }
-      />
     </div>
   );
 }
@@ -1122,133 +1031,5 @@ function DeductionsEditor({
         </div>
       )}
     </div>
-  );
-}
-
-function IssueCheckDialog({
-  dvId,
-  fundCode,
-  netAmount,
-  payeeName,
-  defaultBankAccountId,
-  onClose,
-  onIssued,
-}: {
-  dvId: string;
-  fundCode: string;
-  netAmount: number;
-  payeeName: string;
-  defaultBankAccountId: string | null;
-  onClose: () => void;
-  onIssued: (checkNo: string) => void;
-}) {
-  const toast = useToast();
-  const [bankAccountId, setBankAccountId] = useState(defaultBankAccountId);
-  const [checkNo, setCheckNo] = useState('');
-  const [checkDate, setCheckDate] = useState(todayPh());
-  const [acknowledgement, setAcknowledgement] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // The same rule the server decides with, so the warning and the refusal
-  // cannot disagree. See src/lib/clearing.ts.
-  const objection = clearingObjection(payeeName);
-  const acknowledged = acknowledgement.trim().length >= CLEARING_OVERRIDE_MIN_LENGTH;
-
-  const issue = async () => {
-    if (!bankAccountId || !checkNo.trim()) {
-      toast.error('Incomplete', 'A bank account and check number are required.');
-      return;
-    }
-    if (objection && !acknowledged) {
-      toast.error(
-        'The bank will return this check',
-        'Say in writing why the office is drawing it anyway.',
-      );
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await engine.issueCheck({
-        dvId,
-        bankAccountId,
-        checkNo: checkNo.trim(),
-        checkDate,
-        payeeAcknowledgement: objection ? acknowledgement.trim() : undefined,
-      });
-      onIssued(result.checkNo);
-    } catch (err) {
-      // The uniqueness constraint lives in the database, so a clash is
-      // reported from the server rather than guessed at here.
-      toast.error('The check was not issued', err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Issue a check"
-      description={`For ${formatPeso(netAmount)}`}
-      size="sm"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant={objection ? 'danger' : 'success'}
-            loading={busy}
-            disabled={Boolean(objection) && !acknowledged}
-            onClick={() => void issue()}
-          >
-            {objection ? 'Issue anyway' : 'Issue check'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {objection && (
-          <Alert tone="error" title="The clearing house will refuse this payee">
-            <p>
-              The payee is <strong>{payeeName}</strong>. {objection.message}
-            </p>
-            <Field
-              label="Why the office is drawing it anyway"
-              className="mt-3"
-              hint="At least fifteen characters. Recorded against the check as a critical audit event."
-            >
-              <TextInput
-                value={acknowledgement}
-                onChange={(e) => setAcknowledgement(e.target.value)}
-                placeholder="Approved by the Treasurer for petty cash replenishment"
-              />
-            </Field>
-          </Alert>
-        )}
-
-        <Field label="Bank account" required htmlFor="checkBank">
-          <BankAccountPicker id="checkBank" value={bankAccountId} fundCode={fundCode} onChange={setBankAccountId} />
-        </Field>
-
-        <Field
-          label="Check number"
-          required
-          htmlFor="checkNo"
-          hint="Must be unique within the bank account. The database enforces this, so a duplicate is refused outright."
-        >
-          <TextInput
-            id="checkNo"
-            value={checkNo}
-            onChange={(e) => setCheckNo(e.target.value)}
-            placeholder="0001234"
-            className="font-mono"
-          />
-        </Field>
-
-        <Field label="Check date" required htmlFor="checkDate">
-          <DateInput id="checkDate" value={checkDate} onChange={setCheckDate} />
-        </Field>
-      </div>
-    </Modal>
   );
 }

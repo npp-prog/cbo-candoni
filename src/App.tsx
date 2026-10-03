@@ -37,6 +37,7 @@ const DisbursementDetail = lazy(() => import('./pages/accounting/DisbursementDet
 const Jevs = lazy(() => import('./pages/accounting/Jevs'));
 const JevDetail = lazy(() => import('./pages/accounting/JevDetail'));
 const Checks = lazy(() => import('./pages/treasury/Checks'));
+const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'));
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
 const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
 const PaymentUploads = lazy(() => import('./pages/treasury/PaymentUploads'));
@@ -189,6 +190,9 @@ export default function App() {
               completed voucher. They live under /treasury and are guarded by the
               treasury module. The old /accounting paths redirect so that links in
               older documents, notifications and bookmarks still resolve. */}
+          {/* Approved vouchers waiting for the Treasurer. The act of paying
+              belongs here, not on the Accounting voucher screen. */}
+          <Route path="/treasury/disbursements" element={<Guard module="treasury"><TreasuryDisbursements /></Guard>} />
           <Route path="/treasury/checks" element={<Guard module="treasury"><Checks /></Guard>} />
           <Route path="/treasury/checks/:id" element={<Guard module="treasury"><Checks /></Guard>} />
           <Route path="/treasury/ada" element={<Guard module="treasury"><AdaPage /></Guard>} />

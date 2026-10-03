@@ -378,6 +378,45 @@ if (payeesRule && writersRule && existsSync(payeesLibPath)) {
   }
 }
 
+// --- 12. Paying a voucher is a Treasury act ---------------------------------
+//
+// The Accountant approves a voucher; the Treasurer pays it. Two officers, two
+// acts, and the second is the one that moves money out of the municipality.
+//
+// CFMS used to offer Issue check and Prepare ADA on the Accounting voucher
+// screen, which made drawing a check something done by whoever had the voucher
+// open. That is the point in the chain where the separation stops being
+// visible, and it is the kind of thing that creeps back one convenient button
+// at a time. So no screen under src/pages/accounting may call either engine
+// operation.
+
+const accountingPages = resolve(root, 'src/pages/accounting');
+
+if (existsSync(accountingPages)) {
+  const offenders = [];
+
+  for (const entry of readdirSync(accountingPages, { withFileTypes: true })) {
+    if (!entry.isFile() || !/\.tsx?$/.test(entry.name) || entry.name.endsWith('.test.ts')) continue;
+    const source = readFileSync(resolve(accountingPages, entry.name), 'utf8');
+    for (const op of ['issueCheck', 'issueAda']) {
+      if (new RegExp(`engine\\.${op}\\s*\\(`).test(source)) {
+        offenders.push(`src/pages/accounting/${entry.name} calls engine.${op}`);
+      }
+    }
+  }
+
+  if (offenders.length > 0) {
+    failures.push(
+      `Paying a voucher has moved back into Accounting: ${offenders.join('; ')}. The Accountant ` +
+        'approves a payment and the Treasurer makes one. Drawing a check belongs on ' +
+        'TREASURY > DISBURSEMENTS FOR PAYMENT, which is the screen that keeps those two acts ' +
+        'in two different hands.',
+    );
+  } else {
+    console.log('payments: no Accounting screen draws a check or an advice');
+  }
+}
+
 // --- 11. The password rule on the screen is the one the server enforces -----
 //
 // The Add a user dialog lights its button once the temporary password is long
