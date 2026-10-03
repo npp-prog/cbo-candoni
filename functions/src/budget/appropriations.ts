@@ -12,7 +12,7 @@ import {
   type BudgetKey,
   type BudgetBalanceData,
 } from '../lib/budget';
-import { checkAllotmentAgainstAppropriation, checkAllotmentWithdrawal } from '../lib/rules';
+import { checkAllotmentWithdrawal } from '../lib/rules';
 
 const BUDGET_APPROVERS: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER'];
 

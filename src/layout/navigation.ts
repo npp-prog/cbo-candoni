@@ -216,19 +216,6 @@ export const NAVIGATION: NavItem[] = [
     // the office that prepares it.
     children: [
       // ----------------------------------------------------------------
-      // Payment: the queue, not a book.
-      //
-      // Deliberately NOT one of the registers. A register is a book the office
-      // writes in and keeps; this is a list of work waiting to be done, and it
-      // empties as the work is done. It sits first because it is where the
-      // Treasurer's day starts - and because the act it carries, drawing a
-      // check against an approved voucher, used to sit on the Accountant's
-      // screen, where the separation between approving a payment and making
-      // one was not visible.
-      // ----------------------------------------------------------------
-      { group: 'Payment', label: 'Disbursements for Payment', to: '/treasury/disbursements' },
-
-      // ----------------------------------------------------------------
       // Registers: the four books the office keeps, and nothing else.
       //
       // Four, not eight. ADA Numbers, Primary Reports and the Claim Sheet were
@@ -247,8 +234,18 @@ export const NAVIGATION: NavItem[] = [
       //   Summary of Collections           |
       //   Summary of RCDs (Transmittal)  /
       // ----------------------------------------------------------------
-      { group: 'Registers', label: 'Checks', to: '/treasury/checks' },
-      { group: 'Registers', label: 'ADA', to: '/treasury/ada' },
+      // Checks and ADA are ONE item, and it opens on the payment queue.
+      //
+      // They were two. A check and an advice to debit are two ways of doing
+      // the identical thing - paying an approved voucher out of a bank account
+      // - and which one is used is decided per payment, on the day. Two menu
+      // items asked the clerk to choose the instrument before opening the
+      // screen, which is the one question they cannot answer yet.
+      //
+      // So the item opens on Disbursements for Payment: the vouchers waiting.
+      // The instrument is chosen there, on the row, and both registers and
+      // both reports are tabs behind it.
+      { group: 'Registers', label: 'Checks and ADA', to: '/treasury/disbursements' },
       // Collections and deposits are one item: the receipt and the deposit slip
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.

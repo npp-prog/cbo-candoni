@@ -2,7 +2,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
-import { recordTransition, auditInTransaction } from '../lib/audit';
+import { recordTransition } from '../lib/audit';
 import { ledgerBalance } from '../lib/ledger';
 import { computeReconciliation, checkReconciliationFinalizable } from '../lib/rules';
 import { periodOf } from '../lib/period';

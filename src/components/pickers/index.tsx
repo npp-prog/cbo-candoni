@@ -287,7 +287,18 @@ export function BankAccountPicker({
         label: `${b.bankName}${b.branch ? ` - ${b.branch}` : ''}`,
         // The account number is shown masked; a clerk needs the last digits to
         // tell two accounts apart, not the whole number on screen all day.
-        detail: `${maskAccount(b.accountNumber)} - ${b.accountName} - ${b.fundCode}`,
+        //
+        // The General Ledger account is shown because WITHOUT IT NOTHING CAN
+        // BE DRAWN ON THIS ACCOUNT - no check, no advice, no report - and
+        // until now the only way to discover that was to fill in a whole form
+        // and be refused at the end of it. An account that is not mapped says
+        // so here, where the account is chosen.
+        detail: [
+          maskAccount(b.accountNumber),
+          b.accountName,
+          b.fundCode,
+          b.glAccountCode ? `GL ${b.glAccountCode}` : 'NO GENERAL LEDGER ACCOUNT',
+        ].join(' - '),
       })),
     [data],
   );

@@ -22,6 +22,7 @@ import {
   useAda,
   useCollections,
   usePayrolls,
+  useBankAccounts,
 } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
@@ -368,7 +369,25 @@ function PrepareReport({
 
   const [reportDate, setReportDate] = useState(todayPh());
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
-  const [bankAccount, setBankAccount] = useState<{ glAccountCode?: string; accountName?: string; bankName?: string; accountNumber?: string } | null>(null);
+
+  /**
+   * The chosen account, LOOKED UP rather than remembered.
+   *
+   * This was a second piece of state that nothing ever wrote to. It was
+   * declared, read in two places - the guard below, and the cash line of the
+   * proposed entry - and never once set. So it was always null: the report
+   * refused to save with "this bank account has no General Ledger account"
+   * however carefully the account had been set up, and the entry it proposed
+   * had no cash account either.
+   *
+   * Derived from the id now. There is one source for what the account is, and
+   * it is the master record.
+   */
+  const banks = useBankAccounts(fundCode);
+  const bankAccount = useMemo(
+    () => banks.data.find((b) => b.id === bankAccountId) ?? null,
+    [banks.data, bankAccountId],
+  );
   const [officerId, setOfficerId] = useState<string | null>(null);
   const [officerName, setOfficerName] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -581,9 +600,12 @@ function PrepareReport({
       return;
     }
     if (needsBank && !bankAccount?.glAccountCode) {
+      // Name the account and the field. "Set it under Master Data - Banks"
+      // was true and useless: the screen there is headed Bank Accounts, there
+      // may be several of them, and nothing said which one was missing what.
       toast.error(
-        'Bank account not mapped',
-        'This bank account has no General Ledger account recorded against it. Set it under Master Data - Banks first.',
+        'This bank account has no General Ledger account',
+        `${bankAccount?.bankName ?? 'The selected account'} ${bankAccount?.accountNumber ?? ''} needs its "General Ledger account" field filled in - the Cash in Bank code it posts to, such as 10102020. Master Data > Banks, open this account, fill that field, save. The entry credits that account, so the report cannot be prepared without it.`,
       );
       return;
     }

@@ -20,7 +20,7 @@ import {
   type TreasuryImportRow,
 } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { CHECK_TABS, ADA_TABS } from './sections';
+import { PAYMENT_TABS } from './sections';
 import { parsePaymentFile, type ParsedRow } from './parsePayments';
 
 /**
@@ -153,7 +153,7 @@ export default function PaymentUploads({ importType }: { importType: 'RCI' | 'RA
         breadcrumbs={[{ label: 'Treasury' }, { label: isRci ? 'Checks' : 'ADA' }, { label: 'Upload' }]}
       />
 
-      <SectionTabs tabs={isRci ? CHECK_TABS : ADA_TABS} />
+      <SectionTabs tabs={PAYMENT_TABS} />
 
       {held.length > 0 && (
         <Alert tone="warning" title="Rows waiting to be dealt with" className="mb-4">

@@ -20,7 +20,7 @@ import {
   type AdaSeriesGap,
 } from '@/types/adaNumbers';
 import { fundLabel } from '../budget/Obligations';
-import { ADA_TABS } from './sections';
+import { PAYMENT_TABS } from './sections';
 
 /**
  * The ADA number series, and every hole in it.
@@ -199,7 +199,7 @@ export default function AdaNumbers() {
         }
       />
 
-      <SectionTabs tabs={ADA_TABS} />
+      <SectionTabs tabs={PAYMENT_TABS} />
 
       {unexplained.length > 0 ? (
         <Alert

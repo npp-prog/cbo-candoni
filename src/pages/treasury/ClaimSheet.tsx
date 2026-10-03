@@ -10,7 +10,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { toNumber } from '@/lib/serials';
 import { fundLabel } from '../budget/Obligations';
-import { CHECK_TABS, CHECK_CRUMBS } from './sections';
+import { PAYMENT_TABS, PAYMENT_CRUMBS } from './sections';
 
 /**
  * Check Release / Claim Sheet.
@@ -80,8 +80,8 @@ export default function ClaimSheet() {
         fundLabel: fundLabel(fundCode),
         periodLabel: `Checks dated ${formatShortDate(from)} to ${formatShortDate(to)}`,
       }}
-      breadcrumbs={[...CHECK_CRUMBS, { label: 'Claim Sheet' }]}
-      tabs={<SectionTabs tabs={CHECK_TABS} />}
+      breadcrumbs={[...PAYMENT_CRUMBS, { label: 'Claim Sheet' }]}
+      tabs={<SectionTabs tabs={PAYMENT_TABS} />}
       filters={
         <>
           <Field label="Bank account" className="w-64">

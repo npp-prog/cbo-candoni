@@ -348,7 +348,6 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
   }
 
   const adaConfig = await loadNumberingConfig('ADA');
-  const adaJevConfig = await loadNumberingConfig('JEV');
 
   return db.runTransaction(async (tx) => {
     const dvRef = db.collection(COL.disbursementVouchers).doc(dvId);
@@ -441,15 +440,26 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       month: periodOf(adaDate),
     };
 
-    const [issuedAdaNo, issuedAdaJevNo] = await issueNumbers(tx, [
+    /*
+     * ONE number, not two.
+     *
+     * This drew a JEV number as well and then threw it away - nothing in this
+     * function ever read it. Every ADA issued therefore burned a journal entry
+     * number and left a hole in the series that nobody could account for.
+     *
+     * There is no journal entry here to number. An ADA moves no cash on its
+     * own; the entry that credits the bank is raised from the Treasurer's
+     * Report of ADA Issued, which is where the ADA Disbursements Journal comes
+     * from. Drawing a number here was left over from an earlier design in
+     * which it did.
+     */
+    const [issuedAdaNo] = await issueNumbers(tx, [
       // Skipped when a reserved number is being consumed: that number was
       // already drawn from this counter when it was reserved.
       { cfg: adaConfig, parts: adaParts, skip: Boolean(reservationId) },
-      { cfg: adaJevConfig, parts: adaParts },
     ]);
 
     const adaNo = reservedAdaNo ?? (issuedAdaNo as string);
-    const adaJevNo = issuedAdaJevNo as string;
 
     const adaRef = db.collection(COL.ada).doc();
     tx.create(adaRef, {

@@ -20,7 +20,7 @@ import { formatShortDate, staleDate, todayPh } from '@/lib/dates';
 import { CHECK_STATUSES, STATUS_LABELS } from '@/types/enums';
 import type { Check } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
-import { CHECK_TABS } from './sections';
+import { PAYMENT_TABS } from './sections';
 
 /**
  * The check register.
@@ -182,7 +182,7 @@ export default function Checks() {
         breadcrumbs={[{ label: 'Treasury' }, { label: 'Checks' }]}
       />
 
-      <SectionTabs tabs={CHECK_TABS} />
+      <SectionTabs tabs={PAYMENT_TABS} />
 
       {nearStale.length > 0 && (
         <Alert tone="warning" title="Stale checks" className="mb-4">

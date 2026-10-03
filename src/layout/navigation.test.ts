@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { NAVIGATION, groupForPath, toBlocks, type NavChild } from './navigation';
 import {
-  ADA_TABS,
-  CHECK_TABS,
+  PAYMENT_TABS,
   COLLECTION_TABS,
   PAYROLL_TABS,
 } from '@/pages/treasury/sections';
@@ -70,7 +69,7 @@ describe('groupForPath', () => {
    * item folded out of sight.
    */
   it('prefers the longest matching item when two both match', () => {
-    expect(groupForPath('/treasury/checks')?.group).toBe('Registers');
+    expect(groupForPath('/treasury/disbursements')?.group).toBe('Registers');
     expect(groupForPath('/treasury/checks/rci')?.group).toBe('Treasury Reports');
   });
 
@@ -129,17 +128,21 @@ describe('the menu itself', () => {
    * them is a tab on it, however much it looks like a register from outside.
    */
   /**
-   * A register is a book the office keeps. The queue of vouchers waiting to be
-   * paid is not one - it empties as the work is done - so it has its own
-   * heading rather than being filed among the books.
+   * A check and an advice to debit are two ways of doing one thing, and which
+   * is used is decided per payment, on the day. One menu item, opening on the
+   * vouchers waiting to be paid - not two, asking the clerk to choose the
+   * instrument before they have seen the voucher.
    */
-  it('offers the Treasurer the queue of approved vouchers, outside the registers', () => {
+  it('offers Checks and ADA as one item, opening on the payment queue', () => {
     const treasury = NAVIGATION.find((i) => i.to === '/treasury');
-    const queue = (treasury?.children ?? []).find((c) => c.to === '/treasury/disbursements');
+    const children = treasury?.children ?? [];
 
-    expect(queue, 'Treasury has no Disbursements for Payment item').toBeTruthy();
-    expect(queue?.group).toBe('Payment');
-    expect(queue?.group).not.toBe('Registers');
+    const section = children.find((c) => c.label === 'Checks and ADA');
+    expect(section, 'Treasury has no Checks and ADA item').toBeTruthy();
+    expect(section?.to).toBe('/treasury/disbursements');
+
+    expect(children.find((c) => c.label === 'Checks')).toBeUndefined();
+    expect(children.find((c) => c.label === 'ADA')).toBeUndefined();
   });
 
   /**
@@ -160,8 +163,7 @@ describe('the menu itself', () => {
     const treasury = NAVIGATION.find((i) => i.to === '/treasury');
     const registers = (treasury?.children ?? []).filter((c) => c.group === 'Registers');
     expect(registers.map((r) => r.label)).toEqual([
-      'Checks',
-      'ADA',
+      'Checks and ADA',
       'Collections and Deposits',
       'Payroll',
       'Accountable Forms',
@@ -200,7 +202,7 @@ describe('the menu itself', () => {
    */
   it('does not list a tab screen in the sidebar as well, except the submitted reports', () => {
     const tabTargets = new Set(
-      [...COLLECTION_TABS, ...CHECK_TABS, ...ADA_TABS, ...PAYROLL_TABS].map((t) => t.to),
+      [...COLLECTION_TABS, ...PAYMENT_TABS, ...PAYROLL_TABS].map((t) => t.to),
     );
     const submitted = new Set([
       '/treasury/collections/rcd',
@@ -212,8 +214,9 @@ describe('the menu itself', () => {
     ]);
     // The register each strip hangs off is itself a sidebar item, by design.
     const registers = new Set([
-      '/treasury/checks',
-      '/treasury/ada',
+      // Checks and ADA is one item and it opens on the payment queue, so the
+      // queue is both the sidebar target and the first tab of its own strip.
+      '/treasury/disbursements',
       '/treasury/collections',
       '/treasury/payroll',
     ]);

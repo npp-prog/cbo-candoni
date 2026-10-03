@@ -1,13 +1,11 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
-import type { Transaction } from 'firebase-admin/firestore';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import {
   requireCaller,
   notFound,
   invalid,
   assertFundInScope,
-  type Caller,
   type Role,
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';

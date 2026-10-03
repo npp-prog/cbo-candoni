@@ -35,23 +35,37 @@ export const COLLECTION_TABS = [
   { label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
 ];
 
-export const CHECK_TABS = [
+/**
+ * Checks and ADA are ONE section, with the payment queue at the head of it.
+ *
+ * They were two menu items, and they should not have been. A check and an
+ * advice to debit are two ways of doing the identical thing - paying an
+ * approved voucher out of a bank account - and which one is used is decided
+ * per payment, on the day, by the Treasurer. Two items asked the clerk to pick
+ * the instrument before opening the screen, which is the one question they
+ * cannot answer yet.
+ *
+ * So the section opens on DISBURSEMENTS FOR PAYMENT - the vouchers waiting -
+ * and the instrument is chosen there, on the row. The registers and the
+ * reports for both instruments are tabs behind it, in the order the work runs:
+ * what is owed, what was drawn, what the series looks like, who is being paid,
+ * and then the reports that go to Accounting.
+ */
+export const PAYMENT_TABS = [
+  { label: 'Disbursements for Payment', to: '/treasury/disbursements' },
   { label: 'Checks', to: '/treasury/checks' },
-  { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
-  // The claim sheet is the list of who is being paid out of the checks drawn,
-  // so it reads with the check register rather than beside it.
-  { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
-  // Drawn out of the same register and submitted to Accounting at year end,
-  // so it belongs on the check book's strip as well as in Treasury Reports.
-  { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
-];
-
-export const ADA_TABS = [
   { label: 'ADA', to: '/treasury/ada' },
   // The number series and every hole in it. It is the same book as the ADA
   // register read a different way, so it is a tab on it and not a menu item.
   { label: 'ADA Numbers', to: '/treasury/ada/numbers' },
+  // The claim sheet is the list of who is being paid out of the checks drawn,
+  // so it reads with the check register rather than beside it.
+  { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
+  { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
   { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
+  // Drawn out of the same register and submitted to Accounting at year end,
+  // so it belongs on this strip as well as in Treasury Reports.
+  { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
 ];
 
 export const PAYROLL_TABS = [
@@ -60,8 +74,8 @@ export const PAYROLL_TABS = [
 ];
 
 export const SECTION_TABS: Record<TreasuryReportType, Array<{ label: string; to: string }>> = {
-  RCI: CHECK_TABS,
-  RADAI: ADA_TABS,
+  RCI: PAYMENT_TABS,
+  RADAI: PAYMENT_TABS,
   RCD: COLLECTION_TABS,
   RCDISB: PAYROLL_TABS,
 };
@@ -72,5 +86,8 @@ export const COLLECTION_CRUMBS = [
   { label: 'Collections and Deposits', to: '/treasury/collections' },
 ];
 
-/** The same, for the check section. */
-export const CHECK_CRUMBS = [{ label: 'Treasury' }, { label: 'Checks', to: '/treasury/checks' }];
+/** The same, for the checks-and-ADA section. */
+export const PAYMENT_CRUMBS = [
+  { label: 'Treasury' },
+  { label: 'Checks and ADA', to: '/treasury/disbursements' },
+];

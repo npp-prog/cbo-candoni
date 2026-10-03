@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
@@ -13,6 +14,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import type { DisbursementVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
+import { PAYMENT_TABS } from './sections';
 
 /**
  * Vouchers approved by the Accountant and waiting for the Treasurer.
@@ -146,8 +148,10 @@ export default function TreasuryDisbursements() {
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear} - ${rows.length} voucher${
           rows.length === 1 ? '' : 's'
         }, ${formatPeso(total)} payable`}
-        breadcrumbs={[{ label: 'Treasury' }, { label: 'Disbursements' }]}
+        breadcrumbs={[{ label: 'Treasury' }, { label: 'Checks and ADA' }]}
       />
+
+      <SectionTabs tabs={PAYMENT_TABS} />
 
       {!canPay && (
         <Alert tone="warning" className="mb-4">

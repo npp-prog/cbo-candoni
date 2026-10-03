@@ -2,7 +2,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import type { Transaction } from 'firebase-admin/firestore';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, invalid, notFound, reporting, type Caller, type Role } from '../lib/context';
+import { requireCaller, invalid, notFound, reporting, type Role } from '../lib/context';
 import { recordTransition, auditInTransaction } from '../lib/audit';
 import { issueNumber, loadNumberingConfig } from '../lib/numbering';
 import {

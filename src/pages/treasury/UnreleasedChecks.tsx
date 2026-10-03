@@ -9,7 +9,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildUnreleasedChecks, totalUnreleased, type SucRow } from './unreleasedChecksReport';
-import { CHECK_TABS } from './sections';
+import { PAYMENT_TABS } from './sections';
 import { fundLabel } from '@/pages/budget/Obligations';
 
 /**
@@ -84,7 +84,7 @@ export default function UnreleasedChecks() {
         preparedBy: '',
       }}
       breadcrumbs={[{ label: 'Treasury' }, { label: 'Checks', to: '/treasury/checks' }]}
-      tabs={<SectionTabs tabs={CHECK_TABS} />}
+      tabs={<SectionTabs tabs={PAYMENT_TABS} />}
       rows={exportRows}
       exportColumns={exportColumns}
       filters={

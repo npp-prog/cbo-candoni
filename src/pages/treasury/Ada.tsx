@@ -20,7 +20,7 @@ import { formatShortDate, todayPh } from '@/lib/dates';
 import { ADA_STATUSES, STATUS_LABELS } from '@/types/enums';
 import type { Ada as AdaRecord } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
-import { ADA_TABS } from './sections';
+import { PAYMENT_TABS } from './sections';
 
 /**
  * Advice to Debit Account.
@@ -144,7 +144,7 @@ export default function Ada() {
         breadcrumbs={[{ label: 'Treasury' }, { label: 'ADA' }]}
       />
 
-      <SectionTabs tabs={ADA_TABS} />
+      <SectionTabs tabs={PAYMENT_TABS} />
 
       <DataTable
         rows={rows}
