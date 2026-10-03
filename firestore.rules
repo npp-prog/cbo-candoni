@@ -113,6 +113,28 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    /**
+     * Has a CERTIFIED treasury report claimed this document?
+     *
+     * `treasuryReportId` is stamped by certifyTreasuryReport, not when the
+     * report is drafted - a draft is still being changed, so being on one is
+     * not being reported.
+     *
+     * This is the gate on releasing a check and on sending an advice to the
+     * bank. Until Accounting has the report, the General Ledger has never
+     * heard of the payment, and a check released before that is the shape of
+     * the loss that only turns up at the bank reconciliation weeks later.
+     *
+     * The same rule is stated for the screen in src/lib/releaseControl.ts, so
+     * the button and the refusal cannot disagree.
+     */
+    function isOnCertifiedReport() {
+      return 'treasuryReportId' in resource.data
+        && resource.data.treasuryReportId != null
+        && resource.data.treasuryReportId is string
+        && resource.data.treasuryReportId.size() > 0;
+    }
+
     function onlyChanged(allowedFields) {
       return changedKeys().hasOnly(allowedFields);
     }
@@ -409,7 +431,9 @@ service cloud.firestore {
       allow update: if signedIn()
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && onlyChanged(['status', 'dateReleased', 'releasedToName', 'releasedToPosition', 'updatedBy'])
-        && request.resource.data.status in ['FOR_SIGNATURE', 'SIGNED', 'RELEASED'];
+        && request.resource.data.status in ['FOR_SIGNATURE', 'SIGNED', 'RELEASED']
+        // A check is not handed over until it is on a certified RCI.
+        && (request.resource.data.status != 'RELEASED' || isOnCertifiedReport());
       allow delete: if false;
     }
 
@@ -419,7 +443,9 @@ service cloud.firestore {
       allow update: if signedIn()
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && onlyChanged(['status', 'dateSubmittedToBank', 'bankReferenceNo', 'updatedBy'])
-        && request.resource.data.status in ['PREPARED', 'SUBMITTED'];
+        && request.resource.data.status in ['PREPARED', 'SUBMITTED']
+        // An advice does not go to the bank until it is on a certified RADAI.
+        && (request.resource.data.status != 'SUBMITTED' || isOnCertifiedReport());
       allow delete: if false;
     }
 

@@ -18,6 +18,7 @@ import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, staleDate, todayPh } from '@/lib/dates';
 import { CHECK_STATUSES, STATUS_LABELS } from '@/types/enums';
+import { canReleaseCheck, canUndoOutright } from '@/lib/releaseControl';
 import type { Check } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
 import { PAYMENT_TABS } from './sections';
@@ -58,6 +59,8 @@ export default function Checks() {
     .reduce((s, c) => s + c.netAmount, 0);
 
   const canManage = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT');
+
+  const releasable = (c: Check) => canReleaseCheck(c);
 
   const advance = async (check: Check, next: 'FOR_SIGNATURE' | 'SIGNED' | 'RELEASED', extra?: Record<string, unknown>) => {
     setBusy(true);
@@ -160,13 +163,28 @@ export default function Checks() {
             </Button>
           )}
           {canManage && c.status === 'SIGNED' && (
-            <Button size="sm" variant="primary" onClick={() => setReleasing(c)}>
-              Release
-            </Button>
+            /*
+              Offered only once the check is on a certified RCI. The security
+              rules refuse the release otherwise, and a button that fails when
+              pressed teaches people to press it twice - so the reason is said
+              here instead, before anybody reaches for it.
+            */
+            (() => {
+              const gate = releasable(c);
+              return gate.ok ? (
+                <Button size="sm" variant="primary" onClick={() => setReleasing(c)}>
+                  Release
+                </Button>
+              ) : (
+                <span className="text-2xs text-amber-700" title={gate.message}>
+                  Not on a certified RCI
+                </span>
+              );
+            })()
           )}
           {canManage && can('accounting', 'cancel') && !['CLEARED', 'CANCELLED'].includes(c.status) && (
             <Button size="sm" variant="ghost" onClick={() => setCancelling(c)}>
-              Cancel
+              {canUndoOutright(c) ? 'Undo' : 'Cancel'}
             </Button>
           )}
         </div>
@@ -260,16 +278,31 @@ export default function Checks() {
             .finally(() => setBusy(false));
         }}
         loading={busy}
-        title={`Cancel check ${cancelling?.checkNo ?? ''}`}
-        confirmLabel="Cancel check"
+        title={
+          cancelling && canUndoOutright(cancelling)
+            ? `Undo check ${cancelling.checkNo}`
+            : `Cancel check ${cancelling?.checkNo ?? ''}`
+        }
+        confirmLabel={cancelling && canUndoOutright(cancelling) ? 'Undo' : 'Cancel check'}
         variant="danger"
         requireReason
         message={
-          <p>
-            The check is kept with a status of Cancelled, and the disbursement voucher becomes
-            available for a replacement check. A check that has already cleared the bank cannot be
-            cancelled.
-          </p>
+          <>
+            <p>
+              THIS IS HOW A CHECK DRAWN BY MISTAKE IS PUT RIGHT. The voucher goes straight back on
+              to Disbursements for Payment and a new check can be drawn against it.
+            </p>
+            <p className="mt-2">
+              The check itself is kept, marked Cancelled, with the reason on it. The number is
+              never returned to the pool: a serial that simply disappeared would look exactly like
+              a check drawn and never reported, which is the one thing an auditor cannot let pass.
+              &ldquo;Issued in error&rdquo; is a perfectly good reason to write.
+            </p>
+            <p className="mt-2">
+              A check that has already cleared the bank cannot be cancelled - record the refund and
+              an adjusting entry instead.
+            </p>
+          </>
         }
       />
     </div>

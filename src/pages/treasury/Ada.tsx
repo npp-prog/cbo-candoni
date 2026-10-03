@@ -18,6 +18,7 @@ import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { ADA_STATUSES, STATUS_LABELS } from '@/types/enums';
+import { canSubmitAda, canUndoOutright } from '@/lib/releaseControl';
 import type { Ada as AdaRecord } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
 import { PAYMENT_TABS } from './sections';
@@ -121,14 +122,28 @@ export default function Ada() {
       cell: (a) => (
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusBadge status={a.status} />
-          {canManage && a.status === 'PREPARED' && (
-            <Button size="sm" variant="primary" onClick={() => setSubmitting(a)}>
-              Submit to bank
-            </Button>
-          )}
+          {canManage &&
+            a.status === 'PREPARED' &&
+            /*
+              Offered only once the advice is on a certified RADAI. The
+              security rules refuse the submission otherwise; saying why here
+              is better than a button that fails when it is pressed.
+            */
+            (() => {
+              const gate = canSubmitAda(a);
+              return gate.ok ? (
+                <Button size="sm" variant="primary" onClick={() => setSubmitting(a)}>
+                  Submit to bank
+                </Button>
+              ) : (
+                <span className="text-2xs text-amber-700" title={gate.message}>
+                  Not on a certified RADAI
+                </span>
+              );
+            })()}
           {canManage && can('accounting', 'cancel') && !['DEBITED', 'CANCELLED'].includes(a.status) && (
             <Button size="sm" variant="ghost" onClick={() => setCancelling(a)}>
-              Cancel
+              {canUndoOutright(a) ? 'Undo' : 'Cancel'}
             </Button>
           )}
         </div>
@@ -223,15 +238,30 @@ export default function Ada() {
             .finally(() => setBusy(false));
         }}
         loading={busy}
-        title={`Cancel ADA ${cancelling?.adaNo ?? ''}`}
-        confirmLabel="Cancel ADA"
+        title={
+          cancelling && canUndoOutright(cancelling)
+            ? `Undo ADA ${cancelling.adaNo}`
+            : `Cancel ADA ${cancelling?.adaNo ?? ''}`
+        }
+        confirmLabel={cancelling && canUndoOutright(cancelling) ? 'Undo' : 'Cancel ADA'}
         variant="danger"
         requireReason
         message={
-          <p>
-            An ADA that the bank has already debited cannot be cancelled - record the refund and
-            an adjusting entry instead.
-          </p>
+          <>
+            <p>
+              THIS IS HOW AN ADVICE PREPARED BY MISTAKE IS PUT RIGHT. The voucher goes straight
+              back on to Disbursements for Payment and can be paid again, by advice or by check.
+            </p>
+            <p className="mt-2">
+              The advice is kept, marked Cancelled, with the reason on it, and its number is not
+              returned to the pool. &ldquo;Prepared in error&rdquo; is a perfectly good reason to
+              write.
+            </p>
+            <p className="mt-2">
+              An ADA that the bank has already debited cannot be cancelled - record the refund and
+              an adjusting entry instead.
+            </p>
+          </>
         }
       />
     </div>
