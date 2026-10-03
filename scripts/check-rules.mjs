@@ -16,7 +16,7 @@
  *   node scripts/check-rules.mjs
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -288,6 +288,37 @@ if (leftovers.length > 0) {
 
 if (collisions.length === 0) {
   console.log('file names: no two differ only in case');
+}
+
+// --- 8. Colour is reserved for things that need attention -------------------
+//
+// The `info` tone was a blue panel, and it was carrying explanations of how
+// the accounting works. Explanation does not need colour, and spending colour
+// on it is what made the real warnings easy to scroll past. The tone is grey
+// now, and this check keeps it grey: a guard is cheaper than noticing a year
+// later that the blue crept back one screen at a time.
+
+const layoutPath = resolve(root, 'src/components/ui/Layout.tsx');
+
+if (existsSync(layoutPath)) {
+  const layout = readFileSync(layoutPath, 'utf8');
+  const infoStyle = layout.match(/^\s*info:\s*'([^']*)'/m);
+
+  if (!infoStyle) {
+    failures.push(
+      'src/components/ui/Layout.tsx no longer declares a style for the `info` alert tone. ' +
+        'If the tone was removed deliberately, remove this check with it.',
+    );
+  } else if (/brand-|blue-|sky-|indigo-/.test(infoStyle[1])) {
+    failures.push(
+      `The \`info\` alert tone is blue again (${infoStyle[1]}). It is meant to be grey: that ` +
+        'tone states a fact about the data - "nothing on this registry yet", "3 accounts in ' +
+        'the chart" - and a fact is not a warning. Amber, rose and green are the tones that ' +
+        'carry colour, and they only work while colour is rare.',
+    );
+  } else {
+    console.log('alert tones: `info` is still grey, colour is still for attention');
+  }
 }
 
 // ---------------------------------------------------------------------------

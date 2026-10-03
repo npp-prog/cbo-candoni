@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { ref as storageRef, getDownloadURL } from 'firebase/storage';
-import { PageHeader, Alert } from '@/components/ui/Layout';
+import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Field';
@@ -147,13 +147,6 @@ export default function Documents() {
         subtitle={`Supporting documents - ${fundLabel(fundCode)}, fiscal year ${fiscalYear}`}
         breadcrumbs={[{ label: 'Documents' }]}
       />
-
-      <Alert tone="info" className="mb-4">
-        Documents are attached to the transaction they support, from the voucher or obligation
-        screen. Attachments are never overwritten: uploading a replacement creates a new version
-        and marks the previous one superseded, so the evidence behind a payment cannot be quietly
-        swapped.
-      </Alert>
 
       <DataTable
         rows={rows}

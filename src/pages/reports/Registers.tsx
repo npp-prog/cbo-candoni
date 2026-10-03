@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ReportShell } from '@/components/ReportShell';
-import { Spinner, Alert } from '@/components/ui/Layout';
+import { Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/Badge';
 import { useFilters } from '@/context/FilterContext';
@@ -365,12 +365,6 @@ function Schedule({
 
   return (
     <>
-      <Alert tone="info" className="mb-4">
-        Derived from the subsidiary detail of the {kind === 'payables' ? 'liability' : 'receivable'}{' '}
-        control accounts in the General Ledger, so this schedule agrees with the Statement of
-        Financial Position. Ageing is from the date of the oldest entry against each party.
-      </Alert>
-
       <table className="w-full border-collapse">
         <thead>
           <tr>

@@ -1,4 +1,5 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, assertFundInScope, notFound, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
@@ -61,6 +62,37 @@ export const approveAppropriation = onCall(
         );
       }
 
+      // A draft is written by the browser, and a draft written by an older
+      // build - or loaded from a spreadsheet - can be missing a field this
+      // function needs. Name what is missing. Silence here becomes an
+      // unreadable failure deeper in, and a budget line with no expense class
+      // disappears from the registry that is cut by class.
+      const missing = (
+        [
+          ['fund', a.fundCode],
+          ['office', a.officeId],
+          ['account code', a.accountCode],
+          ['expense classification', a.expenseClass],
+        ] as const
+      )
+        .filter(([, v]) => !v)
+        .map(([label]) => label);
+
+      if (missing.length > 0) {
+        throw new HttpsError(
+          'failed-precondition',
+          `This appropriation is missing its ${missing.join(', ')}, so it cannot be approved. Record it again on the Appropriations screen - a draft saved by an earlier version of CFMS, or loaded from a file, may not carry every field.`,
+          { missing },
+        );
+      }
+
+      if (typeof a.amount !== 'number' || !Number.isFinite(a.amount)) {
+        throw new HttpsError(
+          'failed-precondition',
+          'This appropriation carries no usable amount, so nothing can be approved against it. Record it again on the Appropriations screen.',
+        );
+      }
+
       assertFundInScope(caller, a.fundCode);
       await assertFiscalYearOpen(a.fiscalYear, tx);
 
@@ -114,8 +146,8 @@ export const approveAppropriation = onCall(
       }
 
       applyBudgetDelta(tx, key, balance, delta, {
-        officeName: a.officeName,
-        accountName: a.accountName,
+        officeName: a.officeName ?? '',
+        accountName: a.accountName ?? '',
         fppName: a.fppName ?? '',
         sector: a.sector ?? null,
         serviceSector: a.serviceSector ?? null,

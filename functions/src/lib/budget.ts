@@ -1,5 +1,37 @@
 import type { Transaction, DocumentReference } from 'firebase-admin/firestore';
+import { HttpsError } from 'firebase-functions/v2/https';
 import { db, COL } from './firebase';
+
+/**
+ * Refuses, by name, any figure that is not a real number before it reaches a
+ * balance document.
+ *
+ * Two different disasters are stopped here, and neither announces itself.
+ *
+ * `FieldValue.increment` throws a plain, unreadable error when it is handed
+ * anything but a number - which the browser only ever sees as the word
+ * "internal". And a balance arithmetic that quietly produces NaN, or
+ * concatenates a string, is written to `budgetBalances` as a figure no
+ * document caused, where it then governs every later control decision for
+ * that line.
+ *
+ * Fail closed, and name the field. A budget control that cannot be computed
+ * must stop the transaction, not write a guess.
+ */
+function assertFigures(where: string, values: Record<string, unknown>): void {
+  const bad = Object.entries(values)
+    .filter(([, v]) => v !== undefined)
+    .filter(([, v]) => typeof v !== 'number' || !Number.isFinite(v))
+    .map(([k]) => k);
+
+  if (bad.length === 0) return;
+
+  throw new HttpsError(
+    'failed-precondition',
+    `${where} was given ${bad.join(', ')} as something other than a number, so the balance cannot be worked out. Nothing has been saved. This is a damaged record rather than a mistake in what you entered - report it.`,
+    { fields: bad },
+  );
+}
 
 /**
  * Budget balance maintenance.
@@ -176,6 +208,18 @@ export function applyBudgetDelta(
   delta: Partial<BudgetBalanceData>,
   labels: BudgetLabels,
 ): BudgetBalanceData {
+  assertFigures('The stored balance for this budget line', {
+    appropriationOriginal: current.appropriationOriginal,
+    appropriationSupplemental: current.appropriationSupplemental,
+    appropriationContinuing: current.appropriationContinuing,
+    appropriationAdjustments: current.appropriationAdjustments,
+    allotmentReleased: current.allotmentReleased,
+    forLaterRelease: current.forLaterRelease,
+    obligated: current.obligated,
+    disbursed: current.disbursed,
+  });
+  assertFigures('This change to the budget line', { ...delta });
+
   const merged: BudgetBalanceData = {
     appropriationOriginal: current.appropriationOriginal + (delta.appropriationOriginal ?? 0),
     appropriationSupplemental:
@@ -229,6 +273,8 @@ export function applySummaryDelta(
     disbursed?: number;
   },
 ): void {
+  assertFigures('The fund-level summary', { ...delta });
+
   const ref = db.collection(COL.budgetSummaries).doc(`${fiscalYear}__${fundCode}`);
   const inc = (n: number | undefined) => (n ?? 0);
 

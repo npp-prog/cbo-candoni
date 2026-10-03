@@ -1,4 +1,5 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable';
 import type { Transaction } from 'firebase-admin/firestore';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, invalid, notFound, reporting, type Caller, type Role } from '../lib/context';

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Card } from '@/components/ui/Layout';
 import { useFilters } from '@/context/FilterContext';
 import { fundLabel } from '../budget/Obligations';
 
@@ -137,13 +137,7 @@ export default function ReportsHome() {
         breadcrumbs={[{ label: 'Reports' }]}
       />
 
-      <Alert tone="info" className="mb-5">
-        Every financial report in CFMS is derived from posted journal entries in the General Ledger.
-        No statement balance is stored or entered anywhere, so a report run today and the same
-        report run next year will agree unless an entry was posted or reversed in between.
-      </Alert>
-
-      <div className="space-y-5">
+      <div className="mt-5 space-y-5">
         <Section title="General financial reports" links={GENERAL} />
         <Section title="Budget reports" links={BUDGET} />
         <Section title="Accounting reports" links={ACCOUNTING} />

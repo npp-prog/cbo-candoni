@@ -176,13 +176,6 @@ export default function AuditTrail() {
         breadcrumbs={[{ label: 'Audit Trail' }]}
       />
 
-      <Alert tone="info" className="mb-4">
-        The audit trail is append-only. Security rules deny every client write, and each record is
-        written inside the same database transaction as the change it describes, so a financial
-        change cannot exist without its audit entry. Records are never edited or deleted, by
-        anyone, including administrators.
-      </Alert>
-
       {severity === 'CRITICAL' && criticalCount > 0 && (
         <Alert tone="warning" className="mb-4">
           {criticalCount} critical event{criticalCount === 1 ? '' : 's'} in the most recent

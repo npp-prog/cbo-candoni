@@ -269,14 +269,6 @@ export default function TrustPrograms() {
         }
       />
 
-      <Alert tone="info" className="mb-4">
-        The Trust Fund has no appropriation and no allotment &mdash; the money is not the
-        municipality&rsquo;s, and there is no ordinance behind it. The{' '}
-        <strong>programmed amount</strong> is what a Funding Utilization Request is checked
-        against, exactly as a released allotment is in the General Fund. A programme is not tied
-        to a fiscal year: trust money does not expire with the budget.
-      </Alert>
-
       <Card bodyClassName="p-0">
         <DataTable
           rows={programs.data}

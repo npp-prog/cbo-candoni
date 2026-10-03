@@ -223,13 +223,7 @@ export default function Allotments() {
 
       <AllotmentTabs active="register" />
 
-      <Alert tone="info" className="my-4">
-        Every allotment released, and which order released it. Releasing happens on the{' '}
-        <strong>Release Orders</strong> tab &mdash; that is the instrument the Budget Operations
-        Manual provides, and the only one carrying an order number, the purpose, the approval of
-        the Local Chief Executive and the For Later Release column. What is done here is the
-        opposite act: taking allotment back.
-      </Alert>
+      <div className="my-4" />
 
       <DataTable
         rows={data}

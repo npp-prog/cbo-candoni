@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Alert } from '@/components/ui/Layout';
+import { Card } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, TextArea, Checkbox } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
@@ -277,10 +277,6 @@ export function CalibrationPanel({
 
       {showTransfer && (
         <Card title="Carry this calibration to another workstation">
-          <Alert tone="info" title="It is per computer, not per office" className="mb-3">
-            The calibration belongs to this printer and this browser. Copy the text below into the
-            same box on another workstation rather than measuring it again there.
-          </Alert>
           <Field label="Calibration">
             <TextArea
               rows={6}

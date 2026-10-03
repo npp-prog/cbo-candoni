@@ -303,10 +303,6 @@ function AddUserDialog({
         </Select>
       </Field>
 
-      <Alert tone="info" className="mt-4">
-        More roles, and the segregation of duties check, are available from Manage access once the
-        user is in the list.
-      </Alert>
     </Modal>
   );
 }

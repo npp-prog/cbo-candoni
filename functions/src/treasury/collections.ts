@@ -1,4 +1,5 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable';
 import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';

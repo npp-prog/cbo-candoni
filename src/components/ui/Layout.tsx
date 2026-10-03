@@ -138,8 +138,26 @@ export function Spinner({ label = 'Loading', className }: { label?: string; clas
 
 type AlertTone = 'info' | 'warning' | 'error' | 'success';
 
+/**
+ * The `info` tone is deliberately GREY, not blue.
+ *
+ * The blue panel was being used for two different jobs, and only one of them
+ * was ever wanted: explaining how an accounting procedure works, and reporting
+ * the state of the data in front of the reader ("nothing on this registry
+ * yet", "3 accounts in the chart", "posted as JEV 2026-01-0004").
+ *
+ * The explanations have been taken out of the screens altogether. What remains
+ * on this tone is the second job - a statement of fact about the data - and a
+ * fact about the data is not a note. It is shown quietly, in grey, so it reads
+ * as part of the page rather than as something coloured demanding attention.
+ *
+ * Attention is what the other three tones are for, and they keep their colour:
+ * amber where something needs doing, rose where something is wrong, green
+ * where something succeeded. Spending colour on explanation is what made the
+ * real warnings easy to scroll past.
+ */
 const ALERT_STYLES: Record<AlertTone, string> = {
-  info: 'border-brand-200 bg-brand-50 text-brand-900',
+  info: 'border-slate-200 bg-slate-50 text-slate-700',
   warning: 'border-amber-200 bg-amber-50 text-amber-900',
   error: 'border-rose-200 bg-rose-50 text-rose-900',
   success: 'border-emerald-200 bg-emerald-50 text-emerald-900',

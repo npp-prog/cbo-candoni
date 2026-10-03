@@ -330,14 +330,6 @@ export default function EstimatedReceipts() {
         }
       />
 
-      <Alert tone="info" className="mb-4">
-        The appropriation ordinance authorises expenditure only &mdash; it does not enact the
-        receipts that pay for it. This is where the estimate lives, and it is what fills the budget
-        column for receipts on the SRE and on the Statement of Comparison of Budget and Actual
-        Amounts. One line per revenue account, split by quarter so the Quarterly Report of Receipts
-        can use the same figures.
-      </Alert>
-
       <Tabs
         tabs={[
           { id: 'schedule', label: 'Schedule', count: filled.length },

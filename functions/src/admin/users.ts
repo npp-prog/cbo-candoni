@@ -1,4 +1,5 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable';
 import {
   beforeUserSignedIn,
   // A blocking function has its own error type. Throwing the callable
