@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { attachmentTypesFor } from './attachmentTypes';
+import { attachmentTypesFor, attachmentsLocked } from './attachmentTypes';
 import { COL } from './collections';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS, type DocumentType } from '@/types/system';
 import { TREASURY_REPORT_TYPES } from '@/types/enums';
@@ -73,5 +73,35 @@ describe('attachmentTypesFor', () => {
       expect(DOCUMENT_TYPES).toContain(t);
       expect(DOCUMENT_TYPE_LABELS[t]).toBeTruthy();
     }
+  });
+});
+
+describe('attachmentsLocked', () => {
+  it('lets a scan be replaced while the obligation is still being worked on', () => {
+    // The commonest reason to replace one is that Budget found it unreadable
+    // during review, which is after submission.
+    expect(attachmentsLocked('DRAFT')).toBe(false);
+    expect(attachmentsLocked('SUBMITTED')).toBe(false);
+    expect(attachmentsLocked('BUDGET_REVIEWED')).toBe(false);
+    expect(attachmentsLocked('RETURNED')).toBe(false);
+  });
+
+  it('fixes it once the Budget Officer has certified', () => {
+    // The certification says the officer saw those papers and committed
+    // allotment on them. A document that can change afterwards is not
+    // evidence of anything.
+    expect(attachmentsLocked('OBLIGATED')).toBe(true);
+    expect(attachmentsLocked('WITH_DV')).toBe(true);
+    expect(attachmentsLocked('PAID')).toBe(true);
+    expect(attachmentsLocked('CLOSED')).toBe(true);
+  });
+
+  it('fixes it on a cancelled obligation too', () => {
+    expect(attachmentsLocked('CANCELLED')).toBe(true);
+  });
+
+  it('treats a record with no status yet as open', () => {
+    // A draft being encoded for the first time has not been saved.
+    expect(attachmentsLocked(undefined)).toBe(false);
   });
 });

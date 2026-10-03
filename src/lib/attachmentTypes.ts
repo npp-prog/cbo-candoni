@@ -69,3 +69,38 @@ export function attachmentTypesFor(
       return ['OTHER'];
   }
 }
+
+/**
+ * Whether the supporting documents on an Obligation Request may still be
+ * replaced.
+ *
+ * ---------------------------------------------------------------------------
+ * THE LINE IS CERTIFICATION, AND IT IS LATER THAN IT WAS
+ * ---------------------------------------------------------------------------
+ * CFMS used to lock the attachments the moment the OBR left Draft - that is,
+ * on submission. That is too early. The commonest reason to replace a scan is
+ * that somebody in Budget looked at it and found it unreadable, or the wrong
+ * page, and that happens AFTER it is submitted, during review. Locking at
+ * submission meant the only way to fix a bad scan was to return the whole
+ * obligation.
+ *
+ * It is too late the other way round once the Budget Officer has certified:
+ * the certification says the officer saw those papers and committed the
+ * municipality's allotment on them. A document that can change afterwards is
+ * not evidence of anything, and the signature on the certificate would be
+ * attached to a file nobody can prove was there.
+ *
+ * So: replaceable while the obligation is still being worked on, fixed from
+ * certification onwards.
+ */
+const OBLIGATION_OPEN_FOR_ATTACHMENTS = new Set([
+  'DRAFT',
+  'SUBMITTED',
+  'BUDGET_REVIEWED',
+  'RETURNED',
+]);
+
+export function attachmentsLocked(status: string | undefined | null): boolean {
+  if (!status) return false;
+  return !OBLIGATION_OPEN_FOR_ATTACHMENTS.has(status);
+}

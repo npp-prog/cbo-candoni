@@ -327,10 +327,24 @@ export const certifyObligation = onCall(
        *
        * Read here, in the read phase. The create is in the write phase.
        */
-      const obrNo = obr.obrNo ?? String(obrNoIn ?? '').trim();
+      /*
+       * The number is on the DRAFT, put there by the budget staff who encoded
+       * it from the office's book. What arrives in the request is a fallback
+       * for an older draft that has none.
+       *
+       * IT IS ALWAYS RESERVED HERE, never skipped. An earlier version skipped
+       * the reservation when the obligation already carried a number, on the
+       * reasoning that a numbered obligation had already been certified. That
+       * stopped being true the moment staff could type the number on the
+       * draft - and the effect would have been that every obligation numbered
+       * before certification bypassed the uniqueness check entirely, which is
+       * the one thing the reservation exists for. The status guard above is
+       * what prevents a second certification, not the presence of a number.
+       */
+      const obrNo = String(obr.obrNo ?? obrNoIn ?? '').trim();
       if (!obrNo) {
         throw invalid(
-          'An Obligation Request number is required. Assign it from the Budget Office book before certifying.',
+          'An Obligation Request number is required. Assign it on the obligation from the Budget Office book before certifying.',
         );
       }
       if (obrNo.length > 40) {
@@ -340,8 +354,8 @@ export const certifyObligation = onCall(
       const reservationRef = db
         .collection(COL.documentNumbers)
         .doc(`OBR__${obr.fiscalYear}__${obr.fundCode}__${obrNo.toUpperCase()}`);
-      const reservationSnap = obr.obrNo ? null : await tx.get(reservationRef);
-      if (reservationSnap?.exists) {
+      const reservationSnap = await tx.get(reservationRef);
+      if (reservationSnap.exists) {
         const prior = reservationSnap.data() as { documentId?: string };
         throw new HttpsError(
           'already-exists',
@@ -419,16 +433,14 @@ export const certifyObligation = onCall(
       // The reservation, created in the same transaction as the certification.
       // Either both land or neither does, so there is no state in which a
       // number is reserved against an obligation that was not certified.
-      if (!obr.obrNo) {
-        tx.create(reservationRef, {
-          docType: 'OBR',
-          number: obrNo,
-          fiscalYear: obr.fiscalYear,
-          fundCode: obr.fundCode,
-          documentId: obligationId,
-          assignedBy: { uid: caller.uid, name: caller.name, at: now },
-        });
-      }
+      tx.create(reservationRef, {
+        docType: 'OBR',
+        number: obrNo,
+        fiscalYear: obr.fiscalYear,
+        fundCode: obr.fundCode,
+        documentId: obligationId,
+        assignedBy: { uid: caller.uid, name: caller.name, at: now },
+      });
 
       tx.update(obrRef, {
         obrNo,

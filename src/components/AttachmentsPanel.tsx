@@ -205,9 +205,26 @@ export function AttachmentsPanel({
             onClick={() => fileRef.current?.click()}
             disabled={!entityId}
           >
-            Attach file
+            {data.length > 0 ? 'Attach or replace' : 'Attach file'}
           </Button>
         </div>
+      )}
+
+      {!readOnly && data.length > 0 && (
+        /*
+          Said, because it was not obvious.
+
+          Replacing a file has always worked - you attach the corrected one and
+          the old version is superseded - but the button said "Attach file" and
+          nothing told anybody that was how you replace a bad scan. People
+          either left the wrong document on the record or asked whether it
+          could be changed at all.
+        */
+        <p className="mb-4 text-xs text-slate-500">
+          To replace a document, attach the corrected one. The earlier version is kept and marked
+          superseded rather than overwritten - the evidence behind a payment cannot be quietly
+          swapped, so both stay on the record with the newest shown first.
+        </p>
       )}
 
       {loading ? (

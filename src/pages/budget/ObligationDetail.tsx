@@ -11,7 +11,7 @@ import { AccountPicker, OfficePicker, PayeePicker } from '@/components/pickers';
 import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
-import { attachmentTypesFor } from '@/lib/attachmentTypes';
+import { attachmentTypesFor, attachmentsLocked } from '@/lib/attachmentTypes';
 import { obligationForm, isTrustFund } from '@/lib/obligationForm';
 import { checkFursAgainstProgram } from '@/lib/trustPrograms';
 import { useFilters } from '@/context/FilterContext';
@@ -83,7 +83,24 @@ export default function ObligationDetail() {
    * signed is the number this record must carry, and a system that issued its
    * own would quietly keep a second series that disagrees with the office's.
    */
-  const [obrNoInput, setObrNoInput] = useState('');
+  /**
+   * The number the Budget Office assigns, typed in by the staff who encode the
+   * draft, following the COA guidelines the office works to.
+   *
+   * CFMS does not generate it. The number on the paper the Head of Office
+   * signs is the number this record must carry, and a system that issued its
+   * own would quietly keep a second series that disagrees with the office's.
+   *
+   * It sits on the DRAFT, not in the certification dialog, because assigning
+   * it is the staff's work and certifying is the Budget Officer's. Asking for
+   * it at the moment of certification put one officer's job inside the other's
+   * dialog box.
+   *
+   * It is provisional until certified: uniqueness is enforced on the server
+   * when the Budget Officer certifies, which is the moment the number is
+   * actually spent.
+   */
+  const [obrNo, setObrNo] = useState('');
   const [confirmOverride, setConfirmOverride] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -103,6 +120,7 @@ export default function ObligationDetail() {
   useEffect(() => {
     if (!existing) return;
     setObrDate(existing.obrDate);
+    setObrNo(existing.obrNo ?? '');
     setPayeeId(existing.payeeId);
     setPayeeName(existing.payeeName);
     setPayeeTin(existing.payeeTin ?? '');
@@ -270,6 +288,7 @@ export default function ObligationDetail() {
 
   const buildPayload = () => ({
     obrDate,
+    obrNo: obrNo.trim(),
     fiscalYear,
     fundCode,
     payeeId: payeeId!,
@@ -343,11 +362,11 @@ export default function ObligationDetail() {
 
   const certify = async (overrideReason?: string) => {
     if (!id) return;
-    const assigned = (existing?.obrNo ?? obrNoInput).trim();
+    const assigned = obrNo.trim();
     if (!assigned) {
       toast.error(
         `A ${form.short} number is required`,
-        'Assign it from the Budget Office book before certifying.',
+        `Assign it on the ${form.short} from the Budget Office book, save the draft, then certify.`,
       );
       return;
     }
@@ -467,6 +486,22 @@ export default function ObligationDetail() {
           <div className="space-y-4">
             <Card title="Obligation request">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Field
+                  label={`${form.short} number`}
+                  required
+                  htmlFor="obrNo"
+                  hint="Assigned from the Budget Office book, following the COA guidelines. Checked for a duplicate when the Budget Officer certifies."
+                >
+                  <TextInput
+                    id="obrNo"
+                    value={obrNo}
+                    onChange={(e) => setObrNo(e.target.value)}
+                    disabled={!canEdit}
+                    placeholder="100-26-10-0001"
+                    className="font-mono"
+                  />
+                </Field>
+
                 <Field label={`${form.short} date`} required htmlFor="obrDate">
                   <DateInput id="obrDate" value={obrDate} onChange={setObrDate} disabled={!canEdit} />
                 </Field>
@@ -817,8 +852,23 @@ export default function ObligationDetail() {
               fundCode={fundCode}
               storageDocType={form.short}
               storageDocId={existing?.obrNo ?? id ?? 'draft'}
-              readOnly={!canEdit}
+              /*
+                NOT `!canEdit`. The rest of the form is frozen at submission,
+                and the attachments deliberately are not: the commonest reason
+                to replace a scan is that Budget found it unreadable while
+                reviewing, which is after submission. They are fixed when the
+                Budget Officer certifies, because the certificate says the
+                officer saw those papers.
+              */
+              readOnly={!can('budget', 'edit') || attachmentsLocked(existing?.status)}
             />
+            {attachmentsLocked(existing?.status) && (
+              <Alert tone="warning" className="mt-4" title="Fixed by the certification">
+                The Budget Officer certified this {form.short} on the documents attached to it, so
+                they cannot be replaced any more. If one is wrong, attach the correct document to
+                the disbursement voucher, or cancel and raise a new {form.short}.
+              </Alert>
+            )}
           </Card>
         )}
 
@@ -843,23 +893,10 @@ export default function ObligationDetail() {
               Certifying commits <strong>{formatPeso(totalAmount)}</strong> of allotment to{' '}
               {payeeName} and makes this obligation available for a disbursement voucher.
             </p>
-            {!existing?.obrNo && (
-              <Field
-                label={`${form.short} number`}
-                required
-                className="mt-3"
-                htmlFor="obrNoInput"
-                hint="As assigned in the Budget Office book. CFMS does not generate it, and will refuse a number already used this year on this fund."
-              >
-                <TextInput
-                  id="obrNoInput"
-                  value={obrNoInput}
-                  onChange={(e) => setObrNoInput(e.target.value)}
-                  placeholder="100-26-10-0001"
-                  className="font-mono"
-                />
-              </Field>
-            )}
+            <p className="mt-2">
+              It will be certified as <strong className="font-mono">{obrNo.trim()}</strong>. CFMS
+              will refuse that number if it has already been used this year on this fund.
+            </p>
             <p className="mt-2 text-xs text-slate-500">
               The available allotment will be re-read and re-checked on the server before the
               certification is committed.
