@@ -248,6 +248,20 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   OTHER: 'Other Supporting Document',
 };
 
+/**
+ * The shortest temporary password an administrator may set when creating a
+ * user from CFMS.
+ *
+ * Firebase Authentication accepts six. This account can reach the
+ * municipality's financial records, so CFMS asks more.
+ *
+ * MUST match MIN_PASSWORD_LENGTH in functions/src/admin/users.ts, where it is
+ * enforced - this copy only decides when the button lights up. check-rules
+ * compares the two, because a screen that accepts what the server refuses is
+ * a button that fails when it is pressed.
+ */
+export const MIN_PASSWORD_LENGTH = 10;
+
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   'application/pdf',
   'image/jpeg',

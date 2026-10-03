@@ -4,7 +4,7 @@ import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { issueNumber, issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevLineData } from '../lib/ledger';
 import { TRUST_FUND_CODE } from '../lib/trustPrograms';
@@ -150,20 +150,20 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
     }
 
     const bookCode = await bookCodeForFund(rcd.fundCode);
-    const rcdNo =
-      rcd.rcdNo ??
-      (await issueNumber(tx, rcdConfig, {
-        bookCode,
-        fundCode: rcd.fundCode,
-        fiscalYear: rcd.fiscalYear,
-        month: period,
-      }));
-    const jevNo = await issueNumber(tx, jevConfig, {
+    const parts = {
       bookCode,
       fundCode: rcd.fundCode,
       fiscalYear: rcd.fiscalYear,
       month: period,
-    });
+    };
+
+    const [issuedRcdNo, issuedJevNo] = await issueNumbers(tx, [
+      { cfg: rcdConfig, parts, skip: Boolean(rcd.rcdNo) },
+      { cfg: jevConfig, parts },
+    ]);
+
+    const rcdNo = rcd.rcdNo ?? (issuedRcdNo as string);
+    const jevNo = issuedJevNo as string;
 
     const lines: JevLineData[] = [
       {

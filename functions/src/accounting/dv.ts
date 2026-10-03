@@ -12,7 +12,7 @@ import {
   type Role,
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
 import { checkDvCategory, checkDvMath } from '../lib/rules';
@@ -514,21 +514,22 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     }
 
     const bookCode = await bookCodeForFund(dv.fundCode);
-    const dvNo =
-      dv.dvNo ??
-      (await issueNumber(tx, numberingConfig, {
-        bookCode,
-        fundCode: dv.fundCode,
-        fiscalYear: dv.fiscalYear,
-        month: period,
-      }));
-
-    const jevNo = await issueNumber(tx, jevConfig, {
+    const parts = {
       bookCode,
       fundCode: dv.fundCode,
       fiscalYear: dv.fiscalYear,
       month: period,
-    });
+    };
+
+    // Both counters read here, both written inside issueNumbers, so the read
+    // phase of this transaction is still over before the first write.
+    const [issuedDvNo, issuedJevNo] = await issueNumbers(tx, [
+      { cfg: numberingConfig, parts, skip: Boolean(dv.dvNo) },
+      { cfg: jevConfig, parts },
+    ]);
+
+    const dvNo = dv.dvNo ?? (issuedDvNo as string);
+    const jevNo = issuedJevNo as string;
 
     // ---- WRITE PHASE --------------------------------------------------------
 

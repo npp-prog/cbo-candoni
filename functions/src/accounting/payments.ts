@@ -5,7 +5,7 @@ import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '../lib/clearing';
 import type { Transaction } from 'firebase-admin/firestore';
 import { recordTransition, auditInTransaction } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { periodOf } from '../lib/period';
 
 const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT'];
@@ -412,7 +412,7 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
      * reserved number issued and the next one skipped, which is precisely the
      * kind of hole this whole mechanism exists to prevent.
      */
-    let adaNo: string;
+    let reservedAdaNo: string | null = null;
     let reservationRef = null;
     if (reservationId) {
       reservationRef = db.collection(COL.adaNumbers).doc(String(reservationId));
@@ -431,21 +431,25 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
           `ADA ${r.adaNo} was reserved on the ${r.fundCode} fund, and DV ${dv.dvNo} is drawn on ${dv.fundCode}.`,
         );
       }
-      adaNo = r.adaNo;
-    } else {
-      adaNo = await issueNumber(tx, adaConfig, {
-        bookCode,
-        fundCode: dv.fundCode,
-        fiscalYear: dv.fiscalYear,
-        month: periodOf(adaDate),
-      });
+      reservedAdaNo = r.adaNo;
     }
-    const adaJevNo = await issueNumber(tx, adaJevConfig, {
+
+    const adaParts = {
       bookCode,
       fundCode: dv.fundCode,
       fiscalYear: dv.fiscalYear,
       month: periodOf(adaDate),
-    });
+    };
+
+    const [issuedAdaNo, issuedAdaJevNo] = await issueNumbers(tx, [
+      // Skipped when a reserved number is being consumed: that number was
+      // already drawn from this counter when it was reserved.
+      { cfg: adaConfig, parts: adaParts, skip: Boolean(reservationId) },
+      { cfg: adaJevConfig, parts: adaParts },
+    ]);
+
+    const adaNo = reservedAdaNo ?? (issuedAdaNo as string);
+    const adaJevNo = issuedAdaJevNo as string;
 
     const adaRef = db.collection(COL.ada).doc();
     tx.create(adaRef, {

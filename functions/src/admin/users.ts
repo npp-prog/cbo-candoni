@@ -40,61 +40,21 @@ const SEGREGATION_CONFLICTS: Array<[string, string, string]> = [
 ];
 
 /**
- * setUserRoles - the only way roles are granted in CFMS.
+ * Apply roles and scope to an account that already exists in Firebase
+ * Authentication, and record it.
  *
- * Roles live in Firebase Auth custom claims because that is what Firestore
- * Security Rules can read and what a client cannot forge. The `users` document
- * is a mirror for the administration screen, and rules explicitly forbid a user
- * from writing their own `roles` field - so there is no path by which a user
- * can promote themselves.
- *
- * A claim change takes effect when the user's ID token refreshes, which is
- * within the hour, or immediately on next sign-in. For a revocation that must
- * bite now, this also revokes the user's refresh tokens.
+ * Shared by setUserRoles and createUserAccount so that an account created in
+ * CFMS is granted access by exactly the same code, and the same checks, as one
+ * created in the Firebase console. Two code paths to the same permissions is
+ * how one of them quietly stops applying the last-administrator rule.
  */
-export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const caller = await requireCaller(request, ['SUPER_ADMIN']);
-  return reporting('Granting access', async () => {
-  const { uid: uidIn, email, roles, officeScope, fundScope, active } = (request.data ?? {}) as {
-    uid?: string;
-    email?: string;
-    roles?: string[];
-    officeScope?: string[];
-    fundScope?: string[];
-    active?: boolean;
-  };
+async function grantAccess(
+  caller: Awaited<ReturnType<typeof requireCaller>>,
+  uid: string,
+  input: { roles?: string[]; officeScope?: string[]; fundScope?: string[]; active?: boolean },
+): Promise<{ uid: string; roles: string[]; segregationWarnings: string[] }> {
+  const { roles, officeScope, fundScope, active } = input;
 
-  /*
-   * A user may be named by id or by email address, and the email is what an
-   * administrator actually has.
-   *
-   * Roles used to be grantable only to somebody already in the `users`
-   * collection, which meant only to somebody who had signed in at least once,
-   * because the profile was created by the sign-in hook. That put the
-   * municipality one broken hook away from nobody being able to grant access to
-   * anybody - including to a new administrator, with the old one gone. The
-   * administration screen would simply be empty, with no way to act.
-   *
-   * Looking the account up here removes that. The account must still exist in
-   * Firebase Authentication; this does not create one, because creating
-   * credentials is not a thing a role-granting function should be able to do.
-   */
-  let uid = uidIn;
-  if (!uid) {
-    const address = String(email ?? '').trim().toLowerCase();
-    if (!address) throw invalid('A user id or an email address is required.');
-    const found = await auth.getUserByEmail(address).catch((err: { code?: string }) => {
-      if (err?.code === 'auth/user-not-found') return null;
-      throw err;
-    });
-    if (!found) {
-      throw new HttpsError(
-        'not-found',
-        `No Firebase Authentication account exists for ${address}. Create the account first - Firebase console, Authentication, Add user - then grant the role here.`,
-      );
-    }
-    uid = found.uid;
-  }
   if (!Array.isArray(roles)) throw invalid('Roles must be provided as a list.');
 
   const invalidRoles = roles.filter((r) => !VALID_ROLES.includes(r));
@@ -177,8 +137,196 @@ export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_AP
   });
 
   return { uid, roles, segregationWarnings: conflicts.map((c) => c[2]) };
+}
+
+/**
+ * setUserRoles - the only way roles are granted in CFMS.
+ *
+ * Roles live in Firebase Auth custom claims because that is what Firestore
+ * Security Rules can read and what a client cannot forge. The `users` document
+ * is a mirror for the administration screen, and rules explicitly forbid a user
+ * from writing their own `roles` field - so there is no path by which a user
+ * can promote themselves.
+ *
+ * A claim change takes effect when the user's ID token refreshes, which is
+ * within the hour, or immediately on next sign-in. For a revocation that must
+ * bite now, this also revokes the user's refresh tokens.
+ */
+export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+  const caller = await requireCaller(request, ['SUPER_ADMIN']);
+  return reporting('Granting access', async () => {
+  const { uid: uidIn, email, roles, officeScope, fundScope, active } = (request.data ?? {}) as {
+    uid?: string;
+    email?: string;
+    roles?: string[];
+    officeScope?: string[];
+    fundScope?: string[];
+    active?: boolean;
+  };
+
+  /*
+   * A user may be named by id or by email address, and the email is what an
+   * administrator actually has.
+   *
+   * Roles used to be grantable only to somebody already in the `users`
+   * collection, which meant only to somebody who had signed in at least once,
+   * because the profile was created by the sign-in hook. That put the
+   * municipality one broken hook away from nobody being able to grant access to
+   * anybody - including to a new administrator, with the old one gone. The
+   * administration screen would simply be empty, with no way to act.
+   *
+   * Looking the account up here removes that. The account must still exist in
+   * Firebase Authentication; this does not create one, because creating
+   * credentials is not a thing a role-granting function should be able to do.
+   */
+  let uid = uidIn;
+  if (!uid) {
+    const address = String(email ?? '').trim().toLowerCase();
+    if (!address) throw invalid('A user id or an email address is required.');
+    const found = await auth.getUserByEmail(address).catch((err: { code?: string }) => {
+      if (err?.code === 'auth/user-not-found') return null;
+      throw err;
+    });
+    if (!found) {
+      throw new HttpsError(
+        'not-found',
+        `No Firebase Authentication account exists for ${address}. Create the account first - Firebase console, Authentication, Add user - then grant the role here.`,
+      );
+    }
+    uid = found.uid;
+  }
+  return grantAccess(caller, uid, { roles, officeScope, fundScope, active });
   });
 });
+
+/** Firebase accepts six. A system holding the municipality's books asks more. */
+const MIN_PASSWORD_LENGTH = 10;
+
+/**
+ * createUserAccount - make the Firebase Authentication account AND grant the
+ * role, in one act, from inside CFMS.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS NOW EXISTS, HAVING DELIBERATELY NOT EXISTED
+ * ---------------------------------------------------------------------------
+ * setUserRoles refuses to create credentials, and the comment on it says why:
+ * creating credentials is not a thing a role-granting function should be able
+ * to do. That reasoning stands, which is why this is a SEPARATE function with
+ * its own name, rather than setUserRoles quietly growing the power.
+ *
+ * What it buys: the Municipal Accountant can add a clerk without a Firebase
+ * console, a Google account with project access, and a walk through a developer
+ * interface that offers - two clicks from the Add user button - the ability to
+ * delete the entire authentication database.
+ *
+ * ---------------------------------------------------------------------------
+ * THE PASSWORD
+ * ---------------------------------------------------------------------------
+ * It is passed straight to Firebase Authentication and never stored, logged or
+ * audited by CFMS. The audit entry records that an account was created, by
+ * whom, for which email address - never the password, and there is no field
+ * here that could carry it by accident.
+ *
+ * It is a TEMPORARY password, handed to the person face to face. CFMS has no
+ * password-change screen yet, so that is the next thing worth building; until
+ * then a password is changed by the administrator setting a new one.
+ *
+ * ---------------------------------------------------------------------------
+ * AN EXISTING ACCOUNT IS GRANTED, NOT REFUSED
+ * ---------------------------------------------------------------------------
+ * If the email already has an account - because somebody made it in the
+ * console, or because the clerk already signed in once - this grants the role
+ * and leaves the password alone. An administrator should not have to know
+ * which of the two cases they are in, and this function must never be a way to
+ * overwrite somebody's password by typing their address.
+ */
+export const createUserAccount = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, ['SUPER_ADMIN']);
+    return reporting('Creating the account', async () => {
+      const { email, displayName, password, roles, officeScope, fundScope } = (request.data ??
+        {}) as {
+        email?: string;
+        displayName?: string;
+        password?: string;
+        roles?: string[];
+        officeScope?: string[];
+        fundScope?: string[];
+      };
+
+      const address = String(email ?? '').trim().toLowerCase();
+      if (!address) throw invalid('An email address is required.');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
+        throw invalid(`"${address}" is not an email address.`);
+      }
+
+      const existing = await auth.getUserByEmail(address).catch((err: { code?: string }) => {
+        if (err?.code === 'auth/user-not-found') return null;
+        throw err;
+      });
+
+      if (existing) {
+        const granted = await grantAccess(caller, existing.uid, {
+          roles,
+          officeScope,
+          fundScope,
+          active: true,
+        });
+        return { ...granted, created: false, email: address };
+      }
+
+      const name = String(displayName ?? '').trim();
+      if (!name) {
+        throw invalid('A full name is required. It is what appears on every document this user certifies, approves or posts.');
+      }
+
+      const secret = String(password ?? '');
+      if (secret.length < MIN_PASSWORD_LENGTH) {
+        throw invalid(
+          `The temporary password must be at least ${MIN_PASSWORD_LENGTH} characters. This account can reach the municipality's financial records.`,
+        );
+      }
+
+      const record = await auth
+        .createUser({ email: address, password: secret, displayName: name, emailVerified: false })
+        .catch((err: { code?: string; message?: string }) => {
+          if (err?.code === 'auth/email-already-exists') {
+            throw new HttpsError(
+              'already-exists',
+              `An account for ${address} was created a moment ago by somebody else. Close this and grant the role from the list.`,
+            );
+          }
+          if (err?.code === 'auth/invalid-password') {
+            throw invalid('Firebase Authentication refused that password. Use a longer one.');
+          }
+          throw new HttpsError(
+            'internal',
+            `Firebase Authentication refused to create the account: ${err?.message ?? 'no reason given'}.`,
+          );
+        });
+
+      await audit({
+        caller,
+        event: 'PERMISSION_CHANGE',
+        entityType: COL.users,
+        entityId: record.uid,
+        entityRef: address,
+        severity: 'CRITICAL',
+        remarks: `Firebase Authentication account created from CFMS for ${name}.`,
+      });
+
+      const granted = await grantAccess(caller, record.uid, {
+        roles,
+        officeScope,
+        fundScope,
+        active: true,
+      });
+
+      return { ...granted, created: true, email: address };
+    });
+  },
+);
 
 /**
  * Provisions a profile on first sign-in and records the login.

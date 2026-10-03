@@ -378,6 +378,95 @@ if (payeesRule && writersRule && existsSync(payeesLibPath)) {
   }
 }
 
+// --- 11. The password rule on the screen is the one the server enforces -----
+//
+// The Add a user dialog lights its button once the temporary password is long
+// enough; the server refuses anything shorter. Two numbers, two files. If the
+// screen's is the smaller one, the administrator types a password, presses the
+// button and is refused - with no way to tell that the length was the problem.
+
+const systemTs = resolve(root, 'src/types/system.ts');
+const usersTs = resolve(root, 'functions/src/admin/users.ts');
+
+if (existsSync(systemTs) && existsSync(usersTs)) {
+  const client = readFileSync(systemTs, 'utf8').match(
+    /export const MIN_PASSWORD_LENGTH\s*=\s*(\d+)/,
+  );
+  const server = readFileSync(usersTs, 'utf8').match(/const MIN_PASSWORD_LENGTH\s*=\s*(\d+)/);
+
+  if (client && server && client[1] !== server[1]) {
+    failures.push(
+      `MIN_PASSWORD_LENGTH is ${client[1]} in src/types/system.ts and ${server[1]} in ` +
+        'functions/src/admin/users.ts. The screen and the server must ask for the same ' +
+        'password length, or one of them refuses what the other accepted.',
+    );
+  } else if (client && server) {
+    console.log(`passwords: the screen and the server both ask for ${client[1]} characters`);
+  }
+}
+
+// --- 10. One issueNumber per transaction ------------------------------------
+//
+// `issueNumber` reads a counter and then writes it. One call is a read then a
+// write, which is fine. TWO calls are read, write, READ, write - and Firestore
+// refuses a read after a write inside a transaction, so the whole operation
+// fails with a message no accounting clerk can act on.
+//
+// Four operations needed two numbers and every one of them was broken by this
+// from the day it was written: approveDv, postLiquidation, issueAda and
+// reserveAdaNumbers. There was a comment on issueNumber warning about the
+// ordering, and it did not help, because it warned about the caller writing
+// too early and said nothing about calling twice.
+//
+// `issueNumbers` takes them all at once and does every read before every
+// write. This makes the rule a build failure rather than a comment.
+
+function transactionChunks(source) {
+  // Everything before the first runTransaction cannot hold a `tx`, so it is
+  // dropped. Each remaining chunk runs to the next transaction or the end of
+  // the file, which can only over-include code that has no `tx` in scope.
+  const parts = source.split('db.runTransaction(');
+  return parts.slice(1);
+}
+
+const functionsSrc = resolve(root, 'functions/src');
+
+function walkTs(dir, found = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) walkTs(full, found);
+    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) found.push(full);
+  }
+  return found;
+}
+
+if (existsSync(functionsSrc)) {
+  let offenders = 0;
+
+  for (const file of walkTs(functionsSrc)) {
+    if (file.endsWith('lib/numbering.ts')) continue;
+    const source = readFileSync(file, 'utf8');
+    const name = file.slice(root.length + 1);
+
+    transactionChunks(source).forEach((chunk, i) => {
+      const calls = (chunk.match(/\bissueNumber\s*\(\s*tx\b/g) ?? []).length;
+      if (calls > 1) {
+        offenders += 1;
+        failures.push(
+          `${name}: transaction ${i + 1} calls issueNumber ${calls} times. The second call ` +
+            'reads a counter after the first has written one, and Firestore refuses a read ' +
+            'after a write inside a transaction - the operation fails outright. Use ' +
+            'issueNumbers(tx, [...]) instead, which reads every counter before writing any.',
+        );
+      }
+    });
+  }
+
+  if (offenders === 0) {
+    console.log('numbering: no transaction issues more than one number at a time');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

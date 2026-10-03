@@ -591,6 +591,35 @@ export const engine = {
   }) =>
     call<typeof p, { uid: Id; roles: string[]; segregationWarnings?: string[] }>('setUserRoles', p),
 
+  /**
+   * Creates the Firebase Authentication account as well as granting the role.
+   *
+   * Separate from setUserRoles on purpose: granting a role and creating
+   * credentials are different powers, and the function that does the first
+   * should not quietly acquire the second.
+   *
+   * The password is passed straight through to Firebase Authentication. CFMS
+   * does not store it, log it, or put it in the audit trail.
+   */
+  createUserAccount: (p: {
+    email: string;
+    displayName: string;
+    password: string;
+    roles: string[];
+    officeScope?: Id[];
+    fundScope?: string[];
+  }) =>
+    call<
+      typeof p,
+      {
+        uid: Id;
+        roles: string[];
+        segregationWarnings?: string[];
+        created: boolean;
+        email: string;
+      }
+    >('createUserAccount', p),
+
   recordExport: (p: { report: string; format: string; filters?: Record<string, unknown> }) =>
     call<typeof p, { logged: true }>('recordExport', p),
 

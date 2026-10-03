@@ -3,7 +3,7 @@ import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, invalid, notFound, reporting, assertFundInScope, type Role } from '../lib/context';
 import { recordTransition, auditInTransaction } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 
 /**
  * Reserving, retiring and voiding ADA numbers.
@@ -91,16 +91,23 @@ export const reserveAdaNumbers = onCall(
         // Drawing from the real counter is what makes the reservation binding:
         // a second officer reserving at the same instant gets the next number,
         // not the same one.
+        //
+        // All of them in ONE call. Issuing them one at a time was a read, a
+        // write, a read, a write - which Firestore refuses outright inside a
+        // transaction, so reserving more than a single number never worked.
+        const parts = { bookCode, fundCode, fiscalYear, month };
+        const requests = [];
         for (let i = 0; i < count; i += 1) {
-          const adaNo = await issueNumber(tx, adaConfig, {
-            bookCode,
-            fundCode,
-            fiscalYear,
-            month,
-          });
-          const radaiNo = radaiConfig
-            ? await issueNumber(tx, radaiConfig, { bookCode, fundCode, fiscalYear, month })
-            : null;
+          requests.push({ cfg: adaConfig, parts });
+          if (radaiConfig) requests.push({ cfg: radaiConfig, parts });
+        }
+
+        const numbers = await issueNumbers(tx, requests);
+        const perSlot = radaiConfig ? 2 : 1;
+
+        for (let i = 0; i < count; i += 1) {
+          const adaNo = numbers[i * perSlot] as string;
+          const radaiNo = radaiConfig ? ((numbers[i * perSlot + 1] as string) ?? null) : null;
           out.push({ id: recordId(fiscalYear, fundCode, adaNo), adaNo, radaiNo });
         }
 

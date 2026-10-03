@@ -3,7 +3,7 @@ import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
 import { recordTransition } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevData, type JevLineData } from '../lib/ledger';
 import { checkLiquidation, outstandingAdvance } from '../lib/rules';
@@ -106,20 +106,20 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
     }
 
     const bookCode = await bookCodeForFund(liq.fundCode);
-    const liquidationNo =
-      liq.liquidationNo ??
-      (await issueNumber(tx, liqConfig, {
-        bookCode,
-        fundCode: liq.fundCode,
-        fiscalYear: liq.fiscalYear,
-        month: period,
-      }));
-    const jevNo = await issueNumber(tx, jevConfig, {
+    const parts = {
       bookCode,
       fundCode: liq.fundCode,
       fiscalYear: liq.fiscalYear,
       month: period,
-    });
+    };
+
+    const [issuedLiqNo, issuedJevNo] = await issueNumbers(tx, [
+      { cfg: liqConfig, parts, skip: Boolean(liq.liquidationNo) },
+      { cfg: jevConfig, parts },
+    ]);
+
+    const liquidationNo = liq.liquidationNo ?? (issuedLiqNo as string);
+    const jevNo = issuedJevNo as string;
 
     // ---- Build the entry ----------------------------------------------------
 

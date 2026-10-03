@@ -11,7 +11,7 @@ import { useUsers, useOffices } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatInstant } from '@/lib/dates';
 import { segregationWarnings, DEFAULT_ROLE_PERMISSIONS } from '@/auth/permissions';
-import { ROLES, ROLE_LABELS, type Role, type UserProfile } from '@/types/system';
+import { ROLES, ROLE_LABELS, MIN_PASSWORD_LENGTH, type Role, type UserProfile } from '@/types/system';
 
 /**
  * Users and roles.
@@ -153,7 +153,7 @@ export default function Users() {
         error={error}
         searchPlaceholder="Name, email or role"
         emptyTitle="No users"
-        emptyMessage="Add a user by the email address of their Firebase Authentication account, or wait for them to sign in once."
+        emptyMessage="Use Add user to create the sign-in account and grant the role in one go."
         exportMeta={{ title: 'CFMS User Access Report' }}
       />
 
@@ -219,22 +219,49 @@ function AddUserDialog({
 }) {
   const toast = useToast();
   const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<Role | ''>('');
   const [officeId, setOfficeId] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const ready =
+    email.trim().length > 0 &&
+    displayName.trim().length > 0 &&
+    password.length >= MIN_PASSWORD_LENGTH &&
+    Boolean(role);
+
   const submit = async () => {
-    if (!email.trim() || !role) return;
+    if (!ready || !role) return;
     setBusy(true);
     try {
-      await engine.setUserRoles({
+      const result = await engine.createUserAccount({
         email: email.trim(),
+        displayName: displayName.trim(),
+        password,
         roles: [role],
         officeScope: officeId ? [officeId] : [],
       });
+
+      if (result.created) {
+        toast.success(
+          'Account created',
+          `${displayName.trim()} can sign in at once with the password you set. Give it to them in person and have them tell you when they want it changed.`,
+        );
+      } else {
+        toast.success(
+          'Access granted',
+          `${email.trim()} already had an account, so the role was granted and the existing password left alone.`,
+        );
+      }
+
+      // Cleared rather than left in the form. A temporary password sitting in
+      // a box on a screen in an open office is a password everybody has.
+      setPassword('');
       onAdded(email.trim());
     } catch (err) {
-      toast.error('Could not grant access', err instanceof Error ? err.message : String(err));
+      toast.error('Could not add the user', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -246,17 +273,17 @@ function AddUserDialog({
       onClose={onClose}
       size="sm"
       title="Add a user"
-      description="Grants access to an existing Firebase Authentication account."
+      description="Creates the sign-in account and grants the role. If the address already has an account, the role is granted and the password left alone."
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
             loading={busy}
-            disabled={busy || !email.trim() || !role}
+            disabled={busy || !ready}
             onClick={() => void submit()}
           >
-            Grant access
+            Create and grant access
           </Button>
         </>
       }
@@ -265,7 +292,7 @@ function AddUserDialog({
         label="Email address"
         required
         htmlFor="newUserEmail"
-        hint="The account must already exist in Firebase Authentication. Create it there first if it does not."
+        hint="This is what they sign in with."
       >
         <TextInput
           id="newUserEmail"
@@ -274,6 +301,41 @@ function AddUserDialog({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="name@mgocandoniaccounting.org"
         />
+      </Field>
+
+      <Field
+        label="Full name"
+        required
+        htmlFor="newUserName"
+        className="mt-4"
+        hint='As it should appear on every document they certify, approve or post - e.g. "DELA CRUZ, Juan M."'
+      >
+        <TextInput
+          id="newUserName"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+      </Field>
+
+      <Field
+        label="Temporary password"
+        required
+        htmlFor="newUserPassword"
+        className="mt-4"
+        hint={`At least ${MIN_PASSWORD_LENGTH} characters. Hand it over in person - CFMS does not keep it and cannot show it to you again.`}
+      >
+        <div className="flex gap-2">
+          <TextInput
+            id="newUserPassword"
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            autoComplete="new-password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button size="sm" onClick={() => setShowPassword((v) => !v)}>
+            {showPassword ? 'Hide' : 'Show'}
+          </Button>
+        </div>
       </Field>
 
       <Field label="Role" required htmlFor="newUserRole" className="mt-4">

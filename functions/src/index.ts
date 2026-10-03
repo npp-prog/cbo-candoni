@@ -100,7 +100,7 @@ export {
 
 // --- Administration ----------------------------------------------------------
 export { closePeriod, reopenPeriod, lockPeriod } from './admin/periods';
-export { setUserRoles, onBeforeSignIn, recordExport } from './admin/users';
+export { setUserRoles, createUserAccount, onBeforeSignIn, recordExport } from './admin/users';
 
 // --- Scheduled integrity and monitoring --------------------------------------
 export {

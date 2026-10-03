@@ -1,5 +1,6 @@
 import type { Transaction } from 'firebase-admin/firestore';
 import { db, COL } from './firebase';
+import { allocateSequences } from './sequences';
 
 /**
  * Document number issuance.
@@ -108,8 +109,120 @@ export async function loadNumberingConfig(docType: string): Promise<NumberingCon
   };
 }
 
+export interface NumberRequest {
+  cfg: NumberingConfig;
+  parts: { bookCode: string; fundCode: string; fiscalYear: number; month: number };
+  /**
+   * Already numbered - skip it and return null in its place, so the caller can
+   * keep one array lined up with the other.
+   */
+  skip?: boolean;
+}
+
+/**
+ * Issue SEVERAL numbers in one go: every counter read first, every counter
+ * written after.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS, AND WHY issueNumber ALONE WAS NOT ENOUGH
+ * ---------------------------------------------------------------------------
+ * `issueNumber` reads a counter and then writes it. One call is a read
+ * followed by a write, which is fine. TWO calls are read, write, READ, write -
+ * and Firestore refuses a read after a write inside a transaction:
+ *
+ *     "Firestore transactions require all reads to be executed before all
+ *      writes."
+ *
+ * Four operations in CFMS need two numbers at once, and every one of them was
+ * broken by this from the day it was written:
+ *
+ *     approveDv            the DV number and its JEV number
+ *     postLiquidation      the liquidation number and its JEV number
+ *     issueAda             the ADA number and its JEV number
+ *     reserveAdaNumbers    an ADA and a RADAI number, per slot, in a loop
+ *
+ * The note above `issueNumber` warned about the ordering and still did not
+ * prevent it, because it warned about the wrong hazard: it told callers not to
+ * write before calling, and said nothing about calling twice. A rule that
+ * names only one of the two ways to break it reads as a complete rule.
+ *
+ * So the rule is now enforced instead of written down. `check-rules.mjs` fails
+ * the build if any transaction calls `issueNumber` more than once.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO NUMBERS FROM ONE COUNTER
+ * ---------------------------------------------------------------------------
+ * Requests that land on the same counter - N reserved ADA numbers, say - are
+ * read once, handed consecutive sequence numbers, and written once with the
+ * final value. That is also the only correct way to do it: two separate
+ * read-modify-writes of one counter inside one transaction would both read the
+ * same value and issue the same number twice.
+ */
+export async function issueNumbers(
+  tx: Transaction,
+  requests: NumberRequest[],
+): Promise<Array<string | null>> {
+  const wanted = requests.map((r) =>
+    r.skip
+      ? null
+      : counterId({
+          docType: r.cfg.docType,
+          fundCode: r.parts.fundCode,
+          fiscalYear: r.parts.fiscalYear,
+          month: r.parts.month,
+          resetOn: r.cfg.resetOn,
+          perFund: r.cfg.perFund,
+        }),
+  );
+
+  // ---- every read, before every write -------------------------------------
+  const uniqueIds = [...new Set(wanted.filter((id): id is string => id !== null))];
+  const snaps = await Promise.all(
+    uniqueIds.map((id) => tx.get(db.collection(COL.counters).doc(id))),
+  );
+
+  const base = new Map<string, number>();
+  uniqueIds.forEach((id, i) => {
+    const snap = snaps[i];
+    base.set(id, snap.exists ? ((snap.data()?.value as number) ?? 0) : 0);
+  });
+
+  // ---- allocate -----------------------------------------------------------
+  const { sequences, finals } = allocateSequences(wanted, base);
+
+  const out = requests.map((r, i) => {
+    const sequence = sequences[i];
+    return sequence === null ? null : renderNumber(r.cfg, { ...r.parts, sequence });
+  });
+
+  // ---- write --------------------------------------------------------------
+  for (const id of uniqueIds) {
+    const final = finals.get(id);
+    if (final === undefined) continue;
+
+    const first = requests[wanted.indexOf(id)];
+    tx.set(
+      db.collection(COL.counters).doc(id),
+      {
+        value: final,
+        docType: first.cfg.docType,
+        fundCode: first.cfg.perFund ? first.parts.fundCode : 'ALL',
+        fiscalYear: first.parts.fiscalYear,
+        month: first.cfg.resetOn === 'MONTH' ? first.parts.month : null,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  }
+
+  return out;
+}
+
 /**
  * Issue the next number for a document type inside a transaction.
+ *
+ * ONE PER TRANSACTION. Needing a second one means `issueNumbers` - see the
+ * note on it, and the check that enforces this.
  *
  * IMPORTANT ORDERING NOTE: Firestore transactions require all reads before any
  * write. The counter read must therefore happen in the read phase of the
