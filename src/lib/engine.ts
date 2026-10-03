@@ -244,7 +244,7 @@ export const engine = {
     >('importChartOfAccounts', p),
 
   cancelObligation: (p: { obligationId: Id; reason: string }) =>
-    call<typeof p, { obligationId: Id }>('cancelObligation', p),
+    call<typeof p, { obligationId: Id; cancelledVouchers: string[] }>('cancelObligation', p),
 
   // -------------------------------------------------------------------------
   // Accounting
@@ -282,6 +282,19 @@ export const engine = {
    * writes the immutable ledger entries. Irreversible except by a reversing
    * entry.
    */
+  /**
+   * Reverse a posted entry and open an editable copy of it, in one act.
+   *
+   * A posted entry is never edited in place: the ledger is evidence of what
+   * was posted. This gives the Accountant the editable screen they wanted
+   * without giving up the thing that makes the trial balance worth printing.
+   */
+  correctJev: (p: { jevId: Id; reason: string }) =>
+    call<
+      typeof p,
+      { originalJevId: Id; reversingJevId: Id; reversingJevNo: string; correctedJevId: Id }
+    >('correctJev', p),
+
   postJev: (p: { jevId: Id }) =>
     call<typeof p, { jevId: Id; jevNo: string; ledgerEntryCount: number; postedAt: string }>(
       'postJev',
@@ -351,7 +364,6 @@ export const engine = {
     fundCode: string;
     slotDate: IsoDate;
     count?: number;
-    withRadai?: boolean;
     note?: string;
   }) =>
     call<typeof p, { reserved: Array<{ id: Id; adaNo: string; radaiNo: string | null }> }>(
@@ -400,7 +412,7 @@ export const engine = {
    * covered checks, advices, receipts or payrolls belong to this report and
    * cannot be cancelled without withdrawing it.
    */
-  certifyTreasuryReport: (p: { reportId: Id }) =>
+  certifyTreasuryReport: (p: { reportId: Id; reportNo?: string }) =>
     call<typeof p, { reportId: Id; reportNo: string; totalAmount: number; documentCount: number }>(
       'certifyTreasuryReport',
       p,
@@ -420,6 +432,9 @@ export const engine = {
       debit: number;
       credit: number;
       particulars?: string;
+      subsidiaryType?: string;
+      subsidiaryId?: string;
+      subsidiaryName?: string;
     }>;
   }) =>
     call<typeof p, { reportId: Id; reportNo: string; jevId: Id; jevNo: string }>(

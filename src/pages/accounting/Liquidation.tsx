@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -41,7 +42,14 @@ export default function Liquidation() {
   const [posting, setPosting] = useState<LiquidationRecord | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const rows = useMemo(() => data.filter((l) => l.fundCode === fundCode), [data, fundCode]);
+  const rows = useMemo(
+    () =>
+      newestFirst(
+        data.filter((l) => l.fundCode === fundCode),
+        (l) => ({ ref: l.liquidationNo, date: l.liquidationDate }),
+      ),
+    [data, fundCode],
+  );
   const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   const columns: Column<LiquidationRecord>[] = [
@@ -238,6 +246,7 @@ function LiquidationForm({
   const { user, profile } = useAuth();
 
   const [cashAdvanceId, setCashAdvanceId] = useState('');
+  const [liquidationNo, setLiquidationNo] = useState('');
   const [liquidationDate, setLiquidationDate] = useState(todayPh());
   const [lines, setLines] = useState<Array<Partial<LiquidationLine>>>([{ lineNo: 1, date: todayPh() }]);
   const [refundAmount, setRefundAmount] = useState<number | null>(null);
@@ -276,13 +285,20 @@ function LiquidationForm({
       toast.error('The liquidation does not balance against the advance', check.violations[0].message);
       return;
     }
+    if (!liquidationNo.trim()) {
+      toast.error(
+        'The liquidation report number is missing',
+        'Assign it from the office book before saving.',
+      );
+      return;
+    }
 
     setSaving(true);
     try {
       await createDraft(
         COL.liquidations,
         {
-          liquidationNo: '(unnumbered)',
+          liquidationNo: liquidationNo.trim(),
           liquidationDate,
           fiscalYear,
           period: Number(liquidationDate.slice(5, 7)),
@@ -351,6 +367,21 @@ function LiquidationForm({
               </option>
             ))}
           </Select>
+        </Field>
+
+        <Field
+          label="Liquidation report number"
+          required
+          htmlFor="lno"
+          hint="Assigned by Accounting from its own book."
+        >
+          <TextInput
+            id="lno"
+            value={liquidationNo}
+            onChange={(e) => setLiquidationNo(e.target.value)}
+            placeholder="100-26-10-0001"
+            className="font-mono"
+          />
         </Field>
 
         <Field label="Liquidation date" required htmlFor="ldate">

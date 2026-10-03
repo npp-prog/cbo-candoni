@@ -4,7 +4,13 @@ import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
-import { issueNumber, issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import {
+  issueNumber,
+  issueNumbers,
+  loadNumberingConfig,
+  bookCodeForFund,
+  reserveDocumentNumber,
+} from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevLineData } from '../lib/ledger';
 import { TRUST_FUND_CODE } from '../lib/trustPrograms';
@@ -36,7 +42,6 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
   const { rcdId } = (request.data ?? {}) as { rcdId?: string };
   if (!rcdId) throw invalid('An RCD id is required.');
 
-  const rcdConfig = await loadNumberingConfig('RCD');
   const jevConfig = await loadNumberingConfig('JEV');
 
   return db.runTransaction(async (tx) => {
@@ -157,13 +162,22 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
       month: period,
     };
 
-    const [issuedRcdNo, issuedJevNo] = await issueNumbers(tx, [
-      { cfg: rcdConfig, parts, skip: Boolean(rcd.rcdNo) },
-      { cfg: jevConfig, parts },
-    ]);
-
-    const rcdNo = rcd.rcdNo ?? (issuedRcdNo as string);
+    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
     const jevNo = issuedJevNo as string;
+
+    /*
+     * The RCD number is the collecting officer's own, typed on the draft.
+     * CFMS refuses a duplicate rather than issuing its own series beside the
+     * office's. See reserveDocumentNumber.
+     */
+    const rcdNo = await reserveDocumentNumber(tx, {
+      kind: 'RCD',
+      fiscalYear: rcd.fiscalYear,
+      fundCode: rcd.fundCode,
+      number: rcd.rcdNo ?? '',
+      documentId: rcdId,
+      label: 'Report of Collections and Deposits',
+    });
 
     const lines: JevLineData[] = [
       {

@@ -3,7 +3,12 @@ import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
 import { recordTransition } from '../lib/audit';
-import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import {
+  issueNumbers,
+  loadNumberingConfig,
+  bookCodeForFund,
+  reserveDocumentNumber,
+} from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevData, type JevLineData } from '../lib/ledger';
 import { checkLiquidation, outstandingAdvance } from '../lib/rules';
@@ -29,7 +34,6 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
   if (!liquidationId) throw invalid('A liquidation id is required.');
 
   const jevConfig = await loadNumberingConfig('JEV');
-  const liqConfig = await loadNumberingConfig('LIQ');
 
   return db.runTransaction(async (tx) => {
     const ref = db.collection(COL.liquidations).doc(liquidationId);
@@ -113,13 +117,21 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       month: period,
     };
 
-    const [issuedLiqNo, issuedJevNo] = await issueNumbers(tx, [
-      { cfg: liqConfig, parts, skip: Boolean(liq.liquidationNo) },
-      { cfg: jevConfig, parts },
-    ]);
-
-    const liquidationNo = liq.liquidationNo ?? (issuedLiqNo as string);
+    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
     const jevNo = issuedJevNo as string;
+
+    /*
+     * The liquidation report number is assigned by Accounting from its own
+     * book and typed on the draft. CFMS refuses a duplicate.
+     */
+    const liquidationNo = await reserveDocumentNumber(tx, {
+      kind: 'LIQ',
+      fiscalYear: liq.fiscalYear,
+      fundCode: liq.fundCode,
+      number: liq.liquidationNo ?? '',
+      documentId: liquidationId,
+      label: 'Liquidation report',
+    });
 
     // ---- Build the entry ----------------------------------------------------
 

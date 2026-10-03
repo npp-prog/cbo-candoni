@@ -431,8 +431,16 @@ export default function ObligationDetail() {
   const cancel = async (reason?: string) => {
     if (!id || !reason) return;
     try {
-      await engine.cancelObligation({ obligationId: id, reason });
-      toast.success('Obligation cancelled', 'The committed allotment has been released back to the budget line.');
+      const res = await engine.cancelObligation({ obligationId: id, reason });
+      const also = res.cancelledVouchers ?? [];
+      toast.success(
+        'Obligation cancelled',
+        `The committed allotment has been released back to the budget line.${
+          also.length
+            ? ` ${also.length === 1 ? 'The unfinished voucher' : `${also.length} unfinished vouchers`} drawn on it ${also.length === 1 ? 'was' : 'were'} cancelled with it: ${also.join(', ')}.`
+            : ''
+        }`,
+      );
       setConfirmCancel(false);
     } catch (err) {
       toast.error('Could not cancel', err instanceof Error ? err.message : String(err));
@@ -1013,11 +1021,23 @@ export default function ObligationDetail() {
         variant="danger"
         requireReason
         message={
-          <p>
-            Cancelling releases {formatPeso(existing?.totalAmount ?? 0)} of committed allotment back
-            to the budget lines. The obligation is kept with a status of Cancelled; it is never
-            deleted.
-          </p>
+          <>
+            <p>
+              Cancelling releases {formatPeso(existing?.totalAmount ?? 0)} of committed allotment
+              back to the budget lines. The obligation is kept with a status of Cancelled; it is
+              never deleted.
+            </p>
+            <p className="mt-2">
+              Any disbursement voucher drawn on it that is still a draft, submitted or reviewed is
+              cancelled with it, and named afterwards. Nothing has been committed on one of those -
+              but a voucher left pointing at a cancelled obligation fails at approval days later,
+              with no obvious cause.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              The server refuses this once the Municipal Accountant has approved a voucher against
+              it. Undo that approval first.
+            </p>
+          </>
         }
       />
     </div>

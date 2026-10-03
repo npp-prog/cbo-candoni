@@ -93,16 +93,50 @@ if (!failures.some((f) => f.includes('server-only'))) {
 
 // --- 3. Posted journal entries are immutable --------------------------------
 
+/*
+ * The invariant is not "edits are restricted to DRAFT and FOR_REVIEW" - that
+ * was the shape of the rule, and the shape changed when APPROVED entries
+ * became editable. The invariant is that a POSTED entry is never writable from
+ * a client, and neither is one that has been REVERSED or CANCELLED: those are
+ * finished, and an entry that can be edited after the ledger has taken it
+ * means the General Ledger is no longer evidence of anything.
+ *
+ * So every status list in the update rule is read, and any of the three
+ * finished states appearing in one fails the build - however the rule is
+ * written around them.
+ */
+const FINISHED_JEV_STATES = ['POSTED', 'REVERSED', 'CANCELLED'];
+
 const jevBlock = firestore.match(/match \/jevs\/\{[^}]*\}\s*\{([\s\S]*?)\n    \}/);
 if (!jevBlock) {
   failures.push("firestore.rules: no rule block for 'jevs'");
-} else if (!/resource\.data\.status in \['DRAFT', 'FOR_REVIEW'\]/.test(jevBlock[1])) {
-  failures.push(
-    "firestore.rules: the 'jevs' update rule no longer restricts edits to DRAFT and FOR_REVIEW. " +
-      'A posted journal entry must be immutable.',
-  );
 } else {
-  console.log('jevs: posted entries are immutable');
+  const update = jevBlock[1].match(/allow update:([\s\S]*?);/);
+  if (!update) {
+    failures.push("firestore.rules: the 'jevs' block has no update rule to check.");
+  } else {
+    const lists = update[1].match(/status in \[[^\]]*\]/g) ?? [];
+    if (lists.length === 0) {
+      failures.push(
+        "firestore.rules: the 'jevs' update rule names no statuses at all, so nothing stops a " +
+          'posted entry being edited. A posted journal entry must be immutable.',
+      );
+    }
+    const leaked = FINISHED_JEV_STATES.filter((state) =>
+      lists.some((list) => list.includes(`'${state}'`)),
+    );
+    if (leaked.length > 0) {
+      failures.push(
+        `firestore.rules: the 'jevs' update rule allows ${leaked.join(' and ')}. An entry in ` +
+          'any of those states is finished - the ledger has taken it, or it has been undone - ' +
+          'and editing it would mean the General Ledger is no longer evidence of what was ' +
+          'posted. A posted entry is corrected through correctJev, which reverses it and opens ' +
+          'a fresh draft.',
+      );
+    } else {
+      console.log(`jevs: ${FINISHED_JEV_STATES.join(', ')} entries stay immutable`);
+    }
+  }
 }
 
 // --- 4. Indexes are valid JSON ----------------------------------------------
@@ -641,6 +675,52 @@ if (existsSync(functionsSrc)) {
     } else {
       console.log('numbering: the voucher draws no journal number at approval');
     }
+  }
+}
+
+// --- 16. The office's own series are never issued by CFMS -------------------
+/*
+ * The RCI, the RADAI, the RCD, the RCDisb and the liquidation report are
+ * numbered from the books the Treasurer's office and Accounting already keep,
+ * under the series COA expects of them. Those numbers reach CFMS by being
+ * typed in.
+ *
+ * If CFMS ever issued one of them again it would run a second series beside
+ * the office's, and the two would disagree. Nothing would break; nobody would
+ * notice until an audit, when somebody holding the paper found that the
+ * system's RCI 0042 was a different report from the one in the book.
+ *
+ * So no numbering configuration for those five is loaded anywhere in the
+ * engine. A number for them comes from reserveDocumentNumber, which takes the
+ * one it is given and refuses a duplicate.
+ */
+if (existsSync(functionsSrc)) {
+  const OFFICE_SERIES = ['RCI', 'RADAI', 'RCD', 'RCDISB', 'LIQ'];
+  let offenders = 0;
+
+  for (const file of walkTs(functionsSrc)) {
+    const source = readFileSync(file, 'utf8');
+    const name = file.slice(root.length + 1).split('\\').join('/');
+
+    for (const series of OFFICE_SERIES) {
+      // Only a real call counts; the word inside a comment does not.
+      const call = new RegExp(`loadNumberingConfig\\(\\s*['"]${series}['"]\\s*\\)`);
+      const stripped = source
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+      if (!call.test(stripped)) continue;
+      offenders += 1;
+      failures.push(
+        `${name}: loads the ${series} numbering series. That number is assigned by the office ` +
+          'from its own book and typed in; CFMS issuing one would run a second series beside ' +
+          "the office's, and the two disagree silently until an audit. Use " +
+          'reserveDocumentNumber, which takes the number given and refuses a duplicate.',
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log(`numbering: CFMS issues none of the ${5} series the offices number themselves`);
   }
 }
 

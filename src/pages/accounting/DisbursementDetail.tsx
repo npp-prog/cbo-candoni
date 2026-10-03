@@ -786,6 +786,7 @@ export default function DisbursementDetail() {
               lines={entryLines}
               fppOptions={fppOptions}
               expenseCodes={expenseCodes}
+              fundCode={fundCode}
               readOnly={!canEdit}
               onChange={(l) => {
                 setEntryLines(l);

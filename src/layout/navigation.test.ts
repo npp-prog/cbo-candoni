@@ -188,6 +188,33 @@ describe('the menu itself', () => {
   });
 
   /**
+   * The order you work in: what is owed, what was drawn, what was reported,
+   * who is being paid, and what is still out at year end. Fixed here because
+   * it is a sequence somebody asked for by name, and a later addition dropped
+   * in the middle of it would undo that quietly.
+   */
+  it('keeps the Check and ADA sequence', () => {
+    expect(PAYMENT_TABS.map((t) => t.label)).toEqual([
+      'Disbursements for Payment',
+      'Checks',
+      'ADA',
+      'Report of Checks Issued (RCI)',
+      'Report of ADA Issued (RADAI)',
+      'Claim Sheet',
+      'Unreleased Checks (SUC)',
+    ]);
+  });
+
+  /**
+   * The ADA register and the ADA number series are one book. The series is a
+   * tab INSIDE the ADA screen, not a tab beside it.
+   */
+  it('offers no separate ADA Numbers tab', () => {
+    expect(PAYMENT_TABS.find((t) => t.to === '/treasury/ada/numbers')).toBeUndefined();
+    expect(PAYMENT_TABS.find((t) => t.label.includes('ADA Numbers'))).toBeUndefined();
+  });
+
+  /**
    * A heading is written as a person would say it. The sidebar no longer
    * shouts it in capitals, so a heading typed in capitals here would be the
    * only one on screen that shouts.

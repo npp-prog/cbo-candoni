@@ -36,6 +36,15 @@ export type Role =
   | 'AUDITOR';
 
 export const POSTING_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
+
+/**
+ * Who may take a posted entry back out of the books to correct it.
+ *
+ * The same two, and not by accident. Reversing a posted entry rewrites what
+ * the General Ledger says about a month that has already been reported on, and
+ * the Municipal Accountant is the officer who answers for that.
+ */
+export const CORRECTING_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
 export const CERTIFYING_ROLES: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER'];
 export const PERIOD_CONTROL_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
 export const APPROVING_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];

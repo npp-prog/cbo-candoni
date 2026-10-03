@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { newestFirst } from '@/lib/registerOrder';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -63,7 +64,7 @@ export default function Disbursements() {
           ? out.filter((d) => !d.dvCategory)
           : out.filter((d) => d.dvCategory === category);
     }
-    return out;
+    return newestFirst(out, (d) => ({ ref: d.dvNo, date: d.dvDate }));
   }, [data, period, queue, myStages, category]);
 
   const totals = useMemo(

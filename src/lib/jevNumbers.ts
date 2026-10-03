@@ -33,13 +33,26 @@
  * twice.
  */
 
-/** What a prepared entry carries until the engine gives it a real number. */
+/**
+ * What a document carries until it has a real number.
+ *
+ * Named for the journal entry because that is where it started, but it is the
+ * same word on a draft RCD and a draft liquidation report - those are numbered
+ * from the office's own book when the document is finalised, and until then
+ * there is nothing to show. One value, so that every screen and the engine
+ * agree about what "none yet" looks like.
+ */
 export const UNNUMBERED_JEV = '(unnumbered)';
+
+/** True when a real number has been assigned - of any kind, on any document. */
+export function hasDocumentNumber(no?: string | null): boolean {
+  if (!no) return false;
+  const trimmed = no.trim();
+  if (trimmed.length === 0) return false;
+  return trimmed !== UNNUMBERED_JEV;
+}
 
 /** True when a real journal number has been issued. */
 export function hasJevNumber(jevNo?: string | null): boolean {
-  if (!jevNo) return false;
-  const trimmed = jevNo.trim();
-  if (trimmed.length === 0) return false;
-  return trimmed !== UNNUMBERED_JEV;
+  return hasDocumentNumber(jevNo);
 }

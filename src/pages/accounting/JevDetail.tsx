@@ -4,7 +4,7 @@ import { isDirectEntry } from '@/lib/jevSources';
 import { UNNUMBERED_JEV, hasJevNumber } from '@/lib/jevNumbers';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, TextArea, DateInput, Select } from '@/components/ui/Field';
+import { Field, TextArea, TextInput, DateInput, Select } from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -56,11 +56,12 @@ export default function JevDetail() {
   const [tab, setTab] = useState<'entry' | 'history'>('entry');
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState<null | 'post' | 'reverse'>(null);
+  const [confirm, setConfirm] = useState<null | 'post' | 'reverse' | 'correct'>(null);
 
   const [jevDate, setJevDate] = useState(todayPh());
   const [sourceType, setSourceType] = useState<string>('MANUAL');
   const [particulars, setParticulars] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
   const [lines, setLines] = useState<GridLine[]>([
     { lineNo: 1, accountCode: '', accountName: '', debit: 0, credit: 0 },
     { lineNo: 2, accountCode: '', accountName: '', debit: 0, credit: 0 },
@@ -71,6 +72,7 @@ export default function JevDetail() {
     setJevDate(existing.jevDate);
     setSourceType(existing.sourceType);
     setParticulars(existing.particulars);
+    setReferenceNo(existing.referenceNo ?? '');
     setLines(
       (existing.lines ?? []).map((l) => ({
         lineNo: l.lineNo,
@@ -88,10 +90,31 @@ export default function JevDetail() {
 
   const status = existing?.status ?? 'DRAFT';
   const isPosted = status === 'POSTED';
-  const editable = isNew || ['DRAFT', 'FOR_REVIEW'].includes(status);
-  const canEdit = can('accounting', 'edit') && editable && (isNew || existing?.sourceType !== 'DV');
+  /*
+   * An entry is editable until the ledger takes it.
+   *
+   * APPROVED is in the list. The voucher behind it may be approved and even
+   * paid - none of that has written the books, and until the Accountant posts,
+   * the entry is still a proposal. Taking the right to correct it away at
+   * approval only meant the correction was made later, as a reversing entry
+   * against a figure that should never have been in the ledger at all.
+   *
+   * But an APPROVED entry is the Accountant's: an encoder may not reopen a
+   * figure the Accountant has already passed. The security rules say the same,
+   * so a button offered here is a write the server will accept.
+   */
+  const editable = isNew || ['DRAFT', 'FOR_REVIEW', 'APPROVED'].includes(status);
+  const isAccountant = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+  const mayEditAtThisStage = status !== 'APPROVED' || isAccountant;
+  const canEdit =
+    can('accounting', 'edit') &&
+    editable &&
+    mayEditAtThisStage &&
+    (isNew || existing?.sourceType !== 'DV');
   const canPost = !isNew && ['DRAFT', 'FOR_REVIEW', 'REVIEWED', 'APPROVED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
-  const canReverse = isPosted && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT') && !existing?.reversedByJevId;
+  const canReverse = isPosted && isAccountant && !existing?.reversedByJevId;
+  /** Reverse it AND open a corrected copy - one act instead of three. */
+  const canCorrect = canReverse;
 
   const check = useMemo(
     () =>
@@ -134,6 +157,7 @@ export default function JevDetail() {
         fundCode,
         book: 'GENERAL_JOURNAL',
         sourceType,
+        referenceNo: referenceNo.trim() || null,
         particulars: particulars.trim(),
         lines: lines.map((l, i) => ({
           lineNo: i + 1,
@@ -212,6 +236,11 @@ export default function JevDetail() {
                 Post to General Ledger
               </Button>
             )}
+            {canCorrect && (
+              <Button variant="secondary" onClick={() => setConfirm('correct')}>
+                Correct this entry
+              </Button>
+            )}
             {canReverse && (
               <Button variant="danger" onClick={() => setConfirm('reverse')}>
                 Reverse
@@ -224,8 +253,19 @@ export default function JevDetail() {
       {isPosted && (
         <Alert tone="success" title="Posted to the General Ledger" className="mb-4">
           Posted by {existing?.postedBy?.name} on {formatInstant(existing?.postedAt)}. A posted
-          entry cannot be edited or deleted. To correct it, create a reversing entry - both the
-          original and the reversal remain in the ledger.
+          entry is never edited or deleted - the ledger is evidence of what was posted, and an
+          entry that could be rewritten afterwards would not be.{' '}
+          {canCorrect
+            ? 'Correct this entry reverses it and opens an editable copy, so the books carry the mistake, the reversal and the correction.'
+            : 'It is corrected by reversing it and posting a replacement.'}
+        </Alert>
+      )}
+
+      {status === 'APPROVED' && !isPosted && (
+        <Alert tone="warning" title="Approved, and not yet in the General Ledger" className="mb-4">
+          {isAccountant
+            ? 'It can still be corrected from here. Once it is posted it cannot, because the ledger will have taken it.'
+            : 'Only the Municipal Accountant may change it at this stage.'}
         </Alert>
       )}
 
@@ -289,9 +329,32 @@ export default function JevDetail() {
                   )}
                 </Field>
 
-                <DetailField label="Reference" mono>
-                  {existing?.referenceNo ?? '-'}
-                </DetailField>
+                {/*
+                  The office's OWN reference, not the JEV number.
+                  
+                  An adjusting entry usually answers to a piece of paper that
+                  CFMS never saw - the JV number in the Accountant's book, a
+                  memorandum, a bank debit advice. Writing it here is what lets
+                  somebody holding that paper find the entry, and somebody
+                  reading the entry find the paper. The JEV number is a
+                  different thing: it is the entry's place in the journal, and
+                  it is drawn from the series when the entry is posted.
+                */}
+                <Field label="Reference" htmlFor="referenceNo" hint="Your own JV or memo number.">
+                  {canEdit ? (
+                    <TextInput
+                      id="referenceNo"
+                      value={referenceNo}
+                      onChange={(e) => setReferenceNo(e.target.value)}
+                      placeholder="Optional"
+                      className="font-mono"
+                    />
+                  ) : (
+                    <p className="pt-2 font-mono text-sm text-navy-900">
+                      {existing?.referenceNo || '-'}
+                    </p>
+                  )}
+                </Field>
 
                 <DetailField label="Total">{formatPeso(totalDebit)}</DetailField>
 
@@ -313,6 +376,7 @@ export default function JevDetail() {
                 onChange={setLines}
                 fppOptions={fppOptions}
                 expenseCodes={expenseCodes}
+                fundCode={fundCode}
                 readOnly={!canEdit}
               />
             </Card>
@@ -412,6 +476,48 @@ export default function JevDetail() {
             <p className="mt-2">
               The original entry is not deleted or altered. Both remain in the General Ledger, so
               the books show what happened and how it was corrected.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'correct'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={(reason) =>
+          void run(async () => {
+            const result = await engine.correctJev({ jevId: id!, reason: reason! });
+            toast.success(
+              `Reversed by JEV ${result.reversingJevNo}`,
+              'A copy has been opened for correcting. Post it when the figures are right.',
+            );
+            navigate(`/accounting/journal-entries/${result.correctedJevId}`);
+          }, 'The entry was not corrected')
+        }
+        loading={busy}
+        title={`Correct JEV ${existing?.jevNo ?? ''}`}
+        confirmLabel="Reverse and open a copy"
+        variant="danger"
+        requireReason
+        minReasonLength={15}
+        reasonLabel="What is wrong with it"
+        reasonHint="Printed on the face of the reversing entry, recorded as a critical audit event, and visible to COA."
+        message={
+          <>
+            <p>Three things happen, in one act:</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
+              <li>This entry is reversed in the General Ledger, dated today.</li>
+              <li>It is marked Reversed and points at the entry that reversed it.</li>
+              <li>A draft copy of it opens, with the same lines, for you to correct and post.</li>
+            </ol>
+            <p className="mt-2">
+              The books end up carrying the mistake, the reversal and the corrected entry. That is
+              what the standard asks for, and what an auditor expects to find - a ledger that can
+              be quietly rewritten is not evidence of anything.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              The correction is dated today and refused if this month is closed. Posting it into a
+              month that has been reported on is a deliberate act of its own.
             </p>
           </>
         }

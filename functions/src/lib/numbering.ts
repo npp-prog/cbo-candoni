@@ -1,6 +1,8 @@
 import type { Transaction } from 'firebase-admin/firestore';
+import { HttpsError } from 'firebase-functions/v2/https';
 import { db, COL } from './firebase';
 import { allocateSequences } from './sequences';
+import { hasDocumentNumber } from './jevNumbers';
 
 /**
  * Document number issuance.
@@ -272,4 +274,88 @@ export async function bookCodeForFund(fundCode: string): Promise<string> {
     throw new Error(`Fund ${fundCode} is not configured.`);
   }
   return (snap.data()?.bookCode as string) ?? fundCode;
+}
+
+/**
+ * Takes a number the office assigned by hand, and refuses a duplicate.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE NUMBERS ARE TYPED IN AT ALL
+ * ---------------------------------------------------------------------------
+ * The Treasurer's office writes the RCI number in its own book before the
+ * report ever reaches CFMS, under the series COA expects it to keep. A system
+ * that issued its own number would quietly run a second series that disagrees
+ * with the office's, and the disagreement is discovered during an audit, by
+ * somebody holding the paper.
+ *
+ * So CFMS takes the number and does the one thing a book cannot do for itself:
+ * refuses to let it be used twice. The reservation is a document whose ID IS
+ * the number, created inside the same transaction as the act it belongs to, so
+ * uniqueness is a database constraint rather than a check two clerks pressing
+ * Save at the same moment can slip between.
+ *
+ * A reservation already held BY THIS DOCUMENT is not a clash. That is what is
+ * left behind when an act is undone - a certification taken back, an approval
+ * reversed - and it is deliberate: the office has written that number against
+ * this document, and letting another take it while this one is corrected
+ * leaves the book and CFMS disagreeing about whose number it is.
+ *
+ * Reads before it writes, as every transaction here must.
+ */
+export async function reserveDocumentNumber(
+  tx: Transaction,
+  input: {
+    /** The series: 'RCI', 'RCD', 'LIQ'. Part of the reservation's identity. */
+    kind: string;
+    fiscalYear: number;
+    fundCode: string;
+    /** The number as the office wrote it. */
+    number: string;
+    /** The document claiming it. */
+    documentId: string;
+    /** How to name the series in the message a user reads. */
+    label?: string;
+  },
+): Promise<string> {
+  const label = input.label ?? input.kind;
+  // A draft carries the placeholder until it is numbered; that is not a number.
+  const number = hasDocumentNumber(input.number) ? String(input.number).trim() : '';
+
+  if (!number) {
+    throw new HttpsError(
+      'invalid-argument',
+      `A ${label} number is required. Assign it from the office's own book before this step.`,
+    );
+  }
+  if (number.length > 40) {
+    throw new HttpsError('invalid-argument', `That ${label} number is too long.`);
+  }
+
+  const ref = db
+    .collection(COL.documentNumbers)
+    .doc(`${input.kind}__${input.fiscalYear}__${input.fundCode}__${number.toUpperCase()}`);
+
+  const snap = await tx.get(ref);
+  const heldHere =
+    snap.exists && (snap.data() as { documentId?: string }).documentId === input.documentId;
+
+  if (snap.exists && !heldHere) {
+    throw new HttpsError(
+      'already-exists',
+      `${label} number ${number} has already been used in ${input.fiscalYear} for the ${input.fundCode} fund. Each number is used once.`,
+    );
+  }
+
+  if (!snap.exists) {
+    tx.create(ref, {
+      docType: input.kind,
+      fiscalYear: input.fiscalYear,
+      fundCode: input.fundCode,
+      number,
+      documentId: input.documentId,
+      at: new Date().toISOString(),
+    });
+  }
+
+  return number;
 }

@@ -54,15 +54,17 @@ export const COLLECTION_TABS = [
 export const PAYMENT_TABS = [
   { label: 'Disbursements for Payment', to: '/treasury/disbursements' },
   { label: 'Checks', to: '/treasury/checks' },
+  // The ADA number series is INSIDE this one, as a tab on the page. It used
+  // to be a tab of its own here, which asked the officer to know whether the
+  // answer to "what happened to 0221" was in the register or in the series
+  // before they could go and look for it. They are one book.
   { label: 'ADA', to: '/treasury/ada' },
-  // The number series and every hole in it. It is the same book as the ADA
-  // register read a different way, so it is a tab on it and not a menu item.
-  { label: 'ADA Numbers', to: '/treasury/ada/numbers' },
-  // The claim sheet is the list of who is being paid out of the checks drawn,
-  // so it reads with the check register rather than beside it.
-  { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
+  // Then the two reports that go to Accounting, in the order the work runs:
+  // what was drawn, then what is reported.
   { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
   { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
+  // The claim sheet is the list of who is being paid out of the checks drawn.
+  { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
   // Drawn out of the same register and submitted to Accounting at year end,
   // so it belongs on this strip as well as in Treasury Reports.
   { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },

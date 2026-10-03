@@ -3,6 +3,7 @@ import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
@@ -18,6 +19,7 @@ import {
   TREASURY_REPORT_TYPES,
 } from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
+import { newestFirst } from '@/lib/registerOrder';
 import type { TreasuryReportType } from '@/types/enums';
 
 /**
@@ -63,10 +65,24 @@ export default function TreasuryReportJev() {
 
   const [reviewing, setReviewing] = useState<TreasuryReport | null>(null);
   const [tab, setTab] = useState('');
+  const [status, setStatus] = useState('');
 
   const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
-  const rows = useMemo(() => (tab ? data.filter((r) => r.reportType === tab) : data), [data, tab]);
+  /*
+   * Newest report number first, like every other register in CFMS.
+   *
+   * This list used to be sorted oldest-first, on the reasoning that a report
+   * which has sat for a week is the one that matters. That was right while
+   * this screen was only a queue. It is now also where a journalized report is
+   * found again, and a history read bottom-up is a history nobody reads. What
+   * is waiting is on the tab counts instead, and in the status filter.
+   */
+  const rows = useMemo(() => {
+    let out = tab ? data.filter((r) => r.reportType === tab) : data;
+    if (status) out = out.filter((r) => r.status === status);
+    return newestFirst(out, (r) => ({ ref: r.reportNo, date: r.reportDate }));
+  }, [data, tab, status]);
 
   const waitingIn = (type: string) =>
     data.filter((r) => r.status === 'CERTIFIED' && (!type || r.reportType === type)).length;
@@ -199,6 +215,18 @@ export default function TreasuryReportJev() {
           loading={loading}
           error={error}
           searchPlaceholder="Report number or serial"
+          filters={
+            <Select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-auto py-1.5 text-sm"
+              aria-label="Filter by status"
+            >
+              <option value="">All statuses</option>
+              <option value="CERTIFIED">Awaiting journal entry</option>
+              <option value="JOURNALIZED">Journalized</option>
+            </Select>
+          }
           emptyTitle={tab ? `No ${TREASURY_REPORT_SHORT[tab as TreasuryReportType]} received` : 'Nothing received'}
           emptyMessage={`No ${
             tab ? TREASURY_REPORT_LABELS[tab as TreasuryReportType] : 'treasury report'
@@ -246,6 +274,9 @@ function JournalizeReport({
       debit: l.debit,
       credit: l.credit,
       particulars: l.particulars,
+      subsidiaryType: l.subsidiaryType,
+      subsidiaryId: l.subsidiaryId,
+      subsidiaryName: l.subsidiaryName,
     })),
   );
   const [posting, setPosting] = useState(false);
@@ -271,6 +302,9 @@ function JournalizeReport({
           debit: l.debit || 0,
           credit: l.credit || 0,
           particulars: l.particulars,
+          subsidiaryType: l.subsidiaryType,
+          subsidiaryId: l.subsidiaryId,
+          subsidiaryName: l.subsidiaryName,
         })),
       });
       toastSuccess(
@@ -393,7 +427,12 @@ function JournalizeReport({
         Treasurer rather than changing the amount here.
       </p>
 
-      <JournalEntryGrid lines={lines} onChange={setLines} readOnly={readOnly} />
+      <JournalEntryGrid
+        lines={lines}
+        onChange={setLines}
+        fundCode={report.fundCode}
+        readOnly={readOnly}
+      />
 
       {!balanced && (
         <Alert tone="warning" className="mt-3">

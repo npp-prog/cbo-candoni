@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { awaitingPosting } from '@/lib/postingQueue';
 import { directEntries } from '@/lib/jevSources';
 import { hasJevNumber } from '@/lib/jevNumbers';
+import { newestFirst } from '@/lib/registerOrder';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -55,7 +56,10 @@ export default function Jevs() {
 
   const rows = useMemo(() => {
     const inPeriod = period ? data.filter((j) => j.period === period) : data;
-    return directEntries(inPeriod);
+    return newestFirst(directEntries(inPeriod), (j) => ({
+      ref: hasJevNumber(j.jevNo) ? j.jevNo : '',
+      date: j.jevDate,
+    }));
   }, [data, period]);
 
   const unposted = awaitingPosting(rows);

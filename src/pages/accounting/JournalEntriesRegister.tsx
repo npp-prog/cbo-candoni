@@ -9,6 +9,7 @@ import { useJevs } from '@/data/queries';
 import { awaitingPosting, totalAwaitingPosting } from '@/lib/postingQueue';
 import { isDirectEntry } from '@/lib/jevSources';
 import { hasJevNumber } from '@/lib/jevNumbers';
+import { newestFirst } from '@/lib/registerOrder';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, monthName } from '@/lib/dates';
 import { JEV_STATUSES, JEV_SOURCE_LABELS, STATUS_LABELS } from '@/types/enums';
@@ -73,7 +74,13 @@ export default function JournalEntriesRegister() {
     let out = period ? data.filter((j) => j.period === period) : data;
     if (origin === 'DIRECT') out = out.filter((j) => isDirectEntry(j.sourceType));
     if (origin === 'DOCUMENT') out = out.filter((j) => !isDirectEntry(j.sourceType));
-    return out;
+    return newestFirst(out, (j) => ({
+      // An entry waiting to be posted has no number, so it sorts to the top -
+      // which is where the Accountant wants it, since it is the one still
+      // needing an act.
+      ref: hasJevNumber(j.jevNo) ? j.jevNo : '',
+      date: j.jevDate,
+    }));
   }, [data, period, origin]);
 
   const waiting = useMemo(() => awaitingPosting(rows), [rows]);

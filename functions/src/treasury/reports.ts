@@ -9,7 +9,12 @@ import {
   type Role,
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
+import {
+  issueNumber,
+  loadNumberingConfig,
+  bookCodeForFund,
+  reserveDocumentNumber,
+} from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import {
   createJevInTransaction,
@@ -81,6 +86,10 @@ interface EntryLine {
   debit: number;
   credit: number;
   particulars?: string | null;
+  /** The subsidiary ledger the line belongs to, when the account has one. */
+  subsidiaryType?: string | null;
+  subsidiaryId?: string | null;
+  subsidiaryName?: string | null;
 }
 
 interface ReportDoc {
@@ -166,7 +175,15 @@ export const certifyTreasuryReport = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
     const caller = await requireCaller(request, TREASURY);
-    const { reportId } = (request.data ?? {}) as { reportId?: string };
+    const { reportId, reportNo: reportNoIn } = (request.data ?? {}) as {
+      reportId?: string;
+      /**
+       * The number the Treasurer assigns, typed at the moment of certifying.
+       * It overrides whatever the draft carries, so a mistyped number can be
+       * corrected here rather than by discarding the report and rebuilding it.
+       */
+      reportNo?: string;
+    };
     if (!reportId) throw invalid('A report id is required.');
 
     return db.runTransaction(async (tx) => {
@@ -356,16 +373,19 @@ export const certifyTreasuryReport = onCall(
 
       // ---- number, lock the documents, forward ----------------------------
 
-      const bookCode = await bookCodeForFund(report.fundCode);
-      const numbering = await loadNumberingConfig(type);
-      const reportNo =
-        report.reportNo ??
-        (await issueNumber(tx, numbering, {
-          bookCode,
-          fundCode: report.fundCode,
-          fiscalYear: report.fiscalYear,
-          month: period,
-        }));
+      /*
+       * The report number is the one the Treasurer's office wrote in its own
+       * book, typed on the draft. CFMS does not issue it; it refuses a
+       * duplicate. See reserveDocumentNumber.
+       */
+      const reportNo = await reserveDocumentNumber(tx, {
+        kind: type,
+        fiscalYear: report.fiscalYear,
+        fundCode: report.fundCode,
+        number: reportNoIn ?? report.reportNo ?? '',
+        documentId: reportId,
+        label,
+      });
 
       const now = new Date().toISOString();
 
@@ -533,9 +553,13 @@ export const journalizeTreasuryReport = onCall(
         officeId: null,
         officeName: null,
         responsibilityCenterId: null,
-        subsidiaryType: null,
-        subsidiaryId: null,
-        subsidiaryName: null,
+        // Carried from the entry the Accountant approved. Cash in Bank is
+        // kept per bank account and an advance is kept per officer, so a
+        // report posted without these leaves the control accounts with a
+        // balance the subsidiary ledger cannot account for.
+        subsidiaryType: l.subsidiaryType ?? null,
+        subsidiaryId: l.subsidiaryId ?? null,
+        subsidiaryName: l.subsidiaryName ?? null,
         cashFlowClass: 'OPERATING',
         particulars: l.particulars ?? `Per ${type} ${report.reportNo}`,
       }));

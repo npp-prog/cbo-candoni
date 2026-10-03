@@ -62,7 +62,6 @@ const SummaryOfCollections = lazy(() => import('./pages/reports/SummaryOfCollect
 const RcdTransmittal = lazy(() => import('./pages/reports/RcdTransmittal'));
 const CancelledChecks = lazy(() => import('./pages/reports/CancelledChecks'));
 const ClaimSheet = lazy(() => import('./pages/treasury/ClaimSheet'));
-const AdaNumbers = lazy(() => import('./pages/treasury/AdaNumbers'));
 const CashInBank = lazy(() => import('./pages/treasury/CashInBank'));
 const PrintChecks = lazy(() => import('./pages/treasury/PrintChecks'));
 const PrintReceipt = lazy(() => import('./pages/treasury/PrintReceipt'));
@@ -207,7 +206,9 @@ export default function App() {
           <Route path="/treasury/ada" element={<Guard module="treasury"><AdaPage /></Guard>} />
           {/* The series and the holes in it. A number, once drawn, is never
               returned to the pool - so every hole needs an explanation. */}
-          <Route path="/treasury/ada/numbers" element={<Guard module="treasury"><AdaNumbers /></Guard>} />
+          {/* The number series is now a tab inside the ADA screen. Kept as a
+              redirect so an old bookmark or notification link still lands. */}
+          <Route path="/treasury/ada/numbers" element={<Navigate to="/treasury/ada" replace />} />
           <Route path="/treasury/ada/:id" element={<Guard module="treasury"><AdaPage /></Guard>} />
           {/* The four treasury reports share one screen, distinguished by the
               type passed in. They are one document with four contents: the

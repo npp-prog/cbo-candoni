@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { Card, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
-import { Field, TextInput, TextArea, DateInput, Checkbox } from '@/components/ui/Field';
+import { Field, TextInput, TextArea, DateInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
@@ -20,7 +19,6 @@ import {
   type AdaSeriesGap,
 } from '@/types/adaNumbers';
 import { fundLabel } from '../budget/Obligations';
-import { PAYMENT_TABS } from './sections';
 
 /**
  * The ADA number series, and every hole in it.
@@ -66,7 +64,17 @@ function splitAdaNo(adaNo: string): { prefix: string; sequence: number; width: n
 const joinAdaNo = (prefix: string, sequence: number, width: number) =>
   `${prefix}-${String(sequence).padStart(width, '0')}`;
 
-export default function AdaNumbers() {
+/**
+ * Rendered inside the ADA screen, as its second tab.
+ *
+ * It was a screen of its own, reached from a tab called "ADA Numbers" beside
+ * the ADA register. They are one book: the register is the advices that were
+ * drawn and this is the series they were drawn from, and the question that
+ * brings anybody here - "what happened to 0221" - is asked while looking at
+ * the register. Two tabs for one book meant the officer had to know which of
+ * the two held the answer before they could look for it.
+ */
+export function AdaNumberSeries() {
   const { fiscalYear, fundCode } = useFilters();
   const { can, hasRole } = useAuth();
   const toast = useToast();
@@ -182,24 +190,19 @@ export default function AdaNumbers() {
 
   return (
     <div>
-      <PageHeader
-        title="ADA Number Control"
-        subtitle={`${fundLabel(fundCode)} — fiscal year ${fiscalYear}`}
-        breadcrumbs={[
-          { label: 'Treasury', to: '/treasury' },
-          { label: 'ADA', to: '/treasury/ada' },
-          { label: 'Numbers' },
-        ]}
-        actions={
-          canReserve ? (
-            <Button variant="primary" onClick={() => setReserving(true)}>
-              Reserve numbers
-            </Button>
-          ) : null
-        }
-      />
-
-      <SectionTabs tabs={PAYMENT_TABS} />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <p className="text-sm text-slate-600">
+          The numbers drawn, the numbers reserved, and every hole in the series. A number missing
+          with nothing accounting for it is either a payment made and never reported, or a serial
+          the office passed over - and both are ordinary, but neither explains itself six months
+          from now.
+        </p>
+        {canReserve && (
+          <Button variant="primary" onClick={() => setReserving(true)}>
+            Reserve numbers
+          </Button>
+        )}
+      </div>
 
       {unexplained.length > 0 ? (
         <Alert
@@ -369,7 +372,6 @@ function ReserveDialog({
   const toast = useToast();
   const [slotDate, setSlotDate] = useState(todayPh());
   const [count, setCount] = useState('1');
-  const [withRadai, setWithRadai] = useState(true);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -386,7 +388,6 @@ function ReserveDialog({
         fundCode,
         slotDate,
         count: n,
-        withRadai,
         note: note.trim() || undefined,
       });
       onReserved(r.reserved.length);
@@ -428,15 +429,6 @@ function ReserveDialog({
             value={count}
             onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))}
             className="w-24 font-mono"
-          />
-        </Field>
-
-        <Field label="Report numbers">
-          <Checkbox
-            checked={withRadai}
-            onChange={setWithRadai}
-            label="Reserve a RADAI number with each one"
-            hint="The office usually reserves them as a pair, so the report and the advice carry matching numbers."
           />
         </Field>
 

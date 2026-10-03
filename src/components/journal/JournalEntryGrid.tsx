@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import clsx from 'clsx';
-import { AccountPicker } from '@/components/pickers';
+import { AccountPicker, SubsidiaryPicker } from '@/components/pickers';
 import { AmountInput, Select, TextInput } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { formatPeso } from '@/lib/money';
@@ -38,6 +38,18 @@ export interface GridLine {
   debit: Centavos;
   credit: Centavos;
   particulars?: string;
+  /**
+   * The subsidiary ledger this line belongs to.
+   *
+   * Accounts Payable, Due to Officers and Employees, Cash in Bank and the
+   * advances are CONTROL accounts: the General Ledger balance is only
+   * meaningful because it is the sum of what is owed to, or held for, each
+   * named party. A line posted to one of them with no subsidiary is a figure
+   * nobody can trace, and the Subsidiary Ledger report shows exactly that as
+   * an unassigned amount that stops it agreeing with the control account.
+   */
+  subsidiaryType?: string;
+  subsidiaryId?: string;
   subsidiaryName?: string;
 }
 
@@ -55,11 +67,14 @@ export function JournalEntryGrid({
   showParticulars = true,
   fppOptions,
   expenseCodes,
+  fundCode,
 }: {
   lines: GridLine[];
   onChange: (lines: GridLine[]) => void;
   readOnly?: boolean;
   showParticulars?: boolean;
+  /** Narrows the bank accounts the subsidiary picker offers. */
+  fundCode?: string;
   /**
    * The budget lines this entry may be charged to. Supplying them adds the FPP
    * column; leaving them out leaves the grid as it was, for the entries that
@@ -141,6 +156,7 @@ export function JournalEntryGrid({
               <th className="cbo-th w-10">#</th>
               <th className="cbo-th min-w-[18rem]">Account</th>
               {fppOptions && <th className="cbo-th min-w-[16rem]">Budget line (FPP)</th>}
+              <th className="cbo-th min-w-[14rem]">Subsidiary ledger</th>
               {showParticulars && <th className="cbo-th min-w-[12rem]">Particulars</th>}
               <th className="cbo-th cbo-amount-col">Debit</th>
               <th className="cbo-th cbo-amount-col">Credit</th>
@@ -157,9 +173,6 @@ export function JournalEntryGrid({
                     <div>
                       <span className="font-mono text-xs text-slate-500">{line.accountCode}</span>{' '}
                       <span className="text-navy-900">{line.accountName}</span>
-                      {line.subsidiaryName && (
-                        <p className="text-2xs text-slate-500">SL: {line.subsidiaryName}</p>
-                      )}
                     </div>
                   ) : (
                     <AccountPicker
@@ -212,6 +225,32 @@ export function JournalEntryGrid({
                     )}
                   </td>
                 )}
+
+                <td className="cbo-td">
+                  {readOnly ? (
+                    line.subsidiaryName ? (
+                      <span className="text-xs text-navy-900">{line.subsidiaryName}</span>
+                    ) : (
+                      <span className="text-xs text-slate-400">&mdash;</span>
+                    )
+                  ) : (
+                    <SubsidiaryPicker
+                      fundCode={fundCode}
+                      value={
+                        line.subsidiaryType && line.subsidiaryId
+                          ? `${line.subsidiaryType}:${line.subsidiaryId}`
+                          : null
+                      }
+                      onChange={(chosen) =>
+                        update(index, {
+                          subsidiaryType: chosen?.type,
+                          subsidiaryId: chosen?.id,
+                          subsidiaryName: chosen?.name,
+                        })
+                      }
+                    />
+                  )}
+                </td>
 
                 {showParticulars && (
                   <td className="cbo-td">
@@ -286,7 +325,7 @@ export function JournalEntryGrid({
               */}
               <td
                 className="cbo-td"
-                colSpan={2 + (fppOptions ? 1 : 0) + (showParticulars ? 1 : 0)}
+                colSpan={3 + (fppOptions ? 1 : 0) + (showParticulars ? 1 : 0)}
               >
                 <span className="text-sm text-navy-900">Total</span>
               </td>

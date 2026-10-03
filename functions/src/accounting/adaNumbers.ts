@@ -56,7 +56,6 @@ export const reserveAdaNumbers = onCall(
         fundCode?: string;
         slotDate?: string;
         count?: number;
-        withRadai?: boolean;
         note?: string;
       };
 
@@ -80,7 +79,17 @@ export const reserveAdaNumbers = onCall(
       }
 
       const adaConfig = await loadNumberingConfig('ADA');
-      const radaiConfig = data.withRadai ? await loadNumberingConfig('RADAI') : null;
+      /*
+       * No RADAI number is drawn here any more.
+       *
+       * It used to reserve one alongside each advice, "so the report and the
+       * advice carry matching numbers". The Treasurer now assigns the RADAI
+       * number from the office's own book when the report is certified, so a
+       * number drawn here would be a second series that disagrees with the
+       * office's - which is the exact fault manual numbering exists to stop,
+       * and worse for being printed beside a number that IS real.
+       */
+      const radaiConfig = null;
       const bookCode = await bookCodeForFund(fundCode);
       const month = Number(slotDate.slice(5, 7));
 

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { newestFirst } from '@/lib/registerOrder';
 import { Link, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -30,10 +31,12 @@ export default function Obligations() {
 
   const { data, loading, error } = useObligations(fiscalYear, fundCode, status || undefined);
 
-  const rows = useMemo(
-    () => (period ? data.filter((o) => Number(o.obrDate?.slice(5, 7)) === period) : data),
-    [data, period],
-  );
+  const rows = useMemo(() => {
+    const inPeriod = period
+      ? data.filter((o) => Number(o.obrDate?.slice(5, 7)) === period)
+      : data;
+    return newestFirst(inPeriod, (o) => ({ ref: o.obrNo, date: o.obrDate }));
+  }, [data, period]);
 
   const totals = useMemo(
     () =>

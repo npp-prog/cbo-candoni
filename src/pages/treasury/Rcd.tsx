@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
+import { newestFirst } from '@/lib/registerOrder';
 import { Link } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
-import { Field, DateInput } from '@/components/ui/Field';
+import { Field, DateInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
@@ -37,6 +38,11 @@ export default function Rcd() {
 
   const { data, loading, error } = useRcds(fiscalYear, fundCode);
   const collections = useCollections(fiscalYear, fundCode);
+
+  const rows = useMemo(
+    () => newestFirst(data, (r) => ({ ref: r.rcdNo, date: r.rcdDate })),
+    [data],
+  );
 
   const [showForm, setShowForm] = useState(false);
   const [posting, setPosting] = useState<RcdRecord | null>(null);
@@ -158,7 +164,7 @@ export default function Rcd() {
       />
 
       <DataTable
-        rows={data}
+        rows={rows}
         columns={columns}
         rowKey={(r) => r.id}
         loading={loading}
@@ -253,6 +259,7 @@ function RcdForm({
   const toast = useToast();
   const { user, profile } = useAuth();
 
+  const [rcdNo, setRcdNo] = useState('');
   const [rcdDate, setRcdDate] = useState(todayPh());
   const [officerId, setOfficerId] = useState<string | null>(null);
   const [officerName, setOfficerName] = useState('');
@@ -290,12 +297,16 @@ function RcdForm({
       toast.error('Incomplete', 'Select a collecting officer and at least one receipt.');
       return;
     }
+    if (!rcdNo.trim()) {
+      toast.error('The RCD number is missing', 'Assign it from the office book before saving.');
+      return;
+    }
     setSaving(true);
     try {
       await createDraft(
         COL.rcds,
         {
-          rcdNo: '(unnumbered)',
+          rcdNo: rcdNo.trim(),
           rcdDate,
           fiscalYear,
           period: Number(rcdDate.slice(5, 7)),
@@ -342,6 +353,20 @@ function RcdForm({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="RCD number"
+          required
+          htmlFor="rcdNo"
+          hint="From the collecting officer's own book."
+        >
+          <TextInput
+            id="rcdNo"
+            value={rcdNo}
+            onChange={(e) => setRcdNo(e.target.value)}
+            placeholder="100-26-10-0001"
+            className="font-mono"
+          />
+        </Field>
         <Field label="Report date" required htmlFor="rcdDate">
           <DateInput id="rcdDate" value={rcdDate} onChange={setRcdDate} />
         </Field>

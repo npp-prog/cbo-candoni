@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -47,7 +48,14 @@ export default function Checks() {
 
   const { data, loading, error } = useChecks(bankAccountId ?? undefined, status || undefined);
 
-  const rows = useMemo(() => data.filter((c) => c.fiscalYear === fiscalYear), [data, fiscalYear]);
+  const rows = useMemo(
+    () =>
+      newestFirst(
+        data.filter((c) => c.fiscalYear === fiscalYear),
+        (c) => ({ ref: c.checkNo, date: c.checkDate }),
+      ),
+    [data, fiscalYear],
+  );
 
   const today = todayPh();
   const nearStale = rows.filter(

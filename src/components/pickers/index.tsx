@@ -414,3 +414,109 @@ function maskAccount(accountNumber: string): string {
 
 export { Combobox };
 export type { Option };
+
+/** What a journal line's subsidiary ledger can be. */
+export type SubsidiaryKind = 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'BANK_ACCOUNT';
+
+const SUBSIDIARY_KIND_LABELS: Record<SubsidiaryKind, string> = {
+  PAYEE: 'Payee',
+  EMPLOYEE: 'Employee',
+  OFFICE: 'Office',
+  BANK_ACCOUNT: 'Bank account',
+};
+
+/**
+ * The subsidiary ledger a journal line belongs to.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY ALL FOUR KINDS ARE IN ONE LIST
+ * ---------------------------------------------------------------------------
+ * The subsidiary ledger is not an accounting nicety. Accounts Payable is a
+ * control account: its balance is only meaningful because it is the sum of
+ * what is owed to each supplier, and a line posted to it with no subsidiary
+ * named is a figure in the General Ledger that nobody can trace to a person.
+ * The Subsidiary Ledger report says so out loud - it shows the unassigned
+ * amount and refuses to agree with the control account until it is nil.
+ *
+ * A clerk encoding a line knows WHO it is for before they know which register
+ * that person lives in, so asking for the kind first - a Select, then a second
+ * picker - puts the one question they cannot answer in front of the one they
+ * can. One list, every kind in it, each row saying what it is.
+ *
+ * The value carries the kind with it ("PAYEE:abc123") so that the line can
+ * store `subsidiaryType` as well as the id, which is what the ledger reports
+ * group by.
+ */
+export function SubsidiaryPicker({
+  value,
+  onChange,
+  fundCode,
+  disabled,
+  id,
+}: {
+  /** "KIND:id", or null for a line with no subsidiary. */
+  value: string | null;
+  onChange: (
+    chosen: { type: SubsidiaryKind; id: string; name: string } | null,
+  ) => void;
+  /** Narrows the bank accounts offered; the other registers are not by fund. */
+  fundCode?: string;
+  disabled?: boolean;
+  id?: string;
+}) {
+  const payees = usePayees();
+  const employees = useEmployees();
+  const offices = useOffices();
+  const banks = useBankAccounts(fundCode);
+
+  const options = useMemo<Option[]>(() => {
+    const out: Option[] = [];
+    for (const p of payees.data) {
+      out.push({
+        value: `PAYEE:${p.id}`,
+        label: p.name,
+        detail: p.tin ? `Payee - TIN ${p.tin}` : 'Payee',
+      });
+    }
+    for (const e of employees.data) {
+      out.push({ value: `EMPLOYEE:${e.id}`, label: e.displayName, detail: 'Employee' });
+    }
+    for (const o of offices.data) {
+      out.push({ value: `OFFICE:${o.id}`, label: o.name, detail: 'Office' });
+    }
+    for (const b of banks.data) {
+      out.push({
+        value: `BANK_ACCOUNT:${b.id}`,
+        label: `${b.bankName} ${b.accountNumber}`,
+        detail: 'Bank account',
+      });
+    }
+    return out;
+  }, [payees.data, employees.data, offices.data, banks.data]);
+
+  return (
+    <Combobox
+      id={id}
+      options={options}
+      value={value}
+      disabled={disabled}
+      loading={payees.loading || employees.loading || offices.loading || banks.loading}
+      placeholder="None"
+      emptyMessage="No payee, employee, office or bank account matches"
+      onChange={(next, option) => {
+        if (!next || !option) {
+          onChange(null);
+          return;
+        }
+        const at = next.indexOf(':');
+        onChange({
+          type: next.slice(0, at) as SubsidiaryKind,
+          id: next.slice(at + 1),
+          name: option.label,
+        });
+      }}
+    />
+  );
+}
+
+export { SUBSIDIARY_KIND_LABELS };

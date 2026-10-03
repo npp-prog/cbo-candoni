@@ -1,11 +1,18 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, POSTING_ROLES, assertFundInScope, notFound, invalid } from '../lib/context';
+import {
+  requireCaller,
+  POSTING_ROLES,
+  CORRECTING_ROLES,
+  assertFundInScope,
+  notFound,
+  invalid,
+} from '../lib/context';
 import { recordTransition } from '../lib/audit';
 import { checkExpenseDebitsHaveFpp } from '../lib/rules';
 import { issueNumber, issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
-import { hasJevNumber } from '../lib/jevNumbers';
+import { hasJevNumber, UNNUMBERED_JEV } from '../lib/jevNumbers';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
 import {
   postJevInTransaction,
@@ -265,6 +272,199 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
     return { originalJevId: jevId, reversingJevId, reversingJevNo: reversingNo };
   });
 });
+
+/**
+ * correctJev - reverse a posted entry and open an editable copy of it.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A POSTED ENTRY IS NOT EDITED IN PLACE
+ * ---------------------------------------------------------------------------
+ * The request behind this was reasonable and ordinary: the month is still
+ * open, the entry has a wrong account on it, let the Accountant fix it.
+ *
+ * What cannot be done is rewrite the ledger lines. The General Ledger is the
+ * single accounting source of truth in CFMS, and a trial balance printed from
+ * it is relied upon precisely because a posted entry is never changed. The
+ * moment it can be, an auditor reading the books cannot tell a correction from
+ * a cover-up - and neither can the office, six months later, when somebody
+ * asks why March moved.
+ *
+ * So this does in one act what the Accountant would otherwise do in three:
+ *
+ *   1. posts the reversal of the posted entry, dated today, in an open period
+ *   2. marks the original REVERSED, pointing at its reversal
+ *   3. opens a NEW DRAFT carrying the same lines, for correcting and posting
+ *
+ * The books end up carrying the mistake, its reversal and the corrected entry,
+ * which is what the standard asks for and what an auditor expects to find. The
+ * Accountant ends up on an editable screen, which is what was asked for.
+ *
+ * The new draft holds no journal number. It draws one when it is posted, like
+ * every other entry.
+ */
+export const correctJev = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, CORRECTING_ROLES);
+    const { jevId, reason } = (request.data ?? {}) as { jevId?: string; reason?: string };
+
+    if (!jevId) throw invalid('A journal entry voucher id is required.');
+    if (!reason?.trim()) {
+      throw invalid(
+        'A reason is required. It is printed on the reversing entry and recorded in the audit trail.',
+      );
+    }
+
+    const jevConfig = await loadNumberingConfig('JEV');
+
+    return db.runTransaction(async (tx) => {
+      const ref = db.collection(COL.jevs).doc(jevId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The journal entry voucher');
+
+      const original = snap.data() as JevData & { reversedByJevId?: string };
+
+      if (original.status !== 'POSTED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} is ${original.status.toLowerCase()}, not posted. An entry that has not reached the ledger is edited directly.`,
+        );
+      }
+      if (original.reversedByJevId) {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} has already been reversed. Correct the entry that replaced it.`,
+        );
+      }
+
+      assertFundInScope(caller, original.fundCode);
+
+      /*
+       * Dated today, in an open month, like any reversal. Writing the
+       * correction back into the original's month would reopen a period that
+       * has been closed and reported on, which is a deliberate act of its own
+       * and not a side effect of fixing a typo.
+       */
+      const revDate = todayPh();
+      const revPeriod = periodOf(revDate);
+      const revYear = Number(revDate.slice(0, 4));
+
+      await assertFiscalYearOpen(revYear, tx);
+      await assertPeriodOpen(revYear, revPeriod, original.fundCode, 'The correction', tx);
+
+      const bookCode = await bookCodeForFund(original.fundCode);
+      const reversingNo = await issueNumber(tx, jevConfig, {
+        bookCode,
+        fundCode: original.fundCode,
+        fiscalYear: revYear,
+        month: revPeriod,
+      });
+
+      // ---- WRITE PHASE ----------------------------------------------------
+
+      const reversingLines = buildReversalLines(original.lines);
+      const reversalParticulars = `Reversal of JEV ${original.jevNo} for correction. ${reason.trim()}`;
+
+      const { jevId: reversingJevId } = createJevInTransaction(tx, caller, {
+        jevNo: reversingNo,
+        jevDate: revDate,
+        fiscalYear: revYear,
+        period: revPeriod,
+        fundCode: original.fundCode,
+        book: original.book,
+        sourceType: 'REVERSING',
+        sourceId: jevId,
+        referenceNo: original.jevNo,
+        payeeId: original.payeeId ?? null,
+        payeeName: original.payeeName ?? null,
+        particulars: reversalParticulars,
+        lines: reversingLines,
+      });
+
+      postJevInTransaction(
+        tx,
+        caller,
+        reversingJevId,
+        {
+          jevNo: reversingNo,
+          jevDate: revDate,
+          fiscalYear: revYear,
+          period: revPeriod,
+          fundCode: original.fundCode,
+          book: original.book,
+          sourceType: 'REVERSING',
+          sourceId: jevId,
+          referenceNo: original.jevNo,
+          payeeId: original.payeeId ?? null,
+          payeeName: original.payeeName ?? null,
+          particulars: reversalParticulars,
+          lines: reversingLines,
+          totalDebit: original.totalCredit,
+          totalCredit: original.totalDebit,
+          status: 'DRAFT',
+        },
+        { isReversal: true },
+      );
+
+      tx.update(ref, {
+        status: 'REVERSED',
+        reversedByJevId: reversingJevId,
+        remarks: `Reversed by JEV ${reversingNo} on ${revDate} for correction: ${reason.trim()}`,
+      });
+
+      tx.update(db.collection(COL.jevs).doc(reversingJevId), { reversesJevId: jevId });
+
+      /*
+       * The copy to correct.
+       *
+       * Deliberately NOT sourceType REVERSING - it is a fresh entry of the
+       * same kind as the one it replaces, and it will be posted on its own
+       * merits. It carries the original's own reference so the paper behind
+       * the entry still leads to it.
+       *
+       * An entry raised by a document keeps pointing at that document, so the
+       * corrected entry is still the voucher's or the report's entry.
+       */
+      const { jevId: correctedJevId } = createJevInTransaction(tx, caller, {
+        jevNo: UNNUMBERED_JEV,
+        jevDate: revDate,
+        fiscalYear: revYear,
+        period: revPeriod,
+        fundCode: original.fundCode,
+        book: original.book,
+        sourceType: original.sourceType,
+        sourceId: original.sourceId ?? null,
+        referenceNo: original.referenceNo ?? null,
+        payeeId: original.payeeId ?? null,
+        payeeName: original.payeeName ?? null,
+        particulars: `Correcting JEV ${original.jevNo}. ${original.particulars}`,
+        lines: original.lines,
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'REVERSE',
+        entityType: COL.jevs,
+        entityId: jevId,
+        entityRef: `JEV ${original.jevNo}`,
+        fiscalYear: original.fiscalYear,
+        fundCode: original.fundCode,
+        action: 'REVERSE',
+        previousStatus: 'POSTED',
+        newStatus: 'REVERSED',
+        remarks: `Reversed by JEV ${reversingNo} for correction, and a draft copy opened. ${reason.trim()}`,
+        severity: 'CRITICAL',
+      });
+
+      return {
+        originalJevId: jevId,
+        reversingJevId,
+        reversingJevNo: reversingNo,
+        correctedJevId,
+      };
+    });
+  },
+);
 
 /**
  * An expense debit must say which line of the budget it is charged to.

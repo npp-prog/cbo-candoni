@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { newestFirst } from '@/lib/registerOrder';
+import { hasDocumentNumber } from '@/lib/jevNumbers';
 import {
   ACCOUNTS_PAYABLE,
   ADVANCES_FOR_PAYROLL,
@@ -97,8 +99,15 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
 
   const { data, loading, error } = useTreasuryReports(reportType, fiscalYear, fundCode);
 
+  const rows = useMemo(
+    () => newestFirst(data, (r) => ({ ref: r.reportNo, date: r.reportDate })),
+    [data],
+  );
+
   const [showForm, setShowForm] = useState(false);
   const [certifying, setCertifying] = useState<TreasuryReport | null>(null);
+  /** The number being certified under - correctable here, not only on the draft. */
+  const [certifyNo, setCertifyNo] = useState('');
   const [withdrawing, setWithdrawing] = useState<TreasuryReport | null>(null);
   const [withdrawReason, setWithdrawReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -182,7 +191,13 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
           {r.status === 'DRAFT' && canCertify && (
-            <Button size="sm" onClick={() => setCertifying(r)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setCertifyNo(hasDocumentNumber(r.reportNo) ? (r.reportNo as string) : '');
+                setCertifying(r);
+              }}
+            >
               Certify
             </Button>
           )}
@@ -205,9 +220,16 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
 
   const certify = async () => {
     if (!certifying) return;
+    if (!certifyNo.trim()) {
+      toast.error(`The ${short} number is missing`, "Assign it from the office's own book.");
+      return;
+    }
     setBusy(true);
     try {
-      const res = await engine.certifyTreasuryReport({ reportId: certifying.id });
+      const res = await engine.certifyTreasuryReport({
+        reportId: certifying.id,
+        reportNo: certifyNo.trim(),
+      });
       toast.success(
         `${short} ${res.reportNo} certified`,
         `${res.documentCount} document${res.documentCount === 1 ? '' : 's'}, ${formatPeso(res.totalAmount)}. Accounting has been notified.`,
@@ -260,7 +282,7 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
 
       <Card>
         <DataTable
-          rows={data}
+          rows={rows}
           columns={columns}
           rowKey={(r) => r.id}
           loading={loading}
@@ -299,9 +321,19 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
                 {reportType === 'RCDISB' ? ' paid in cash' : ''} and forwards the report to the
                 Municipal Accounting Office.
               </p>
+              <div className="mt-3">
+                <Field label={`${short} number`} required hint="From the Treasurer's own book.">
+                  <TextInput
+                    value={certifyNo}
+                    onChange={(e) => setCertifyNo(e.target.value)}
+                    placeholder="100-26-10-0001"
+                    className="font-mono"
+                  />
+                </Field>
+              </div>
               <p className="mt-2">
                 Once certified, the documents it covers are locked to this report and cannot be
-                cancelled without withdrawing it. The report number is drawn now.
+                cancelled without withdrawing it, and this number is reserved against the report.
               </p>
             </>
           }
@@ -367,6 +399,7 @@ function PrepareReport({
   const toast = useToast();
   const short = TREASURY_REPORT_SHORT[reportType];
 
+  const [reportNo, setReportNo] = useState('');
   const [reportDate, setReportDate] = useState(todayPh());
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
 
@@ -599,6 +632,13 @@ function PrepareReport({
       toast.error('Nothing selected', 'Choose at least one document to report.');
       return;
     }
+    if (!reportNo.trim()) {
+      toast.error(
+        `The ${short} number is missing`,
+        "Assign it from the office's own book before saving.",
+      );
+      return;
+    }
     if (needsBank && !bankAccount?.glAccountCode) {
       // Name the account and the field. "Set it under Master Data - Banks"
       // was true and useless: the screen there is headed Bank Accounts, there
@@ -635,6 +675,7 @@ function PrepareReport({
         COL.treasuryReports,
         {
           reportType,
+          reportNo: reportNo.trim(),
           reportDate,
           fiscalYear,
           fundCode,
@@ -697,6 +738,15 @@ function PrepareReport({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={`${short} number`} required hint="From the Treasurer's own book.">
+          <TextInput
+            value={reportNo}
+            onChange={(e) => setReportNo(e.target.value)}
+            placeholder="100-26-10-0001"
+            className="font-mono"
+          />
+        </Field>
+
         <Field label="Report date" required>
           <DateInput value={reportDate} onChange={setReportDate} />
         </Field>

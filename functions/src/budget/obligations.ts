@@ -583,12 +583,26 @@ export const cancelObligation = onCall(
      * to the budget - and the first anybody would know of it is the voucher
      * failing at approval, days later, with no obvious cause.
      *
-     * So: ANY voucher that is not cancelled stops this, draft included.
+     * WHERE THE LINE IS DRAWN: the Municipal Accountant's approval.
+     *
+     * An APPROVED or PAID voucher has committed the obligation - the entry is
+     * raised, the money may already be out - and no cancellation here can
+     * undo that. It is refused, and the voucher is named so the user knows
+     * what to deal with first.
+     *
+     * A voucher still in DRAFT, SUBMITTED or REVIEWED has committed nothing.
+     * Those are cancelled along with the obligation rather than standing in
+     * its way, because the alternative is worse in both directions: leaving
+     * them alive points them at an obligation that has released its allotment
+     * back to the budget, and the first anybody would know of it is the
+     * voucher failing at approval days later with no obvious cause; refusing
+     * the cancellation over a draft makes the Budget Office chase an
+     * unfinished voucher in another section before it can correct its own
+     * register.
      *
      * Outside the transaction, because Firestore cannot run a query inside
      * one. The window is a voucher raised in the seconds between this read
-     * and the commit, and the consequence of losing that race is the thing
-     * that happens today in every case.
+     * and the commit.
      */
     const drawnOn = await db
       .collection(COL.disbursementVouchers)
@@ -596,19 +610,22 @@ export const cancelObligation = onCall(
       .get();
 
     const live = drawnOn.docs
-      .map((d) => d.data() as { dvNo?: string; status?: string })
+      .map((d) => ({ id: d.id, ...(d.data() as { dvNo?: string; status?: string }) }))
       .filter((d) => d.status !== 'CANCELLED');
 
-    if (live.length > 0) {
-      const named = live
+    const committed = live.filter((d) => d.status === 'APPROVED' || d.status === 'PAID');
+    const unfinished = live.filter((d) => d.status !== 'APPROVED' && d.status !== 'PAID');
+
+    if (committed.length > 0) {
+      const named = committed
         .map((d) => d.dvNo)
         .filter(Boolean)
         .join(', ');
       throw new HttpsError(
         'failed-precondition',
-        `This obligation is already on ${live.length === 1 ? 'a disbursement voucher' : `${live.length} disbursement vouchers`}${
-          named ? ` (${named})` : ''
-        } and cannot be cancelled. Cancel the voucher first; the obligation is then free again.`,
+        `The Municipal Accountant has already approved ${
+          committed.length === 1 ? 'a disbursement voucher' : `${committed.length} disbursement vouchers`
+        }${named ? ` (${named})` : ''} against this obligation, so it cannot be cancelled. Undo the approval, or cancel the voucher, and the obligation is free again.`,
       );
     }
 
@@ -761,7 +778,48 @@ export const cancelObligation = onCall(
         severity: 'NOTICE',
       });
 
-      return { obligationId };
+      /*
+       * The unfinished vouchers go with it.
+       *
+       * None of them has committed anything - consumption happens at the
+       * Accountant's approval, and the guard above has already refused if any
+       * voucher reached it - so there is nothing to reverse. What there is, is
+       * a voucher pointing at an obligation that no longer carries a balance,
+       * and leaving it alive only defers the discovery to the day somebody
+       * tries to approve it.
+       */
+      for (const dv of unfinished) {
+        tx.update(db.collection(COL.disbursementVouchers).doc(dv.id), {
+          status: 'CANCELLED',
+          cancelledReason: `The obligation it draws on was cancelled: ${reason.trim()}`,
+          cancelledBy: {
+            uid: caller.uid,
+            name: caller.name,
+            position: caller.position ?? null,
+            at: new Date().toISOString(),
+          },
+        });
+
+        recordTransition(tx, {
+          caller,
+          event: 'CANCEL',
+          entityType: COL.disbursementVouchers,
+          entityId: dv.id,
+          entityRef: `DV ${dv.dvNo ?? dv.id}`,
+          fiscalYear: obr.fiscalYear,
+          fundCode: obr.fundCode,
+          action: 'CANCEL',
+          previousStatus: dv.status ?? 'DRAFT',
+          newStatus: 'CANCELLED',
+          remarks: `Cancelled with OBR ${obr.obrNo ?? obligationId}. ${reason.trim()}`,
+          severity: 'NOTICE',
+        });
+      }
+
+      return {
+        obligationId,
+        cancelledVouchers: unfinished.map((d) => d.dvNo ?? d.id),
+      };
     });
   },
 );

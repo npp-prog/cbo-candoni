@@ -379,6 +379,15 @@ export interface TreasuryReportEntryLine {
   debit: Centavos;
   credit: Centavos;
   particulars?: string;
+  /**
+   * The subsidiary ledger the line belongs to. An RCI credits Cash in Bank,
+   * which is a control account kept per bank account; an RCDisb settles an
+   * advance held by a named officer. Without this the entry posts to the
+   * control account and the subsidiary ledger cannot be made to agree with it.
+   */
+  subsidiaryType?: string;
+  subsidiaryId?: Id;
+  subsidiaryName?: string;
 }
 
 /**

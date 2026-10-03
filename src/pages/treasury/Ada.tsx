@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { PageHeader } from '@/components/ui/Layout';
+import { newestFirst } from '@/lib/registerOrder';
+import { PageHeader, Tabs } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -22,6 +23,7 @@ import { canSubmitAda, canUndoOutright } from '@/lib/releaseControl';
 import type { Ada as AdaRecord } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
 import { PAYMENT_TABS } from './sections';
+import { AdaNumberSeries } from './AdaNumbers';
 
 /**
  * Advice to Debit Account.
@@ -37,6 +39,7 @@ export default function Ada() {
   const { hasRole, can } = useAuth();
   const toast = useToast();
 
+  const [tab, setTab] = useState<'register' | 'numbers'>('register');
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [submitting, setSubmitting] = useState<AdaRecord | null>(null);
@@ -44,7 +47,14 @@ export default function Ada() {
   const [busy, setBusy] = useState(false);
 
   const { data, loading, error } = useAda(bankAccountId ?? undefined, status || undefined);
-  const rows = useMemo(() => data.filter((a) => a.fiscalYear === fiscalYear), [data, fiscalYear]);
+  const rows = useMemo(
+    () =>
+      newestFirst(
+        data.filter((a) => a.fiscalYear === fiscalYear),
+        (a) => ({ ref: a.adaNo, date: a.adaDate }),
+      ),
+    [data, fiscalYear],
+  );
 
   const inTransit = rows
     .filter((a) => ['PREPARED', 'SUBMITTED'].includes(a.status))
@@ -161,6 +171,23 @@ export default function Ada() {
 
       <SectionTabs tabs={PAYMENT_TABS} />
 
+      {/*
+        The register and the number series are one book read two ways, so they
+        are two tabs on one screen rather than two screens. "What happened to
+        0221" is asked while looking at the register.
+      */}
+      <Tabs
+        tabs={[
+          { id: 'register', label: 'Advices', count: rows.length },
+          { id: 'numbers', label: 'Number series' },
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as 'register' | 'numbers')}
+      />
+
+      {tab === 'numbers' && <div className="mt-4"><AdaNumberSeries /></div>}
+
+      {tab === 'register' && (
       <DataTable
         rows={rows}
         columns={columns}
@@ -196,6 +223,7 @@ export default function Ada() {
           periodLabel: `For the fiscal year ${fiscalYear}`,
         }}
       />
+      )}
 
       {submitting && (
         <SubmitDialog
