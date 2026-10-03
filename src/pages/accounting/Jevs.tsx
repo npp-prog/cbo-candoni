@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { awaitingPosting } from '@/lib/postingQueue';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -37,7 +38,7 @@ export default function Jevs() {
     [data, period],
   );
 
-  const unposted = rows.filter((j) => !['POSTED', 'CANCELLED', 'REVERSED'].includes(j.status));
+  const unposted = awaitingPosting(rows);
 
   const columns: Column<JournalEntryVoucher>[] = [
     {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { UnpostedEntriesNote } from '@/components/UnpostedEntriesNote';
 import { Link } from 'react-router-dom';
 import { ReportShell } from '@/components/ReportShell';
 import { Spinner } from '@/components/ui/Layout';
@@ -111,9 +112,12 @@ export default function Journals() {
       {ledger.loading ? (
         <Spinner label="Reading the journal" />
       ) : rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-500">
-          No entries have been posted to the {BOOK_LABELS[book]} for this fund and period.
-        </p>
+        <div className="py-8">
+          <p className="text-center text-sm text-slate-500">
+            No entries have been posted to the {BOOK_LABELS[book]} for this fund and period.
+          </p>
+          <UnpostedEntriesNote fiscalYear={fiscalYear} fundCode={fundCode} className="mt-4" />
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">

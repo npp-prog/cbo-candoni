@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { UnpostedEntriesNote } from '@/components/UnpostedEntriesNote';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
@@ -132,9 +133,12 @@ export default function TrialBalance() {
       {ledger.loading ? (
         <Spinner label="Reading the General Ledger" />
       ) : rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-500">
-          No journal entries have been posted for the {fundLabel(fundCode)} in this period.
-        </p>
+        <div className="py-8">
+          <p className="text-center text-sm text-slate-500">
+            No journal entries have been posted for the {fundLabel(fundCode)} in this period.
+          </p>
+          <UnpostedEntriesNote fiscalYear={fiscalYear} fundCode={fundCode} className="mt-4" />
+        </div>
       ) : (
         <table className="w-full border-collapse">
           <thead>

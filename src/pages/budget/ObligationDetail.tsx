@@ -76,6 +76,7 @@ export default function ObligationDetail() {
   const [saving, setSaving] = useState(false);
   const [certifying, setCertifying] = useState(false);
   const [confirmCertify, setConfirmCertify] = useState(false);
+  const [confirmUncertify, setConfirmUncertify] = useState(false);
   /**
    * The number the Budget Office assigns, typed in before certifying.
    *
@@ -134,6 +135,17 @@ export default function ObligationDetail() {
   const canEdit = can('budget', 'edit') && editable;
   const canCertify = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER') && !isNew &&
     ['DRAFT', 'SUBMITTED', 'BUDGET_REVIEWED', 'RETURNED'].includes(existing?.status ?? '');
+
+  /**
+   * The Budget Officer may take the certification back so the staff can
+   * correct a line, as long as nothing has been committed on it.
+   *
+   * Offered only while the obligation is OBLIGATED. Once a voucher is approved
+   * against it the status moves to WITH DV, which is the server's refusal
+   * showing on the screen before anybody presses anything.
+   */
+  const canUncertify =
+    hasRole('SUPER_ADMIN', 'BUDGET_OFFICER') && !isNew && existing?.status === 'OBLIGATED';
 
   /**
    * The signed form has to be on file before the number is issued.
@@ -360,6 +372,28 @@ export default function ObligationDetail() {
     }
   };
 
+  const uncertify = async (reason: string) => {
+    if (!id) return;
+    setCertifying(true);
+    try {
+      const result = await engine.uncertifyObligation({ obligationId: id, reason });
+      toast.success(
+        `${form.short} ${result.obrNo ?? ''} is a draft again`.trim(),
+        result.vouchersDrawingOnIt.length > 0
+          ? `The allotment has been released. ${result.vouchersDrawingOnIt.join(', ')} already draws on this obligation - check it still agrees after you correct the lines.`
+          : 'The allotment has been released back to the budget line. Correct the lines and certify again.',
+      );
+      setConfirmUncertify(false);
+    } catch (err) {
+      toast.error(
+        'The certification was not taken back',
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      setCertifying(false);
+    }
+  };
+
   const certify = async (overrideReason?: string) => {
     if (!id) return;
     const assigned = obrNo.trim();
@@ -445,6 +479,11 @@ export default function ObligationDetail() {
                 onClick={() => (hasShortfall ? setConfirmOverride(true) : setConfirmCertify(true))}
               >
                 Certify
+              </Button>
+            )}
+            {canUncertify && (
+              <Button variant="secondary" onClick={() => setConfirmUncertify(true)}>
+                Undo certification
               </Button>
             )}
             {!isNew && can('budget', 'cancel') && status !== 'CANCELLED' && (
@@ -878,6 +917,39 @@ export default function ObligationDetail() {
           </Card>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmUncertify}
+        onCancel={() => setConfirmUncertify(false)}
+        onConfirm={(reason) => {
+          if (reason) void uncertify(reason);
+        }}
+        loading={certifying}
+        title={`Undo the certification of ${form.short} ${existing?.obrNo ?? ''}`.trim()}
+        confirmLabel="Undo certification"
+        variant="danger"
+        requireReason
+        message={
+          <>
+            <p>
+              <strong>{formatPeso(totalAmount)}</strong> of allotment goes back to the budget
+              line and the {form.short} becomes a draft again, so the lines can be corrected and
+              certified afresh.
+            </p>
+            <p className="mt-2">
+              It keeps its number, <strong className="font-mono">{existing?.obrNo}</strong>, and
+              keeps it reserved - the Budget Office wrote that number in its book against this
+              request, and letting another obligation take it while this one is corrected would
+              leave the book and CFMS disagreeing about whose it is.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Recorded as a critical audit event, because it reverses a budget control. The server
+              will refuse it if the Municipal Accountant has already approved a disbursement
+              voucher against this obligation.
+            </p>
+          </>
+        }
+      />
 
       <ConfirmDialog
         open={confirmCertify}

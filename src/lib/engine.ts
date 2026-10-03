@@ -73,6 +73,16 @@ export const engine = {
     ),
 
   /**
+   * The Budget Officer takes a certification back so the staff can correct the
+   * obligation. Refused once the Accountant has approved a voucher against it.
+   */
+  uncertifyObligation: (p: { obligationId: Id; reason: string }) =>
+    call<typeof p, { obligationId: Id; obrNo: string | null; vouchersDrawingOnIt: string[] }>(
+      'uncertifyObligation',
+      p,
+    ),
+
+  /**
    * Reads the appropriation ordinance, or a batch of allotment releases, into
    * the budget ledger - already approved, since the Sanggunian enacted the one
    * and the Budget Officer authorises the other by sending it.

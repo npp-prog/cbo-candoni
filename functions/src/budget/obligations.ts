@@ -355,13 +355,22 @@ export const certifyObligation = onCall(
         .collection(COL.documentNumbers)
         .doc(`OBR__${obr.fiscalYear}__${obr.fundCode}__${obrNo.toUpperCase()}`);
       const reservationSnap = await tx.get(reservationRef);
-      if (reservationSnap.exists) {
-        const prior = reservationSnap.data() as { documentId?: string };
+      /*
+       * A reservation belonging to THIS obligation is not a clash.
+       *
+       * It is what is left behind when the Budget Officer undoes a
+       * certification: the number stays attached to the obligation so that
+       * nobody else can take it while the staff correct the lines, and
+       * re-certifying must therefore be allowed to walk back on to it.
+       */
+      const reservedHere =
+        reservationSnap.exists &&
+        (reservationSnap.data() as { documentId?: string }).documentId === obligationId;
+
+      if (reservationSnap.exists && !reservedHere) {
         throw new HttpsError(
           'already-exists',
-          `Obligation Request number ${obrNo} has already been used in ${obr.fiscalYear} for the ${obr.fundCode} fund${
-            prior.documentId === obligationId ? '' : ' on another obligation'
-          }. Each number is used once.`,
+          `Obligation Request number ${obrNo} has already been used in ${obr.fiscalYear} for the ${obr.fundCode} fund on another obligation. Each number is used once.`,
         );
       }
 
@@ -433,14 +442,16 @@ export const certifyObligation = onCall(
       // The reservation, created in the same transaction as the certification.
       // Either both land or neither does, so there is no state in which a
       // number is reserved against an obligation that was not certified.
-      tx.create(reservationRef, {
-        docType: 'OBR',
-        number: obrNo,
-        fiscalYear: obr.fiscalYear,
-        fundCode: obr.fundCode,
-        documentId: obligationId,
-        assignedBy: { uid: caller.uid, name: caller.name, at: now },
-      });
+      if (!reservedHere) {
+        tx.create(reservationRef, {
+          docType: 'OBR',
+          number: obrNo,
+          fiscalYear: obr.fiscalYear,
+          fundCode: obr.fundCode,
+          documentId: obligationId,
+          assignedBy: { uid: caller.uid, name: caller.name, at: now },
+        });
+      }
 
       tx.update(obrRef, {
         obrNo,
@@ -754,3 +765,236 @@ export const cancelObligation = onCall(
     });
   },
 );
+
+/**
+ * uncertifyObligation - the Budget Officer takes the certification back.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS, AND WHY IT IS NOT "CANCEL"
+ * ---------------------------------------------------------------------------
+ * An officer who certifies an obligation and then sees that a line is wrong
+ * has, until now, had one route: cancel it and encode the whole thing again.
+ * That is a heavy price for a typo, and the predictable result is that nobody
+ * pays it - the wrong figure is left alone and corrected by a second
+ * obligation later, which is how a registry fills with entries nobody can
+ * reconcile against a single request.
+ *
+ * So the certification can be taken back. The obligation returns to DRAFT, the
+ * allotment it committed goes back to the budget line, and the staff correct
+ * it and submit it again.
+ *
+ * ---------------------------------------------------------------------------
+ * THE LINE IT MAY NOT CROSS
+ * ---------------------------------------------------------------------------
+ * Not once the Accountant has approved a disbursement voucher against it. At
+ * that point the voucher has consumed part of the obligation, a journal entry
+ * has been prepared on it, and a payment is on its way out of the municipality
+ * - and an obligation that can be edited underneath all of that is an
+ * obligation that proves nothing.
+ *
+ * A voucher that is still a draft, or submitted, or reviewed, does NOT stop
+ * this: nothing has been committed on it yet. It is named in the refusal-free
+ * path anyway, because the staff correcting the obligation need to know the
+ * voucher exists and may now disagree with it.
+ *
+ * ---------------------------------------------------------------------------
+ * THE NUMBER STAYS
+ * ---------------------------------------------------------------------------
+ * The OBR keeps its number and its reservation. The Budget Office wrote that
+ * number in its book against this request; releasing it would let another
+ * obligation take it while this one is being corrected, and the book and CFMS
+ * would then disagree about which request it belongs to. Certifying again
+ * walks back on to the same reservation.
+ */
+export const uncertifyObligation = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, CERTIFYING_ROLES);
+    const { obligationId, reason } = (request.data ?? {}) as {
+      obligationId?: string;
+      reason?: string;
+    };
+
+    if (!obligationId) throw invalid('An obligation id is required.');
+    if (!reason?.trim()) {
+      throw invalid(
+        'A reason is required. Undoing a certification is a reversal of a budget control and is recorded as one.',
+      );
+    }
+
+    // Outside the transaction: Firestore cannot run a query inside one.
+    const vouchers = await db
+      .collection(COL.disbursementVouchers)
+      .where('obligationId', '==', obligationId)
+      .get();
+
+    const live = vouchers.docs
+      .map((d) => d.data() as { dvNo?: string; status?: string })
+      .filter((d) => d.status !== 'CANCELLED');
+
+    const committed = live.filter((d) => d.status === 'APPROVED' || d.status === 'PAID');
+    if (committed.length > 0) {
+      const named = committed.map((d) => d.dvNo).filter(Boolean).join(', ');
+      throw new HttpsError(
+        'failed-precondition',
+        `The Municipal Accountant has already approved ${
+          committed.length === 1 ? 'a disbursement voucher' : `${committed.length} disbursement vouchers`
+        }${named ? ` (${named})` : ''} against this obligation, so the certification cannot be taken back. Cancel the voucher first, or correct the figure with a second obligation.`,
+      );
+    }
+
+    return db.runTransaction(async (tx) => {
+      // ---- READ PHASE -------------------------------------------------------
+      const ref = db.collection(COL.obligations).doc(obligationId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The obligation');
+
+      const obr = snap.data() as {
+        obrNo?: string;
+        fiscalYear: number;
+        fundCode: string;
+        status: string;
+        totalAmount: number;
+        disbursedAmount?: number;
+        lines: Array<
+          BudgetKey & {
+            lineNo: number;
+            officeName: string;
+            accountName: string;
+            appropriatedAccountCode?: string;
+            trustProgramId?: string;
+            expenseClass: string;
+            amount: number;
+          }
+        >;
+      };
+
+      if (obr.status !== 'OBLIGATED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `Only a certified obligation can be uncertified. This one is ${obr.status
+            .toLowerCase()
+            .replace('_', ' ')}.`,
+        );
+      }
+      if ((obr.disbursedAmount ?? 0) > 0) {
+        throw new HttpsError(
+          'failed-precondition',
+          `OBR ${obr.obrNo} has ${((obr.disbursedAmount ?? 0) / 100).toFixed(2)} disbursed against it. The certification cannot be taken back.`,
+        );
+      }
+
+      await assertFiscalYearOpen(obr.fiscalYear, tx);
+
+      const isTrust = String(obr.fundCode ?? '').trim().toUpperCase() === 'TF';
+      const balances = new Map<number, Awaited<ReturnType<typeof readBudgetBalance>>>();
+      const trustPrograms = new Map<string, TrustProgramData>();
+      const trustAmounts = new Map<string, number>();
+
+      if (isTrust) {
+        for (const line of obr.lines) {
+          const programId = String(line.trustProgramId ?? '').trim();
+          if (!programId) continue;
+          trustAmounts.set(programId, (trustAmounts.get(programId) ?? 0) + line.amount);
+        }
+        for (const programId of trustAmounts.keys()) {
+          trustPrograms.set(programId, await readTrustProgram(tx, programId));
+        }
+      } else {
+        for (const line of obr.lines) {
+          balances.set(line.lineNo, await readBudgetBalance(tx, budgetKeyForLine(obr, line)));
+        }
+      }
+
+      // ---- WRITE PHASE ------------------------------------------------------
+      if (!isTrust) {
+        for (const line of obr.lines) {
+          applyBudgetDelta(
+            tx,
+            budgetKeyForLine(obr, line),
+            balances.get(line.lineNo)!,
+            { obligated: -line.amount },
+            {
+              officeName: line.officeName,
+              accountName: line.accountName,
+              expenseClass: line.expenseClass,
+            },
+          );
+        }
+        applySummaryDelta(tx, obr.fiscalYear, obr.fundCode, { obligated: -obr.totalAmount });
+      }
+
+      for (const [programId, amount] of trustAmounts) {
+        applyTrustDelta(tx, programId, trustPrograms.get(programId)!, { utilised: -amount });
+      }
+
+      const now = new Date().toISOString();
+      tx.update(ref, {
+        status: 'DRAFT',
+        // The certification is gone, so the record of who made it goes with
+        // it - but not silently: the workflow history below keeps both acts.
+        certifiedAt: null,
+        certifiedBy: null,
+        unpaidAmount: 0,
+        uncertifiedBy: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+          reason: reason.trim(),
+        },
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'BUDGET_OVERRIDE',
+        entityType: COL.obligations,
+        entityId: obligationId,
+        entityRef: `OBR ${obr.obrNo ?? obligationId}`,
+        fiscalYear: obr.fiscalYear,
+        fundCode: obr.fundCode,
+        action: 'REOPEN',
+        previousStatus: 'OBLIGATED',
+        newStatus: 'DRAFT',
+        remarks: `Certification taken back, ${(obr.totalAmount / 100).toFixed(2)} of allotment released. Reason: ${reason.trim()}${
+          live.length > 0
+            ? `. Note: ${live.length} voucher(s) already draw on this obligation (${live.map((d) => d.dvNo ?? 'draft').join(', ')}).`
+            : ''
+        }`,
+        // A control being reversed is exactly what an auditor filters for.
+        severity: 'CRITICAL',
+      });
+
+      return {
+        obligationId,
+        obrNo: obr.obrNo ?? null,
+        vouchersDrawingOnIt: live.map((d) => d.dvNo ?? 'draft'),
+      };
+    });
+  },
+);
+
+/**
+ * The budget key an obligation line draws on.
+ *
+ * Keyed on the object code the APPROPRIATION carried, which is empty on a
+ * project line - never the object this line commits. On a third of the FY2025
+ * ordinance those differ, and keying on the wrong one would look for a balance
+ * that does not exist.
+ */
+function budgetKeyForLine(
+  obr: { fiscalYear: number; fundCode: string },
+  line: BudgetKey & { appropriatedAccountCode?: string },
+): BudgetKey {
+  return {
+    fiscalYear: line.fiscalYear ?? obr.fiscalYear,
+    fundCode: line.fundCode ?? obr.fundCode,
+    officeId: line.officeId,
+    responsibilityCenterId: line.responsibilityCenterId ?? null,
+    programId: line.programId ?? null,
+    projectId: line.projectId ?? null,
+    activityId: line.activityId ?? null,
+    fppCode: line.fppCode,
+    accountCode: line.appropriatedAccountCode ?? '',
+  };
+}
