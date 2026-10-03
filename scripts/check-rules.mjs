@@ -321,6 +321,63 @@ if (existsSync(layoutPath)) {
   }
 }
 
+// --- 9. The "Add a payee" button matches who may actually add one -----------
+//
+// The payee picker offers to create a payee mid-document, and it only offers
+// it to roles the security rules will accept. Those are two separate lists in
+// two separate files, so they are compared here: if they drift, the button
+// appears and the save is refused, which is a failure the clerk cannot act on.
+
+const payeesRule = firestore.match(
+  /match \/payees\/\{id\}[\s\S]*?allow create: if signedIn\(\) && hasAny\(masterDataWriters\(\)\.concat\(\[([^\]]*)\]\)\)/,
+);
+const writersRule = firestore.match(/function masterDataWriters\(\)\s*\{\s*return \[([^\]]*)\]/);
+const payeesLibPath = resolve(root, 'src/lib/payees.ts');
+
+if (payeesRule && writersRule && existsSync(payeesLibPath)) {
+  const fromRules = new Set(
+    [writersRule[1], payeesRule[1]]
+      .join(',')
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean),
+  );
+
+  const lib = readFileSync(payeesLibPath, 'utf8');
+  const libList = lib.match(/PAYEE_CREATOR_ROLES[^=]*=\s*\[([\s\S]*?)\]/);
+  // Comments inside the list contain commas of their own, so they go before
+  // the split rather than after it.
+  const fromLib = new Set(
+    (libList?.[1] ?? '')
+      .replace(/\/\/[^\n]*/g, '')
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean),
+  );
+
+  const onlyInRules = [...fromRules].filter((r) => !fromLib.has(r));
+  const onlyInLib = [...fromLib].filter((r) => !fromRules.has(r));
+
+  if (onlyInLib.length > 0) {
+    failures.push(
+      `PAYEE_CREATOR_ROLES offers the "Add a payee" button to ${onlyInLib.join(', ')}, which ` +
+        'firestore.rules will refuse. Those users would press the button and be told they are ' +
+        'not permitted. Add the role to the payees create rule, or take it out of the list.',
+    );
+  }
+
+  if (onlyInRules.length > 0) {
+    failures.push(
+      `firestore.rules lets ${onlyInRules.join(', ')} create a payee, but PAYEE_CREATOR_ROLES ` +
+        'does not offer them the button, so they are sent to Master Data for no reason.',
+    );
+  }
+
+  if (onlyInLib.length === 0 && onlyInRules.length === 0) {
+    console.log(`payees: the ${fromRules.size} roles offered the button are the ${fromRules.size} the rules allow`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

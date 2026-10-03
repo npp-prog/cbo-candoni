@@ -1,5 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Combobox, type Option } from './Combobox';
+import { NewPayeeModal } from './NewPayeeModal';
+import { useAuth } from '@/auth/AuthProvider';
+import { PAYEE_CREATOR_ROLES } from '@/lib/payees';
 import {
   useAccounts,
   useBankAccounts,
@@ -99,14 +102,37 @@ export function PayeePicker({
   disabled,
   invalid,
   id,
+  allowAdd,
 }: {
   value: string | null;
   onChange: (id: string | null, payee: { id: string; name: string; tin?: string; address?: string } | null) => void;
   disabled?: boolean;
   invalid?: boolean;
   id?: string;
+  /**
+   * Offer to add the payee here, in a window over the document, when nothing
+   * matches what was typed.
+   *
+   * On by default on the screens where a document is being ENCODED, and off
+   * where a payee is only being searched for - a report filter has no business
+   * creating master data, and the button there would only ever be a misclick.
+   */
+  allowAdd?: boolean;
 }) {
   const { data, loading } = usePayees();
+  const { hasRole } = useAuth();
+
+  /**
+   * Whatever was typed when nothing matched - which seeds the name field, so
+   * a clerk who has already typed "Negros Hardware" does not type it twice.
+   * `null` means the window is closed. An empty string is a legitimate value:
+   * the picker was opened and the button pressed without typing anything.
+   */
+  const [adding, setAdding] = useState<string | null>(null);
+
+  // The security rules refuse the write otherwise, and a button that fails
+  // when pressed is worse than one that was never offered.
+  const mayAdd = hasRole(...PAYEE_CREATOR_ROLES);
 
   const options = useMemo<Option[]>(
     () =>
@@ -119,21 +145,43 @@ export function PayeePicker({
     [data],
   );
 
+  const offerAdd = Boolean(allowAdd) && mayAdd && !disabled;
+
   return (
-    <Combobox
-      id={id}
-      options={options}
-      value={value}
-      loading={loading}
-      disabled={disabled}
-      invalid={invalid}
-      placeholder="Payee name"
-      emptyMessage="No payee matches. Add them under Master Data."
-      onChange={(v, opt) => {
-        const payee = data.find((p) => p.id === v);
-        onChange(v, payee ? { id: payee.id, name: payee.name, tin: payee.tin, address: payee.address } : null);
-      }}
-    />
+    <>
+      <Combobox
+        id={id}
+        options={options}
+        value={value}
+        loading={loading}
+        disabled={disabled}
+        invalid={invalid}
+        placeholder="Payee name"
+        emptyMessage={
+          offerAdd
+            ? 'No payee matches.'
+            : 'No payee matches. Add them under Master Data.'
+        }
+        onAdd={offerAdd ? (typed) => setAdding(typed) : undefined}
+        addLabel="Add a new payee"
+        onChange={(v, opt) => {
+          const payee = data.find((p) => p.id === v);
+          onChange(v, payee ? { id: payee.id, name: payee.name, tin: payee.tin, address: payee.address } : null);
+        }}
+      />
+
+      {adding !== null && (
+        <NewPayeeModal
+          initialName={adding}
+          existing={data}
+          onClose={() => setAdding(null)}
+          onCreated={(payee) => {
+            setAdding(null);
+            onChange(payee.id, payee);
+          }}
+        />
+      )}
+    </>
   );
 }
 

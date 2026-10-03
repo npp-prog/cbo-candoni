@@ -458,6 +458,7 @@ export default function ObligationDetail() {
                     id="payee"
                     value={payeeId}
                     disabled={!canEdit}
+                    allowAdd
                     onChange={(v, p) => {
                       setPayeeId(v);
                       setPayeeName(p?.name ?? '');

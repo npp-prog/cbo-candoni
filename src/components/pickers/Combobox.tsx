@@ -32,6 +32,8 @@ export function Combobox({
   id,
   allowClear = true,
   loading,
+  onAdd,
+  addLabel = 'Add a new record',
 }: {
   options: Option[];
   value: string | null;
@@ -43,6 +45,17 @@ export function Combobox({
   id?: string;
   allowClear?: boolean;
   loading?: boolean;
+  /**
+   * Offered ONLY when nothing matches, and given whatever was typed.
+   *
+   * Deliberately not offered alongside results. A clerk looking at "ABC
+   * Trading" in the list and an "Add a new payee" button beside it will
+   * sometimes take the button, and that is precisely how a second record for
+   * the same supplier is created. When the list is empty there is nothing to
+   * pick wrongly.
+   */
+  onAdd?: (typed: string) => void;
+  addLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -106,6 +119,16 @@ export function Combobox({
     setOpen(false);
   };
 
+  const canAdd = Boolean(onAdd) && !loading && filtered.length === 0;
+
+  const add = () => {
+    if (!onAdd) return;
+    const typed = query.trim();
+    setQuery('');
+    setOpen(false);
+    onAdd(typed);
+  };
+
   return (
     <div ref={containerRef} className="relative">
       <div
@@ -139,6 +162,10 @@ export function Combobox({
                 e.preventDefault();
                 const option = filtered[highlight];
                 if (option) commit(option);
+                // Typed a name nothing matches, and pressed Enter. That is the
+                // moment the record is wanted; asking for a second gesture
+                // here is what sends people off to Master Data.
+                else if (canAdd) add();
               } else if (e.key === 'Escape') {
                 setOpen(false);
                 setQuery('');
@@ -200,7 +227,31 @@ export function Combobox({
           {loading ? (
             <li className="px-3 py-2 text-sm text-slate-500">Loading...</li>
           ) : filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-500">{emptyMessage}</li>
+            <>
+              <li className="px-3 py-2 text-sm text-slate-500">{emptyMessage}</li>
+              {canAdd && (
+                <li className="border-t border-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={add}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-brand-700 hover:bg-brand-50"
+                  >
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M10 4.25a.75.75 0 01.75.75v4.25H15a.75.75 0 010 1.5h-4.25V15a.75.75 0 01-1.5 0v-4.25H5a.75.75 0 010-1.5h4.25V5a.75.75 0 01.75-.75z" />
+                    </svg>
+                    <span className="min-w-0 truncate">
+                      {addLabel}
+                      {query.trim() && (
+                        <>
+                          {': '}
+                          <strong className="font-medium">{query.trim()}</strong>
+                        </>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              )}
+            </>
           ) : (
             filtered.map((option, i) => (
               <li

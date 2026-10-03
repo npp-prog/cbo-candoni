@@ -562,6 +562,7 @@ export default function DisbursementDetail() {
                     id="payee"
                     value={payeeId}
                     disabled={!canEdit}
+                    allowAdd
                     onChange={(v, p) => {
                       setPayeeId(v);
                       setPayeeName(p?.name ?? '');
