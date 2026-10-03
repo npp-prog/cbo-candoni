@@ -145,6 +145,8 @@ interface DvDoc {
   createdBy?: { uid: string };
   jevId?: string;
   jevNo?: string;
+  checkId?: string;
+  adaId?: string;
 }
 
 /** The subset of an obligation this module needs in order to consume it. */
@@ -398,7 +400,6 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
   const { dvId } = (request.data ?? {}) as { dvId?: string };
   if (!dvId) throw invalid('A disbursement voucher id is required.');
 
-  const numberingConfig = await loadNumberingConfig('DV');
   const jevConfig = await loadNumberingConfig('JEV');
 
   return db.runTransaction(async (tx) => {
@@ -521,14 +522,47 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       month: period,
     };
 
-    // Both counters read here, both written inside issueNumbers, so the read
-    // phase of this transaction is still over before the first write.
-    const [issuedDvNo, issuedJevNo] = await issueNumbers(tx, [
-      { cfg: numberingConfig, parts, skip: Boolean(dv.dvNo) },
-      { cfg: jevConfig, parts },
-    ]);
+    /*
+     * ---- THE DV NUMBER IS TYPED IN, NOT DRAWN -------------------------
+     *
+     * Accounting staff assign it from the office's own book when they encode
+     * the voucher, exactly as the Budget Office assigns the OBR number. The
+     * number on the paper that is signed is the number this record must
+     * carry, and a system that issued its own would quietly keep a second
+     * series that disagrees with the office's.
+     *
+     * What CFMS does is refuse a DUPLICATE, by reserving the number in the
+     * same transaction as the approval. Uniqueness is a database constraint,
+     * not a check a race can slip past.
+     *
+     * A reservation belonging to THIS voucher is not a clash: it is what is
+     * left behind when an approval is undone, so that nobody else can take
+     * the number while the voucher is corrected.
+     */
+    const dvNo = String(dv.dvNo ?? '').trim();
+    if (!dvNo) {
+      throw invalid(
+        'A disbursement voucher number is required. Assign it on the voucher from the accounting book before approving.',
+      );
+    }
+    if (dvNo.length > 40) throw invalid('That voucher number is too long.');
 
-    const dvNo = dv.dvNo ?? (issuedDvNo as string);
+    const dvReservationRef = db
+      .collection(COL.documentNumbers)
+      .doc(`DV__${dv.fiscalYear}__${dv.fundCode}__${dvNo.toUpperCase()}`);
+    const dvReservationSnap = await tx.get(dvReservationRef);
+    const dvReservedHere =
+      dvReservationSnap.exists &&
+      (dvReservationSnap.data() as { documentId?: string }).documentId === dvId;
+
+    if (dvReservationSnap.exists && !dvReservedHere) {
+      throw new HttpsError(
+        'already-exists',
+        `Disbursement voucher number ${dvNo} has already been used in ${dv.fiscalYear} for the ${dv.fundCode} fund on another voucher. Each number is used once.`,
+      );
+    }
+
+    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
     const jevNo = issuedJevNo as string;
 
     // ---- WRITE PHASE --------------------------------------------------------
@@ -677,6 +711,18 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     }
 
     const now = new Date().toISOString();
+
+    if (!dvReservedHere) {
+      tx.create(dvReservationRef, {
+        docType: 'DV',
+        number: dvNo,
+        fiscalYear: dv.fiscalYear,
+        fundCode: dv.fundCode,
+        documentId: dvId,
+        assignedBy: { uid: caller.uid, name: caller.name, at: now },
+      });
+    }
+
     tx.update(ref, {
       dvNo,
       status: 'APPROVED',
@@ -743,7 +789,24 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       }
     }
 
+    /*
+     * Give the obligation back what an APPROVED voucher took.
+     *
+     * This was missing. Cancelling an approved voucher left the obligation
+     * still showing the money as disbursed - so the balance could never be
+     * drawn on again, the unpaid figure was wrong for the rest of the
+     * obligation's life, and nothing anywhere said why. A replacement voucher
+     * for the same expense would have been refused for want of a balance that
+     * had never actually been spent.
+     *
+     * Read before any write, as always.
+     */
+    const consumed = dv.status === 'APPROVED' ? await readDvConsumption(tx, dv) : null;
+
     const now = new Date().toISOString();
+
+    if (consumed) applyDvConsumption(tx, dv, consumed, -1);
+
     tx.update(ref, {
       status: 'CANCELLED',
       cancelledReason: reason.trim(),
@@ -776,3 +839,210 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     return { dvId };
   });
 });
+
+/**
+ * unapproveDv - the Municipal Accountant takes an approval back.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY, AND WHERE IT STOPS
+ * ---------------------------------------------------------------------------
+ * An Accountant who approves a voucher and then sees a wrong figure has had
+ * one route: cancel it and encode the whole thing again, which is a heavy
+ * price for a typo and so does not get paid. The voucher is left alone and
+ * patched with a second one, and the Index of Payments fills with pairs nobody
+ * can reconcile.
+ *
+ * So the approval can be taken back. The voucher returns to a draft, the
+ * obligation gets its unpaid balance back, and the journal entry that was
+ * prepared on it is cancelled.
+ *
+ * It stops at the point money is on its way out, which is the moment the
+ * Treasurer draws a check or prepares an advice - and at the point the books
+ * have been written, which is posting. Either one and the answer is no.
+ *
+ * ---------------------------------------------------------------------------
+ * THE NUMBER STAYS, THE JEV NUMBER DOES NOT
+ * ---------------------------------------------------------------------------
+ * The voucher keeps its number and its reservation, so nobody else can take it
+ * while this one is corrected and re-approving walks back on to it.
+ *
+ * The JEV number is NOT kept. The entry is cancelled rather than deleted and
+ * re-approval draws the next number, so the journal series carries a cancelled
+ * entry where that number was. A number that simply vanished would be a hole
+ * an auditor could not account for; a cancelled entry is a hole with its
+ * reason attached.
+ */
+export const unapproveDv = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, APPROVING_ROLES);
+    const { dvId, reason } = (request.data ?? {}) as { dvId?: string; reason?: string };
+    if (!dvId) throw invalid('A disbursement voucher id is required.');
+    if (!reason?.trim()) {
+      throw invalid(
+        'A reason is required. Taking back an approval reverses a control and is recorded as one.',
+      );
+    }
+
+    return db.runTransaction(async (tx) => {
+      // ---- READ PHASE -------------------------------------------------------
+      const ref = db.collection(COL.disbursementVouchers).doc(dvId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The disbursement voucher');
+      const dv = snap.data() as DvDoc;
+
+      if (dv.status !== 'APPROVED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `Only an approved voucher can be unapproved. DV ${dv.dvNo ?? dvId} is ${dv.status.toLowerCase()}.`,
+        );
+      }
+      if (dv.checkId || dv.adaId) {
+        throw new HttpsError(
+          'failed-precondition',
+          `A ${dv.checkId ? 'check has been drawn' : 'advice has been prepared'} against DV ${dv.dvNo}, so the approval cannot be taken back. Undo the payment in Treasury first - the voucher then returns to Disbursements for Payment.`,
+        );
+      }
+
+      let jevSnap = null;
+      if (dv.jevId) {
+        jevSnap = await tx.get(db.collection(COL.jevs).doc(dv.jevId));
+        if (jevSnap.exists && jevSnap.data()?.status === 'POSTED') {
+          throw new HttpsError(
+            'failed-precondition',
+            `JEV ${dv.jevNo} has already been posted to the General Ledger. Reverse the journal entry instead; an approval cannot be taken back once the books are written.`,
+          );
+        }
+      }
+
+      await assertFiscalYearOpen(dv.fiscalYear, tx);
+
+      const reversal = await readDvConsumption(tx, dv);
+
+      // ---- WRITE PHASE ------------------------------------------------------
+      applyDvConsumption(tx, dv, reversal, -1);
+
+      if (dv.jevId) {
+        tx.update(db.collection(COL.jevs).doc(dv.jevId), {
+          status: 'CANCELLED',
+          cancelledReason: `Approval of DV ${dv.dvNo} taken back: ${reason.trim()}`,
+        });
+      }
+
+      const now = new Date().toISOString();
+      tx.update(ref, {
+        status: 'DRAFT',
+        assignedToRole: null,
+        // The approval is gone, and so is the entry it raised. The workflow
+        // history below keeps both acts rather than erasing the first.
+        approvedBy: null,
+        jevId: null,
+        jevNo: null,
+        unapprovedBy: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+          reason: reason.trim(),
+        },
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'BUDGET_OVERRIDE',
+        entityType: COL.disbursementVouchers,
+        entityId: dvId,
+        entityRef: `DV ${dv.dvNo ?? dvId}`,
+        fiscalYear: dv.fiscalYear,
+        fundCode: dv.fundCode,
+        action: 'REOPEN',
+        previousStatus: 'APPROVED',
+        newStatus: 'DRAFT',
+        remarks: `Approval taken back, ${(dv.grossAmount / 100).toFixed(2)} released back to ${
+          dv.obrNo ? `OBR ${dv.obrNo}` : 'the obligation'
+        }${dv.jevNo ? `, JEV ${dv.jevNo} cancelled` : ''}. Reason: ${reason.trim()}`,
+        severity: 'CRITICAL',
+      });
+
+      return { dvId, dvNo: dv.dvNo ?? null, cancelledJevNo: dv.jevNo ?? null };
+    });
+  },
+);
+
+/**
+ * What an approved voucher consumed, read in the read phase.
+ *
+ * Used by unapproveDv and by cancelDv. Those two were doing different things
+ * to the same figures, and only one of them was right: cancelling an APPROVED
+ * voucher left the obligation still showing the money as disbursed, so the
+ * balance could never be drawn on again and nothing said why.
+ */
+async function readDvConsumption(
+  tx: FirebaseFirestore.Transaction,
+  dv: DvDoc,
+): Promise<{
+  obrSnap: FirebaseFirestore.DocumentSnapshot | null;
+  trust: Map<string, TrustProgramData>;
+  shares: Map<string, number>;
+}> {
+  const trust = new Map<string, TrustProgramData>();
+  const shares = new Map<string, number>();
+
+  if (!dv.obligationId) return { obrSnap: null, trust, shares };
+
+  const obrSnap = await tx.get(db.collection(COL.obligations).doc(dv.obligationId));
+  if (!obrSnap.exists) return { obrSnap: null, trust, shares };
+
+  const obr = obrSnap.data() as ObligationDoc;
+  const isTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
+
+  if (isTrust) {
+    const lines = obr.lines ?? [];
+    const obrTotal = obr.totalAmount || 1;
+    let allocated = 0;
+    lines.forEach((line, idx) => {
+      const share =
+        idx === lines.length - 1
+          ? dv.grossAmount - allocated
+          : Math.round((line.amount / obrTotal) * dv.grossAmount);
+      allocated += share;
+      const programId = String(line.trustProgramId ?? '').trim();
+      if (programId) shares.set(programId, (shares.get(programId) ?? 0) + share);
+    });
+  }
+
+  for (const programId of shares.keys()) {
+    trust.set(programId, await readTrustProgram(tx, programId));
+  }
+
+  return { obrSnap, trust, shares };
+}
+
+/** `sign` is -1 to give it all back, which is the only use today. */
+function applyDvConsumption(
+  tx: FirebaseFirestore.Transaction,
+  dv: DvDoc,
+  read: Awaited<ReturnType<typeof readDvConsumption>>,
+  sign: 1 | -1,
+): void {
+  const { obrSnap, trust, shares } = read;
+  if (!obrSnap?.exists) return;
+
+  const obr = obrSnap.data() as ObligationDoc;
+  const isTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
+
+  for (const [programId, share] of shares) {
+    applyTrustDelta(tx, programId, trust.get(programId)!, { disbursed: sign * share });
+  }
+
+  if (!isTrust) {
+    applySummaryDelta(tx, dv.fiscalYear, dv.fundCode, { disbursed: sign * dv.grossAmount });
+  }
+
+  const newDisbursed = Math.max(0, (obr.disbursedAmount ?? 0) + sign * dv.grossAmount);
+  tx.update(obrSnap.ref, {
+    disbursedAmount: newDisbursed,
+    unpaidAmount: obr.totalAmount - newDisbursed,
+    status: newDisbursed >= obr.totalAmount ? 'WITH_DV' : 'OBLIGATED',
+  });
+}

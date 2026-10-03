@@ -86,11 +86,20 @@ export default function DisbursementDetail() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<
-    null | 'submit' | 'approve' | 'return' | 'cancel' | 'check' | 'ada'
+    null | 'submit' | 'approve' | 'unapprove' | 'post' | 'return' | 'cancel' | 'check' | 'ada'
   >(null);
 
   // --- Form state ----------------------------------------------------------
 
+  /**
+   * The number accounting staff assign from the office's own book.
+   *
+   * CFMS does not generate it, for the same reason it does not generate the
+   * OBR number: the number on the paper that is signed is the number this
+   * record must carry. Uniqueness is enforced on the server when the
+   * Accountant approves, which is the moment the number is actually spent.
+   */
+  const [dvNo, setDvNo] = useState('');
   const [dvDate, setDvDate] = useState(todayPh());
   /*
    * What kind of voucher this is, chosen before anything else because it
@@ -121,6 +130,7 @@ export default function DisbursementDetail() {
 
   useEffect(() => {
     if (!existing) return;
+    setDvNo(existing.dvNo ?? '');
     setDvDate(existing.dvDate);
     setDvCategory(existing.dvCategory ?? '');
     setObligationId(existing.obligationId ?? null);
@@ -186,6 +196,25 @@ export default function DisbursementDetail() {
   const canSubmit = !isNew && editable && can('accounting', 'create');
   const canReview = !isNew && status === 'SUBMITTED' && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER');
   const canApprove = !isNew && ['REVIEWED', 'SUBMITTED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+
+  /** The entry this voucher raised, still waiting to be posted. */
+  const canPost =
+    !isNew &&
+    status === 'APPROVED' &&
+    Boolean(existing?.jevId) &&
+    hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+
+  /**
+   * Taking the approval back. Offered only before anything irreversible: the
+   * server refuses once a check or advice exists, or once the entry is posted,
+   * and the button goes with the voucher's status rather than guessing.
+   */
+  const canUnapprove =
+    !isNew &&
+    status === 'APPROVED' &&
+    !existing?.checkId &&
+    !existing?.adaId &&
+    hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   // --- Validation ----------------------------------------------------------
 
@@ -256,6 +285,7 @@ export default function DisbursementDetail() {
   // --- Actions -------------------------------------------------------------
 
   const buildPayload = () => ({
+    dvNo: dvNo.trim(),
     dvDate,
     fiscalYear,
     period: Number(dvDate.slice(5, 7)),
@@ -388,6 +418,23 @@ export default function DisbursementDetail() {
                 Approve
               </Button>
             )}
+            {canPost && (
+              /*
+                Posting is done HERE, on the voucher, not on a separate screen
+                called Other Transactions. The entry belongs to this voucher
+                and the Accountant is already looking at it; sending them
+                somewhere else to post it is how entries sat unposted for days
+                while the ledger looked empty.
+              */
+              <Button variant="success" onClick={() => setConfirm('post')}>
+                Post to General Ledger
+              </Button>
+            )}
+            {canUnapprove && (
+              <Button variant="secondary" onClick={() => setConfirm('unapprove')}>
+                Undo approval
+              </Button>
+            )}
             {/*
               Issue check and Prepare ADA were here, and are not any more.
 
@@ -450,6 +497,22 @@ export default function DisbursementDetail() {
           <>
             <Card title="Voucher">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Field
+                  label="DV number"
+                  required
+                  htmlFor="dvNo"
+                  hint="Assigned from the accounting book. Checked for a duplicate when the Accountant approves."
+                >
+                  <TextInput
+                    id="dvNo"
+                    value={dvNo}
+                    onChange={(e) => setDvNo(e.target.value)}
+                    disabled={!canEdit}
+                    placeholder="100-26-10-0001"
+                    className="font-mono"
+                  />
+                </Field>
+
                 <Field label="DV date" required htmlFor="dvDate">
                   <DateInput id="dvDate" value={dvDate} onChange={setDvDate} disabled={!canEdit} />
                 </Field>
@@ -813,6 +876,76 @@ export default function DisbursementDetail() {
       />
 
       <ConfirmDialog
+        open={confirm === 'post'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() =>
+          void run(async () => {
+            const result = await engine.postJev({ jevId: existing!.jevId! });
+            toast.success(
+              `JEV ${existing?.jevNo ?? ''} posted`.trim(),
+              `${result.ledgerEntryCount} ledger entries written. The General Ledger, the Trial Balance and the financial statements now carry this voucher.`,
+            );
+          }, 'The entry was not posted')
+        }
+        loading={busy}
+        title="Post to the General Ledger"
+        confirmLabel="Post"
+        variant="success"
+        message={
+          <>
+            <p>
+              Journal entry <strong className="font-mono">{existing?.jevNo}</strong> is written to
+              the General Ledger. From that moment it is in the Trial Balance, the financial
+              statements and every report drawn from the ledger.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              A posted entry is never edited or deleted. Correcting it means a reversing entry.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'unapprove'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={(reason) => {
+          if (!reason) return;
+          void run(async () => {
+            const result = await engine.unapproveDv({ dvId: id!, reason });
+            toast.success(
+              `DV ${result.dvNo ?? ''} is a draft again`.trim(),
+              result.cancelledJevNo
+                ? `The obligation has its balance back and journal entry ${result.cancelledJevNo} has been cancelled.`
+                : 'The obligation has its balance back.',
+            );
+          }, 'The approval was not taken back');
+        }}
+        loading={busy}
+        title={`Undo the approval of DV ${existing?.dvNo ?? ''}`.trim()}
+        confirmLabel="Undo approval"
+        variant="danger"
+        requireReason
+        message={
+          <>
+            <p>
+              The voucher becomes a draft again so the figures can be corrected.{' '}
+              {existing?.obrNo ? `OBR ${existing.obrNo}` : 'The obligation'} gets its unpaid
+              balance back, and journal entry{' '}
+              <strong className="font-mono">{existing?.jevNo}</strong> is cancelled.
+            </p>
+            <p className="mt-2">
+              It keeps its number, <strong className="font-mono">{existing?.dvNo}</strong>, and
+              keeps it reserved, so nobody else can take it while this one is corrected.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Recorded as a critical audit event. The server refuses it once a check or an advice
+              has been drawn, or once the entry has been posted.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
         open={confirm === 'approve'}
         onCancel={() => setConfirm(null)}
         onConfirm={() =>
@@ -820,7 +953,7 @@ export default function DisbursementDetail() {
             const result = await engine.approveDv({ dvId: id! });
             toast.success(
               `Approved as DV ${result.dvNo}`,
-              `Journal entry ${result.jevNo} has been prepared and is waiting to be posted to the General Ledger.`,
+              `Journal entry ${result.jevNo} is prepared. Post it from this screen to put it in the General Ledger.`,
             );
           }, 'The voucher was not approved')
         }
@@ -831,7 +964,7 @@ export default function DisbursementDetail() {
         message={
           <>
             <p>
-              Approving assigns the DV number, {formatPeso(grossAmount ?? 0)}
+              Approving confirms DV {dvNo.trim()}, {formatPeso(grossAmount ?? 0)}
               {dvCategory === 'TRUST_LIABILITY'
                 ? ' against the trust liability it settles'
                 : ` against OBR ${obrNo ?? ''}`}

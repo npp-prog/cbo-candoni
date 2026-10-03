@@ -263,6 +263,16 @@ export const engine = {
   approveDv: (p: { dvId: Id }) =>
     call<typeof p, { dvId: Id; dvNo: string; jevId: Id; jevNo: string }>('approveDv', p),
 
+  /**
+   * The Accountant takes an approval back so the voucher can be corrected.
+   * Refused once a check or advice exists, or once the entry is posted.
+   */
+  unapproveDv: (p: { dvId: Id; reason: string }) =>
+    call<typeof p, { dvId: Id; dvNo: string | null; cancelledJevNo: string | null }>(
+      'unapproveDv',
+      p,
+    ),
+
   cancelDv: (p: { dvId: Id; reason: string }) => call<typeof p, { dvId: Id }>('cancelDv', p),
 
   /**
