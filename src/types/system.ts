@@ -219,23 +219,32 @@ export interface AuditLog {
  * else is a supporting document, and that is what it is called.
  */
 export const DOCUMENT_TYPES = [
+  'OBR',
   'DV',
   'LIQUIDATION_REPORT',
+  'RCD',
+  'ABSTRACT_OF_COLLECTIONS',
   'RCI',
   'RADAI',
-  'RCD',
   'RCDISB',
   'OTHER',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  OBR: 'Obligation Request',
   DV: 'Disbursement Voucher',
   LIQUIDATION_REPORT: 'Liquidation Report',
+  RCD: 'Report of Collections and Deposits (RCD)',
+  ABSTRACT_OF_COLLECTIONS: 'Abstract of Collections',
   RCI: 'Report of Checks Issued (RCI)',
   RADAI: 'Report of ADA Issued (RADAI)',
-  RCD: 'Report of Collections and Deposits (RCD)',
   RCDISB: 'Report of Cash Disbursement (RCDisb)',
+  /**
+   * Kept so an attachment filed under it before patch 67 still has a name on
+   * the screen. It is no longer OFFERED anywhere: what may be attached is now
+   * decided by the document being attached to. See src/lib/attachmentTypes.ts.
+   */
   OTHER: 'Other Supporting Document',
 };
 

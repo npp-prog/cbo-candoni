@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { addDoc, collection, doc, updateDoc, increment } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
@@ -12,7 +12,6 @@ import { Spinner } from './ui/Layout';
 import { formatInstant, todayPh } from '@/lib/dates';
 import {
   ALLOWED_UPLOAD_MIME_TYPES,
-  DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
   MAX_UPLOAD_BYTES,
   type DocumentType,
@@ -41,6 +40,7 @@ export function AttachmentsPanel({
   fundCode,
   storageDocType,
   storageDocId,
+  allowedTypes,
   readOnly,
 }: {
   entityType: string;
@@ -52,17 +52,28 @@ export function AttachmentsPanel({
   storageDocType: string;
   /** Path segment: the document number, or the id before one is assigned. */
   storageDocId: string;
+  /**
+   * What this document may have attached to it, from `attachmentTypesFor`.
+   *
+   * Almost always one. The screen then states it instead of asking, because
+   * a question with one answer is not a question - it is a box left on its
+   * default, and a year later nobody can find the signed forms.
+   */
+  allowedTypes: DocumentType[];
   readOnly?: boolean;
 }) {
   const { data, loading } = useAttachments(entityType, entityId);
   const { user, profile } = useAuth();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  // Most attachments are the supporting papers behind a voucher - the invoice,
-  // the inspection report, the certificate - and they are all filed as what
-  // they are: supporting documents. Starting on that means the common case
-  // needs no choice at all.
-  const [documentType, setDocumentType] = useState<DocumentType>('OTHER');
+  const [documentType, setDocumentType] = useState<DocumentType>(allowedTypes[0] ?? 'OTHER');
+
+  // The allowed list can change under us - the treasury report screen shows
+  // one report and then another, and an RCD's types are not an RCI's. Without
+  // this, the second report would be uploaded under the first one's type.
+  useEffect(() => {
+    if (!allowedTypes.includes(documentType)) setDocumentType(allowedTypes[0] ?? 'OTHER');
+  }, [allowedTypes, documentType]);
   const [uploading, setUploading] = useState(false);
 
   const upload = async (file: File) => {
@@ -151,17 +162,30 @@ export function AttachmentsPanel({
             <label className="cbo-label" htmlFor="attachment-type">
               Document type
             </label>
-            <Select
-              id="attachment-type"
-              value={documentType}
-              onChange={(e) => setDocumentType(e.target.value as DocumentType)}
-            >
-              {DOCUMENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {DOCUMENT_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </Select>
+            {allowedTypes.length === 1 ? (
+              // Stated, not asked. The file being attached to an Obligation
+              // Request is an Obligation Request; there is nothing here for
+              // anybody to decide, and a box that can only hold one value is
+              // a box people stop reading.
+              <p
+                id="attachment-type"
+                className="flex h-[2.375rem] items-center text-sm font-medium text-navy-900"
+              >
+                {DOCUMENT_TYPE_LABELS[allowedTypes[0]]}
+              </p>
+            ) : (
+              <Select
+                id="attachment-type"
+                value={documentType}
+                onChange={(e) => setDocumentType(e.target.value as DocumentType)}
+              >
+                {allowedTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {DOCUMENT_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </Select>
+            )}
           </div>
 
           <input

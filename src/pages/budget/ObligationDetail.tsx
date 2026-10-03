@@ -11,6 +11,7 @@ import { AccountPicker, OfficePicker, PayeePicker } from '@/components/pickers';
 import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
+import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { obligationForm, isTrustFund } from '@/lib/obligationForm';
 import { checkFursAgainstProgram } from '@/lib/trustPrograms';
 import { useFilters } from '@/context/FilterContext';
@@ -792,6 +793,7 @@ export default function ObligationDetail() {
             </Alert>
             <AttachmentsPanel
               entityType={COL.obligations}
+              allowedTypes={attachmentTypesFor(COL.obligations)}
               entityId={id ?? null}
               entityRef={existing?.obrNo ?? 'Obligation draft'}
               fiscalYear={fiscalYear}

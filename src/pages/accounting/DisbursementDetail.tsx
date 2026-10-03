@@ -16,6 +16,7 @@ import {
 } from '@/components/pickers';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
+import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
@@ -766,6 +767,7 @@ export default function DisbursementDetail() {
           <Card title="Supporting documents">
             <AttachmentsPanel
               entityType={COL.disbursementVouchers}
+              allowedTypes={attachmentTypesFor(COL.disbursementVouchers)}
               entityId={id ?? null}
               entityRef={existing?.dvNo ?? 'Voucher draft'}
               fiscalYear={fiscalYear}
