@@ -3,12 +3,31 @@ import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '../lib/clearing';
-import type { Transaction } from 'firebase-admin/firestore';
+import type { Transaction, DocumentReference, DocumentSnapshot } from 'firebase-admin/firestore';
 import { recordTransition, auditInTransaction } from '../lib/audit';
 import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { periodOf } from '../lib/period';
 
 const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT'];
+
+/**
+ * The obligation is paid when the instrument is drawn, not when the voucher
+ * was approved.
+ *
+ * Called from issueCheck and issueAda with the obligation already read in the
+ * read phase. It only advances an obligation that is WITH_DV - the state
+ * approveDv leaves it in once a voucher covers it in full. A partly covered
+ * obligation stays OBLIGATED, because part of it is still unspoken for.
+ */
+function markObligationPaid(
+  tx: Transaction,
+  ref: DocumentReference | null,
+  snap: DocumentSnapshot | null,
+): void {
+  if (!ref || !snap?.exists) return;
+  if ((snap.data() as { status?: string }).status !== 'WITH_DV') return;
+  tx.update(ref, { status: 'PAID' });
+}
 
 export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, TREASURY);
@@ -51,6 +70,7 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       netAmount: number;
       status: string;
       checkId?: string;
+      obligationId?: string;
       officeId?: string;
       officeName?: string;
       accountLines?: Array<{ accountCode: string; accountName: string; debit: number; credit: number }>;
@@ -115,6 +135,17 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
     }
 
 
+    /*
+     * The obligation, read here so it can be marked paid below.
+     *
+     * The money leaves the municipality when this check is drawn, not when the
+     * voucher was approved - so this is where the obligation stops being
+     * "With DV" and becomes paid. Read in the read phase, like everything
+     * else the decision needs.
+     */
+    const obrRef = dv.obligationId ? db.collection(COL.obligations).doc(dv.obligationId) : null;
+    const obrSnap = obrRef ? await tx.get(obrRef) : null;
+
     const checkRef = db.collection(COL.checks).doc(checkDocId);
     const existing = await tx.get(checkRef);
     if (existing.exists) {
@@ -175,6 +206,8 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
           `(${objection.found}). Reason given: ${acknowledgement}`,
       });
     }
+
+    markObligationPaid(tx, obrRef, obrSnap);
 
     recordTransition(tx, {
       caller,
@@ -363,6 +396,7 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       netAmount: number;
       status: string;
       adaId?: string;
+      obligationId?: string;
       officeId?: string;
       officeName?: string;
       accountLines?: Array<{ accountCode: string; accountName: string; debit: number; credit: number }>;
@@ -400,6 +434,12 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
         `Bank account ${bank.bankName} ${bank.accountNumber} has no General Ledger account recorded against it. Set it under Master Data - Banks before preparing an ADA on this account.`,
       );
     }
+
+    // Read in the read phase so the obligation can be marked paid below.
+    const adaObrRef = dv.obligationId
+      ? db.collection(COL.obligations).doc(dv.obligationId)
+      : null;
+    const adaObrSnap = adaObrRef ? await tx.get(adaObrRef) : null;
 
     const bookCode = await bookCodeForFund(dv.fundCode);
 
@@ -494,6 +534,8 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
         usedAt: new Date().toISOString(),
       });
     }
+
+    markObligationPaid(tx, adaObrRef, adaObrSnap);
 
     recordTransition(tx, {
       caller,

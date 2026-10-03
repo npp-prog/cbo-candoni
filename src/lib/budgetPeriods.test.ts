@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  COMMITTED,
   figuresForPeriod,
   quarterOf,
   quarterRange,
@@ -7,6 +8,7 @@ import {
   type PeriodAllotment,
   type PeriodObligation,
 } from './budgetPeriods';
+import { OBLIGATION_STATUSES } from '@/types/enums';
 
 const allot = (over: Partial<PeriodAllotment> = {}): PeriodAllotment => ({
   allotmentDate: '2026-02-15',
@@ -196,5 +198,34 @@ describe('totalPeriod', () => {
     expect(t.allotmentTotal).toBe(150_000_00);
     expect(t.obligationTotal).toBe(40_000_00);
     expect(t.allotmentPrevious + t.allotmentThisPeriod).toBe(t.allotmentTotal);
+  });
+});
+
+/**
+ * Adding an obligation status is how a registry quietly stops counting.
+ *
+ * COMMITTED used to be a literal list. When WITH_DV was added - the state an
+ * obligation reaches once a voucher is raised on it - every obligation in that
+ * state would have dropped out of the RAAO, out of the trust fund utilisation
+ * and out of the nightly balance verification, all three silently, and the
+ * registry would still have footed.
+ */
+describe('COMMITTED covers every status in which allotment is committed', () => {
+  it('counts an obligation that has reached a voucher', () => {
+    expect(COMMITTED.has('WITH_DV')).toBe(true);
+  });
+
+  it('counts every status except the ones before certification', () => {
+    const uncounted = OBLIGATION_STATUSES.filter((s) => !COMMITTED.has(s));
+
+    expect([...uncounted].sort()).toEqual(
+      ['BUDGET_REVIEWED', 'CANCELLED', 'DRAFT', 'RETURNED', 'SUBMITTED'].sort(),
+    );
+  });
+
+  it('is the same answer the trust fund register uses', async () => {
+    const { UTILISED } = await import('@/pages/budget/rstf');
+
+    expect([...UTILISED].sort()).toEqual([...COMMITTED].sort());
   });
 });

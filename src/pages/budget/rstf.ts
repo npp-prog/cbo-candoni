@@ -1,4 +1,5 @@
 import type { Centavos, IsoDate } from '@/types/common';
+import { COMMITTED } from '@/lib/budgetPeriods';
 
 /**
  * The Registry of Special Trust Fund.
@@ -77,7 +78,7 @@ import type { Centavos, IsoDate } from '@/types/common';
  * committed nothing, and counting one here would make the register disagree
  * with the programme figure printed beside it.
  */
-export const UTILISED = new Set(['CERTIFIED', 'OBLIGATED', 'PAID', 'CLOSED']);
+export const UTILISED = COMMITTED;
 
 export interface RstfProgram {
   id: string;

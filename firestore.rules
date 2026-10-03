@@ -207,6 +207,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /**
+     * One document per manually assigned document number.
+     *
+     * The Obligation Request number is typed in by the Budget Office rather
+     * than drawn from a counter, and two offices typing the same number on the
+     * same day is exactly the sort of thing that is noticed a month later. The
+     * reservation makes uniqueness a database constraint: the engine creates
+     * the document inside the same transaction as the certification, and a
+     * second attempt on the same number cannot create it.
+     *
+     * Engine only, like the counters. A client that could write here could
+     * reserve a number it never uses, or free one already issued.
+     */
+    match /documentNumbers/{numberId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // Derived budget control balances.
     match /budgetBalances/{balanceId} {
       allow read: if canRead();

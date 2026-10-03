@@ -1,4 +1,5 @@
 import type { Centavos, IsoDate } from '@/types/common';
+import { OBLIGATION_STATUSES } from '@/types/enums';
 
 /**
  * The budget, cut by when things happened.
@@ -137,7 +138,31 @@ export interface PeriodObligation {
  * whichever was read second would be the one believed.
  */
 export const RELEASED = new Set(['APPROVED']);
-export const COMMITTED = new Set(['CERTIFIED', 'OBLIGATED', 'PAID', 'CLOSED']);
+/**
+ * What counts as committed, derived from the status list rather than typed out.
+ *
+ * It used to be the literal set ['CERTIFIED','OBLIGATED','PAID','CLOSED'], and
+ * the moment a status was added - WITH_DV, for an obligation that has reached
+ * a voucher - every obligation in that state would have dropped silently out
+ * of the RAAO. A registry that quietly stops counting commitments is worse
+ * than one that errors: it foots, and it is wrong.
+ *
+ * So the question is turned round. A status is committed UNLESS it is named
+ * below. A new one is counted by default, which is the safe direction - a
+ * commitment counted wrongly is visible on the face of the registry, and one
+ * that vanishes is not.
+ */
+const NOT_COMMITTED = new Set<string>([
+  'DRAFT',
+  'SUBMITTED',
+  'BUDGET_REVIEWED',
+  'RETURNED',
+  'CANCELLED',
+]);
+
+export const COMMITTED = new Set<string>(
+  OBLIGATION_STATUSES.filter((s) => !NOT_COMMITTED.has(s)),
+);
 
 export interface LineKeyParts {
   officeId: string;

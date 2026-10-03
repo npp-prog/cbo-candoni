@@ -102,4 +102,10 @@ export const COL = {
   notifications: 'notifications',
   settings: 'settings',
   counters: 'counters',
+  /**
+   * One document per manually assigned number, so that uniqueness is a
+   * database constraint rather than an application check. See
+   * certifyObligation.
+   */
+  documentNumbers: 'documentNumbers',
 } as const;

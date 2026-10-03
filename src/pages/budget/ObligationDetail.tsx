@@ -76,6 +76,14 @@ export default function ObligationDetail() {
   const [saving, setSaving] = useState(false);
   const [certifying, setCertifying] = useState(false);
   const [confirmCertify, setConfirmCertify] = useState(false);
+  /**
+   * The number the Budget Office assigns, typed in before certifying.
+   *
+   * CFMS does not generate it. The number on the paper the Head of Office
+   * signed is the number this record must carry, and a system that issued its
+   * own would quietly keep a second series that disagrees with the office's.
+   */
+  const [obrNoInput, setObrNoInput] = useState('');
   const [confirmOverride, setConfirmOverride] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -335,10 +343,19 @@ export default function ObligationDetail() {
 
   const certify = async (overrideReason?: string) => {
     if (!id) return;
+    const assigned = (existing?.obrNo ?? obrNoInput).trim();
+    if (!assigned) {
+      toast.error(
+        `A ${form.short} number is required`,
+        'Assign it from the Budget Office book before certifying.',
+      );
+      return;
+    }
     setCertifying(true);
     try {
       const result = await engine.certifyObligation({
         obligationId: id,
+        obrNo: assigned,
         ...(overrideReason ? { override: { reason: overrideReason } } : {}),
       });
       toast.success(
@@ -824,9 +841,25 @@ export default function ObligationDetail() {
           <>
             <p>
               Certifying commits <strong>{formatPeso(totalAmount)}</strong> of allotment to{' '}
-              {payeeName}, assigns the {form.short} number, and makes this obligation available for a
-              disbursement voucher.
+              {payeeName} and makes this obligation available for a disbursement voucher.
             </p>
+            {!existing?.obrNo && (
+              <Field
+                label={`${form.short} number`}
+                required
+                className="mt-3"
+                htmlFor="obrNoInput"
+                hint="As assigned in the Budget Office book. CFMS does not generate it, and will refuse a number already used this year on this fund."
+              >
+                <TextInput
+                  id="obrNoInput"
+                  value={obrNoInput}
+                  onChange={(e) => setObrNoInput(e.target.value)}
+                  placeholder="100-26-10-0001"
+                  className="font-mono"
+                />
+              </Field>
+            )}
             <p className="mt-2 text-xs text-slate-500">
               The available allotment will be re-read and re-checked on the server before the
               certification is committed.

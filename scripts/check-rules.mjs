@@ -378,6 +378,70 @@ if (payeesRule && writersRule && existsSync(payeesLibPath)) {
   }
 }
 
+// --- 13. The nightly verifier counts the same obligations the registry does --
+//
+// The scheduled budget-balance verification queries obligations by status with
+// a Firestore `in`, which needs literal values - so it keeps its own copy of
+// "which statuses have committed allotment". The registries derive theirs from
+// the status list.
+//
+// An obligation state missing from the server's copy is one the verification
+// silently stops counting, and it then reports discrepancies that are not
+// there - sending somebody to look for a fault in the budget balances when the
+// fault is in the query. Adding WITH_DV would have done exactly that.
+
+const periodsTs = resolve(root, 'src/lib/budgetPeriods.ts');
+const scheduledTs = resolve(root, 'functions/src/admin/scheduled.ts');
+
+if (existsSync(periodsTs) && existsSync(scheduledTs)) {
+  const notCommitted = readFileSync(periodsTs, 'utf8').match(
+    /const NOT_COMMITTED = new Set<string>\(\[([\s\S]*?)\]\)/,
+  );
+  const serverList = readFileSync(scheduledTs, 'utf8').match(
+    /const COMMITTED_OBLIGATION_STATUSES = \[([^\]]*)\]/,
+  );
+  const enums = readFileSync(resolve(root, 'src/types/enums.ts'), 'utf8');
+  const statuses = enums.match(/export const OBLIGATION_STATUSES = \[([\s\S]*?)\] as const;/);
+
+  if (notCommitted && serverList && statuses) {
+    const names = (block) =>
+      block
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '')
+        .split(',')
+        .map((x) => x.trim().replace(/^['"]|['"]$/g, ''))
+        .filter(Boolean);
+
+    const all = names(statuses[1]);
+    const excluded = new Set(names(notCommitted[1]));
+    const onServer = new Set(names(serverList[1]));
+
+    // The verifier never sees a pre-certification obligation, so CERTIFIED is
+    // allowed to be absent from its list; everything else must be there.
+    const expected = all.filter((s) => !excluded.has(s) && s !== 'CERTIFIED');
+    const missing = expected.filter((s) => !onServer.has(s));
+    const extra = [...onServer].filter((s) => !expected.includes(s));
+
+    if (missing.length > 0) {
+      failures.push(
+        `functions/src/admin/scheduled.ts does not count ${missing.join(', ')} as a committed ` +
+          'obligation, but the registries do. The nightly verification would stop counting ' +
+          'those obligations and report budget balance discrepancies that are not there.',
+      );
+    }
+    if (extra.length > 0) {
+      failures.push(
+        `functions/src/admin/scheduled.ts counts ${extra.join(', ')}, which the registries do not.`,
+      );
+    }
+    if (missing.length === 0 && extra.length === 0) {
+      console.log(
+        `obligations: the verifier and the registries agree on all ${expected.length} committed statuses`,
+      );
+    }
+  }
+}
+
 // --- 12. Paying a voucher is a Treasury act ---------------------------------
 //
 // The Accountant approves a voucher; the Treasurer pays it. Two officers, two

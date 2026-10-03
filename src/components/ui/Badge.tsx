@@ -33,6 +33,9 @@ const STATUS_TONES: Record<string, Tone> = {
   SIGNED: 'blue',
   PREPARED: 'slate',
   OBLIGATED: 'blue',
+  // Not green. An obligation with a voucher against it is still unpaid, and
+  // the colour is the first thing read on a registry.
+  WITH_DV: 'blue',
   RELEASED: 'blue',
   SUBMITTED_TO_BANK: 'blue',
   IN_TRANSIT: 'amber',

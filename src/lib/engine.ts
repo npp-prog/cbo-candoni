@@ -62,7 +62,11 @@ export const engine = {
    * OBR number. `override` is accepted only from a role permitted to use it
    * and is recorded on the OBR and in the audit log.
    */
-  certifyObligation: (p: { obligationId: Id; override?: { reason: string } }) =>
+  /**
+   * The OBR number is TYPED IN, not generated. The Budget Office assigns it
+   * from its own book; CFMS refuses a duplicate.
+   */
+  certifyObligation: (p: { obligationId: Id; obrNo: string; override?: { reason: string } }) =>
     call<typeof p, { obrNo: string; lines: Array<{ lineNo: number; availableAllotment: Centavos }> }>(
       'certifyObligation',
       p,

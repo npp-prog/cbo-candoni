@@ -81,6 +81,20 @@ export const OBLIGATION_STATUSES = [
   'RETURNED',
   'CANCELLED',
   'OBLIGATED',
+  /**
+   * A voucher has been raised and approved against it - and nothing has been
+   * paid.
+   *
+   * This status exists because the obligation used to go straight to PAID when
+   * the Accountant approved the voucher, which is a day or a week before any
+   * money leaves. The Budget Office reading its registry saw obligations
+   * marked paid against which no check had been drawn, and the unpaid
+   * obligations figure - the one that says what the municipality still owes -
+   * was understated by every voucher in Treasury's hands.
+   *
+   * It becomes PAID when the check is drawn or the advice prepared.
+   */
+  'WITH_DV',
   'PAID',
   'CLOSED',
 ] as const;
@@ -351,6 +365,10 @@ export const STATUS_LABELS: Record<string, string> = {
   RETURNED: 'Returned',
   CANCELLED: 'Cancelled',
   OBLIGATED: 'Obligated',
+  // Raised on a voucher, and not yet paid. The distinction matters: an
+  // obligation with a voucher in Accounting is still money the municipality
+  // owes.
+  WITH_DV: 'With DV',
   POSTED: 'Posted',
   REVERSED: 'Reversed',
   PAID: 'Paid',

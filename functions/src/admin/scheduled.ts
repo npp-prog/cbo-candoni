@@ -1,5 +1,17 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
+
+/**
+ * The statuses in which an obligation has committed allotment.
+ *
+ * MUST match COMMITTED in src/lib/budgetPeriods.ts, less the pre-certification
+ * ones this verifier never sees. Listed rather than derived because a
+ * Firestore `in` needs literals - and checked against the client's list by
+ * check-rules, because an obligation state missing from here is one the
+ * nightly verification silently stops counting, which makes it report
+ * discrepancies that are not there.
+ */
+const COMMITTED_OBLIGATION_STATUSES = ['OBLIGATED', 'WITH_DV', 'PAID', 'CLOSED'];
 import { db, COL, REGION } from '../lib/firebase';
 import { todayPh } from '../lib/period';
 import { budgetKeyId } from '../lib/budget';
@@ -32,7 +44,7 @@ export const verifyBudgetBalances = onSchedule(
     const [appropriations, allotments, obligations] = await Promise.all([
       db.collection(COL.appropriations).where('fiscalYear', '==', year).where('status', '==', 'APPROVED').get(),
       db.collection(COL.allotments).where('fiscalYear', '==', year).where('status', '==', 'APPROVED').get(),
-      db.collection(COL.obligations).where('fiscalYear', '==', year).where('status', 'in', ['OBLIGATED', 'PAID', 'CLOSED']).get(),
+      db.collection(COL.obligations).where('fiscalYear', '==', year).where('status', 'in', COMMITTED_OBLIGATION_STATUSES).get(),
     ]);
 
     type Rebuilt = {

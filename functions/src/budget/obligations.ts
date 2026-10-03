@@ -9,7 +9,6 @@ import {
   invalid,
 } from '../lib/context';
 import { recordTransition, auditInTransaction, notifyInTransaction } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import {
   readBudgetBalance,
@@ -54,8 +53,9 @@ export const certifyObligation = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
     const caller = await requireCaller(request, CERTIFYING_ROLES);
-    const { obligationId, override } = (request.data ?? {}) as {
+    const { obligationId, obrNo: obrNoIn, override } = (request.data ?? {}) as {
       obligationId?: string;
+      obrNo?: string;
       override?: { reason?: string };
     };
 
@@ -81,8 +81,6 @@ export const certifyObligation = onCall(
         'Your role may not obligate beyond the available allotment. The Municipal Budget Officer or an administrator must certify this obligation.',
       );
     }
-
-    const numberingConfig = await loadNumberingConfig('OBR');
 
     return db.runTransaction(async (tx) => {
       // ---- READ PHASE -------------------------------------------------------
@@ -313,16 +311,45 @@ export const certifyObligation = onCall(
       }
 
       // Draw the OBR number. Read of the counter happens here, still in the
-      // read phase of this transaction.
-      const bookCode = obr.obrNo ? '' : await bookCodeForFund(obr.fundCode);
-      const obrNo =
-        obr.obrNo ??
-        (await issueNumber(tx, numberingConfig, {
-          bookCode,
-          fundCode: obr.fundCode,
-          fiscalYear: obr.fiscalYear,
-          month: period,
-        }));
+      /*
+       * ---- THE OBR NUMBER IS TYPED IN, NOT DRAWN ------------------------
+       *
+       * The Budget Office assigns it from its own book before certifying.
+       * CFMS does not generate it, because the number on the paper the Head
+       * of Office signed is the number this record has to carry - and a
+       * system that issues its own would quietly produce a second series
+       * that disagrees with the office's.
+       *
+       * What CFMS does instead is refuse a DUPLICATE. The reservation
+       * document below has a deterministic id, so two certifications on the
+       * same number cannot both create it: uniqueness is a database
+       * constraint, not an application check that a race can slip past.
+       *
+       * Read here, in the read phase. The create is in the write phase.
+       */
+      const obrNo = obr.obrNo ?? String(obrNoIn ?? '').trim();
+      if (!obrNo) {
+        throw invalid(
+          'An Obligation Request number is required. Assign it from the Budget Office book before certifying.',
+        );
+      }
+      if (obrNo.length > 40) {
+        throw invalid('That Obligation Request number is too long.');
+      }
+
+      const reservationRef = db
+        .collection(COL.documentNumbers)
+        .doc(`OBR__${obr.fiscalYear}__${obr.fundCode}__${obrNo.toUpperCase()}`);
+      const reservationSnap = obr.obrNo ? null : await tx.get(reservationRef);
+      if (reservationSnap?.exists) {
+        const prior = reservationSnap.data() as { documentId?: string };
+        throw new HttpsError(
+          'already-exists',
+          `Obligation Request number ${obrNo} has already been used in ${obr.fiscalYear} for the ${obr.fundCode} fund${
+            prior.documentId === obligationId ? '' : ' on another obligation'
+          }. Each number is used once.`,
+        );
+      }
 
       // ---- DECISION ---------------------------------------------------------
 
@@ -387,6 +414,20 @@ export const certifyObligation = onCall(
 
       if (!isTrust) {
         applySummaryDelta(tx, obr.fiscalYear, obr.fundCode, { obligated: computedTotal });
+      }
+
+      // The reservation, created in the same transaction as the certification.
+      // Either both land or neither does, so there is no state in which a
+      // number is reserved against an obligation that was not certified.
+      if (!obr.obrNo) {
+        tx.create(reservationRef, {
+          docType: 'OBR',
+          number: obrNo,
+          fiscalYear: obr.fiscalYear,
+          fundCode: obr.fundCode,
+          documentId: obligationId,
+          assignedBy: { uid: caller.uid, name: caller.name, at: now },
+        });
       }
 
       tx.update(obrRef, {
@@ -508,6 +549,45 @@ export const cancelObligation = onCall(
 
     if (!obligationId) throw invalid('An obligation id is required.');
     if (!reason?.trim()) throw invalid('A reason for cancellation is required.');
+
+    /*
+     * ---- AN OBLIGATION THAT IS ALREADY ON A VOUCHER IS NOT CANCELLED ----
+     *
+     * `disbursedAmount` only moves when a voucher is APPROVED, so a check on
+     * that alone let an OBR be cancelled out from under a voucher that was
+     * already drawn on it and sitting in Accounting for review. The voucher
+     * would then refer to an obligation that had released its allotment back
+     * to the budget - and the first anybody would know of it is the voucher
+     * failing at approval, days later, with no obvious cause.
+     *
+     * So: ANY voucher that is not cancelled stops this, draft included.
+     *
+     * Outside the transaction, because Firestore cannot run a query inside
+     * one. The window is a voucher raised in the seconds between this read
+     * and the commit, and the consequence of losing that race is the thing
+     * that happens today in every case.
+     */
+    const drawnOn = await db
+      .collection(COL.disbursementVouchers)
+      .where('obligationId', '==', obligationId)
+      .get();
+
+    const live = drawnOn.docs
+      .map((d) => d.data() as { dvNo?: string; status?: string })
+      .filter((d) => d.status !== 'CANCELLED');
+
+    if (live.length > 0) {
+      const named = live
+        .map((d) => d.dvNo)
+        .filter(Boolean)
+        .join(', ');
+      throw new HttpsError(
+        'failed-precondition',
+        `This obligation is already on ${live.length === 1 ? 'a disbursement voucher' : `${live.length} disbursement vouchers`}${
+          named ? ` (${named})` : ''
+        } and cannot be cancelled. Cancel the voucher first; the obligation is then free again.`,
+      );
+    }
 
     return db.runTransaction(async (tx) => {
       const ref = db.collection(COL.obligations).doc(obligationId);

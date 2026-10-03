@@ -657,10 +657,22 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       }
 
       const newDisbursed = (obr.disbursedAmount ?? 0) + dv.grossAmount;
+      /*
+       * WITH_DV, not PAID.
+       *
+       * Approving a voucher pays nobody. The money leaves when the Treasurer
+       * draws the check or the bank debits the account, which is a day or a
+       * week later - and until this was separated, the Budget Office's
+       * registry showed obligations marked paid against which no check had
+       * ever been drawn, and the unpaid obligations figure was understated by
+       * every voucher sitting in Treasury's hands.
+       *
+       * issueCheck and issueAda carry it the rest of the way.
+       */
       tx.update(db.collection(COL.obligations).doc(dv.obligationId!), {
         disbursedAmount: newDisbursed,
         unpaidAmount: obr.totalAmount - newDisbursed,
-        status: newDisbursed >= obr.totalAmount ? 'PAID' : 'OBLIGATED',
+        status: newDisbursed >= obr.totalAmount ? 'WITH_DV' : 'OBLIGATED',
       });
     }
 
