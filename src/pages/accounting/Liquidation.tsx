@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { Field, Select, DateInput, AmountInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker } from '@/components/pickers';
@@ -13,7 +14,6 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useLiquidations, useCashAdvances } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
-import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { checkLiquidation } from '@/lib/accounting-rules';
@@ -32,15 +32,14 @@ import { fundLabel } from '../budget/Obligations';
  */
 export default function Liquidation() {
   const { fiscalYear, fundCode } = useFilters();
-  const { can, hasRole } = useAuth();
+  const { can } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const { data, loading, error } = useLiquidations(fiscalYear);
   const advances = useCashAdvances(fiscalYear, true);
 
   const [showForm, setShowForm] = useState(false);
-  const [posting, setPosting] = useState<LiquidationRecord | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const rows = useMemo(
     () =>
@@ -50,7 +49,6 @@ export default function Liquidation() {
       ),
     [data, fundCode],
   );
-  const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   const columns: Column<LiquidationRecord>[] = [
     {
@@ -135,13 +133,17 @@ export default function Liquidation() {
       fixed: true,
       sortable: false,
       cell: (l) => (
+        /*
+          Post used to be a button here. It is on the report's own page now,
+          beside the expenses it covers, the entry it will make and the signed
+          report attached to it - which are the things somebody should have
+          read before posting to the books.
+        */
         <div className="flex items-center gap-1.5">
           <StatusBadge status={l.status} />
-          {canPost && ['DRAFT', 'SUBMITTED', 'REVIEWED'].includes(l.status) && (
-            <Button size="sm" variant="primary" onClick={() => setPosting(l)}>
-              Post
-            </Button>
-          )}
+          <Button size="sm" variant="ghost" onClick={() => navigate(`/accounting/liquidation/${l.id}`)}>
+            Open
+          </Button>
         </div>
       ),
     },
@@ -191,40 +193,6 @@ export default function Liquidation() {
         />
       )}
 
-      <ConfirmDialog
-        open={Boolean(posting)}
-        onCancel={() => setPosting(null)}
-        onConfirm={() => {
-          if (!posting) return;
-          setBusy(true);
-          void engine
-            .postLiquidation({ liquidationId: posting.id })
-            .then((result) => {
-              toast.success(
-                'Liquidation posted',
-                `Outstanding balance on the advance is now ${formatPeso(result.outstandingBalance)}.`,
-              );
-              setPosting(null);
-            })
-            .catch((err) => toast.error('The liquidation was not posted', err.message))
-            .finally(() => setBusy(false));
-        }}
-        loading={busy}
-        title="Post liquidation"
-        confirmLabel="Post"
-        variant="primary"
-        message={
-          posting && (
-            <p>
-              Recognises {formatPeso(posting.amountLiquidated)} of expenses
-              {posting.refundAmount > 0 && `, a refund of ${formatPeso(posting.refundAmount)}`}
-              {posting.reimbursementAmount > 0 &&
-                `, and a reimbursement of ${formatPeso(posting.reimbursementAmount)} due to the officer`}
-              , and credits the cash advance account.
-            </p>
-          )
-        }
-      />
     </div>
   );
 }

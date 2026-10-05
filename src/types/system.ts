@@ -242,11 +242,15 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   RADAI: 'Report of ADA Issued (RADAI)',
   RCDISB: 'Report of Cash Disbursement (RCDisb)',
   /**
-   * Kept so an attachment filed under it before patch 67 still has a name on
-   * the screen. It is no longer OFFERED anywhere: what may be attached is now
-   * decided by the document being attached to. See src/lib/attachmentTypes.ts.
+   * The supporting paper behind a journal entry written in Accounting - a
+   * memorandum, a bank debit advice, the office's own journal voucher. CFMS
+   * has no form of its own to name there.
+   *
+   * Everywhere else what may be attached is decided by the document being
+   * attached to, and this is not offered. It also keeps a name on the screen
+   * for anything filed under it before patch 67.
    */
-  OTHER: 'Other Supporting Document',
+  OTHER: 'Supporting Document',
 };
 
 /**

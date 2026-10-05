@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ui/Modal';
 import { Field, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
+import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
@@ -55,12 +56,28 @@ export default function TreasuryReportDetail() {
 
   const { data: report, loading } = useDocument<TreasuryReport>(COL.treasuryReports, id);
 
-  const [tab, setTab] = useState<'coverage' | 'entry' | 'attachments'>('coverage');
-  const [confirm, setConfirm] = useState<null | 'certify' | 'withdraw'>(null);
+  const [tab, setTab] = useState<'coverage' | 'entry' | 'attachments' | 'history'>('coverage');
+  const [confirm, setConfirm] = useState<null | 'certify' | 'withdraw' | 'journalize'>(null);
+  /** The Accountant's working copy, once they start adjusting the entry. */
+  const [draftEntry, setDraftEntry] = useState<GridLine[] | null>(null);
   const [certifyNo, setCertifyNo] = useState('');
   const [busy, setBusy] = useState(false);
 
   const canCertify = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER');
+  /*
+   * Accounting's half of the same page.
+   *
+   * There were two screens for one document - this, and a pop-up in the
+   * Accounting menu - and the pop-up was the only place the entry could be
+   * adjusted and posted. Two screens for one report means two certify
+   * dialogs, two sets of totals and two places to keep in step; and it meant
+   * the Accountant could not see the signed form while deciding the entry,
+   * because the form lives here.
+   *
+   * So one page, and the actions follow the officer: the Treasurer certifies
+   * and withdraws, the Accountant adjusts the entry and journalizes.
+   */
+  const canJournalize = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   const entryLines = useMemo<GridLine[]>(
     () =>
@@ -77,6 +94,22 @@ export default function TreasuryReportDetail() {
       })),
     [report],
   );
+
+  /** What the grid shows: the Accountant's working copy, or what is stored. */
+  const lines = draftEntry ?? entryLines;
+
+  const totals = useMemo(() => {
+    const debit = lines.reduce((sum, l) => sum + (l.debit || 0), 0);
+    const credit = lines.reduce((sum, l) => sum + (l.credit || 0), 0);
+    return { debit, credit };
+  }, [lines]);
+
+  const balanced = totals.debit === totals.credit;
+  const agreesWithReport = totals.debit === (report?.totalAmount ?? 0);
+  const postable = balanced && agreesWithReport && lines.every((l) => l.accountCode);
+
+  /* Adjustable only while the report is waiting for its entry. */
+  const entryEditable = canJournalize && report?.status === 'CERTIFIED';
 
   if (loading) return <Spinner label="Loading the report" />;
 
@@ -112,6 +145,35 @@ export default function TreasuryReportDetail() {
       setConfirm(null);
     } catch (err) {
       toast.error('Could not certify', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const journalize = async () => {
+    setBusy(true);
+    try {
+      const res = await engine.journalizeTreasuryReport({
+        reportId: report.id,
+        entry: lines.map((l) => ({
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+          debit: l.debit || 0,
+          credit: l.credit || 0,
+          particulars: l.particulars,
+          subsidiaryType: l.subsidiaryType,
+          subsidiaryId: l.subsidiaryId,
+          subsidiaryName: l.subsidiaryName,
+        })),
+      });
+      toast.success(
+        `JEV ${res.jevNo} posted`,
+        `${short} ${res.reportNo} is journalized and in the General Ledger.`,
+      );
+      setDraftEntry(null);
+      setConfirm(null);
+    } catch (err) {
+      toast.error('Could not journalize', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -231,9 +293,10 @@ export default function TreasuryReportDetail() {
           { id: 'coverage', label: 'Documents covered', count: report.lines.length },
           { id: 'entry', label: 'Journal entry' },
           { id: 'attachments', label: 'Supporting documents' },
+          { id: 'history', label: 'Approval history' },
         ]}
         active={tab}
-        onChange={(next) => setTab(next as 'coverage' | 'entry' | 'attachments')}
+        onChange={(next) => setTab(next as typeof tab)}
       />
 
       <div className="mt-4">
@@ -285,18 +348,63 @@ export default function TreasuryReportDetail() {
         )}
 
         {tab === 'entry' && (
-          <Card title="The entry this report proposes">
+          <Card
+            title={
+              report.status === 'JOURNALIZED'
+                ? 'The entry this report posted'
+                : 'The entry this report proposes'
+            }
+          >
             <p className="mb-3 text-xs text-slate-500">
-              Read-only here. The Municipal Accountant owns the entry and may adjust the accounts
-              before posting it, under Accounting &gt; Treasury Reports - but not the amount, which
-              is a statement of fact the Treasurer has signed.
+              {entryEditable
+                ? 'The accounts are yours to adjust. The TOTAL is not: it must equal the amount the Treasurer certified, because the journal has to agree with the report that was signed. If the report itself is wrong, send it back rather than adjusting the figure here.'
+                : 'The Municipal Accountant owns this entry and may adjust the accounts before posting it. The amount is a statement of fact the Treasurer has signed.'}
             </p>
+
             <JournalEntryGrid
-              lines={entryLines}
-              onChange={() => undefined}
+              lines={lines}
+              onChange={setDraftEntry}
               fundCode={report.fundCode}
-              readOnly
+              readOnly={!entryEditable}
             />
+
+            {entryEditable && (
+              <>
+                {!balanced && (
+                  <Alert tone="warning" className="mt-3">
+                    The entry does not balance. Debits {formatPeso(totals.debit)}, credits{' '}
+                    {formatPeso(totals.credit)}.
+                  </Alert>
+                )}
+                {balanced && !agreesWithReport && (
+                  <Alert tone="warning" className="mt-3">
+                    The entry comes to {formatPeso(totals.debit)} but {short} {report.reportNo} was
+                    certified at {formatPeso(report.totalAmount)}. The journal entry must agree
+                    with the report the Treasurer signed.
+                  </Alert>
+                )}
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={() => setConfirm('journalize')}
+                    disabled={!postable}
+                  >
+                    Post journal entry
+                  </Button>
+                  {draftEntry && (
+                    <Button variant="secondary" onClick={() => setDraftEntry(null)}>
+                      Undo my changes
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </Card>
+        )}
+
+        {tab === 'history' && (
+          <Card title="Approval history">
+            <WorkflowTimeline entityType={COL.treasuryReports} entityId={report.id} />
           </Card>
         )}
 
@@ -349,6 +457,29 @@ export default function TreasuryReportDetail() {
             <p className="mt-2">
               Once certified, the documents it covers are locked to this report and cannot be
               cancelled without withdrawing it, and this number is reserved against the report.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'journalize'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void journalize()}
+        loading={busy}
+        title={`Post the entry for ${short} ${report.reportNo ?? ''}`}
+        confirmLabel="Post journal entry"
+        variant="success"
+        message={
+          <>
+            <p>
+              {formatPeso(report.totalAmount)} is written to the General Ledger against the
+              accounts shown. From that moment the entry is in the Trial Balance and every report
+              drawn from the ledger.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              The entry takes its JEV number now. A posted entry is never deleted - while the month
+              is open it can be corrected on the entry itself, and after that by a reversing entry.
             </p>
           </>
         }

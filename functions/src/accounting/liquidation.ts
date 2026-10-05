@@ -1,4 +1,6 @@
 import { HttpsError } from 'firebase-functions/v2/https';
+import { titleForAccountCode } from '../lib/accountTitles';
+import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
@@ -76,6 +78,21 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       glAccountCode: string;
       status: string;
     };
+
+    /*
+     * The titles of the two accounts whose CODE comes from a record rather
+     * than from this file. Read before any write, as the ordering requires.
+     */
+    const [cashTitle, advanceTitle] = await Promise.all([
+      titleForAccountCode(CASH_LOCAL_TREASURY.code),
+      titleForAccountCode(ca.glAccountCode),
+    ]);
+    if (!advanceTitle) {
+      throw new HttpsError(
+        'failed-precondition',
+        `The cash advance posts to account ${ca.glAccountCode}, and there is no account with that code in the Chart of Accounts. The entry cannot name an account that does not exist.`,
+      );
+    }
 
     const period = periodOf(liq.liquidationDate);
     await assertFiscalYearOpen(liq.fiscalYear, tx);
@@ -155,8 +172,14 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
     if ((liq.refundAmount ?? 0) > 0) {
       lines.push({
         lineNo: lineNo++,
-        accountCode: '10101010',
-        accountName: 'Cash in Vault',
+        accountCode: CASH_LOCAL_TREASURY.code,
+        /*
+         * Named from the chart, not written out. This line said "Cash in
+         * Vault" against 10101010, which the Chart of Accounts calls Cash
+         * Local Treasury - so every refund posted a ledger line printing an
+         * account title that is in no chart.
+         */
+        accountName: cashTitle ?? CASH_LOCAL_TREASURY.name,
         debit: liq.refundAmount,
         credit: 0,
         officeId: liq.officeId,
@@ -189,7 +212,10 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
     lines.push({
       lineNo: lineNo++,
       accountCode: ca.glAccountCode,
-      accountName: 'Advances to Officers and Employees',
+      // The code comes from the cash advance; so must the title. An advance
+      // posting to the payroll advance account was being labelled "Advances
+      // to Officers and Employees" regardless.
+      accountName: advanceTitle,
       debit: 0,
       credit: advanceSettled,
       subsidiaryType: 'EMPLOYEE',

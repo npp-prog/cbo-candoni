@@ -556,7 +556,15 @@ export interface Liquidation extends Partial<AuditStamps> {
 
   status: LiquidationStatus;
   jevId?: Id;
+  jevNo?: string;
   remarks?: string;
+
+  attachmentCount?: number;
+  /** Document types the workflow requires before this report may be posted. */
+  requiredAttachmentsMissing?: string[];
+  /** See the note on the disbursement voucher. Engine-written. */
+  attachmentsLockedAt?: string;
+  attachmentsLockedBy?: ActorStamp;
 }
 
 // ---------------------------------------------------------------------------

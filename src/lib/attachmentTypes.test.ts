@@ -154,3 +154,11 @@ describe('the lock roles', () => {
     expect(ATTACHMENT_LOCK_ROLES).not.toContain('TREASURY_STAFF');
   });
 });
+
+describe('a journal entry written in Accounting', () => {
+  it('offers the plain supporting document', () => {
+    // There is no CFMS form behind an adjusting entry - the paper is a
+    // memorandum or the office's own journal voucher.
+    expect(attachmentTypesFor(COL.jevs)).toEqual(['OTHER']);
+  });
+});

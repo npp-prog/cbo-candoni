@@ -1,17 +1,13 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Field';
-import { Modal } from '@/components/ui/Modal';
-import { useToast } from '@/components/ui/Toast';
-import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useReportsAwaitingJev } from '@/data/queries';
-import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import {
@@ -60,11 +56,10 @@ import type { TreasuryReportType } from '@/types/enums';
 export default function TreasuryReportJev() {
   const { fiscalYear } = useFilters();
   const { hasRole } = useAuth();
-  const toast = useToast();
+  const navigate = useNavigate();
 
   const { data, loading, error } = useReportsAwaitingJev(fiscalYear);
 
-  const [reviewing, setReviewing] = useState<TreasuryReport | null>(null);
   const [tab, setTab] = useState('');
   const [status, setStatus] = useState('');
 
@@ -183,7 +178,18 @@ export default function TreasuryReportJev() {
       cell: (r) => (
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
-          <Button size="sm" variant={r.status === 'CERTIFIED' ? 'primary' : 'secondary'} onClick={() => setReviewing(r)}>
+          {/*
+            Opens the report's own page rather than a pop-up. The entry is
+            adjusted and posted there, beside the documents the report covers
+            and the signed form the Treasurer attached to it - which a pop-up
+            over this list could not show, and which is the thing an Accountant
+            should have read before posting the entry.
+          */}
+          <Button
+            size="sm"
+            variant={r.status === 'CERTIFIED' ? 'primary' : 'secondary'}
+            onClick={() => navigate(`/treasury/reports/${r.id}`)}
+          >
             {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'View'}
           </Button>
         </div>
@@ -235,234 +241,6 @@ export default function TreasuryReportJev() {
         />
       </Card>
 
-      {reviewing && (
-        <JournalizeReport
-          report={reviewing}
-          readOnly={!canPost || reviewing.status !== 'CERTIFIED'}
-          onClose={() => setReviewing(null)}
-          onPosted={() => setReviewing(null)}
-          toastError={(t, m) => toast.error(t, m)}
-          toastSuccess={(t, m) => toast.success(t, m)}
-        />
-      )}
     </>
-  );
-}
-
-function JournalizeReport({
-  report,
-  readOnly,
-  onClose,
-  onPosted,
-  toastError,
-  toastSuccess,
-}: {
-  report: TreasuryReport;
-  readOnly?: boolean;
-  onClose: () => void;
-  onPosted: () => void;
-  toastError: (title: string, message: string) => void;
-  toastSuccess: (title: string, message: string) => void;
-}) {
-  const short = TREASURY_REPORT_SHORT[report.reportType];
-  const label = TREASURY_REPORT_LABELS[report.reportType];
-
-  const [lines, setLines] = useState<GridLine[]>(() =>
-    (report.entry ?? []).map((l, i) => ({
-      lineNo: i + 1,
-      accountCode: l.accountCode,
-      accountName: l.accountName,
-      debit: l.debit,
-      credit: l.credit,
-      particulars: l.particulars,
-      subsidiaryType: l.subsidiaryType,
-      subsidiaryId: l.subsidiaryId,
-      subsidiaryName: l.subsidiaryName,
-    })),
-  );
-  const [posting, setPosting] = useState(false);
-
-  const totals = useMemo(() => {
-    const debit = lines.reduce((s, l) => s + (l.debit || 0), 0);
-    const credit = lines.reduce((s, l) => s + (l.credit || 0), 0);
-    return { debit, credit };
-  }, [lines]);
-
-  const balanced = totals.debit === totals.credit;
-  const agreesWithReport = totals.debit === report.totalAmount;
-  const postable = balanced && agreesWithReport && lines.every((l) => l.accountCode);
-
-  const post = async () => {
-    setPosting(true);
-    try {
-      const res = await engine.journalizeTreasuryReport({
-        reportId: report.id,
-        entry: lines.map((l) => ({
-          accountCode: l.accountCode,
-          accountName: l.accountName,
-          debit: l.debit || 0,
-          credit: l.credit || 0,
-          particulars: l.particulars,
-          subsidiaryType: l.subsidiaryType,
-          subsidiaryId: l.subsidiaryId,
-          subsidiaryName: l.subsidiaryName,
-        })),
-      });
-      toastSuccess(
-        `JEV ${res.jevNo} posted`,
-        `${short} ${res.reportNo} is journalized and in the General Ledger.`,
-      );
-      onPosted();
-    } catch (err) {
-      toastError('Could not journalize', err instanceof Error ? err.message : String(err));
-    } finally {
-      setPosting(false);
-    }
-  };
-
-  return (
-    <Modal
-      open
-      size="xl"
-      title={`${short} ${report.reportNo}`}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-          {!readOnly && (
-            <Button onClick={post} loading={posting} disabled={!postable}>
-              Post journal entry
-            </Button>
-          )}
-        </>
-      }
-    >
-      <div className="grid gap-3 text-sm sm:grid-cols-4">
-        <div>
-          <div className="text-xs uppercase text-slate-500">Report</div>
-          <div className="font-medium text-navy-900">{label}</div>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-slate-500">Date</div>
-          <div className="font-medium text-navy-900">{formatShortDate(report.reportDate)}</div>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-slate-500">Fund</div>
-          <div className="font-medium text-navy-900">{report.fundCode}</div>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-slate-500">Certified total</div>
-          <div className="cbo-amount font-semibold text-navy-900">
-            {formatPeso(report.totalAmount)}
-          </div>
-        </div>
-      </div>
-
-      {report.jevNo && (
-        <Alert tone="success" className="mt-3">
-          Journalized as JEV {report.jevNo}. The entry below is the one that was posted, and a
-          posted entry is never edited - a correction is a reversing entry in General Transactions.
-        </Alert>
-      )}
-
-      <p className="mt-3 text-sm">
-        <Link
-          to={`/treasury/reports/${report.id}`}
-          className="font-medium text-brand-700 underline"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open the report itself
-        </Link>{' '}
-        <span className="text-slate-500">
-          - to read the signed form the Treasurer attached to it before certifying. Opens in a new
-          tab, so this entry stays as you have it.
-        </span>
-      </p>
-
-      {report.bankName && (
-        <p className="mt-3 text-sm text-slate-600">
-          Drawn on {report.bankName} {report.bankAccountNumber}
-        </p>
-      )}
-      {report.accountableOfficerName && (
-        <p className="mt-1 text-sm text-slate-600">
-          Accountable officer: {report.accountableOfficerName}
-        </p>
-      )}
-
-      <h3 className="mt-5 mb-2 text-sm font-semibold text-navy-900">
-        Documents covered ({report.lines.length})
-      </h3>
-      <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-600">
-            <tr>
-              <th className="px-3 py-2 text-left">No.</th>
-              <th className="px-3 py-2 text-left">Date</th>
-              <th className="px-3 py-2 text-left">Payee / particulars</th>
-              <th className="px-3 py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {report.lines.map((line) => (
-              <tr key={line.sourceId} className="border-t border-slate-100">
-                <td className="px-3 py-1.5 font-mono text-xs">{line.sourceNo}</td>
-                <td className="px-3 py-1.5">{formatShortDate(line.date)}</td>
-                <td className="px-3 py-1.5">
-                  {line.payeeName ?? ''}
-                  {line.particulars ? (
-                    <span className="block text-xs text-slate-500">{line.particulars}</span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-1.5 text-right">
-                  <span className="cbo-amount">{formatPeso(line.amount)}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
-              <td className="px-3 py-2" colSpan={3}>
-                {report.reportType === 'RCDISB' ? 'Cash paid per report' : 'Total per report'}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <span className="cbo-amount">{formatPeso(report.totalAmount)}</span>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <h3 className="mt-5 mb-2 text-sm font-semibold text-navy-900">Journal entry</h3>
-      <p className="mb-2 text-xs text-slate-500">
-        Adjust the accounts if the proposal is wrong. The entry must still foot to{' '}
-        {formatPeso(report.totalAmount)} — if the report itself is wrong, send it back to the
-        Treasurer rather than changing the amount here.
-      </p>
-
-      <JournalEntryGrid
-        lines={lines}
-        onChange={setLines}
-        fundCode={report.fundCode}
-        readOnly={readOnly}
-      />
-
-      {!balanced && (
-        <Alert tone="warning" className="mt-3">
-          The entry does not balance. Debits {formatPeso(totals.debit)}, credits{' '}
-          {formatPeso(totals.credit)}.
-        </Alert>
-      )}
-      {balanced && !agreesWithReport && (
-        <Alert tone="warning" className="mt-3">
-          The entry is for {formatPeso(totals.debit)} but {short} {report.reportNo} was certified at{' '}
-          {formatPeso(report.totalAmount)}. The journal entry must agree with the report the
-          Treasurer signed.
-        </Alert>
-      )}
-    </Modal>
   );
 }

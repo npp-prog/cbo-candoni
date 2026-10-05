@@ -48,6 +48,7 @@ const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJe
 const Payroll = lazy(() => import('./pages/treasury/Payroll'));
 const CashAdvances = lazy(() => import('./pages/accounting/CashAdvances'));
 const Liquidation = lazy(() => import('./pages/accounting/Liquidation'));
+const LiquidationDetail = lazy(() => import('./pages/accounting/LiquidationDetail'));
 const IndexOfPayments = lazy(() => import('./pages/accounting/IndexOfPayments'));
 
 const TreasuryCollections = lazy(() => import('./pages/treasury/Collections'));
@@ -270,6 +271,10 @@ export default function App() {
           <Route path="/accounting/payroll" element={<Navigate to="/treasury/payroll" replace />} />
           <Route path="/accounting/cash-advances" element={<Guard module="accounting"><CashAdvances /></Guard>} />
           <Route path="/accounting/liquidation" element={<Guard module="accounting"><Liquidation /></Guard>} />
+          <Route
+            path="/accounting/liquidation/:id"
+            element={<Guard module="accounting"><LiquidationDetail /></Guard>}
+          />
           <Route path="/accounting/index-of-payments" element={<Guard module="accounting"><IndexOfPayments /></Guard>} />
 
           {/* Treasury */}

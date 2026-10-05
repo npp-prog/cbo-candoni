@@ -10,6 +10,9 @@ import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
+import { AttachmentsPanel } from '@/components/AttachmentsPanel';
+import { attachmentTypesFor } from '@/lib/attachmentTypes';
+import { useAttachments } from '@/data/queries';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
@@ -53,7 +56,8 @@ export default function JevDetail() {
 
   const { data: existing, loading } = useDocument<JournalEntryVoucher>(isNew ? null : COL.jevs, id);
 
-  const [tab, setTab] = useState<'entry' | 'history'>('entry');
+  const [tab, setTab] = useState<'details' | 'entry' | 'attachments' | 'history'>('details');
+  const attachments = useAttachments(COL.jevs, isNew ? null : (id ?? null));
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<null | 'post' | 'reverse' | 'correct' | 'amend'>(null);
@@ -422,17 +426,36 @@ export default function JevDetail() {
         </Alert>
       )}
 
+      {/*
+        The voucher's four tabs, so an accountant moving between a
+        disbursement voucher and a journal entry does not have to learn two
+        screens: the document, the entry, the papers behind it, and who did
+        what.
+      */}
       <Tabs
         tabs={[
-          { id: 'entry', label: 'Entry' },
-          { id: 'history', label: 'History' },
+          { id: 'details', label: 'General transaction' },
+          { id: 'entry', label: 'Accounting entry' },
+          {
+            id: 'attachments',
+            label: 'Supporting documents',
+            /*
+             * Counted from the attachments themselves, not from a counter on
+             * the entry. A posted entry cannot be written by the browser at
+             * all - that is the rule that makes the ledger evidence - so a
+             * stored count would stop moving the moment the entry was posted
+             * and the tab would quietly show the wrong number for ever.
+             */
+            count: attachments.data.length,
+          },
+          { id: 'history', label: 'Approval history' },
         ]}
         active={tab}
         onChange={(t) => setTab(t as typeof tab)}
       />
 
       <div className="mt-4 space-y-4">
-        {tab === 'entry' && (
+        {tab === 'details' && (
           <>
             <Card title="Journal entry voucher">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -502,17 +525,6 @@ export default function JevDetail() {
               </div>
             </Card>
 
-            <Card title="Entry">
-              <JournalEntryGrid
-                lines={lines}
-                onChange={setLines}
-                fppOptions={fppOptions}
-                expenseCodes={expenseCodes}
-                fundCode={fundCode}
-                readOnly={!canEdit && !amending}
-              />
-            </Card>
-
             {(existing?.createdBy || existing?.postedBy) && (
               <Card title="Certification">
                 <dl className="grid gap-4 sm:grid-cols-3">
@@ -537,8 +549,53 @@ export default function JevDetail() {
           </>
         )}
 
+        {tab === 'entry' && (
+          <Card title="Accounting entry">
+            <JournalEntryGrid
+              lines={lines}
+              onChange={setLines}
+              fppOptions={fppOptions}
+              expenseCodes={expenseCodes}
+              fundCode={fundCode}
+              readOnly={!canEdit && !amending}
+            />
+          </Card>
+        )}
+
+        {tab === 'attachments' && (
+          <Card title="Supporting documents">
+            {isNew ? (
+              <p className="py-6 text-center text-sm text-slate-500">
+                Save the entry first. Attachments are filed against a saved record.
+              </p>
+            ) : (
+              <>
+                <p className="mb-4 text-xs text-slate-500">
+                  Not required. An adjusting entry often has nothing behind it but the Accountant's
+                  judgement, and a box demanding a file would only produce empty ones. Where there
+                  IS a paper - a memorandum, a bank debit advice, the office's own journal voucher
+                  - this is where it belongs.
+                </p>
+                <AttachmentsPanel
+                  entityType={COL.jevs}
+                  allowedTypes={attachmentTypesFor(COL.jevs)}
+                  entityId={id ?? null}
+                  entityRef={
+                    hasJevNumber(existing?.jevNo) ? `JEV ${existing?.jevNo}` : 'Journal entry'
+                  }
+                  fiscalYear={fiscalYear}
+                  fundCode={fundCode}
+                  storageDocType="JEV"
+                  storageDocId={hasJevNumber(existing?.jevNo) ? (existing?.jevNo as string) : (id ?? 'draft')}
+                  readOnly={!can('accounting', 'edit')}
+                />
+              </>
+            )}
+          </Card>
+        )}
+
         {tab === 'history' && (
-          <Card title="History">
+          <Card title="Approval history">
             <WorkflowTimeline entityType={COL.jevs} entityId={id ?? null} />
           </Card>
         )}

@@ -1011,6 +1011,66 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 22. A code from a record takes its title from the chart -----------------
+/*
+ * The third appearance of one mistake, so it gets a check.
+ *
+ * A journal line carries a code and a title. When the CODE is read from a
+ * record - a bank account's glAccountCode, a cash advance's - and the TITLE is
+ * written out beside it as a string, the two drift the moment an office sets a
+ * different code. CFMS has posted:
+ *
+ *     10102020  General Fund                   (the bank account's own name)
+ *     10101010  Cash in Vault                  (the chart says Cash Local Treasury)
+ *     <advance> Advances to Officers and Employees   (whatever code it had)
+ *
+ * Every one of them balances, carries a real code, and prints a title that is
+ * in no chart. Nothing refuses them, and the General Ledger shows the title.
+ *
+ * A code written out as a constant is fine - its title comes from the same
+ * constant. This is only about a code read from a record.
+ */
+{
+  const SOURCE_DIRS = [resolve(root, 'src'), resolve(root, 'functions/src')];
+  const FROM_RECORD = /accountCode:\s*([A-Za-z_$][\w$]*(?:\.[\w$]+)*\.(?:glAccountCode|accountCode))/;
+  const LITERAL_NAME = /accountName:\s*['"`]/;
+  let offenders = 0;
+
+  for (const dir of SOURCE_DIRS) {
+    if (!existsSync(dir)) continue;
+    for (const file of walkTs(dir)) {
+      const name = file.slice(root.length + 1).split('\\').join('/');
+      if (name.includes('.test.')) continue;
+
+      const source = readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+
+      let flagged = false;
+      for (const hit of source.matchAll(new RegExp(FROM_RECORD, 'g'))) {
+        // The title, if it is given, is within the same object literal - a
+        // few lines either side of the code.
+        const from = Math.max(0, (hit.index ?? 0) - 300);
+        const window = source.slice(from, (hit.index ?? 0) + 300);
+        if (!LITERAL_NAME.test(window)) continue;
+        flagged = true;
+        failures.push(
+          `${name}: a journal line takes its accountCode from ${hit[1]} and its accountName from ` +
+            'a written-out string. The two drift the moment an office sets a different code, and ' +
+            'the ledger then prints a title that is in no chart - which balances, and which ' +
+            'nothing refuses. Look the title up (titleForAccountCode, or the loaded chart).',
+        );
+        break;
+      }
+      if (flagged) offenders += 1;
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('accounts: a code read from a record never carries a written-out title');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

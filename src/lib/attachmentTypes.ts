@@ -45,6 +45,17 @@ export function attachmentTypesFor(
     case COL.liquidations:
       return ['LIQUIDATION_REPORT'];
 
+    case COL.jevs:
+      /*
+       * An entry written in Accounting answers to a piece of paper CFMS never
+       * saw - a memorandum, a bank debit advice, the office's own journal
+       * voucher. There is no CFMS form to name, so the file is filed as what
+       * it is: the supporting document behind the entry. Not required: plenty
+       * of adjusting entries have nothing behind them but the Accountant's
+       * judgement, and demanding a file would only produce empty PDFs.
+       */
+      return ['OTHER'];
+
     case COL.treasuryReports:
       switch (variant) {
         case 'RCD':
