@@ -65,9 +65,30 @@ export const PAYMENT_TABS = [
   { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
   // The claim sheet is the list of who is being paid out of the checks drawn.
   { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
-  // Drawn out of the same register and submitted to Accounting at year end,
-  // so it belongs on this strip as well as in Treasury Reports.
+  // Both drawn out of the same check register and submitted to Accounting, so
+  // they belong on the check book's own strip.
+  //
+  // The Report of Cancelled Checks joined in patch 87, when the Treasury
+  // Reports group came out of the sidebar. It was the one report in that group
+  // that was on no strip at all, so removing the group would have left it
+  // reachable only by typing its address - and a screen nothing links to is a
+  // screen the office stops knowing about.
   { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
+  { label: 'Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+];
+
+/**
+ * The stock book and the report drawn from it.
+ *
+ * Same pairing as Payroll and the RCDisb: one register, one report. They were
+ * two menu items in two different groups - the register under Registers, the
+ * report under Treasury Reports - so the officer who had just recorded a
+ * booklet's movement had to go back out to the sidebar, and into a different
+ * part of it, to report on what they had recorded.
+ */
+export const ACCOUNTABLE_FORM_TABS = [
+  { label: 'Accountable Forms', to: '/treasury/accountable-forms' },
+  { label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
 ];
 
 export const PAYROLL_TABS = [
@@ -93,3 +114,36 @@ export const PAYMENT_CRUMBS = [
   { label: 'Treasury' },
   { label: 'Checks and ADA', to: '/treasury/disbursements' },
 ];
+
+/**
+ * Which register a Treasury screen belongs to.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS
+ * ---------------------------------------------------------------------------
+ * The sidebar folds open the heading holding the screen you are standing on,
+ * and it worked that out by matching the address against the menu items. That
+ * was enough while every Treasury report was ALSO a menu item.
+ *
+ * Patch 87 took the Treasury Reports group out, because each of those reports
+ * is a tab on the register it is drawn from. Which left the sidebar with
+ * nothing to match on `/treasury/checks/rci` - so standing on the RCI, the
+ * heading holding it stayed shut.
+ *
+ * The strips already hold the answer, and they hold it in a form that cannot
+ * drift: the FIRST tab of a strip is the register itself, and every other tab
+ * is something drawn from it. So a screen's register is the head of whichever
+ * strip carries it.
+ */
+const ALL_STRIPS = [COLLECTION_TABS, PAYMENT_TABS, PAYROLL_TABS, ACCOUNTABLE_FORM_TABS];
+
+export function registerForPath(pathname: string): string | null {
+  for (const strip of ALL_STRIPS) {
+    const head = strip[0]?.to;
+    if (!head) continue;
+    for (const tab of strip) {
+      if (pathname === tab.to || pathname.startsWith(`${tab.to}/`)) return head;
+    }
+  }
+  return null;
+}

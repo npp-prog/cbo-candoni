@@ -1,3 +1,4 @@
+import { registerForPath } from '@/pages/treasury/sections';
 import type { Module } from '@/types/system';
 
 /**
@@ -293,28 +294,33 @@ export const NAVIGATION: NavItem[] = [
       { group: 'Cash Books', label: 'Cash Position', to: '/treasury/cash-position' },
 
       // ----------------------------------------------------------------
-      // Treasury reports, in the order of the registers above: collections
-      // first, then disbursements, then accountability for the forms.
-      //
-      // RAAF appears once. It used to be listed twice - plainly as "RAAF" here
-      // and again under Reports with its full name - both pointing at the same
-      // screen. Two menu entries for one screen is how an office comes to
-      // believe there are two reports.
+      // A "TREASURY REPORTS" GROUP WAS HERE, AND IS NOT ANY MORE
       // ----------------------------------------------------------------
-      // What is left here is the six reports the municipality submits, one per
-      // register. Everything else drawn off the collections moved inside
-      // Collections and Deposits, where the clerk who recorded the receipts is
-      // already standing.
-      { group: 'Treasury Reports', label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
-      { group: 'Treasury Reports', label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
-      { group: 'Treasury Reports', label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
-      { group: 'Treasury Reports', label: 'Report of Cash Disbursement (RCDisb)', to: '/treasury/payroll/rcdisb' },
-      { group: 'Treasury Reports', label: 'Report of Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
-      // GAM Appendix 42. Listed here as well as on the check book's own strip,
-      // like the other reports the municipality submits: "where do I find the
-      // unreleased checks" is asked by people who are not in the register.
-      { group: 'Treasury Reports', label: 'Schedule of Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
-      { group: 'Treasury Reports', label: 'Accountability for Accountable Forms (RAAF)', to: '/treasury/raaf' },
+      // Seven entries: the RCD, RCI, RADAI, RCDisb, RCC, SUC and RAAF.
+      //
+      // Every one of them is a report drawn from a register that is already in
+      // this menu, and every one of them is now a tab ON that register:
+      //
+      //   RCD                 Collections and Deposits
+      //   RCI, RADAI,
+      //   SUC, RCC            Checks and ADA
+      //   RCDisb              Payroll
+      //   RAAF                Accountable Forms
+      //
+      // So the group listed seven screens the officer could already reach from
+      // the register they were standing in - and listed them in a different
+      // part of the menu, which is the part that did the damage. It taught the
+      // office that reporting on the day's work is something you leave the
+      // screen to do.
+      //
+      // Two of them, the RCC and the RAAF, were on no strip at all before
+      // patch 87; removing the group without putting them on one would have
+      // left them reachable only by typing the address. They are on the check
+      // book's strip and the stock book's strip now - see
+      // src/pages/treasury/sections.ts. A navigation test holds that: nothing
+      // may leave this menu unless a section strip carries it.
+      // ----------------------------------------------------------------
+
 
       // ----------------------------------------------------------------
       // The two screens that put ink on paper somebody else printed. Last,
@@ -465,6 +471,28 @@ export function toBlocks(children: readonly NavChild[]): ChildBlock[] {
  * wrong heading would leave the highlighted item hidden inside a folded one.
  */
 export function groupForPath(pathname: string): { sectionTo: string; group: string } | null {
+  const direct = matchMenuItem(pathname);
+  if (direct) return direct;
+
+  /*
+   * No menu item matches, so ask the Treasury section strips.
+   *
+   * A report that is a tab on a register is no longer a menu item of its own -
+   * patch 87 took the whole Treasury Reports group out, because every entry in
+   * it was already a tab on the register it is drawn from. Without this, the
+   * sidebar had nothing to match on `/treasury/checks/rci` and the heading
+   * holding it stayed shut: standing on the RCI, the menu showed nothing about
+   * where you were.
+   *
+   * `registerForPath` answers with the register the screen belongs to, which
+   * IS a menu item, so the ordinary match above finishes the job.
+   */
+  const register = registerForPath(pathname);
+  return register ? matchMenuItem(register) : null;
+}
+
+/** The plain longest-match over the menu items themselves. */
+function matchMenuItem(pathname: string): { sectionTo: string; group: string } | null {
   let best: { sectionTo: string; group: string; length: number } | null = null;
   for (const item of NAVIGATION) {
     for (const child of item.children ?? []) {

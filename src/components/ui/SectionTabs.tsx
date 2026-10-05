@@ -14,6 +14,21 @@ import { Link, useLocation } from 'react-router-dom';
  *
  * Rendered as links rather than local state so that a report can be opened
  * directly, bookmarked, and linked to from a notification.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY IT LOOKS LIKE THE TABS AND NOT LIKE BUTTONS
+ * ---------------------------------------------------------------------------
+ * It used to be a row of rounded chips, with the current one filled in solid
+ * brand blue. That reads as a row of BUTTONS - things that do something when
+ * pressed - sitting directly under a page heading that also has buttons in it.
+ * The officer could not tell from looking which of the two rows acted on the
+ * page and which moved between pages, and the filled chip looked like the
+ * primary action rather than like where they already were.
+ *
+ * CFMS already had an answer: the underlined tab bar used on the voucher, the
+ * treasury report, the trust accounts and half a dozen others. This is that
+ * bar, drawn with links. Two things that do the same job now look the same,
+ * and nothing on a Treasury page looks like a button unless it is one.
  */
 export function SectionTabs({
   tabs,
@@ -33,24 +48,32 @@ export function SectionTabs({
   }, null);
 
   return (
-    <nav className="mb-4 flex flex-wrap gap-1.5 no-print">
-      {tabs.map((tab) => {
-        const active = tab.to === current;
-        return (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            aria-current={active ? 'page' : undefined}
-            className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-              active
-                ? 'bg-brand-600 text-white'
-                : 'bg-white text-navy-700 ring-1 ring-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <div className="mb-4 border-b border-slate-200 no-print">
+      {/*
+        `flex-wrap` rather than the horizontal scroll the Tabs component uses.
+        These strips are long - Collections and Deposits runs to nine - and a
+        strip that scrolls hides the tabs at the end of it from anybody who does
+        not think to drag. A second row is plainer.
+      */}
+      <nav className="-mb-px flex flex-wrap gap-x-1" aria-label="Section">
+        {tabs.map((tab) => {
+          const active = tab.to === current;
+          return (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              aria-current={active ? 'page' : undefined}
+              className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                active
+                  ? 'border-brand-600 text-brand-700'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
   );
 }

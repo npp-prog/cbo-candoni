@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTABLE_FORM_TABS } from './sections';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -156,7 +158,11 @@ export default function Raaf() {
       <PageHeader
         title="Report of Accountability for Accountable Forms"
         subtitle={`Fiscal year ${fiscalYear} — one report per accountable officer per month`}
-        breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'RAAF' }]}
+        breadcrumbs={[
+          { label: 'Treasury', to: '/treasury' },
+          { label: 'Accountable Forms', to: '/treasury/accountable-forms' },
+          { label: 'RAAF' },
+        ]}
         actions={
           canPrepare ? (
             <Button variant="primary" onClick={() => setShowForm(true)}>
@@ -165,6 +171,8 @@ export default function Raaf() {
           ) : null
         }
       />
+
+      <SectionTabs tabs={ACCOUNTABLE_FORM_TABS} />
 
       {unexplained.length > 0 && (
         <Alert tone="warning" title="Reports that do not foot" className="mb-4">

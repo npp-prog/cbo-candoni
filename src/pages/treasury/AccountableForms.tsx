@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTABLE_FORM_TABS } from './sections';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -259,6 +261,8 @@ export default function AccountableForms() {
           ) : null
         }
       />
+
+      <SectionTabs tabs={ACCOUNTABLE_FORM_TABS} />
 
       {formTypes.length === 0 && (
         <Alert tone="warning" title="No accountable forms are set up" className="mb-4">

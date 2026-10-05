@@ -5,6 +5,7 @@ import {
   PAYMENT_TABS,
   COLLECTION_TABS,
   PAYROLL_TABS,
+  ACCOUNTABLE_FORM_TABS,
 } from '@/pages/treasury/sections';
 
 /**
@@ -64,14 +65,38 @@ describe('groupForPath', () => {
   });
 
   /**
-   * The case that motivated the longest-match rule. Both /treasury/checks and
-   * /treasury/checks/rci are menu items; the second is under a different
-   * heading from the first, and opening the first would leave the highlighted
-   * item folded out of sight.
+   * The longest-match rule, which exists so that a screen under one heading
+   * does not open a different heading because a shorter address also matched.
    */
   it('prefers the longest matching item when two both match', () => {
     expect(groupForPath('/treasury/disbursements')?.group).toBe('Registers');
-    expect(groupForPath('/treasury/checks/rci')?.group).toBe('Treasury Reports');
+    expect(groupForPath('/master-data/accounts')?.group).toBeUndefined();
+  });
+
+  /**
+   * A report that is a tab rather than a menu item still opens its heading.
+   *
+   * Patch 87 took the Treasury Reports group out of the menu, because every
+   * entry in it was already a tab on the register it is drawn from. The RCI
+   * is no longer a menu item, so nothing matched `/treasury/checks/rci` and
+   * the heading holding it stayed shut - standing on the RCI, the sidebar
+   * said nothing about where you were.
+   *
+   * The strips answer it now: a screen belongs to the register at the head of
+   * whichever strip carries it.
+   */
+  it('opens the register heading for a report that is only a tab', () => {
+    for (const path of [
+      '/treasury/checks/rci',
+      '/treasury/ada/radai',
+      '/treasury/checks/unreleased',
+      '/reports/cancelled-checks',
+      '/treasury/payroll/rcdisb',
+      '/treasury/collections/rcd',
+      '/treasury/raaf',
+    ]) {
+      expect(groupForPath(path)?.group, path).toBe('Registers');
+    }
   });
 
   it('matches a detail screen below a menu item', () => {
@@ -203,6 +228,9 @@ describe('the menu itself', () => {
       'Report of ADA Issued (RADAI)',
       'Claim Sheet',
       'Unreleased Checks (SUC)',
+      // Joined in patch 87, when the Treasury Reports group came out of the
+      // sidebar. It was the one report in that group on no strip at all.
+      'Cancelled Checks (RCC)',
     ]);
   });
 
@@ -502,5 +530,70 @@ describe('the budget programmes', () => {
       c.to?.startsWith('/budget/appropriations'),
     );
     expect(appropriation.map((c) => c.to)).toEqual(['/budget/appropriations']);
+  });
+});
+
+/**
+ * Nothing left the menu without somewhere else to be reached from.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS THE TEST THAT MATTERS FOR PATCH 87
+ * ---------------------------------------------------------------------------
+ * The Treasury Reports group was seven entries, and taking it out was right:
+ * every one of them is a report drawn from a register already in the menu, and
+ * listing them again in a different part of it taught the office that reporting
+ * on the day's work is something you leave the screen to do.
+ *
+ * But a menu entry is the only thing most people ever use to find a screen. Two
+ * of those seven - the RCC and the RAAF - were on no section strip at all, and
+ * removing the group without putting them on one would have left them reachable
+ * only by typing the address. Nobody would have noticed for months, and then
+ * somebody would have asked where the RAAF went.
+ *
+ * So this is not a test about tabs. It is the condition under which that menu
+ * group was allowed to be deleted, written down.
+ */
+describe('the reports that left the Treasury menu', () => {
+  const EVERY_STRIP = [
+    ...COLLECTION_TABS,
+    ...PAYMENT_TABS,
+    ...PAYROLL_TABS,
+    ...ACCOUNTABLE_FORM_TABS,
+  ];
+
+  const REMOVED = [
+    ['Report of Collections and Deposits (RCD)', '/treasury/collections/rcd'],
+    ['Report of Checks Issued (RCI)', '/treasury/checks/rci'],
+    ['Report of ADA Issued (RADAI)', '/treasury/ada/radai'],
+    ['Report of Cash Disbursement (RCDisb)', '/treasury/payroll/rcdisb'],
+    ['Report of Cancelled Checks (RCC)', '/reports/cancelled-checks'],
+    ['Schedule of Unreleased Checks (SUC)', '/treasury/checks/unreleased'],
+    ['Accountability for Accountable Forms (RAAF)', '/treasury/raaf'],
+  ] as const;
+
+  it.each(REMOVED)('%s is still reachable from a section strip', (_label, to) => {
+    expect(EVERY_STRIP.filter((t) => t.to === to)).toHaveLength(1);
+  });
+
+  it('leaves no Treasury Reports group behind', () => {
+    const treasury = NAVIGATION.find((i) => i.to === '/treasury');
+    const groups = new Set((treasury?.children ?? []).map((c) => c.group));
+    expect(groups.has('Treasury Reports')).toBe(false);
+  });
+
+  /*
+   * The strips answer "which register does this belong to" by their first
+   * entry, and `groupForPath` relies on that being a real menu item. If a
+   * strip were ever reordered so that its head was a report rather than the
+   * register, the sidebar would start opening the wrong heading.
+   */
+  it('starts every strip with the register it belongs to', () => {
+    const registers = (NAVIGATION.find((i) => i.to === '/treasury')?.children ?? [])
+      .filter((c) => c.group === 'Registers')
+      .map((c) => c.to);
+
+    for (const strip of [COLLECTION_TABS, PAYMENT_TABS, PAYROLL_TABS, ACCOUNTABLE_FORM_TABS]) {
+      expect(registers, strip[0].label).toContain(strip[0].to);
+    }
   });
 });
