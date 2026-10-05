@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import {
+  cashInBankLine,
   ACCOUNTS_PAYABLE,
   ADVANCES_FOR_PAYROLL,
   CASH_LOCAL_TREASURY,
@@ -24,6 +25,7 @@ import {
   useAda,
   useCollections,
   usePayrolls,
+  useAccounts,
   useBankAccounts,
 } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
@@ -290,6 +292,15 @@ function PrepareReport({
    * it is the master record.
    */
   const banks = useBankAccounts(fundCode);
+  /*
+   * The loaded chart, so an account the office has renamed is named the way
+   * the office named it. The built-in titles are the fallback.
+   */
+  const accounts = useAccounts();
+  const accountTitle = useMemo(() => {
+    const byCode = new Map(accounts.data.map((a) => [a.code, a.name]));
+    return (code: string) => byCode.get(code) ?? null;
+  }, [accounts.data]);
   const bankAccount = useMemo(
     () => banks.data.find((b) => b.id === bankAccountId) ?? null,
     [banks.data, bankAccountId],
@@ -400,14 +411,14 @@ function PrepareReport({
     if (total === 0) return [];
 
     if (reportType === 'RCI' || reportType === 'RADAI') {
-      const cash = bankAccount?.glAccountCode
-        ? {
-            code: bankAccount.glAccountCode,
-            name:
-              bankAccount.accountName ??
-              `${bankAccount.bankName ?? 'Bank'} ${bankAccount.accountNumber ?? ''}`.trim(),
-          }
-        : null;
+      /*
+       * The credit line is named from the ACCOUNT CODE, not from the bank
+       * account's own name - see cashInBankLine. Taking the name from the bank
+       * record is how the proposal came to read "10102020  General Fund",
+       * which is not an account in anybody's chart, and the label would have
+       * travelled into every ledger line the entry wrote.
+       */
+      const cash = bankAccount ? cashInBankLine(bankAccount, accountTitle) : null;
       if (!cash) return [];
       return [
         {
@@ -418,8 +429,7 @@ function PrepareReport({
           particulars: `Payments per ${short}`,
         },
         {
-          accountCode: cash.code,
-          accountName: cash.name,
+          ...cash,
           debit: 0,
           credit: total,
           particulars: `Payments per ${short}`,
@@ -509,6 +519,16 @@ function PrepareReport({
       toast.error(
         `The ${short} number is missing`,
         "Assign it from the office's own book before saving.",
+      );
+      return;
+    }
+    if (needsBank && bankAccount?.glAccountCode && !cashInBankLine(bankAccount, accountTitle)) {
+      // The code is set but no title can be found for it, in the loaded chart
+      // or in the accounts CFMS posts to by name. Naming it anyway is the
+      // fault this check exists to stop.
+      toast.error(
+        'That bank account posts to a code that is not in the Chart of Accounts',
+        `${bankAccount.bankName ?? 'The account'} ${bankAccount.accountNumber ?? ''} says its General Ledger account is ${bankAccount.glAccountCode}, and there is no account with that code. Correct it under Master Data > Banks, or add the account to the chart. The entry cannot name an account that does not exist.`,
       );
       return;
     }

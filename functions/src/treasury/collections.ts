@@ -1,6 +1,6 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
-import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
+import { cashInBankLine, CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
@@ -37,6 +37,21 @@ const TREASURY_APPROVERS: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNIC
  * to this fund and has not already been reported in another RCD. Double-counted
  * collections are the classic way a cash shortage is concealed.
  */
+/**
+ * Refuses, rather than naming an account CFMS cannot name.
+ *
+ * Reached only when a bank account posts to a code that is in no chart and is
+ * none of the accounts CFMS posts to by name. Posting it under an invented
+ * title is the fault this whole path exists to avoid, and a deposit is not
+ * urgent enough to be worth it.
+ */
+function unnamedBankAccount(code: string): never {
+  throw new HttpsError(
+    'failed-precondition',
+    `This bank account says its General Ledger account is ${code}, and there is no account with that code. Correct it under Master Data > Banks, or add the account to the Chart of Accounts. The entry cannot name an account that does not exist.`,
+  );
+}
+
 export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, TREASURY_APPROVERS);
   const { rcdId } = (request.data ?? {}) as { rcdId?: string };
@@ -322,7 +337,13 @@ export const recordDeposit = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
 
     const bankSnap = await tx.get(db.collection(COL.bankAccounts).doc(dep.bankAccountId));
     if (!bankSnap.exists) throw notFound('The bank account');
-    const bank = bankSnap.data() as { glAccountCode: string; fundCode: string; accountNumber: string };
+    const bank = bankSnap.data() as {
+      glAccountCode: string;
+      fundCode: string;
+      accountNumber: string;
+      accountName?: string;
+      bankName?: string;
+    };
 
     if (bank.fundCode !== dep.fundCode) {
       throw invalid(
@@ -341,13 +362,24 @@ export const recordDeposit = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
     const lines: JevLineData[] = [
       {
         lineNo: 1,
-        accountCode: bank.glAccountCode,
-        accountName: 'Cash in Bank - Local Currency, Current Account',
+        /*
+         * Named from the code, not written out here.
+         *
+         * This line carried the title "Cash in Bank - Local Currency, Current
+         * Account" as a literal while taking the CODE from the bank account.
+         * An office whose account posts to the savings code got a line reading
+         * 10102020 under the current account's title - balanced, valid, and
+         * naming the wrong account in every ledger entry it wrote.
+         */
+        ...(cashInBankLine({
+          id: dep.bankAccountId,
+          glAccountCode: bank.glAccountCode,
+          accountName: bank.accountName,
+          bankName: bank.bankName ?? dep.bankName,
+          accountNumber: bank.accountNumber,
+        }) ?? unnamedBankAccount(bank.glAccountCode)),
         debit: dep.amount,
         credit: 0,
-        subsidiaryType: 'BANK_ACCOUNT',
-        subsidiaryId: dep.bankAccountId,
-        subsidiaryName: `${dep.bankName} ${bank.accountNumber}`,
         cashFlowClass: 'OPERATING',
         particulars: `Deposit slip ${dep.depositSlipNo}`,
       },

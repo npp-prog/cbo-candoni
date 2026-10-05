@@ -494,6 +494,93 @@ export const NAMED_ACCOUNTS: readonly NamedAccount[] = [
 ];
 
 /**
+ * The prescribed title of an account CFMS posts to by code.
+ *
+ * Returns null for anything outside the named list, which is most of the
+ * chart. It is a fallback for the places that cannot read the loaded chart,
+ * not a substitute for it.
+ */
+export function namedAccountTitle(code: string): string | null {
+  const wanted = String(code ?? '').trim();
+  return NAMED_ACCOUNTS.find((a) => a.code === wanted)?.name ?? null;
+}
+
+/** A bank account record, as much of it as a journal line needs. */
+export interface BankAccountRef {
+  id?: string;
+  /** The General Ledger account this bank account posts to. */
+  glAccountCode?: string | null;
+  /** The OFFICE'S OWN NAME for the account - "General Fund", "Trust Fund". */
+  accountName?: string | null;
+  bankName?: string | null;
+  accountNumber?: string | null;
+}
+
+/**
+ * The Cash in Bank line for a bank account, named correctly.
+ *
+ * ---------------------------------------------------------------------------
+ * THE MISTAKE THIS EXISTS TO STOP
+ * ---------------------------------------------------------------------------
+ * A bank account record carries two different names and they are easy to
+ * confuse. `glAccountCode` is the General Ledger account it posts to -
+ * 10102010, Cash in Bank - Local Currency, Current Account. `accountName` is
+ * what the OFFICE calls that bank account: "General Fund".
+ *
+ * The RCI entry was built with the account CODE from the first and the account
+ * NAME from the second, so the proposed entry read
+ *
+ *     10102020     General Fund     10,000.00
+ *
+ * which is not an account in anybody's chart. Nothing refuses it: the entry
+ * balances, the code is real, and the name is only a label travelling beside
+ * it - all the way into every ledger line, where the General Ledger, the
+ * journals and the trial balance print it.
+ *
+ * ---------------------------------------------------------------------------
+ * AND THE NAME IS NOT WASTED
+ * ---------------------------------------------------------------------------
+ * "General Fund" is the right answer to a different question. Cash in Bank is
+ * a control account kept per bank account, so the office's own name for the
+ * account is exactly what belongs in the SUBSIDIARY ledger - which is where
+ * this now puts it, and where the Subsidiary Ledger report can make it agree
+ * with the control account.
+ *
+ * Returns null when the title cannot be established, because a line posted to
+ * a code under the wrong title is the fault being fixed. The caller says so to
+ * the user rather than guessing.
+ */
+export function cashInBankLine(
+  bank: BankAccountRef,
+  /** The loaded chart, where there is one. Preferred over the named list. */
+  resolveTitle?: (code: string) => string | null | undefined,
+): {
+  accountCode: string;
+  accountName: string;
+  subsidiaryType: 'BANK_ACCOUNT';
+  subsidiaryId: string | null;
+  subsidiaryName: string;
+} | null {
+  const code = String(bank.glAccountCode ?? '').trim();
+  if (!code) return null;
+
+  const title = resolveTitle?.(code) || namedAccountTitle(code);
+  if (!title) return null;
+
+  const ownName =
+    String(bank.accountName ?? '').trim() ||
+    `${bank.bankName ?? ''} ${bank.accountNumber ?? ''}`.trim();
+
+  return {
+    accountCode: code,
+    accountName: title,
+    subsidiaryType: 'BANK_ACCOUNT',
+    subsidiaryId: bank.id ?? null,
+    subsidiaryName: ownName || code,
+  };
+}
+
+/**
  * Every account named above must exist in the loaded chart under exactly that
  * title. A mismatch means CFMS is posting to an account that is not the one the
  * code believes it is - which is not caught by anything else, because the

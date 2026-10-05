@@ -823,6 +823,119 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 18. A typed document number is not refused by the rules ----------------
+/*
+ * The numbers below are assigned by the office, from its own books, and typed
+ * on the draft. Patch 77 made that true of five documents; the rules still
+ * said what had been true before it, which is that a number arriving from a
+ * browser could only be a browser inventing one.
+ *
+ * The result was the worst kind of failure. Saving an RCI draft was refused
+ * with "Missing or insufficient permissions" - a message that names neither
+ * the field nor the reason - and nothing in the build, the tests or the
+ * engine had anything to say about it. The Treasurer could not have worked it
+ * out, and neither could I without being shown the screen.
+ *
+ * So: no create rule may refuse the very field its screen now requires.
+ */
+{
+  const TYPED_NUMBERS = [
+    ['treasuryReports', 'reportNo'],
+    ['rcds', 'rcdNo'],
+    ['liquidations', 'liquidationNo'],
+    ['obligations', 'obrNo'],
+    ['disbursementVouchers', 'dvNo'],
+  ];
+
+  const code = firestore.replace(/\/\/[^\n]*/g, '');
+  let refused = 0;
+
+  for (const [collection, field] of TYPED_NUMBERS) {
+    const block = code.match(
+      new RegExp(`match /${collection}/\\{[^}]*\\}\\s*\\{([\\s\\S]*?)\\n    \\}`),
+    );
+    if (!block) {
+      failures.push(`firestore.rules: no rule block for '${collection}'.`);
+      refused += 1;
+      continue;
+    }
+    const create = block[1].match(/allow create:([\s\S]*?);/);
+    if (!create) continue;
+
+    // The shape that caused it: a flat refusal of the field on create.
+    const bans = new RegExp(`!\\s*\\(\\s*'${field}'\\s+in\\s+request\\.resource\\.data\\s*\\)`);
+    if (bans.test(create[1])) {
+      refused += 1;
+      failures.push(
+        `firestore.rules: the '${collection}' create rule refuses '${field}', but that number is ` +
+          'typed in by the office on the draft. Every save from that screen will be rejected with ' +
+          '"Missing or insufficient permissions", which names neither the field nor the reason.',
+      );
+    }
+  }
+
+  if (refused === 0) {
+    console.log(`numbering: all ${TYPED_NUMBERS.length} typed document numbers are accepted on a draft`);
+  }
+}
+
+// --- 19. A bank account's own name is not an account title ------------------
+/*
+ * A bank account record carries two names and they are easy to confuse.
+ * `glAccountCode` is the General Ledger account it posts to; `accountName` is
+ * what the OFFICE calls that bank account - "General Fund".
+ *
+ * Writing the second into a journal line's `accountName` beside the first
+ * produced a proposed entry reading
+ *
+ *     10102020     General Fund     10,000.00
+ *
+ * which is not an account in anybody's chart. Nothing refuses it. The entry
+ * balances, the code is real, and the name is only a label travelling beside
+ * it - all the way into every ledger line, where the General Ledger, the
+ * journals and the trial balance print it. It was in two places and might
+ * have reached a third.
+ *
+ * The title comes from the code, through cashInBankLine.
+ */
+{
+  const SOURCE_DIRS = [resolve(root, 'src'), resolve(root, 'functions/src')];
+  const BAD = /accountName:\s*(\w*[Bb]ank\w*)\.accountName/;
+  let offenders = 0;
+
+  for (const dir of SOURCE_DIRS) {
+    if (!existsSync(dir)) continue;
+    for (const file of walkTs(dir)) {
+      const name = file.slice(root.length + 1).split('\\').join('/');
+      if (name.endsWith('.test.ts') || name.endsWith('.test.tsx')) continue;
+
+      const source = readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '')
+        /*
+         * Passing the bank's own name INTO cashInBankLine is the sanctioned
+         * use - that is how it reaches the subsidiary ledger, which is where
+         * it belongs. Only a journal line named from it directly is the fault.
+         */
+        .replace(/cashInBankLine\(\s*\{[^{}]*\}\s*(,[^)]*)?\)/g, '');
+
+      const hit = source.match(BAD);
+      if (!hit) continue;
+      offenders += 1;
+      failures.push(
+        `${name}: puts a bank account's own name (${hit[1]}.accountName) into a journal line's ` +
+          "accountName. That field is what the OFFICE calls the account - \"General Fund\" - not " +
+          'the title of the General Ledger account it posts to. Use cashInBankLine, which names ' +
+          "the line from the code and puts the office's name in the subsidiary ledger.",
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log("accounts: no journal line is named from a bank account's own name");
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

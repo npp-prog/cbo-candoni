@@ -1,4 +1,8 @@
 import { HttpsError } from 'firebase-functions/v2/https';
+import {
+  cashInBankLine,
+  ACCOUNTS_PAYABLE as SHARED_ACCOUNTS_PAYABLE,
+} from '../lib/chartOfAccounts';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, assertFundInScope, type Role } from '../lib/context';
@@ -51,7 +55,14 @@ const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF'
 type ImportType = 'RCI' | 'RADAI';
 
 /** Accounts Payable, from the COA Revised Chart of Accounts for LGUs. */
-const ACCOUNTS_PAYABLE = { code: '20101010', name: 'Accounts Payable' };
+/*
+ * Taken from the shared chart rather than written out here.
+ *
+ * A second copy of an account's title is a second thing to be wrong, and the
+ * one place it is wrong is the place nobody looks at - this file posts the
+ * entry for an uploaded report, which is the path a person never reads.
+ */
+const ACCOUNTS_PAYABLE = SHARED_ACCOUNTS_PAYABLE;
 
 /**
  * A ceiling on one upload.
@@ -590,10 +601,29 @@ export const importTreasuryPayments = onCall(
 function buildEntry(
   importType: ImportType,
   total: number,
-  bank: { glAccountCode?: string; accountName?: string; bankName: string; accountNumber: string },
+  bank: {
+    id?: string;
+    glAccountCode?: string;
+    accountName?: string;
+    bankName: string;
+    accountNumber: string;
+  },
 ) {
   if (total === 0) return [];
   const label = importType === 'RCI' ? 'RCI' : 'RADAI';
+
+  /*
+   * Named from the ACCOUNT CODE, never from the bank account's own name.
+   *
+   * This path - the RCI and RADAI upload - had the same fault as the screen
+   * that prepares a report by hand: the code came from `glAccountCode` and the
+   * name from `accountName`, which is what the OFFICE calls the bank account
+   * ("General Fund"). The proposal then read "10102020 General Fund", an
+   * account in nobody's chart, and the label travelled into every ledger line.
+   */
+  const cash = cashInBankLine(bank);
+  if (!cash) return [];
+
   return [
     {
       accountCode: ACCOUNTS_PAYABLE.code,
@@ -603,8 +633,7 @@ function buildEntry(
       particulars: `Payments per ${label}`,
     },
     {
-      accountCode: bank.glAccountCode,
-      accountName: bank.accountName ?? `${bank.bankName} ${bank.accountNumber}`.trim(),
+      ...cash,
       debit: 0,
       credit: total,
       particulars: `Payments per ${label}`,

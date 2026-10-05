@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   accountClassFor,
   cashFlowClassFor,
+  cashInBankLine,
   checkChart,
   checkNamedAccounts,
   deriveAccount,
@@ -11,6 +12,7 @@ import {
   isBudgetaryAccount,
   isCapitalOutlayAccount,
   isContraAccount,
+  namedAccountTitle,
   normalBalanceFor,
   requiresSubsidiaryFor,
 } from './chartOfAccounts';
@@ -405,3 +407,68 @@ function readShippedChart(): Array<{ code: string; name: string }> {
   }
   return rows;
 }
+
+describe('cashInBankLine', () => {
+  const bank = {
+    id: 'bank1',
+    glAccountCode: '10102020',
+    accountName: 'General Fund',
+    bankName: 'Land Bank of the Philippines',
+    accountNumber: 'Kabankalan',
+  };
+
+  it('names the account from the CODE, never from the bank account name', () => {
+    // The fault: the entry read "10102020  General Fund", which is not an
+    // account in anybody's chart - the code came from one field and the name
+    // from another, and the name travelled into every ledger line.
+    const line = cashInBankLine(bank);
+    expect(line?.accountCode).toBe('10102020');
+    expect(line?.accountName).toBe('Cash in Bank - Local Currency, Savings Account');
+    expect(line?.accountName).not.toBe('General Fund');
+  });
+
+  it("puts the office's own name in the subsidiary ledger, where it belongs", () => {
+    const line = cashInBankLine(bank);
+    expect(line?.subsidiaryType).toBe('BANK_ACCOUNT');
+    expect(line?.subsidiaryId).toBe('bank1');
+    expect(line?.subsidiaryName).toBe('General Fund');
+  });
+
+  it('prefers the loaded chart over the built-in titles', () => {
+    const line = cashInBankLine(bank, () => 'Cash in Bank - Savings (as the office renamed it)');
+    expect(line?.accountName).toBe('Cash in Bank - Savings (as the office renamed it)');
+  });
+
+  it('falls back to the built-in title when the chart has no answer', () => {
+    const line = cashInBankLine(bank, () => undefined);
+    expect(line?.accountName).toBe('Cash in Bank - Local Currency, Savings Account');
+  });
+
+  it('refuses rather than guess when no title can be established', () => {
+    // A code nobody can name is a line that would post under a title somebody
+    // invented, which is the whole fault. The caller says so to the user.
+    expect(cashInBankLine({ ...bank, glAccountCode: '19999999' })).toBeNull();
+  });
+
+  it('refuses a bank account with no General Ledger account set', () => {
+    expect(cashInBankLine({ ...bank, glAccountCode: '' })).toBeNull();
+    expect(cashInBankLine({ ...bank, glAccountCode: null })).toBeNull();
+  });
+
+  it('falls back to bank and number when the account has no name of its own', () => {
+    const line = cashInBankLine({ ...bank, accountName: '  ' });
+    expect(line?.subsidiaryName).toBe('Land Bank of the Philippines Kabankalan');
+  });
+});
+
+describe('namedAccountTitle', () => {
+  it('knows the accounts CFMS posts to by code', () => {
+    expect(namedAccountTitle('10102010')).toBe('Cash in Bank - Local Currency, Current Account');
+    expect(namedAccountTitle('20101010')).toBe('Accounts Payable');
+    expect(namedAccountTitle(' 20101020 ')).toBe('Due to Officers and Employees');
+  });
+
+  it('says nothing about the rest of the chart', () => {
+    expect(namedAccountTitle('50203010')).toBeNull();
+  });
+});

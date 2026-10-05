@@ -655,19 +655,45 @@ service cloud.firestore {
 
     match /treasuryReports/{id} {
       allow read: if canRead();
+      /*
+       * The report number IS allowed on a draft, since patch 77.
+       *
+       * This rule used to refuse it outright, because CFMS issued the number
+       * itself at certification and a number arriving from a browser could
+       * only be a browser inventing one. Patch 77 changed that - the number is
+       * the Treasurer's own, from the office's book, typed on the draft - and
+       * this rule was not changed with it. Every attempt to save an RCI draft
+       * was refused with "Missing or insufficient permissions", which names
+       * neither the field nor the reason, and the Treasurer had no way to tell
+       * what CFMS wanted.
+       *
+       * The number on a draft binds nothing. What makes it binding is the
+       * reservation written by certifyTreasuryReport, in the transaction that
+       * certifies - and that is a callable, which these rules do not gate.
+       *
+       * What a client still may not write is anything the engine decides: the
+       * journal entry it was posted as, the certification, and the closing of
+       * the supporting documents.
+       */
       allow create: if signedIn()
         && hasAny(treasuryRoles())
         && createdByCaller()
         && request.resource.data.status == 'DRAFT'
-        && !('reportNo' in request.resource.data)
-        && !('jevId' in request.resource.data);
+        && !('jevId' in request.resource.data)
+        && !('jevNo' in request.resource.data)
+        && !('certifiedAt' in request.resource.data)
+        && !('certifiedBy' in request.resource.data)
+        && !('attachmentsLockedAt' in request.resource.data)
+        && !('attachmentsLockedBy' in request.resource.data);
       allow update: if signedIn()
         && hasAny(treasuryRoles())
         && resource.data.status == 'DRAFT'
         && request.resource.data.status == 'DRAFT'
         && didNotChange([
           'reportType',
-          'reportNo',
+          // 'reportNo' is NOT here any more. A draft's number is the office's
+          // own and may be corrected while it is still a draft; it is reserved
+          // against the report only when the report is certified.
           'fiscalYear',
           'fundCode',
           'createdBy',
