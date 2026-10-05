@@ -1071,6 +1071,70 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 23. Nothing is certified without its signed form -----------------------
+/*
+ * Certifying is the act that forwards a document to another office and makes
+ * the municipality answerable for it. For an obligation request it consumes a
+ * number from a gapless series; for a treasury report it locks every document
+ * the report covers and sets Accounting to work.
+ *
+ * What CFMS holds in both cases is an ENCODING of a form somebody signed, and
+ * the certificate is a statement about that form. Issued before anybody has
+ * put the form on the record, it is a statement about nothing - and in
+ * practice the file is then attached late or never, because the thing that
+ * needed it has already happened.
+ *
+ * Each function checks this its own way: the obligation reads a count kept on
+ * itself, the report queries the attachments. What this refuses is either of
+ * them losing the check altogether.
+ */
+{
+  const CERTIFIERS = [
+    {
+      file: 'functions/src/budget/obligations.ts',
+      fn: 'export const certifyObligation',
+      proof: /attachmentCount/,
+      how: 'the attachment count on the obligation',
+    },
+    {
+      file: 'functions/src/treasury/reports.ts',
+      fn: 'export const certifyTreasuryReport',
+      proof: /COL\.documents/,
+      how: 'a query for the attachments on the report',
+    },
+  ];
+
+  let missing = 0;
+
+  for (const check of CERTIFIERS) {
+    const full = resolve(root, check.file);
+    if (!existsSync(full)) continue;
+    const source = readFileSync(full, 'utf8');
+    const start = source.indexOf(check.fn);
+    if (start < 0) {
+      failures.push(`${check.file}: ${check.fn} is gone; the certification checks cannot be read.`);
+      missing += 1;
+      continue;
+    }
+    const next = source.indexOf('\nexport const ', start + 10);
+    const body = source.slice(start, next > 0 ? next : undefined);
+
+    if (!check.proof.test(body)) {
+      missing += 1;
+      failures.push(
+        `${check.file}: ${check.fn} no longer checks that a form is attached (it did so with ` +
+          `${check.how}). Certifying forwards the document to another office and is hard to undo; ` +
+          'a certificate issued before the signed form is on the record is a statement about ' +
+          'nothing, and the file then gets attached late or never.',
+      );
+    }
+  }
+
+  if (missing === 0) {
+    console.log(`attachments: both certifications require the signed form`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

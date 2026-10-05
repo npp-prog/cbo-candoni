@@ -272,6 +272,10 @@ export default function App() {
           <Route path="/accounting/cash-advances" element={<Guard module="accounting"><CashAdvances /></Guard>} />
           <Route path="/accounting/liquidation" element={<Guard module="accounting"><Liquidation /></Guard>} />
           <Route
+            path="/accounting/liquidation/new"
+            element={<Guard module="accounting" action="create"><LiquidationDetail /></Guard>}
+          />
+          <Route
             path="/accounting/liquidation/:id"
             element={<Guard module="accounting"><LiquidationDetail /></Guard>}
           />

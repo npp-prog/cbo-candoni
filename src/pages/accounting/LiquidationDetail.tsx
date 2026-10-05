@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader, Card, Alert, DetailField, Spinner, Tabs } from '@/components/ui/Layout';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +18,9 @@ import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { Liquidation } from '@/types/accounting';
+import { useFilters } from '@/context/FilterContext';
+import { useCashAdvances } from '@/data/queries';
+import { LiquidationForm } from './liquidationForm';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -42,10 +45,18 @@ import { fundLabel } from '../budget/Obligations';
  */
 export default function LiquidationDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  /** The report being raised, rather than one being read. */
+  const isNew = !id || id === 'new';
   const { can, hasRole } = useAuth();
   const toast = useToast();
 
-  const { data: liq, loading } = useDocument<Liquidation>(COL.liquidations, id);
+  const { data: liq, loading } = useDocument<Liquidation>(
+    COL.liquidations,
+    isNew ? null : id,
+  );
+  const { fiscalYear, fundCode } = useFilters();
+  const advances = useCashAdvances(fiscalYear);
   /* The advance tells the entry which account to relieve. */
   const { data: advance } = useDocument<{ glAccountCode?: string }>(
     COL.cashAdvances,
@@ -114,6 +125,64 @@ export default function LiquidationDetail() {
 
     return rows;
   }, [liq, advance, accountTitle]);
+
+  if (isNew) {
+    return (
+      <div>
+        <PageHeader
+          title="New liquidation report"
+          subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
+          breadcrumbs={[
+            { label: 'Accounting' },
+            { label: 'Liquidation Report', to: '/accounting/liquidation' },
+            { label: 'New' },
+          ]}
+        />
+
+        {/*
+          The four tabs from the start, not after saving.
+
+          The other three cannot do anything yet and say so, which is more
+          use than hiding them: the officer filling this in can see that the
+          signed report is wanted and where it will go.
+        */}
+        <Tabs
+          tabs={[
+            { id: 'report', label: 'Liquidation' },
+            { id: 'entry', label: 'Accounting entry' },
+            { id: 'attachments', label: 'Supporting documents' },
+            { id: 'history', label: 'Approval history' },
+          ]}
+          active={tab}
+          onChange={(t) => setTab(t as typeof tab)}
+        />
+
+        <div className="mt-4">
+          {tab === 'report' && (
+            <LiquidationForm
+              fiscalYear={fiscalYear}
+              fundCode={fundCode}
+              advances={advances.data.filter((a) => a.fundCode === fundCode)}
+              onCancel={() => navigate('/accounting/liquidation')}
+              onSaved={(newId) => navigate(`/accounting/liquidation/${newId}`, { replace: true })}
+            />
+          )}
+
+          {tab !== 'report' && (
+            <Card>
+              <p className="py-8 text-center text-sm text-slate-500">
+                {tab === 'entry'
+                  ? 'The entry is built from the expense lines. Fill in the report and save it, and this shows what posting will do to the books.'
+                  : tab === 'attachments'
+                    ? 'Save the report first. The signed liquidation report is filed against a saved record.'
+                    : 'Nothing has happened to this report yet.'}
+              </p>
+            </Card>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return <Spinner label="Loading the liquidation report" />;
 

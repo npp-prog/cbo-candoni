@@ -11,12 +11,13 @@ import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
+import { useAttachments } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { formatPeso } from '@/lib/money';
-import { formatShortDate, formatInstant } from '@/lib/dates';
+import { formatShortDate, formatInstant, monthName } from '@/lib/dates';
 import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
 import { SECTION_TABS } from './sections';
@@ -55,11 +56,22 @@ export default function TreasuryReportDetail() {
   const toast = useToast();
 
   const { data: report, loading } = useDocument<TreasuryReport>(COL.treasuryReports, id);
+  /*
+   * The signed form. Certifying is refused without it by the engine, so the
+   * button is disabled rather than offered and then refused - and the count
+   * on the tab is taken from the attachments themselves, so it stays right
+   * after the report is certified and the browser can no longer write to it.
+   */
+  const attachments = useAttachments(COL.treasuryReports, id ?? null);
 
   const [tab, setTab] = useState<'coverage' | 'entry' | 'attachments' | 'history'>('coverage');
-  const [confirm, setConfirm] = useState<null | 'certify' | 'withdraw' | 'journalize'>(null);
+  const [confirm, setConfirm] = useState<
+    null | 'certify' | 'withdraw' | 'journalize' | 'amend'
+  >(null);
   /** The Accountant's working copy, once they start adjusting the entry. */
   const [draftEntry, setDraftEntry] = useState<GridLine[] | null>(null);
+  /** Correcting the entry of a report that has already been journalized. */
+  const [amendingEntry, setAmendingEntry] = useState(false);
   const [certifyNo, setCertifyNo] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -108,8 +120,25 @@ export default function TreasuryReportDetail() {
   const agreesWithReport = totals.debit === (report?.totalAmount ?? 0);
   const postable = balanced && agreesWithReport && lines.every((l) => l.accountCode);
 
-  /* Adjustable only while the report is waiting for its entry. */
-  const entryEditable = canJournalize && report?.status === 'CERTIFIED';
+  /*
+   * Who may change the entry, and when.
+   *
+   * BEFORE IT IS POSTED - the report is certified and waiting - the Accountant
+   * adjusts the proposal and posts it.
+   *
+   * AFTER IT IS POSTED, the entry is in the General Ledger, and a posted entry
+   * is corrected rather than edited. While the month is open CFMS does that in
+   * place (patch 80); once the month is closed it is a reversing entry. Both
+   * answers live on the entry, and the server decides which applies - so the
+   * screen offers the correction and lets a closed month come back as a
+   * refusal naming the month.
+   *
+   * The TOTAL is locked either way. A treasury report is a figure the
+   * Treasurer signed; if that is wrong the report is withdrawn and redone.
+   */
+  const awaitingEntry = canJournalize && report?.status === 'CERTIFIED';
+  const correctable = canJournalize && report?.status === 'JOURNALIZED' && Boolean(report?.jevId);
+  const entryEditable = awaitingEntry || (correctable && amendingEntry);
 
   if (loading) return <Spinner label="Loading the report" />;
 
@@ -125,6 +154,7 @@ export default function TreasuryReportDetail() {
   const short = TREASURY_REPORT_SHORT[report.reportType];
   const label = TREASURY_REPORT_LABELS[report.reportType];
   const isDraft = report.status === 'DRAFT';
+  const hasSignedForm = attachments.data.length > 0;
   const finished = report.status === 'JOURNALIZED' || report.status === 'CANCELLED';
 
   const certify = async () => {
@@ -179,6 +209,41 @@ export default function TreasuryReportDetail() {
     }
   };
 
+  const amend = async (reason?: string) => {
+    if (!report.jevId || !reason?.trim()) return;
+    setBusy(true);
+    try {
+      const res = await engine.amendPostedJev({
+        jevId: report.jevId,
+        jevDate: report.reportDate,
+        particulars: `${short} ${report.reportNo ?? ''}`.trim(),
+        lines: lines.map((l, i) => ({
+          lineNo: i + 1,
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+          debit: l.debit || 0,
+          credit: l.credit || 0,
+          particulars: l.particulars ?? null,
+          subsidiaryType: l.subsidiaryType ?? null,
+          subsidiaryId: l.subsidiaryId ?? null,
+          subsidiaryName: l.subsidiaryName ?? null,
+        })),
+        reason: reason.trim(),
+      });
+      toast.success(
+        `JEV ${res.jevNo} corrected`,
+        `${res.replaced} ledger ${res.replaced === 1 ? 'line' : 'lines'} replaced with ${res.ledgerEntryCount}.`,
+      );
+      setAmendingEntry(false);
+      setDraftEntry(null);
+      setConfirm(null);
+    } catch (err) {
+      toast.error('The entry was not corrected', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const withdraw = async (reason?: string) => {
     if (!reason?.trim()) return;
     setBusy(true);
@@ -213,6 +278,7 @@ export default function TreasuryReportDetail() {
             {isDraft && canCertify && (
               <Button
                 variant="primary"
+                disabled={!hasSignedForm}
                 onClick={() => {
                   setCertifyNo(hasDocumentNumber(report.reportNo) ? (report.reportNo as string) : '');
                   setConfirm('certify');
@@ -230,11 +296,24 @@ export default function TreasuryReportDetail() {
         }
       />
 
-      {isDraft && (
+      {isDraft && !hasSignedForm && (
         <Alert tone="warning" className="mb-4" title="Attach the signed form before certifying">
-          What CFMS holds is an encoding of the {short}. Certifying forwards it to Accounting and
-          locks the documents it covers; the signed copy is the evidence that the encoding is true,
-          and it belongs on the record before the certificate, not after it.
+          <p>
+            What CFMS holds is an encoding of the {short}. Certifying forwards it to Accounting,
+            locks the documents it covers to it and reserves its number; the signed copy is the
+            evidence that the encoding is true, and it belongs on the record before the
+            certificate, not after it.
+          </p>
+          <p className="mt-2">
+            <button
+              type="button"
+              onClick={() => setTab('attachments')}
+              className="font-medium underline"
+            >
+              Attach it on the Supporting documents tab
+            </button>
+            . Certify and forward is refused until then, by the server as well as by this screen.
+          </p>
         </Alert>
       )}
 
@@ -292,7 +371,7 @@ export default function TreasuryReportDetail() {
         tabs={[
           { id: 'coverage', label: 'Documents covered', count: report.lines.length },
           { id: 'entry', label: 'Journal entry' },
-          { id: 'attachments', label: 'Supporting documents' },
+          { id: 'attachments', label: 'Supporting documents', count: attachments.data.length },
           { id: 'history', label: 'Approval history' },
         ]}
         active={tab}
@@ -358,7 +437,9 @@ export default function TreasuryReportDetail() {
             <p className="mb-3 text-xs text-slate-500">
               {entryEditable
                 ? 'The accounts are yours to adjust. The TOTAL is not: it must equal the amount the Treasurer certified, because the journal has to agree with the report that was signed. If the report itself is wrong, send it back rather than adjusting the figure here.'
-                : 'The Municipal Accountant owns this entry and may adjust the accounts before posting it. The amount is a statement of fact the Treasurer has signed.'}
+                : report.status === 'JOURNALIZED'
+                  ? 'This entry is in the General Ledger. A posted entry is never edited silently - while the month is open it can be corrected here in place, and the correction is recorded against the entry.'
+                  : 'The Municipal Accountant owns this entry and may adjust the accounts before posting it. The amount is a statement of fact the Treasurer has signed.'}
             </p>
 
             <JournalEntryGrid
@@ -367,6 +448,19 @@ export default function TreasuryReportDetail() {
               fundCode={report.fundCode}
               readOnly={!entryEditable}
             />
+
+            {correctable && !amendingEntry && (
+              <div className="mt-4">
+                <Button variant="secondary" onClick={() => setAmendingEntry(true)}>
+                  Correct this entry
+                </Button>
+                <p className="mt-2 text-xs text-slate-500">
+                  Allowed while {report.period ? monthName(report.period) : 'the month'} is open.
+                  The ledger lines are rewritten in place and the correction is recorded against
+                  the entry; once the month is closed the only correction is a reversing entry.
+                </p>
+              </div>
+            )}
 
             {entryEditable && (
               <>
@@ -384,16 +478,32 @@ export default function TreasuryReportDetail() {
                   </Alert>
                 )}
                 <div className="mt-4 flex gap-2">
-                  <Button
-                    variant="primary"
-                    onClick={() => setConfirm('journalize')}
-                    disabled={!postable}
-                  >
-                    Post journal entry
-                  </Button>
-                  {draftEntry && (
-                    <Button variant="secondary" onClick={() => setDraftEntry(null)}>
-                      Undo my changes
+                  {amendingEntry ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => setConfirm('amend')}
+                      disabled={!postable}
+                    >
+                      Save the correction
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      onClick={() => setConfirm('journalize')}
+                      disabled={!postable}
+                    >
+                      Post journal entry
+                    </Button>
+                  )}
+                  {(draftEntry || amendingEntry) && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setDraftEntry(null);
+                        setAmendingEntry(false);
+                      }}
+                    >
+                      Cancel
                     </Button>
                   )}
                 </div>
@@ -480,6 +590,37 @@ export default function TreasuryReportDetail() {
             <p className="mt-2 text-xs text-slate-500">
               The entry takes its JEV number now. A posted entry is never deleted - while the month
               is open it can be corrected on the entry itself, and after that by a reversing entry.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'amend'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={(reason) => void amend(reason)}
+        loading={busy}
+        title={`Correct the entry for ${short} ${report.reportNo ?? ''}`}
+        confirmLabel="Rewrite the ledger"
+        variant="danger"
+        requireReason
+        minReasonLength={15}
+        reasonLabel="What was wrong with it"
+        reasonHint="Recorded against the entry, shown on the entry afterwards, and recorded as a critical audit event."
+        message={
+          <>
+            <p>
+              The ledger lines for this report's entry are replaced with what is on screen. The
+              General Ledger, the Trial Balance and every report drawn from them change with it,
+              and no reversing entry is made.
+            </p>
+            <p className="mt-2">
+              The total stays at {formatPeso(report.totalAmount)} - that is the figure the
+              Treasurer certified, and the journal has to agree with the report that was signed.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Allowed only while the month is open. If the server finds it closed it will refuse
+              and say so, and the correction is then a reversing entry.
             </p>
           </>
         }

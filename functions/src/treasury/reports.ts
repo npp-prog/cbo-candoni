@@ -204,6 +204,39 @@ export const certifyTreasuryReport = onCall(
 
       assertFundInScope(caller, report.fundCode);
 
+      /*
+       * THE SIGNED FORM MUST BE ON THE RECORD BEFORE THE CERTIFICATE.
+       *
+       * Certifying forwards the report to Accounting, locks every document it
+       * covers to it, and reserves its number. All three are hard to undo and
+       * the first one puts another office to work.
+       *
+       * What CFMS holds is an ENCODING of the report. The signed copy is the
+       * evidence that the encoding is true, and the Treasurer's certificate is
+       * a statement about that paper. A certificate issued before anybody has
+       * put the paper on the record is a statement about nothing - and the
+       * practical result, every time, is that the file is attached later if at
+       * all, because the thing that needed it has already happened.
+       *
+       * Read inside the transaction, so a report cannot be certified in the
+       * instant between the check and the commit. The browser disables the
+       * button for the same reason; the browser is not the authority.
+       */
+      const attached = await tx.get(
+        db
+          .collection(COL.documents)
+          .where('entityType', '==', COL.treasuryReports)
+          .where('entityId', '==', reportId)
+          .where('active', '==', true)
+          .limit(1),
+      );
+      if (attached.empty) {
+        throw new HttpsError(
+          'failed-precondition',
+          `Attach the signed ${label} before certifying. Certifying forwards it to Accounting, locks the documents it covers to it and reserves its number; the signed copy is the evidence that what CFMS holds is what was signed.`,
+        );
+      }
+
       /**
        * A report built from an upload cannot be certified while rows of that
        * upload are still held.
