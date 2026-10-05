@@ -35,7 +35,7 @@ export default function Periods() {
   const [action, setAction] = useState<{ kind: 'close' | 'reopen' | 'lock' | 'unlock'; period: number } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const { data, loading } = useCollection<AccountingPeriod & { reopenCount?: number }>(
+  const { data } = useCollection<AccountingPeriod & { reopenCount?: number }>(
     COL.accountingPeriods,
     [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode)],
     ['periods', fiscalYear, fundCode],

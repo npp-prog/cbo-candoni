@@ -73,7 +73,7 @@ export function UnpostedEntriesNote({
         </Link>
         {' '}&mdash; every entry in the books is listed there, whatever raised it. An entry raised
         by a voucher is posted on the voucher itself; one written in Accounting is posted from
-        Other Transactions.
+        General Transactions.
       </p>
     </Alert>
   );

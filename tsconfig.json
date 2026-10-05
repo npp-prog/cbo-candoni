@@ -12,7 +12,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "noUnusedLocals": false,
+    /* Turned on in patch 78, once the forty leftovers were cleared.
+
+       It earns its place: enabling it on the engine build in patch 70 is how
+       CFMS found that every ADA was drawing a JEV number it then threw away.
+       An unused variable is usually nothing, and occasionally it is the half
+       of a change somebody did not finish. */
+    "noUnusedLocals": true,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,

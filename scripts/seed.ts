@@ -21,7 +21,7 @@
  * is part of the seed.
  */
 
-import { initializeApp, cert, applicationDefault } from 'firebase-admin/app';
+import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const args = process.argv.slice(2);
@@ -210,6 +210,37 @@ const ACCOUNTS: SeedAccount[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Barangays
+// ---------------------------------------------------------------------------
+//
+// The nine barangays of Candoni.
+//
+// They are here rather than left to be typed in because of what they are FOR.
+// The barangay share of the basic real property tax follows the PROPERTY, not
+// the payor, so every basic-tax receipt names the barangay the land is in, and
+// the Abstract of Real Property Tax Collections splits the collection between
+// the province, the municipality and that barangay. A list typed in by hand on
+// a busy morning gets "Poblacion East" on one receipt and "Pob. East" on the
+// next, and the abstract then reports two barangays where there is one.
+//
+// The codes are CFMS's own, in the order the barangays are usually listed.
+// They are NOT PSGC codes - if the office would rather carry those, change
+// them under Master Data > Barangays; nothing in CFMS reads the code, only the
+// identity of the record.
+
+const BARANGAYS = [
+  ['01', 'Agboy'],
+  ['02', 'Banga'],
+  ['03', 'Cabia-an'],
+  ['04', 'Caningay'],
+  ['05', 'Gatuslao'],
+  ['06', 'Haba'],
+  ['07', 'Payauan'],
+  ['08', 'Poblacion East'],
+  ['09', 'Poblacion West'],
+];
+
+// ---------------------------------------------------------------------------
 // Offices
 // ---------------------------------------------------------------------------
 
@@ -302,6 +333,13 @@ async function seed() {
     OFFICES,
     (o) => o[0],
     (o, i) => ({ id: o[0], code: o[0], name: o[1], shortName: o[2], sortOrder: i + 1, active: true }),
+  );
+
+  await writeBatch(
+    'barangays',
+    BARANGAYS,
+    (b) => b[0],
+    (b, i) => ({ id: b[0], code: b[0], name: b[1], sortOrder: i + 1, active: true }),
   );
 
   await writeBatch(

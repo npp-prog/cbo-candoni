@@ -51,7 +51,7 @@ const ORIGINS = [
  * So this is the book: one row per Journal Entry Voucher, in number order,
  * showing where it came from and whether it has reached the General Ledger. It
  * is read, not worked in. An entry is still posted where it belongs - on the
- * voucher that raised it, or on Other Transactions for the entries Accounting
+ * voucher that raised it, or on General Transactions for the entries Accounting
  * writes itself - and clicking a row here opens it.
  *
  * ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ export default function JournalEntriesRegister() {
         onRowClick={(j) => navigate(`/accounting/journal-entries/${j.id}`)}
         searchPlaceholder="JEV number, reference or particulars"
         emptyTitle="No journal entries"
-        emptyMessage="No journal entry has been raised for this fund and year yet. An entry appears here as soon as it is prepared - from a voucher, from a treasury report, or written in Other Transactions - and carries its number once it is posted."
+        emptyMessage="No journal entry has been raised for this fund and year yet. An entry appears here as soon as it is prepared - from a voucher, from a treasury report, or written in General Transactions - and carries its number once it is posted."
         filters={
           <>
             <Select

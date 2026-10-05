@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useChecks, useBankAccounts } from '@/data/queries';
+import { useChecks } from '@/data/queries';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
@@ -39,7 +39,6 @@ export default function Checks() {
   const { hasRole, can } = useAuth();
   const toast = useToast();
 
-  const banks = useBankAccounts(fundCode);
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [releasing, setReleasing] = useState<Check | null>(null);

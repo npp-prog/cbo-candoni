@@ -907,15 +907,19 @@ export default function ObligationDetail() {
                 Budget Officer certifies, because the certificate says the
                 officer saw those papers.
               */
-              readOnly={!can('budget', 'edit') || attachmentsLocked(existing?.status)}
+              readOnly={!can('budget', 'edit')}
+              lockedAt={
+                existing?.attachmentsLockedAt ??
+                // An obligation certified before patch 78 carries no lock
+                // field, and its status is the only record that the papers
+                // were seen. Read it the old way as well, so nothing that was
+                // closed quietly comes back open.
+                (attachmentsLocked(existing?.status) ? (existing?.certifiedAt ?? null) : null)
+              }
+              lockedByName={
+                existing?.attachmentsLockedBy?.name ?? existing?.certifiedBy?.name ?? null
+              }
             />
-            {attachmentsLocked(existing?.status) && (
-              <Alert tone="warning" className="mt-4" title="Fixed by the certification">
-                The Budget Officer certified this {form.short} on the documents attached to it, so
-                they cannot be replaced any more. If one is wrong, attach the correct document to
-                the disbursement voucher, or cancel and raise a new {form.short}.
-              </Alert>
-            )}
           </Card>
         )}
 

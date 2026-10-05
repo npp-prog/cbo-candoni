@@ -155,7 +155,7 @@ export const NAVIGATION: NavItem[] = [
     // The order inside the group is the order the paper reaches Accounting,
     // not the alphabet: the voucher is raised first, the liquidation settles
     // an advance already given, the treasury reports arrive from the
-    // Treasurer, and Other Transactions carries what begins in Accounting
+    // Treasurer, and General Transactions carries what begins in Accounting
     // itself and has no source document at all.
     children: [
       { group: 'Journal Entry Transactions', label: 'Disbursement Voucher', to: '/accounting/disbursements' },
@@ -167,7 +167,7 @@ export const NAVIGATION: NavItem[] = [
       // place JEVs are made. This screen is for the entries that have no
       // source document of their own: manual, adjusting, closing and
       // prior-period adjustments.
-      { group: 'Journal Entry Transactions', label: 'Other Transactions', to: '/accounting/others' },
+      { group: 'Journal Entry Transactions', label: 'General Transactions', to: '/accounting/general-transactions' },
 
       /*
        * The book of every entry, after the four screens that make them.

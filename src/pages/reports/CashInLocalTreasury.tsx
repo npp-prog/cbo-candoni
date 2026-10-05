@@ -6,7 +6,7 @@ import { useFilters } from '@/context/FilterContext';
 import { usePrimaryReports } from '@/data/queries';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
-import { PRIMARY_REPORT_TYPE_LABELS, type PrimaryReport } from '@/types/primaryReports';
+import { type PrimaryReport } from '@/types/primaryReports';
 import { fundLabel } from '../budget/Obligations';
 
 /**

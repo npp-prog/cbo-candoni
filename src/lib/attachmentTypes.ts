@@ -104,3 +104,56 @@ export function attachmentsLocked(status: string | undefined | null): boolean {
   if (!status) return false;
   return !OBLIGATION_OPEN_FOR_ATTACHMENTS.has(status);
 }
+
+/**
+ * The entity types whose attachments may be closed by hand.
+ *
+ * Deliberately a list rather than "anything with an id". The lock is written
+ * on the PARENT document and the security rule reads it from there, so a type
+ * that is not a real collection would be a lock nobody can enforce - the
+ * screen would say closed and the database would accept the next upload.
+ */
+export const LOCKABLE_ENTITY_TYPES: readonly string[] = [
+  COL.obligations,
+  COL.disbursementVouchers,
+  COL.treasuryReports,
+  COL.liquidations,
+];
+
+/** Who may close the supporting documents on a transaction, for good. */
+export const ATTACHMENT_LOCK_ROLES = [
+  'SUPER_ADMIN',
+  'BUDGET_OFFICER',
+  'MUNICIPAL_ACCOUNTANT',
+  'MUNICIPAL_TREASURER',
+] as const;
+
+/**
+ * Whether the supporting documents on this document are closed.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO WAYS A DOCUMENT CLOSES, AND WHY BOTH
+ * ---------------------------------------------------------------------------
+ * BY HAND. An officer looks at the scan, sees it is the right one, and closes
+ * it. Until they do, a bad scan is replaced by attaching the corrected file -
+ * which is the ordinary case and must stay easy, because the alternative is a
+ * wrong document left on the record.
+ *
+ * BY CERTIFICATION. The Budget Officer's certificate says that officer saw
+ * those papers and committed the municipality's allotment on them. A file that
+ * could change afterwards is not evidence of anything, and the signature would
+ * be attached to a document nobody can prove was there. So certifying writes
+ * the lock too - the officer does not have to remember.
+ *
+ * Neither can be undone. That is the point of it: a closing that can be
+ * reopened proves nothing about what was closed.
+ */
+export function attachmentsClosed(input: {
+  /** Set when an officer closed them, or when certification did. */
+  attachmentsLockedAt?: string | null;
+  /** The parent document's status, for the obligation rule above. */
+  status?: string | null;
+}): boolean {
+  if (input.attachmentsLockedAt) return true;
+  return attachmentsLocked(input.status);
+}

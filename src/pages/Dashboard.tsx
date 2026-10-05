@@ -17,7 +17,6 @@ import {
   useCashAdvances,
   useUndepositedCollections,
   useBudgetBalances,
-  useOffices,
   useLedgerEntries,
 } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
@@ -39,7 +38,6 @@ export default function Dashboard() {
   const summary = useBudgetSummary(fiscalYear, fundCode);
   const alerts = useBudgetAlerts(fiscalYear, fundCode);
   const balances = useBudgetBalances(fiscalYear, fundCode);
-  const offices = useOffices();
   const dvs = useDisbursementVouchers(fiscalYear, fundCode);
   const jevs = useJevs(fiscalYear, fundCode);
   const obligations = useObligations(fiscalYear, fundCode);
@@ -266,7 +264,7 @@ export default function Dashboard() {
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <CountTile label="Obligations" count={pending.obligations} to="/budget/obligations" />
               <CountTile label="Disbursement Vouchers" count={pending.vouchers} to="/accounting/disbursements" />
-              <CountTile label="Journal Entries to post" count={pending.jevs} to="/accounting/others" />
+              <CountTile label="Journal Entries to post" count={pending.jevs} to="/accounting/general-transactions" />
               <CountTile label="Checks to prepare" count={pending.checks} to="/accounting/checks" />
               <CountTile label="ADA to prepare" count={pending.ada} to="/accounting/ada" />
             </div>
@@ -347,7 +345,7 @@ export default function Dashboard() {
             <Card
               title="Journal entries awaiting posting"
               actions={
-                <Link to="/accounting/others" className="text-xs text-brand-700 hover:underline">
+                <Link to="/accounting/general-transactions" className="text-xs text-brand-700 hover:underline">
                   View all
                 </Link>
               }

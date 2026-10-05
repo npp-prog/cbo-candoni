@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { UnpostedEntriesNote } from '@/components/UnpostedEntriesNote';
 import { ReportShell } from '@/components/ReportShell';
-import { Alert, Spinner, Tabs } from '@/components/ui/Layout';
+import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useAccounts, useLedgerEntries, useBudgetBalances } from '@/data/queries';
@@ -121,23 +121,17 @@ export default function FinancialStatements() {
     [lines, priorLines, performance.surplus],
   );
 
+  /*
+   * Still used, by the budget-and-actual view below.
+   *
+   * Its companions - the hand-summed totals of assets, liabilities and net
+   * assets - were left over from the version of this screen that existed
+   * before the GAM-format rewrite, which builds every figure in a report
+   * module and renders it from `data`. They had been computed on every render
+   * and displayed nowhere since.
+   */
   const group = (classification: FsClassification) =>
     lines.filter((l) => l.classification === classification);
-
-  const sum = (classification: FsClassification) =>
-    group(classification).reduce((s, l) => s + l.amount, 0);
-
-  const currentAssets = sum('CURRENT_ASSET');
-  const nonCurrentAssets = sum('NON_CURRENT_ASSET');
-  const totalAssets = currentAssets + nonCurrentAssets;
-  const currentLiabilities = sum('CURRENT_LIABILITY');
-  const nonCurrentLiabilities = sum('NON_CURRENT_LIABILITY');
-  const totalLiabilities = currentLiabilities + nonCurrentLiabilities;
-  const revenue = sum('REVENUE');
-  const expenses = sum('EXPENSE');
-  const surplus = revenue - expenses;
-  const equityBrought = sum('NET_ASSETS_EQUITY');
-  const netAssets = equityBrought + surplus;
 
   const exportColumns: ExportColumn<FsLine>[] = [
     { key: 'code', header: 'Account Code', value: (l) => l.accountCode },
@@ -264,36 +258,6 @@ function StatementSection({ title, children }: { title: string; children: React.
       </h3>
       {children}
     </section>
-  );
-}
-
-function SubSection({ title, lines, total }: { title: string; lines: FsLine[]; total: Centavos }) {
-  if (lines.length === 0) return null;
-  return (
-    <div className="mb-3">
-      {title && <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">{title}</p>}
-      <table className="w-full border-collapse">
-        <tbody>
-          {lines.map((l) => (
-            <tr key={l.accountCode}>
-              <td className="cbo-td border-b-0 py-1 pl-4">
-                <span className="font-mono text-2xs text-slate-400">{l.accountCode}</span>{' '}
-                <span className="text-sm">{l.accountName}</span>
-              </td>
-              <td className="cbo-td cbo-amount w-44 border-b-0 py-1">
-                {formatPeso(l.amount, { symbol: false, parens: true })}
-              </td>
-            </tr>
-          ))}
-          <tr className="border-t border-slate-300">
-            <td className="cbo-td border-b-0 py-1 font-medium">{title ? `Total ${title.toLowerCase()}` : 'Total'}</td>
-            <td className="cbo-td cbo-amount border-b-0 py-1 font-medium">
-              {formatPeso(total, { symbol: false, parens: true })}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
   );
 }
 

@@ -724,6 +724,105 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 17. A closed attachment stays closed -----------------------------------
+/*
+ * Two halves of one rule, in two files, and the build compares them.
+ *
+ * WHO MAY CLOSE. The screen offers the button from ATTACHMENT_LOCK_ROLES and
+ * the engine refuses on its own list. A button offered to somebody the engine
+ * refuses is a button that fails when pressed, which teaches people the system
+ * is unreliable about a thing that cannot be undone.
+ *
+ * WHAT CLOSING MEANS. The lock lives on the parent document and the create
+ * rule on /documents consults it. If a client could write that field it could
+ * also write it back off - and the rule would be enforcing a value controlled
+ * by the person it exists to constrain. So every collection that can be
+ * locked must name both lock fields among the ones a client may not change.
+ */
+{
+  const clientRoles = resolve(root, 'src/lib/attachmentTypes.ts');
+  const serverRoles = resolve(root, 'functions/src/lib/context.ts');
+
+  const listOf = (source, name) => {
+    const block = source.match(new RegExp(`${name}[^=]*=\\s*\\[([^\\]]*)\\]`));
+    if (!block) return null;
+    return (block[1].match(/'([A-Z_]+)'/g) ?? []).map((r) => r.slice(1, -1)).sort();
+  };
+
+  if (existsSync(clientRoles) && existsSync(serverRoles)) {
+    const screen = listOf(readFileSync(clientRoles, 'utf8'), 'ATTACHMENT_LOCK_ROLES');
+    const engine = listOf(readFileSync(serverRoles, 'utf8'), 'ATTACHMENT_LOCK_ROLES');
+
+    if (!screen || !engine) {
+      failures.push(
+        'ATTACHMENT_LOCK_ROLES could not be read from both src/lib/attachmentTypes.ts and ' +
+          'functions/src/lib/context.ts. The screen and the engine must agree about who may ' +
+          'close a supporting document.',
+      );
+    } else if (screen.join(',') !== engine.join(',')) {
+      failures.push(
+        `The roles offered the lock button (${screen.join(', ')}) are not the roles the engine ` +
+          `accepts (${engine.join(', ')}). Closing cannot be undone, so a button that fails when ` +
+          'pressed is worse here than anywhere else.',
+      );
+    } else {
+      console.log(`attachments: the ${screen.length} roles offered the lock are the ${engine.length} the engine accepts`);
+    }
+  }
+
+  const LOCKABLE = ['obligations', 'disbursementVouchers', 'treasuryReports', 'liquidations'];
+  let unprotected = 0;
+
+  /*
+   * Comments out first, for two reasons.
+   *
+   * A clause is read up to its semicolon, and a comment inside one that
+   * happens to contain a semicolon would cut the clause short - which is
+   * exactly what happened while this check was being written, and it reported
+   * three rules as unguarded that were guarded.
+   *
+   * And a field name mentioned in a comment must not satisfy the check. A
+   * rule that only TALKS about protecting the lock protects nothing.
+   */
+  const ruleCode = firestore.replace(/\/\/[^\n]*/g, '');
+
+  for (const collection of LOCKABLE) {
+    const block = ruleCode.match(
+      new RegExp(`match /${collection}/\\{[^}]*\\}\\s*\\{([\\s\\S]*?)\\n    \\}`),
+    );
+    if (!block) {
+      failures.push(`firestore.rules: no rule block for '${collection}', which can be locked.`);
+      unprotected += 1;
+      continue;
+    }
+    const update = block[1].match(/allow update:([\s\S]*?);/);
+    const text = update ? update[1] : '';
+    const guarded =
+      text.includes("'attachmentsLockedAt'") && text.includes("'attachmentsLockedBy'");
+    if (!guarded) {
+      unprotected += 1;
+      failures.push(
+        `firestore.rules: the '${collection}' update rule does not stop a client changing ` +
+          "'attachmentsLockedAt' and 'attachmentsLockedBy'. A client that can write the lock " +
+          'can write it back off, and the create rule on /documents would then be consulting a ' +
+          'value held by the person it constrains. Add both to its didNotChange list.',
+      );
+    }
+  }
+
+  if (unprotected === 0) {
+    console.log(`attachments: all ${LOCKABLE.length} lockable collections keep the lock out of client hands`);
+  }
+
+  if (!/attachmentsOpen\(/.test(firestore)) {
+    failures.push(
+      "firestore.rules: the '/documents' create rule no longer checks whether the parent's " +
+        'attachments are closed. The lock would then be a message on a screen, and the next ' +
+        'upload would be accepted.',
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

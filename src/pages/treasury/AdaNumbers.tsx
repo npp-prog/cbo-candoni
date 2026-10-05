@@ -12,7 +12,6 @@ import { useAda, useAdaNumbers } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import {
-  ADA_NUMBER_STATE_HINTS,
   ADA_NUMBER_STATE_LABELS,
   type AdaNumberRecord,
   type AdaNumberState,

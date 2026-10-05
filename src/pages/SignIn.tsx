@@ -6,10 +6,43 @@ import { Alert } from '@/components/ui/Layout';
 import { ENVIRONMENT, IS_PRODUCTION } from '@/lib/firebase';
 
 export function SignIn() {
-  const { signIn, error } = useAuth();
+  const { signIn, sendPasswordReset, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+
+  /** null = not asked for; otherwise the message to show afterwards. */
+  const [resetSent, setResetSent] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const requestReset = async () => {
+    const address = email.trim();
+    if (!address) {
+      setResetError('Type your email address in the box above first.');
+      return;
+    }
+    setResetError(null);
+    setResetting(true);
+    try {
+      await sendPasswordReset(address);
+      /*
+       * The same words whether or not the account exists.
+       *
+       * "No such account" on a municipal address would tell whoever typed it
+       * which officers have CFMS accounts, which is the first half of an
+       * attack on one. The only person who learns anything here is the one
+       * who can open that inbox.
+       */
+      setResetSent(
+        `If ${address} is a CFMS account, a link to set a new password is on its way to that inbox. It is valid for one hour. Check the junk folder if it does not arrive.`,
+      );
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -106,9 +139,37 @@ export function SignIn() {
             </Button>
           </form>
 
+          {resetSent ? (
+            <Alert tone="success" className="mt-4">
+              {resetSent}
+            </Alert>
+          ) : (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => void requestReset()}
+                disabled={resetting}
+                className="text-sm font-medium text-brand-700 hover:underline disabled:opacity-60"
+              >
+                {resetting ? 'Sending...' : 'Forgotten your password?'}
+              </button>
+              <p className="mt-1 text-xs text-slate-500">
+                A link to set a new one is sent to your own inbox. Nobody else can take your
+                account by asking for it.
+              </p>
+            </div>
+          )}
+
+          {resetError && (
+            <Alert tone="error" className="mt-3">
+              {resetError}
+            </Alert>
+          )}
+
           <p className="mt-6 text-xs leading-relaxed text-slate-500">
-            Forgotten password? Contact the system administrator at the Municipal Accounting Office.
-            Passwords cannot be reset by email in this system.
+            If you cannot reach that inbox, the system administrator at the Municipal Accounting
+            Office can set a password for you in person. CFMS does not keep your password and
+            cannot show it to anybody.
           </p>
         </div>
       </div>

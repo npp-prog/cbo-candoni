@@ -33,6 +33,7 @@ export type AuditEvent =
   | 'PERIOD_CLOSE'
   | 'PERIOD_REOPEN'
   | 'BUDGET_OVERRIDE'
+  | 'ATTACHMENTS_LOCKED'
   | 'SETTINGS_CHANGE';
 
 export interface AuditInput {

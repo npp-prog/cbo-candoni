@@ -9,7 +9,6 @@ import { useFunds, useRevenueCodes } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
-import { fundLabel } from '../budget/Obligations';
 import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
 import { parseAbstractFile, revenueCodesUsed, type AbstractReceipt } from './parseAbstract';
 

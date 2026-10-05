@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -362,9 +363,24 @@ function JournalizeReport({
       {report.jevNo && (
         <Alert tone="success" className="mt-3">
           Journalized as JEV {report.jevNo}. The entry below is the one that was posted, and a
-          posted entry is never edited - a correction is a reversing entry in Other Transactions.
+          posted entry is never edited - a correction is a reversing entry in General Transactions.
         </Alert>
       )}
+
+      <p className="mt-3 text-sm">
+        <Link
+          to={`/treasury/reports/${report.id}`}
+          className="font-medium text-brand-700 underline"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open the report itself
+        </Link>{' '}
+        <span className="text-slate-500">
+          - to read the signed form the Treasurer attached to it before certifying. Opens in a new
+          tab, so this entry stays as you have it.
+        </span>
+      </p>
 
       {report.bankName && (
         <p className="mt-3 text-sm text-slate-600">

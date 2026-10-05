@@ -181,9 +181,6 @@ export default function QuarterlyReceipts() {
   const loading = ledger.loading || accounts.loading || stored.loading;
   const error = ledger.error ?? accounts.error ?? stored.error;
 
-  /** Columns to the left of the breakdown, for the footer colspan. */
-  const leftColumns = 2 + (report.rows.length >= 0 ? 3 : 3);
-
   return (
     <ReportShell
       meta={{

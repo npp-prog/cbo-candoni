@@ -185,6 +185,7 @@ export interface AuditLog {
     | 'PERIOD_CLOSE'
     | 'PERIOD_REOPEN'
     | 'BUDGET_OVERRIDE'
+    | 'ATTACHMENTS_LOCKED'
     | 'SETTINGS_CHANGE';
 
   entityType?: string;

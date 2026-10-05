@@ -244,7 +244,7 @@ export default function SubsidiaryLedger() {
                   <tr key={r.id}>
                     <td className="cbo-td text-xs">{formatShortDate(r.entryDate)}</td>
                     <td className="cbo-td">
-                      <Link to={`/accounting/others/${r.jevId}`} className="font-mono text-xs text-brand-700 hover:underline">
+                      <Link to={`/accounting/general-transactions/${r.jevId}`} className="font-mono text-xs text-brand-700 hover:underline">
                         {r.jevNo}
                       </Link>
                     </td>

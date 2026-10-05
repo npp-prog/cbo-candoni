@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +12,6 @@ import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAppropriations, useBudgetBalances } from '@/data/queries';
-import { useDocument } from '@/hooks/useFirestore';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';

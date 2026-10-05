@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { orderBy } from 'firebase/firestore';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';

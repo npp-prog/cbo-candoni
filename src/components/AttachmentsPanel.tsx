@@ -5,10 +5,13 @@ import { db, storage } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
 import { useAttachments } from '@/data/queries';
 import { useAuth } from '@/auth/AuthProvider';
+import { engine } from '@/lib/engine';
+import { ATTACHMENT_LOCK_ROLES } from '@/lib/attachmentTypes';
 import { useToast } from './ui/Toast';
 import { Button } from './ui/Button';
+import { ConfirmDialog } from './ui/Modal';
 import { Select } from './ui/Field';
-import { Spinner } from './ui/Layout';
+import { Spinner, Alert } from './ui/Layout';
 import { formatInstant, todayPh } from '@/lib/dates';
 import {
   ALLOWED_UPLOAD_MIME_TYPES,
@@ -42,6 +45,8 @@ export function AttachmentsPanel({
   storageDocId,
   allowedTypes,
   readOnly,
+  lockedAt,
+  lockedByName,
 }: {
   entityType: string;
   entityId: string | null;
@@ -61,10 +66,44 @@ export function AttachmentsPanel({
    */
   allowedTypes: DocumentType[];
   readOnly?: boolean;
+  /**
+   * When the supporting documents were closed, if they have been.
+   *
+   * Closing is a one-way door: it is the office saying THIS is the signed
+   * form and it has not changed since, and that statement is worth nothing if
+   * the closing can be reopened. Certifying an obligation closes them too.
+   */
+  lockedAt?: string | null;
+  lockedByName?: string | null;
 }) {
   const { data, loading } = useAttachments(entityType, entityId);
-  const { user, profile } = useAuth();
+  const { user, profile, hasRole } = useAuth();
   const toast = useToast();
+  const [confirmLock, setConfirmLock] = useState(false);
+  const [locking, setLocking] = useState(false);
+
+  const closed = Boolean(lockedAt);
+  // Offered to the three signing officers only, and only when there is
+  // something to close. The engine checks both again.
+  const mayLock =
+    !closed && !readOnly && data.length > 0 && hasRole(...ATTACHMENT_LOCK_ROLES);
+
+  const lock = async () => {
+    if (!entityId) return;
+    setLocking(true);
+    try {
+      await engine.lockAttachments({ entityType, entityId });
+      toast.success(
+        'Supporting documents closed',
+        'Nothing further can be attached to this record. This cannot be undone.',
+      );
+      setConfirmLock(false);
+    } catch (err) {
+      toast.error('Could not close them', err instanceof Error ? err.message : String(err));
+    } finally {
+      setLocking(false);
+    }
+  };
   const fileRef = useRef<HTMLInputElement>(null);
   const [documentType, setDocumentType] = useState<DocumentType>(allowedTypes[0] ?? 'OTHER');
 
@@ -156,7 +195,16 @@ export function AttachmentsPanel({
 
   return (
     <div>
-      {!readOnly && (
+      {closed && (
+        <Alert tone="warning" title="Closed - these cannot be replaced" className="mb-4">
+          Closed by {lockedByName ?? 'an officer'} on {formatInstant(lockedAt)}. From that moment
+          these are the office's evidence of what was signed, and nothing further can be attached.
+          A closing cannot be undone - one that could be would prove nothing about what was closed.
+          If a document here is wrong, say so on the transaction that supersedes this one.
+        </Alert>
+      )}
+
+      {!readOnly && !closed && (
         <div className="cbo-filter-row mb-4 no-print">
           <div className="min-w-[14rem] flex-1">
             <label className="cbo-label" htmlFor="attachment-type">
@@ -207,10 +255,16 @@ export function AttachmentsPanel({
           >
             {data.length > 0 ? 'Attach or replace' : 'Attach file'}
           </Button>
+
+          {mayLock && (
+            <Button variant="secondary" onClick={() => setConfirmLock(true)}>
+              Close these documents
+            </Button>
+          )}
         </div>
       )}
 
-      {!readOnly && data.length > 0 && (
+      {!readOnly && !closed && data.length > 0 && (
         /*
           Said, because it was not obvious.
 
@@ -224,6 +278,8 @@ export function AttachmentsPanel({
           To replace a document, attach the corrected one. The earlier version is kept and marked
           superseded rather than overwritten - the evidence behind a payment cannot be quietly
           swapped, so both stay on the record with the newest shown first.
+          {mayLock &&
+            ' When the right document is on the record, CLOSE THESE DOCUMENTS fixes it there for good.'}
         </p>
       )}
 
@@ -261,6 +317,34 @@ export function AttachmentsPanel({
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={confirmLock}
+        onCancel={() => setConfirmLock(false)}
+        onConfirm={() => void lock()}
+        loading={locking}
+        title="Close the supporting documents"
+        confirmLabel="Close them for good"
+        variant="danger"
+        message={
+          <>
+            <p>
+              {data.length === 1
+                ? 'The document attached here'
+                : `The ${data.length} documents attached here`}{' '}
+              will be fixed to this record. Nothing further can be attached to it, by anybody.
+            </p>
+            <p className="mt-2">
+              <strong>This cannot be undone</strong> - not by you, not by an administrator. That is
+              the point of it: a closing that could be reopened would prove nothing about what was
+              closed. Open each file and check it is the right one before you press this.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Recorded in the audit trail with your name and the time.
+            </p>
+          </>
+        }
+      />
     </div>
   );
 }

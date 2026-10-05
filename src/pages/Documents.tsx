@@ -68,7 +68,7 @@ export default function Documents() {
       case COL.obligations:
         return `/budget/obligations/${doc.entityId}`;
       case COL.jevs:
-        return `/accounting/others/${doc.entityId}`;
+        return `/accounting/general-transactions/${doc.entityId}`;
       default:
         return null;
     }

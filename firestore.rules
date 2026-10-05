@@ -376,7 +376,12 @@ service cloud.firestore {
         // consumption figure are engine property.
         && didNotChange([
           'obrNo', 'createdBy', 'certifiedBy', 'certifiedAt', 'override',
-          'disbursedAmount', 'unpaidAmount'
+          'disbursedAmount', 'unpaidAmount',
+          // The closing of the supporting documents. Written by the engine,
+          // never by a client - a client that could write it could write it
+          // back off, and the create rule on /documents would then be
+          // consulting a value controlled by the person it constrains.
+          'attachmentsLockedAt', 'attachmentsLockedBy'
         ]);
 
       allow delete: if signedIn() && isAdmin() && isDraft();
@@ -401,7 +406,9 @@ service cloud.firestore {
         && officeAllowed(resource.data.officeId)
         && didNotChange([
           'dvNo', 'createdBy', 'approvedBy', 'certifiedBy',
-          'jevId', 'jevNo', 'checkId', 'adaId'
+          'jevId', 'jevNo', 'checkId', 'adaId',
+          // Engine property; see the obligation rule above.
+          'attachmentsLockedAt', 'attachmentsLockedBy'
         ]);
 
       allow delete: if signedIn() && isAdmin() && isDraft();
@@ -526,7 +533,11 @@ service cloud.firestore {
         && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
         && resource.data.status in ['DRAFT', 'RETURNED']
         && isClientWritableStatus(request.resource.data.status)
-        && didNotChange(['liquidationNo', 'createdBy', 'approvedBy', 'jevId', 'cashAdvanceId']);
+        && didNotChange([
+          'liquidationNo', 'createdBy', 'approvedBy', 'jevId', 'cashAdvanceId',
+          // Engine property; see the obligation rule above.
+          'attachmentsLockedAt', 'attachmentsLockedBy'
+        ]);
       allow delete: if signedIn() && isAdmin() && isDraft();
     }
 
@@ -674,6 +685,9 @@ service cloud.firestore {
           // the function that reads it.
           'importId',
           'pendingRowCount',
+          // Engine property; see the obligation rule above.
+          'attachmentsLockedAt',
+          'attachmentsLockedBy',
         ]);
       allow delete: if signedIn() && isAdmin() && resource.data.status == 'DRAFT';
     }
@@ -914,12 +928,32 @@ service cloud.firestore {
     match /documents/{id} {
       allow read: if canRead();
 
+      /*
+       * Whether the transaction this file is being attached to is still open
+       * to attachments.
+       *
+       * A replacement in CFMS is a NEW metadata record with the next version
+       * number - nothing is overwritten - so refusing the create is what
+       * closes the door. The lock itself lives on the parent document, written
+       * only by the engine (lockAttachments, and certifyObligation), and no
+       * rule in this file lets a client write it.
+       *
+       * The parent may legitimately not exist: an attachment is sometimes
+       * filed before the record is saved under its final id. That is open, not
+       * closed - there is nothing there to have been closed.
+       */
+      function attachmentsOpen(entityType, entityId) {
+        return !exists(/databases/$(database)/documents/$(entityType)/$(entityId))
+          || !('attachmentsLockedAt' in get(/databases/$(database)/documents/$(entityType)/$(entityId)).data);
+      }
+
       // Metadata is written by the client after a successful Storage upload;
       // the Storage rules independently constrain size, type and path.
       allow create: if signedIn()
         && request.resource.data.uploadedBy.uid == request.auth.uid
         && request.resource.data.version is int
-        && request.resource.data.active == true;
+        && request.resource.data.active == true
+        && attachmentsOpen(request.resource.data.entityType, request.resource.data.entityId);
 
       // Attachments are superseded, not edited. Only the supersession pointer
       // and the active flag may change, so a document's provenance is stable.

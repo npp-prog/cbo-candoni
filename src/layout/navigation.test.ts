@@ -165,13 +165,13 @@ describe('the menu itself', () => {
    * all because an accountant looking for an entry looks where entries are
    * made.
    */
-  it('puts the Journal Entries Register straight after Other Transactions', () => {
+  it('puts the Journal Entries Register straight after General Transactions', () => {
     const accounting = NAVIGATION.find((i) => i.to === '/accounting');
     const children = accounting?.children ?? [];
-    const others = children.findIndex((c) => c.to === '/accounting/others');
+    const others = children.findIndex((c) => c.to === '/accounting/general-transactions');
     const register = children.findIndex((c) => c.to === '/accounting/journal-entries');
 
-    expect(others, 'Other Transactions is not in the Accounting menu').toBeGreaterThan(-1);
+    expect(others, 'General Transactions is not in the Accounting menu').toBeGreaterThan(-1);
     expect(register, 'the Journal Entries Register is not in the Accounting menu').toBe(others + 1);
     expect(children[register].group).toBe('Journal Entry Transactions');
   });

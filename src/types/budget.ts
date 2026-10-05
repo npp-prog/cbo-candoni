@@ -284,6 +284,16 @@ export interface Obligation extends Partial<AuditStamps> {
   };
 
   attachmentCount: number;
+  /**
+   * When the supporting documents were closed, and by whom.
+   *
+   * Written by the engine only - by lockAttachments when an officer closes
+   * them, and by certifyObligation, because the certificate says that officer
+   * saw those papers. Once set it is never cleared: a closing that could be
+   * reopened would prove nothing about what was closed.
+   */
+  attachmentsLockedAt?: string;
+  attachmentsLockedBy?: ActorStamp;
   remarks?: string;
   certifiedAt?: string;
   cancelledReason?: string;

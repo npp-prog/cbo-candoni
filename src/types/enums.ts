@@ -155,7 +155,7 @@ export type JevStatus = (typeof JEV_STATUSES)[number];
  * WHY THIS IS A LIST AND NOT A TYPE WRITTEN OUT IN PLACE
  * ---------------------------------------------------------------------------
  * CFMS has to answer one question about every entry: did a document raise it,
- * or did the Accountant write it? Other Transactions shows the second kind and
+ * or did the Accountant write it? General Transactions shows the second kind and
  * the Journal Entries Register shows both, so the answer decides which screen
  * an entry appears on.
  *

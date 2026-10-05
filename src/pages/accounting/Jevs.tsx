@@ -142,14 +142,14 @@ export default function Jevs() {
   return (
     <div>
       <PageHeader
-        title="Other transactions"
+        title="General transactions"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}${period ? `, ${monthName(period)}` : ''}${
           unposted.length ? ` - ${unposted.length} awaiting posting` : ''
         }`}
-        breadcrumbs={[{ label: 'Accounting' }, { label: 'Other Transactions' }]}
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'General Transactions' }]}
         actions={
           can('accounting', 'create') && (
-            <Button variant="primary" size="sm" onClick={() => navigate('/accounting/others/new')}>
+            <Button variant="primary" size="sm" onClick={() => navigate('/accounting/general-transactions/new')}>
               New journal entry
             </Button>
           )
@@ -162,7 +162,7 @@ export default function Jevs() {
         rowKey={(j) => j.id}
         loading={loading}
         error={error}
-        onRowClick={(j) => navigate(`/accounting/others/${j.id}`)}
+        onRowClick={(j) => navigate(`/accounting/general-transactions/${j.id}`)}
         searchPlaceholder="JEV number, reference or particulars"
         emptyTitle="No entries written here"
         emptyMessage="This screen holds the entries Accounting writes itself - adjusting, closing, reversing and prior-period entries, and bank adjustments. Entries raised by a voucher or a treasury report are on the document's own screen, and all of them together are in the Journal Entries Register."

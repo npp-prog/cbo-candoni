@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -16,6 +16,7 @@ import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
 import { isRptAccount, sharesWithBarangay } from '@/pages/reports/rptAbstractReport';
+import { receiptDetailProblems, describeProblems, receiptIsIncomplete } from '@/lib/receiptDetail';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
@@ -52,6 +53,18 @@ export default function Collections() {
   const undeposited = rows
     .filter((c) => ['ISSUED', 'IN_RCD'].includes(c.status))
     .reduce((s, c) => s + c.totalAmount, 0);
+
+  /*
+   * Receipts written before CFMS asked for the detail.
+   *
+   * They cannot be put right by re-issuing the receipt - the paper is with
+   * the taxpayer. The point of showing them is that somebody in the office
+   * may still remember which barangay the land was in, or which programme
+   * the money came under, and that memory has a short life. Left unsaid,
+   * these are discovered when the abstract is drawn and the figures do not
+   * add up to the collection report.
+   */
+  const incomplete = useMemo(() => rows.filter((c) => receiptIsIncomplete(c)), [rows]);
 
   const columns: Column<Collection>[] = [
     {
@@ -139,6 +152,32 @@ export default function Collections() {
       />
 
       <SectionTabs tabs={COLLECTION_TABS} />
+
+      {incomplete.length > 0 && (
+        <Alert
+          tone="warning"
+          className="mb-4"
+          title={`${incomplete.length} receipt${incomplete.length === 1 ? '' : 's'} recorded without the detail the reports need`}
+        >
+          <p>
+            A real property tax collection needs its tax year, and the basic tax needs the
+            barangay the property is in; a Trust Fund collection needs its programme. These were
+            optional until now, so these {incomplete.length === 1 ? 'receipt was' : 'receipts were'}{' '}
+            saved without them, and {incomplete.length === 1 ? 'it' : 'they'} will not appear
+            correctly in the Abstract of Real Property Tax Collections or the Fund Utilization
+            Report.
+          </p>
+          <p className="mt-2 font-mono text-xs">
+            {incomplete.slice(0, 20).map((c) => c.orNumber).join(', ')}
+            {incomplete.length > 20 ? ` and ${incomplete.length - 20} more` : ''}
+          </p>
+          <p className="mt-2 text-xs">
+            The receipt itself cannot be amended - the paper is with the taxpayer. Record the
+            correction the way the office normally would, while somebody still remembers which
+            barangay or which programme each one was.
+          </p>
+        </Alert>
+      )}
 
       {undeposited > 0 && (
         <Alert tone="warning" className="mb-4" title="Undeposited collections">
@@ -255,6 +294,23 @@ function CollectionForm({
   const save = async () => {
     if (!orNumber.trim() || !officerId || !payorName.trim() || total <= 0 || !user) {
       toast.error('Incomplete', 'OR number, collecting officer, payor and at least one amount are required.');
+      return;
+    }
+
+    /*
+     * The detail the reports are built from, asked for now.
+     *
+     * These were optional dropdowns reading "Year not stated" and "Barangay
+     * not stated", and that is what a busy counter leaves them on. The cost
+     * lands months later on whoever produces the Abstract of Real Property
+     * Tax Collections, by which time the receipt is issued, the paper is with
+     * the taxpayer, and the only person who knew which barangay the land was
+     * in has forgotten. Here it costs one question to the taxpayer standing
+     * at the counter.
+     */
+    const problems = receiptDetailProblems(lines, fundCode);
+    if (problems.length > 0) {
+      toast.error('The receipt is missing detail the reports need', describeProblems(problems));
       return;
     }
     setSaving(true);
@@ -425,7 +481,7 @@ function CollectionForm({
                         );
                       }}
                     >
-                      <option value="">Not yet known</option>
+                      <option value="">Which programme?</option>
                       {programs.data
                         .filter((pr) => pr.status === 'ACTIVE')
                         .map((pr) => (
@@ -452,7 +508,7 @@ function CollectionForm({
                             )
                           }
                         >
-                          <option value="">Year not stated</option>
+                          <option value="">Which tax year?</option>
                           <option value="CURRENT">Current year</option>
                           <option value="PRECEDING">Preceding year</option>
                         </Select>
@@ -476,7 +532,7 @@ function CollectionForm({
                               );
                             }}
                           >
-                            <option value="">Barangay not stated</option>
+                            <option value="">Which barangay?</option>
                             {barangays.data.map((b) => (
                               <option key={b.id} value={b.id}>
                                 {b.name}

@@ -6,7 +6,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
-import { Field, TextInput, Select, TextArea, DateInput, AmountInput, Checkbox } from '@/components/ui/Field';
+import { Field, TextInput, Select, TextArea, DateInput, AmountInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { EmployeePicker, BankAccountPicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';

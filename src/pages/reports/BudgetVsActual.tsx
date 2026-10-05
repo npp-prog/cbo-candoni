@@ -10,9 +10,9 @@ import { useAccounts, useBudgetBalances, useEstimatedReceipts, useLedgerEntries 
 import { formatPeso } from '@/lib/money';
 import { monthName } from '@/lib/dates';
 import { SRE_BUCKET_LABELS } from '@/lib/sectors';
-import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
+import { EXPENSE_CLASS_LABELS } from '@/types/enums';
 import type { ExportColumn } from '@/lib/export';
-import type { Centavos, PeriodNo } from '@/types/common';
+import type { PeriodNo } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
 import { INCOME_CLASS_LABELS, type IncomeClass } from '@/lib/estimatedReceipts';
 import {

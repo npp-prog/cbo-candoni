@@ -46,6 +46,25 @@ export const POSTING_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
  */
 export const CORRECTING_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
 export const CERTIFYING_ROLES: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER'];
+
+/**
+ * Who may close the supporting documents on a transaction, for good.
+ *
+ * The three signing officers, and nobody below them. Closing cannot be undone,
+ * and the clerk who scanned the form is not the person who should be deciding
+ * that it is final - they attach the corrected scan; the officer who signs for
+ * the transaction closes it.
+ *
+ * It matches ATTACHMENT_LOCK_ROLES in src/lib/attachmentTypes.ts, and the
+ * build compares the two: a screen that offered the button to somebody the
+ * engine refuses is a button that fails when pressed.
+ */
+export const ATTACHMENT_LOCK_ROLES: Role[] = [
+  'SUPER_ADMIN',
+  'BUDGET_OFFICER',
+  'MUNICIPAL_ACCOUNTANT',
+  'MUNICIPAL_TREASURER',
+];
 export const PERIOD_CONTROL_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
 export const APPROVING_ROLES: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader, Card, Alert, Tabs, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, Select, TextInput, AmountInput } from '@/components/ui/Field';
+import { Select, TextInput, AmountInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';

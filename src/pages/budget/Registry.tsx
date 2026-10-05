@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ReportShell, TotalRow } from '@/components/ReportShell';
+import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { OfficePicker } from '@/components/pickers';

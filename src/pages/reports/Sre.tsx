@@ -65,7 +65,6 @@ import type { Centavos, PeriodNo } from '@/types/common';
  * ---------------------------------------------------------------------------
  */
 
-const FUNDS = ['GF', 'SEF', 'TF'];
 
 export default function Sre() {
   const { fiscalYear } = useFilters();

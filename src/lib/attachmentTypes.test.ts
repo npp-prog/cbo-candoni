@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { attachmentTypesFor, attachmentsLocked } from './attachmentTypes';
+import {
+  attachmentTypesFor,
+  attachmentsLocked,
+  attachmentsClosed,
+  ATTACHMENT_LOCK_ROLES,
+} from './attachmentTypes';
 import { COL } from './collections';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS, type DocumentType } from '@/types/system';
 import { TREASURY_REPORT_TYPES } from '@/types/enums';
@@ -103,5 +108,49 @@ describe('attachmentsLocked', () => {
   it('treats a record with no status yet as open', () => {
     // A draft being encoded for the first time has not been saved.
     expect(attachmentsLocked(undefined)).toBe(false);
+  });
+});
+
+describe('attachmentsClosed', () => {
+  it('is closed once an officer has closed it by hand', () => {
+    expect(attachmentsClosed({ attachmentsLockedAt: '2026-10-04T01:00:00.000Z' })).toBe(true);
+  });
+
+  it('is closed by hand even on a document that is still a draft', () => {
+    // The whole point of the manual lock: the scan is known to be right
+    // before the workflow would have closed it.
+    expect(
+      attachmentsClosed({ attachmentsLockedAt: '2026-10-04T01:00:00.000Z', status: 'DRAFT' }),
+    ).toBe(true);
+  });
+
+  it('is closed by certification even with no manual lock', () => {
+    expect(attachmentsClosed({ status: 'OBLIGATED' })).toBe(true);
+    expect(attachmentsClosed({ attachmentsLockedAt: null, status: 'OBLIGATED' })).toBe(true);
+  });
+
+  it('is open on a draft nobody has closed', () => {
+    expect(attachmentsClosed({ status: 'DRAFT' })).toBe(false);
+    expect(attachmentsClosed({})).toBe(false);
+    expect(attachmentsClosed({ attachmentsLockedAt: '' })).toBe(false);
+  });
+});
+
+describe('the lock roles', () => {
+  it('are the three signing officers and the administrator', () => {
+    expect([...ATTACHMENT_LOCK_ROLES]).toEqual([
+      'SUPER_ADMIN',
+      'BUDGET_OFFICER',
+      'MUNICIPAL_ACCOUNTANT',
+      'MUNICIPAL_TREASURER',
+    ]);
+  });
+
+  it('do not include the clerks who upload', () => {
+    // Closing cannot be undone, so it is not a clerk's to do. They attach the
+    // corrected scan; an officer closes it.
+    expect(ATTACHMENT_LOCK_ROLES).not.toContain('ACCOUNTING_ENCODER');
+    expect(ATTACHMENT_LOCK_ROLES).not.toContain('BUDGET_STAFF');
+    expect(ATTACHMENT_LOCK_ROLES).not.toContain('TREASURY_STAFF');
   });
 });

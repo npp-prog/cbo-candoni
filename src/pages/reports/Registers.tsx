@@ -107,7 +107,7 @@ export default function Registers() {
           loading={jevs.loading}
           rows={jevs.data.map((j) => ({
             id: j.id,
-            to: `/accounting/others/${j.id}`,
+            to: `/accounting/general-transactions/${j.id}`,
             ref: j.jevNo,
             date: j.jevDate,
             party: j.payeeName ?? j.sourceType,

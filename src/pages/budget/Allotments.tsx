@@ -18,7 +18,7 @@ import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { checkAllotmentWithdrawal } from '@/lib/accounting-rules';
-import { budgetKeyId, type Allotment } from '@/types/budget';
+import { type Allotment } from '@/types/budget';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import { fundLabel } from './Obligations';
 import { AllotmentTabs } from './allotmentTabs';

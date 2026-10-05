@@ -25,7 +25,7 @@ import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
 import { formatPeso, amountInWords } from '@/lib/money';
-import { formatLongDate, todayPh } from '@/lib/dates';
+import { todayPh } from '@/lib/dates';
 import { checkDvCategory, checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
 import {
   proposeDvEntry,
@@ -432,7 +432,7 @@ export default function DisbursementDetail() {
             {canPost && (
               /*
                 Posting is done HERE, on the voucher, not on a separate screen
-                called Other Transactions. The entry belongs to this voucher
+                called General Transactions. The entry belongs to this voucher
                 and the Accountant is already looking at it; sending them
                 somewhere else to post it is how entries sat unposted for days
                 while the ledger looked empty.
@@ -835,7 +835,16 @@ export default function DisbursementDetail() {
               fundCode={fundCode}
               storageDocType="DV"
               storageDocId={existing?.dvNo ?? id ?? 'draft'}
-              readOnly={!canEdit}
+              /*
+                NOT `!canEdit`. The rest of the voucher is frozen once it is
+                submitted; the attachments are not, because the commonest
+                reason to replace a scan is that somebody reviewing it found
+                it unreadable - which happens after submission. They close
+                when an officer closes them.
+              */
+              readOnly={!can('accounting', 'edit')}
+              lockedAt={existing?.attachmentsLockedAt ?? null}
+              lockedByName={existing?.attachmentsLockedBy?.name ?? null}
             />
           </Card>
         )}

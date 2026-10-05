@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
-import { hasDocumentNumber } from '@/lib/jevNumbers';
 import {
   ACCOUNTS_PAYABLE,
   ADVANCES_FOR_PAYROLL,
@@ -12,7 +12,7 @@ import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { Field, DateInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker, EmployeePicker } from '@/components/pickers';
@@ -28,7 +28,6 @@ import {
 } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
-import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT, type TreasuryReportType } from '@/types/enums';
@@ -91,8 +90,8 @@ const ACCOUNTS = {
 
 export default function TreasuryReports({ reportType }: { reportType: TreasuryReportType }) {
   const { fiscalYear, fundCode } = useFilters();
-  const { can, hasRole, user, profile } = useAuth();
-  const toast = useToast();
+  const { can, user, profile } = useAuth();
+  const navigate = useNavigate();
 
   const label = TREASURY_REPORT_LABELS[reportType];
   const short = TREASURY_REPORT_SHORT[reportType];
@@ -105,15 +104,8 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
   );
 
   const [showForm, setShowForm] = useState(false);
-  const [certifying, setCertifying] = useState<TreasuryReport | null>(null);
-  /** The number being certified under - correctable here, not only on the draft. */
-  const [certifyNo, setCertifyNo] = useState('');
-  const [withdrawing, setWithdrawing] = useState<TreasuryReport | null>(null);
-  const [withdrawReason, setWithdrawReason] = useState('');
-  const [busy, setBusy] = useState(false);
 
   const canPrepare = can('treasury', 'create');
-  const canCertify = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER');
 
   const actor =
     user
@@ -188,76 +180,24 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
       fixed: true,
       value: (r) => r.status,
       cell: (r) => (
+        /*
+          Certify and Withdraw used to be buttons here. They are on the
+          report's own page now, beside the documents it covers, the entry it
+          proposes and the signed form attached to it - which are the things a
+          Treasurer should have read before certifying. A button on a row
+          certifies a report nobody has opened.
+        */
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
-          {r.status === 'DRAFT' && canCertify && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setCertifyNo(hasDocumentNumber(r.reportNo) ? (r.reportNo as string) : '');
-                setCertifying(r);
-              }}
-            >
-              Certify
-            </Button>
-          )}
-          {r.status !== 'JOURNALIZED' && r.status !== 'CANCELLED' && canCertify && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setWithdrawReason('');
-                setWithdrawing(r);
-              }}
-            >
-              Withdraw
-            </Button>
-          )}
+          <Button size="sm" variant="ghost" onClick={() => navigate(`/treasury/reports/${r.id}`)}>
+            Open
+          </Button>
         </div>
       ),
     },
   ];
 
-  const certify = async () => {
-    if (!certifying) return;
-    if (!certifyNo.trim()) {
-      toast.error(`The ${short} number is missing`, "Assign it from the office's own book.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await engine.certifyTreasuryReport({
-        reportId: certifying.id,
-        reportNo: certifyNo.trim(),
-      });
-      toast.success(
-        `${short} ${res.reportNo} certified`,
-        `${res.documentCount} document${res.documentCount === 1 ? '' : 's'}, ${formatPeso(res.totalAmount)}. Accounting has been notified.`,
-      );
-      setCertifying(null);
-    } catch (err) {
-      toast.error('Could not certify', err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
 
-  const withdraw = async () => {
-    if (!withdrawing || !withdrawReason.trim()) return;
-    setBusy(true);
-    try {
-      await engine.cancelTreasuryReport({
-        reportId: withdrawing.id,
-        reason: withdrawReason.trim(),
-      });
-      toast.success('Report withdrawn', 'The documents it covered are available to report again.');
-      setWithdrawing(null);
-    } catch (err) {
-      toast.error('Could not withdraw', err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <>
@@ -303,73 +243,6 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
         />
       )}
 
-      {certifying && (
-        <ConfirmDialog
-          open
-          title={`Certify ${short}`}
-          confirmLabel="Certify and forward"
-          loading={busy}
-          onCancel={() => setCertifying(null)}
-          onConfirm={certify}
-          message={
-            <>
-              <p>
-                This certifies {certifying.lines.length}{' '}
-                {reportType === 'RCDISB' ? 'payroll' : 'document'}
-                {certifying.lines.length === 1 ? '' : 's'} totalling{' '}
-                <strong>{formatPeso(certifying.totalAmount)}</strong>
-                {reportType === 'RCDISB' ? ' paid in cash' : ''} and forwards the report to the
-                Municipal Accounting Office.
-              </p>
-              <div className="mt-3">
-                <Field label={`${short} number`} required hint="From the Treasurer's own book.">
-                  <TextInput
-                    value={certifyNo}
-                    onChange={(e) => setCertifyNo(e.target.value)}
-                    placeholder="100-26-10-0001"
-                    className="font-mono"
-                  />
-                </Field>
-              </div>
-              <p className="mt-2">
-                Once certified, the documents it covers are locked to this report and cannot be
-                cancelled without withdrawing it, and this number is reserved against the report.
-              </p>
-            </>
-          }
-        />
-      )}
-
-      {withdrawing && (
-        <Modal
-          open
-          title={`Withdraw ${short} ${withdrawing.reportNo ?? 'draft'}`}
-          onClose={() => setWithdrawing(null)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setWithdrawing(null)}>
-                Cancel
-              </Button>
-              <Button onClick={withdraw} loading={busy} disabled={!withdrawReason.trim()}>
-                Withdraw
-              </Button>
-            </>
-          }
-        >
-          <Alert tone="warning">
-            The documents this report covers will be released and can be reported again. A report
-            that has already been journalized cannot be withdrawn - its journal entry must be
-            reversed instead.
-          </Alert>
-          <Field label="Reason" required hint="Recorded on the report and in the audit trail.">
-            <TextInput
-              value={withdrawReason}
-              onChange={(e) => setWithdrawReason(e.target.value)}
-              placeholder="Why this report is being withdrawn"
-            />
-          </Field>
-        </Modal>
-      )}
     </>
   );
 }

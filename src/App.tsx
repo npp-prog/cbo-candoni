@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppShell } from './layout/AppShell';
 import { SignIn, AwaitingAccess } from './pages/SignIn';
@@ -41,6 +41,7 @@ const Checks = lazy(() => import('./pages/treasury/Checks'));
 const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'));
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
 const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
+const TreasuryReportDetail = lazy(() => import('./pages/treasury/TreasuryReportDetail'));
 const PaymentUploads = lazy(() => import('./pages/treasury/PaymentUploads'));
 const AbstractUpload = lazy(() => import('./pages/treasury/AbstractUpload'));
 const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJev'));
@@ -96,6 +97,7 @@ const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
 const RptAbstract = lazy(() => import('./pages/reports/RptAbstract'));
 const Scbaa = lazy(() => import('./pages/reports/Scbaa'));
 const Documents = lazy(() => import('./pages/Documents'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const Users = lazy(() => import('./pages/admin/Users'));
 const Periods = lazy(() => import('./pages/admin/Periods'));
 const Numbering = lazy(() => import('./pages/admin/Numbering'));
@@ -181,9 +183,14 @@ export default function App() {
               journal entries that begin in Accounting rather than arriving on a
               voucher or a treasury report. The /accounting/jev paths still
               resolve so older links and notifications keep working. */}
-          <Route path="/accounting/others" element={<Guard module="accounting"><Jevs /></Guard>} />
-          <Route path="/accounting/others/new" element={<Guard module="accounting" action="create"><JevDetail /></Guard>} />
-          <Route path="/accounting/others/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
+          <Route path="/accounting/general-transactions" element={<Guard module="accounting"><Jevs /></Guard>} />
+          <Route path="/accounting/general-transactions/new" element={<Guard module="accounting" action="create"><JevDetail /></Guard>} />
+          <Route path="/accounting/general-transactions/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
+          {/* The screen was called "Other Transactions" until patch 78. Old
+              addresses still land, including the ones in notifications and in
+              the audit trail, which carry a link per entry. */}
+          <Route path="/accounting/others" element={<Navigate to="/accounting/general-transactions" replace />} />
+          <Route path="/accounting/others/:id" element={<RedirectToGeneralTransaction />} />
           <Route
             path="/accounting/journal-entries"
             element={<Guard module="accounting"><JournalEntriesRegister /></Guard>}
@@ -192,7 +199,7 @@ export default function App() {
             path="/accounting/journal-entries/:id"
             element={<Guard module="accounting"><JevDetail /></Guard>}
           />
-          <Route path="/accounting/jev" element={<Navigate to="/accounting/others" replace />} />
+          <Route path="/accounting/jev" element={<Navigate to="/accounting/general-transactions" replace />} />
           <Route path="/accounting/jev/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
           {/* Checks and ADA are Treasury's work: the Treasurer draws them against a
               completed voucher. They live under /treasury and are guarded by the
@@ -236,6 +243,14 @@ export default function App() {
           <Route
             path="/treasury/payroll/rcdisb"
             element={<Guard module="treasury"><TreasuryReportRegister reportType="RCDISB" /></Guard>}
+          />
+          {/* One report, on a page of its own, so it can carry the signed
+              form. One address for all four kinds: the report says which it
+              is, and four routes to one screen would be four things to keep
+              in step. */}
+          <Route
+            path="/treasury/reports/:id"
+            element={<Guard module="treasury"><TreasuryReportDetail /></Guard>}
           />
           <Route
             path="/accounting/treasury-reports"
@@ -408,6 +423,11 @@ export default function App() {
 
           {/* Documents, administration, audit */}
           <Route path="/documents" element={<Guard module="documents"><Documents /></Guard>} />
+
+          {/* Your own account. Behind no module guard on purpose: changing
+              your own password is not a permission anybody grants, and a user
+              whose roles have not been granted yet still owns their account. */}
+          <Route path="/account/password" element={<ChangePassword />} />
           <Route path="/administration" element={<Navigate to="/administration/users" replace />} />
           <Route path="/administration/users" element={<Guard module="administration"><Users /></Guard>} />
           <Route path="/administration/periods" element={<Guard module="administration"><Periods /></Guard>} />
@@ -476,4 +496,16 @@ function NotFound() {
       }
     />
   );
+}
+
+/**
+ * Carries an old /accounting/others/{id} address to its new home.
+ *
+ * The screen is called General Transactions since patch 78. The address was
+ * written into notifications and into every audit-trail row for an entry, and
+ * those are records - they are not rewritten because a screen was renamed.
+ */
+function RedirectToGeneralTransaction() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/accounting/general-transactions/${id ?? ''}`} replace />;
 }

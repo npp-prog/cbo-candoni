@@ -101,6 +101,7 @@ export {
 // --- Administration ----------------------------------------------------------
 export { closePeriod, reopenPeriod, lockPeriod } from './admin/periods';
 export { setUserRoles, createUserAccount, onBeforeSignIn, recordExport } from './admin/users';
+export { lockAttachments } from './admin/attachments';
 
 // --- Scheduled integrity and monitoring --------------------------------------
 export {

@@ -4,7 +4,7 @@ import { ReportShell } from '@/components/ReportShell';
 import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select, DateInput } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
-import { useCollections, useDeposits, useRcds, useUndepositedCollections } from '@/data/queries';
+import { useCollections, useDeposits, useUndepositedCollections } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import type { Centavos } from '@/types/common';
@@ -38,7 +38,6 @@ export default function TreasuryReports() {
 
   const collections = useCollections(fiscalYear, fundCode);
   const deposits = useDeposits();
-  const rcds = useRcds(fiscalYear, fundCode);
   const undeposited = useUndepositedCollections(fundCode);
 
   const title = REPORTS.find((r) => r.id === report)!.label;

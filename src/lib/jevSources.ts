@@ -24,15 +24,15 @@ import { JEV_SOURCE_TYPES, type JevSourceType } from '@/types/enums';
  * everything, where the handful of entries somebody actually had to write were
  * lost among the hundreds the system had generated.
  *
- * So: Other Transactions shows the entries below that are DIRECT. The Journal
+ * So: General Transactions shows the entries below that are DIRECT. The Journal
  * Entries Register shows every entry, whatever raised it.
  *
  * ---------------------------------------------------------------------------
  * WHY THE LIST NAMES THE DOCUMENTS AND NOT THE DIRECT ENTRIES
  * ---------------------------------------------------------------------------
  * An entry is direct unless CFMS knows of a document that raises it. A new
- * source type that nobody remembered to classify therefore turns up in Other
- * Transactions, which is a short list somebody reads, instead of being hidden
+ * source type that nobody remembered to classify therefore turns up in
+ * General Transactions, which is a short list somebody reads, instead of hidden
  * from it - and an entry that appears where it does not belong is noticed in a
  * day, whereas one that appears nowhere is noticed when the books are closed.
  */

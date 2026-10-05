@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PageHeader, Card, Alert, Spinner, Tabs, DetailField } from '@/components/ui/Layout';
+import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { StatusBadge, Badge } from '@/components/ui/Badge';
+import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
-import { Field, Select, DateInput, AmountInput, TextInput } from '@/components/ui/Field';
+import { Field, Select, DateInput, AmountInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
@@ -23,10 +23,10 @@ import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
-import { formatShortDate, monthName, periodRange, todayPh } from '@/lib/dates';
+import { formatShortDate, periodRange, todayPh } from '@/lib/dates';
 import { computeReconciliation } from '@/lib/accounting-rules';
 import { parseStatementFile, readStatementHeaders, type ParsedStatementRow } from '@/lib/export';
-import type { BankTransaction, BankReconciliation as Recon } from '@/types/treasury';
+import type { BankTransaction } from '@/types/treasury';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
 

@@ -463,6 +463,30 @@ export const certifyObligation = onCall(
           position: caller.position ?? null,
           at: now,
         },
+        /*
+         * The supporting documents close here too.
+         *
+         * The certificate says this officer saw those papers and committed
+         * the municipality's allotment on them. A scan that could be swapped
+         * afterwards is not evidence of anything, and the signature would be
+         * attached to a file nobody can prove was there.
+         *
+         * Written as the same field the manual closing writes, so the rule on
+         * /documents has one thing to consult. The screen used to work this
+         * out from the status alone, which left the database accepting an
+         * upload the screen had refused.
+         *
+         * Not cleared by uncertifyObligation. Taking a certification back
+         * lets the FIGURES be corrected; it does not unsee the papers, and a
+         * closing that can be reopened proves nothing about what was closed.
+         */
+        attachmentsLockedAt: now,
+        attachmentsLockedBy: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+        },
         disbursedAmount: 0,
         unpaidAmount: computedTotal,
         ...(shortfalls.length > 0 && override

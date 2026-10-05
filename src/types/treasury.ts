@@ -1,4 +1,5 @@
 import type {
+  ActorStamp,
   AuditStamps,
   Centavos,
   FiscalYear,
@@ -452,6 +453,13 @@ export interface TreasuryReport extends Partial<AuditStamps> {
 
   remarks?: string;
   cancelledReason?: string;
+
+  /**
+   * When the supporting documents were closed, and by whom. Engine-written.
+   * See src/lib/attachmentTypes.ts.
+   */
+  attachmentsLockedAt?: string;
+  attachmentsLockedBy?: ActorStamp;
 
   /** The CSV upload this report was built from, when it came from one. */
   importId?: Id;

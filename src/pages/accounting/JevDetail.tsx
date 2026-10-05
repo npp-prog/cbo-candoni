@@ -182,7 +182,7 @@ export default function JevDetail() {
         // true. The placeholder is the agreed word for "none yet".
         const newId = await createDraft(COL.jevs, { ...payload, jevNo: UNNUMBERED_JEV }, actor);
         toast.success('Journal entry saved as a draft');
-        navigate(`/accounting/others/${newId}`, { replace: true });
+        navigate(`/accounting/general-transactions/${newId}`, { replace: true });
       } else {
         await updateDraft(COL.jevs, id!, payload, actor);
         toast.success('Draft saved');
@@ -220,7 +220,7 @@ export default function JevDetail() {
           // sending them to a screen that no longer lists it.
           existing && !isDirectEntry(existing.sourceType)
             ? { label: 'Journal Entries Register', to: '/accounting/journal-entries' }
-            : { label: 'Other Transactions', to: '/accounting/others' },
+            : { label: 'General Transactions', to: '/accounting/general-transactions' },
           { label: hasJevNumber(existing?.jevNo) ? (existing?.jevNo as string) : 'New' },
         ]}
         actions={
@@ -278,7 +278,7 @@ export default function JevDetail() {
       {existing?.reversesJevId && (
         <Alert tone="info" className="mb-4">
           This is a reversing entry. It mirrors{' '}
-          <Link to={`/accounting/others/${existing.reversesJevId}`} className="font-medium underline">
+          <Link to={`/accounting/general-transactions/${existing.reversesJevId}`} className="font-medium underline">
             the original journal entry
           </Link>
           .

@@ -622,6 +622,18 @@ export const engine = {
    * The Firebase Authentication account must already exist. This grants access;
    * it does not create credentials.
    */
+  /**
+   * Close the supporting documents on a transaction, for good.
+   *
+   * There is deliberately no unlock, for anybody. A closing that can be
+   * reopened says nothing about what was closed.
+   */
+  lockAttachments: (p: { entityType: string; entityId: Id }) =>
+    call<typeof p, { entityType: string; entityId: Id; attachmentsLockedAt: string }>(
+      'lockAttachments',
+      p,
+    ),
+
   setUserRoles: (p: {
     uid?: Id;
     email?: string;

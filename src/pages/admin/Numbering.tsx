@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { orderBy } from 'firebase/firestore';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';

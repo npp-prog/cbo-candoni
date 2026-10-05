@@ -6,6 +6,10 @@ import {
   signOut as fbSignOut,
   setPersistence,
   browserSessionPersistence,
+  sendPasswordResetEmail,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   type User,
 } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -35,6 +39,18 @@ interface AuthState {
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Change your own password.
+   *
+   * Takes the CURRENT one as well, and proves it before changing anything.
+   * Firebase requires a recent sign-in for this, but that is not the only
+   * reason: a workstation left unlocked in a municipal hall is the risk this
+   * system actually has, and without the current password anyone walking past
+   * an open session could lock the officer out of their own account.
+   */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** Send a reset link to an address, without saying whether it exists. */
+  sendPasswordReset: (email: string) => Promise<void>;
   can: (module: Module, action: Action) => boolean;
   hasRole: (...roles: Role[]) => boolean;
   /** Offices this user is restricted to; empty means unrestricted. */
@@ -181,6 +197,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: async () => {
         await fbSignOut(auth);
         setError(null);
+      },
+      changePassword: async (currentPassword, newPassword) => {
+        const current = auth.currentUser;
+        if (!current?.email) {
+          throw new Error('You are not signed in. Sign in again and try once more.');
+        }
+        try {
+          await reauthenticateWithCredential(
+            current,
+            EmailAuthProvider.credential(current.email, currentPassword),
+          );
+        } catch (e) {
+          const code = (e as { code?: string }).code ?? '';
+          throw new Error(
+            code === 'auth/too-many-requests'
+              ? 'Too many attempts. Wait a few minutes before trying again.'
+              : 'That is not your current password.',
+          );
+        }
+        try {
+          await updatePassword(current, newPassword);
+        } catch (e) {
+          const code = (e as { code?: string }).code ?? '';
+          throw new Error(
+            code === 'auth/weak-password'
+              ? 'That password is too easily guessed. Choose a longer one.'
+              : 'The password could not be changed. Sign out, sign in again and try once more.',
+          );
+        }
+      },
+      sendPasswordReset: async (email) => {
+        /*
+         * Never says whether the address exists.
+         *
+         * "No such account" on a municipal address tells whoever typed it
+         * which officers have CFMS accounts, which is the first half of an
+         * attack on one. The screen says the same thing either way, and the
+         * only person who learns anything is the one who can open the inbox.
+         */
+        try {
+          await sendPasswordResetEmail(auth, email.trim());
+        } catch (e) {
+          const code = (e as { code?: string }).code ?? '';
+          if (code === 'auth/too-many-requests') {
+            throw new Error('Too many attempts. Wait a few minutes before trying again.');
+          }
+          if (code === 'auth/network-request-failed') {
+            throw new Error('CFMS could not reach the server. Check the internet connection.');
+          }
+          // auth/user-not-found and auth/invalid-email are swallowed on
+          // purpose, for the reason above.
+        }
       },
       can: (module, action) => can(permissions, module, action),
       hasRole: (...check) => check.some((r) => roles.includes(r)),

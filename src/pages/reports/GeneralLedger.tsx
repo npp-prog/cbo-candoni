@@ -127,7 +127,7 @@ export default function GeneralLedger() {
                   <td className="cbo-td text-xs">{formatShortDate(r.entryDate)}</td>
                   <td className="cbo-td">
                     <Link
-                      to={`/accounting/others/${r.jevId}`}
+                      to={`/accounting/general-transactions/${r.jevId}`}
                       className="font-mono text-xs text-brand-700 hover:underline no-print"
                     >
                       {r.jevNo}

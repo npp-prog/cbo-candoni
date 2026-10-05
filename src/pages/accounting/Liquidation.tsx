@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { newestFirst } from '@/lib/registerOrder';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';

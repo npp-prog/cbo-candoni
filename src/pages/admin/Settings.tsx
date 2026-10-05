@@ -29,7 +29,7 @@ import { ROLES, ROLE_LABELS, type Role, type SystemSettings } from '@/types/syst
 export default function Settings() {
   const { hasRole, user, profile } = useAuth();
   const toast = useToast();
-  const { data, loading } = useDocument<SystemSettings & { allowSelfApproval?: boolean }>(
+  const { data } = useDocument<SystemSettings & { allowSelfApproval?: boolean }>(
     COL.settings,
     'general',
   );

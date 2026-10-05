@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFilters } from '@/context/FilterContext';
@@ -190,12 +190,22 @@ export function Header({
                         ))}
                       </div>
                     </div>
+                    {/* Not under Administration. Changing your own password
+                        is not a permission anybody grants, and the people who
+                        most need it are the ones with the fewest menus. */}
+                    <Link
+                      to="/account/password"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="block w-full px-3 py-2 text-left text-sm text-navy-800 hover:bg-slate-50"
+                    >
+                      Change password
+                    </Link>
                     <button
                       onClick={() => {
                         setUserMenuOpen(false);
                         void signOut();
                       }}
-                      className="w-full px-3 py-2 text-left text-sm text-navy-800 hover:bg-slate-50"
+                      className="w-full border-t border-slate-100 px-3 py-2 text-left text-sm text-navy-800 hover:bg-slate-50"
                     >
                       Sign out
                     </button>

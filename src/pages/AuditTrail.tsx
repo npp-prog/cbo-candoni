@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
-import { Field, Select, TextInput } from '@/components/ui/Field';
+import { Select, TextInput } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useAuditLogs } from '@/data/queries';
@@ -48,6 +48,7 @@ const EVENT_LABELS: Record<string, string> = {
   PERIOD_CLOSE: 'Period closed',
   PERIOD_REOPEN: 'Period reopened',
   BUDGET_OVERRIDE: 'Budget override',
+  ATTACHMENTS_LOCKED: 'Supporting documents closed',
   SETTINGS_CHANGE: 'Settings change',
 };
 
@@ -76,7 +77,7 @@ export default function AuditTrail() {
       case COL.obligations:
         return `/budget/obligations/${log.entityId}`;
       case COL.jevs:
-        return `/accounting/others/${log.entityId}`;
+        return `/accounting/general-transactions/${log.entityId}`;
       default:
         return null;
     }
