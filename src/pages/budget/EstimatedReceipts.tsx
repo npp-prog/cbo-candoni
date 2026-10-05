@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Combobox } from '@/components/pickers/Combobox';
 import { PageHeader, Card, Alert, Tabs, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Select, TextInput, AmountInput } from '@/components/ui/Field';
@@ -135,6 +136,18 @@ export default function EstimatedReceipts() {
 
   const accountByCode = useMemo(
     () => new Map(revenueAccounts.map((a) => [a.code, a])),
+    [revenueAccounts],
+  );
+
+  /** The same accounts, as the searchable picker wants them. */
+  const revenueOptions = useMemo(
+    () =>
+      revenueAccounts.map((a) => ({
+        value: a.code,
+        code: a.code,
+        label: a.name,
+        detail: a.accountClass,
+      })),
     [revenueAccounts],
   );
 
@@ -445,17 +458,24 @@ export default function EstimatedReceipts() {
                   <tr key={r.key} className="align-top">
                     <td className="px-2 py-1.5">
                       {canEdit ? (
-                        <Select
-                          value={r.accountCode}
-                          onChange={(e) => chooseAccount(r.key, e.target.value)}
-                        >
-                          <option value="">Choose an account&hellip;</option>
-                          {revenueAccounts.map((a) => (
-                            <option key={a.code} value={a.code}>
-                              {a.code} — {a.name}
-                            </option>
-                          ))}
-                        </Select>
+                        /*
+                          A searchable picker, not a dropdown.
+
+                          The revenue side of the chart runs to a few hundred
+                          accounts, and a plain list of them is scrolled past
+                          rather than read - which is how a receipt ends up on
+                          whichever account was nearest the one wanted. Typing
+                          "real property" or "40102040" narrows it to the few
+                          that match, which is what the clerk has in their
+                          head when they start.
+                        */
+                        <Combobox
+                          options={revenueOptions}
+                          value={r.accountCode || null}
+                          onChange={(code) => chooseAccount(r.key, code ?? '')}
+                          placeholder="Account code or name"
+                          emptyMessage="No revenue account matches"
+                        />
                       ) : (
                         <span>
                           <span className="font-mono text-2xs text-slate-500">{r.accountCode}</span>{' '}

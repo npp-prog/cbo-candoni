@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { TrustTabs } from './trustTabs';
 import { Button } from '@/components/ui/Button';
 import { Field, Select, TextInput, TextArea, AmountInput } from '@/components/ui/Field';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -259,7 +260,7 @@ export default function TrustPrograms() {
       <PageHeader
         title="Trust Fund Programmes"
         subtitle="The Fund Receipts Program — what each trust is for, and what may be spent on it"
-        breadcrumbs={[{ label: 'Accounting' }, { label: 'Trust Fund Programmes' }]}
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Trust Accounts' }]}
         actions={
           canEdit ? (
             <Button variant="primary" onClick={() => setForm(empty(fiscalYear))}>
@@ -268,6 +269,8 @@ export default function TrustPrograms() {
           ) : undefined
         }
       />
+
+      <TrustTabs active="programs" />
 
       <Card bodyClassName="p-0">
         <DataTable

@@ -21,7 +21,7 @@ import { checkAllotmentWithdrawal } from '@/lib/accounting-rules';
 import { type Allotment } from '@/types/budget';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import { fundLabel } from './Obligations';
-import { AllotmentTabs } from './allotmentTabs';
+import AllotmentReleaseOrders from './AllotmentReleaseOrders';
 
 /**
  * The Allotment Register, and the withdrawal of allotment.
@@ -61,6 +61,11 @@ export default function Allotments() {
   const { data, loading, error } = useAllotments(fiscalYear, fundCode);
 
   const [showForm, setShowForm] = useState(false);
+  /*
+    The release-order builder, which lives in AllotmentReleaseOrders but is
+    opened from this page's header - so the state behind the button is here.
+  */
+  const [building, setBuilding] = useState(false);
   const [approving, setApproving] = useState<Allotment | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -196,9 +201,9 @@ export default function Allotments() {
   return (
     <div>
       <PageHeader
-        title="Allotment Register"
+        title="Allotments"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear} - ${formatPeso(totalReleased)} released`}
-        breadcrumbs={[{ label: 'Budget' }, { label: 'Allotment Register' }]}
+        breadcrumbs={[{ label: 'Budget' }, { label: 'Allotments' }]}
         actions={
           can('budget', 'create') && (
             <div className="flex items-center gap-2">
@@ -209,19 +214,33 @@ export default function Allotments() {
               >
                 Bulk upload
               </Button>
-              {/* There used to be a "Release allotment" button here. Releasing
-                  happens on the Allotment Release Order now - see the note at
-                  the top of this file. A stray bracket also rendered a literal
-                  "(" between the two buttons. */}
-              <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setShowForm(true)}>
                 Withdraw allotment
               </Button>
+              {/* Releasing is the thing this page is most often opened to do,
+                  so it is the primary button. It used to be a whole screen
+                  away. */}
+              {!building && (
+                <Button variant="primary" size="sm" onClick={() => setBuilding(true)}>
+                  Issue a release order
+                </Button>
+              )}
             </div>
           )
         }
       />
 
-      <AllotmentTabs active="register" />
+      {/*
+        The release orders, on the same page as the register they fill.
+
+        They were a separate screen, then a tab beside this one, and the
+        Budget Officer has now asked twice for them to be one thing. The
+        builder opens here when the header button is pressed, and the orders
+        already issued sit above the lines they released - so the question
+        "what put this line in the register" is answered by looking up rather
+        than by navigating.
+      */}
+      <AllotmentReleaseOrders embedded building={building} onBuildingChange={setBuilding} />
 
       <div className="my-4" />
 

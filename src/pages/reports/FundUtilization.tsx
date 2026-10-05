@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
+import { TrustTabs } from '../accounting/trustTabs';
 import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
@@ -150,7 +151,8 @@ export default function FundUtilization() {
         fundLabel: 'Trust Fund',
         periodLabel: `Life of each programme, with ${fiscalYear} movement`,
       }}
-      breadcrumbs={[{ label: 'Accounting' }, { label: 'Fund Utilization Report' }]}
+      breadcrumbs={[{ label: 'Accounting' }, { label: 'Trust Accounts' }]}
+      tabs={<TrustTabs active="utilization" />}
       rows={rows}
       exportColumns={exportColumns}
       filters={

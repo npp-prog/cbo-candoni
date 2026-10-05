@@ -16,7 +16,6 @@ import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Allotment, BudgetBalance } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from './Obligations';
-import { AllotmentTabs } from './allotmentTabs';
 
 /**
  * Allotment Release Orders.
@@ -89,7 +88,32 @@ interface IssuedOrder {
   lineCount: number;
 }
 
-export default function AllotmentReleaseOrders() {
+/**
+ * Issuing allotment by order, and the orders already issued.
+ *
+ * ---------------------------------------------------------------------------
+ * IT IS NOT A SCREEN OF ITS OWN ANY MORE
+ * ---------------------------------------------------------------------------
+ * It was, then it was a tab beside the register, and now it is part of the
+ * register's page. The reason is the same each time and the Budget Officer has
+ * said it twice: releasing allotment and reading what has been released are
+ * one job, and every boundary CFMS put between them was a boundary the officer
+ * had to cross to do it.
+ *
+ * `embedded` is what the register passes. On its own - at the old address,
+ * which still works - it keeps its heading.
+ */
+export default function AllotmentReleaseOrders({
+  embedded,
+  building: buildingIn,
+  onBuildingChange,
+}: {
+  /** Rendered inside the register's page: no heading of its own. */
+  embedded?: boolean;
+  /** The register owns the button, so it owns the state behind it. */
+  building?: boolean;
+  onBuildingChange?: (next: boolean) => void;
+} = {}) {
   const { fiscalYear, fundCode } = useFilters();
   const { hasRole } = useAuth();
   const toast = useToast();
@@ -97,7 +121,12 @@ export default function AllotmentReleaseOrders() {
   const balances = useBudgetBalances(fiscalYear, fundCode);
   const allotments = useAllotments(fiscalYear, fundCode);
 
-  const [building, setBuilding] = useState(false);
+  const [buildingOwn, setBuildingOwn] = useState(false);
+  const building = buildingIn ?? buildingOwn;
+  const setBuilding = (next: boolean) => {
+    setBuildingOwn(next);
+    onBuildingChange?.(next);
+  };
   const [expenseClass, setExpenseClass] = useState<ExpenseClass>('MOOE');
   const [purpose, setPurpose] = useState('');
   const [date, setDate] = useState(todayPh());
@@ -338,20 +367,20 @@ export default function AllotmentReleaseOrders() {
   return (
     <>
       <div className={printing ? 'no-print' : undefined}>
-        <PageHeader
-          title="Allotment Release Orders"
-          subtitle={`${fundLabel(fundCode)} · fiscal year ${fiscalYear}`}
-          breadcrumbs={[{ label: 'Budget' }, { label: 'Allotment Release Orders' }]}
-          actions={
-            canIssue && !building ? (
-              <Button variant="primary" onClick={() => setBuilding(true)}>
-                Issue an order
-              </Button>
-            ) : undefined
-          }
-        />
-
-        <AllotmentTabs active="orders" />
+        {!embedded && (
+          <PageHeader
+            title="Allotment Release Orders"
+            subtitle={`${fundLabel(fundCode)} · fiscal year ${fiscalYear}`}
+            breadcrumbs={[{ label: 'Budget' }, { label: 'Allotments' }]}
+            actions={
+              canIssue && !building ? (
+                <Button variant="primary" onClick={() => setBuilding(true)}>
+                  Issue an order
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
 
         {building && (
           <Card
@@ -564,18 +593,26 @@ export default function AllotmentReleaseOrders() {
           </Card>
         )}
 
-        <Card title="Orders issued" bodyClassName="p-0">
-          <DataTable
-            rows={issued}
-            columns={columns}
-            rowKey={(r) => r.aroNo}
-            loading={allotments.loading}
-            error={allotments.error}
-            searchPlaceholder="ARO number or purpose"
-            emptyTitle="No Allotment Release Order has been issued"
-            emptyMessage={`Nothing has been released by order in ${fiscalYear} for this fund.`}
-          />
-        </Card>
+        {/*
+          Inside the register the orders are context, not the subject: the
+          register below is the list being read, and this says what put the
+          lines in it. So no search box of its own - searching happens on the
+          register, where the lines are.
+        */}
+        {(!embedded || issued.length > 0) && (
+          <Card title="Release orders issued" bodyClassName="p-0">
+            <DataTable
+              rows={issued}
+              columns={columns}
+              rowKey={(r) => r.aroNo}
+              loading={allotments.loading}
+              error={allotments.error}
+              searchPlaceholder={embedded ? undefined : 'ARO number or purpose'}
+              emptyTitle="No Allotment Release Order has been issued"
+              emptyMessage={`Nothing has been released by order in ${fiscalYear} for this fund.`}
+            />
+          </Card>
+        )}
       </div>
 
       {printing && (

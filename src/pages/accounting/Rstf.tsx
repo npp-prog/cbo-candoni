@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
+import { TrustTabs } from './trustTabs';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
@@ -81,7 +82,8 @@ export default function Rstf() {
         fundLabel: 'Trust Fund',
         periodLabel: periodHeading(period, fiscalYear),
       }}
-      breadcrumbs={[{ label: 'Accounting' }, { label: 'Registry of Special Trust Fund' }]}
+      breadcrumbs={[{ label: 'Accounting' }, { label: 'Trust Accounts' }]}
+      tabs={<TrustTabs active="registry" />}
       rows={exportRows}
       exportColumns={exportColumns}
       filters={

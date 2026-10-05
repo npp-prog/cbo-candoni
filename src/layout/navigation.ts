@@ -194,9 +194,19 @@ export const NAVIGATION: NavItem[] = [
        * the source for it. Putting it beside the appropriation would say the
        * Budget Office owns it, which it does not.
        */
-      { group: 'Monitoring and Setup', label: 'Trust Fund Programmes', to: '/accounting/trust-programs' },
-      { group: 'Monitoring and Setup', label: 'Registry of Special Trust Fund', to: '/accounting/trust-registry' },
-      { group: 'Monitoring and Setup', label: 'Fund Utilization Report', to: '/accounting/fund-utilization' },
+      /*
+       * ONE item, not three.
+       *
+       * The programmes, the registry kept against them and the report drawn
+       * from that registry were three entries in a row. They are one subject
+       * seen three ways, and three entries made the officer pick one before
+       * knowing what was in any of them - while pushing the rest of Monitoring
+       * and Setup down the menu, so the Trust Fund took the most room in the
+       * list and is the smallest of the three funds.
+       *
+       * The three are tabs on the screen now. See trustTabs.tsx.
+       */
+      { group: 'Monitoring and Setup', label: 'Trust Accounts', to: '/accounting/trust-programs' },
       { group: 'Monitoring and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
       { group: 'Monitoring and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },
       // The ageing of receivables, payables and unliquidated advances. It was

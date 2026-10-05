@@ -131,6 +131,18 @@ export default function Aging() {
   const { fiscalYear, fundCode } = useFilters();
   const [asOf, setAsOf] = useState(todayPh());
   const [side, setSide] = useState<'PAYABLE' | 'RECEIVABLE'>('PAYABLE');
+  /*
+   * One control account, or all of them.
+   *
+   * The report is a stack of accounts, each with its parties under it, and on
+   * a full year that is pages. Somebody chasing what is owed to one supplier
+   * is in one account and reads past the rest to find it.
+   *
+   * Cleared whenever the side changes, because a payable account has no
+   * meaning on the receivable report and a filter the reader cannot see the
+   * effect of is worse than none.
+   */
+  const [accountCode, setAccountCode] = useState('');
 
   const accounts = useAccounts(false);
   const ledger = useLedgerEntries(fiscalYear, fundCode);
@@ -157,7 +169,10 @@ export default function Aging() {
   }, [accounts.data, side]);
 
   const groups = useMemo<AccountGroup[]>(() => {
-    const codes = new Set(relevantAccounts.map((a) => a.code));
+    const chosen = accountCode
+      ? relevantAccounts.filter((a) => a.code === accountCode)
+      : relevantAccounts;
+    const codes = new Set(chosen.map((a) => a.code));
     const sign: 1 | -1 = side === 'RECEIVABLE' ? 1 : -1;
 
     // account -> party -> entries
@@ -224,7 +239,7 @@ export default function Aging() {
     }
 
     return result.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-  }, [ledger.data, relevantAccounts, asOf, side]);
+  }, [ledger.data, relevantAccounts, accountCode, asOf, side]);
 
   const grand = useMemo(
     () =>
@@ -261,7 +276,11 @@ export default function Aging() {
           <Field label="Report">
             <Select
               value={side}
-              onChange={(e) => setSide(e.target.value as 'PAYABLE' | 'RECEIVABLE')}
+              onChange={(e) => {
+                setSide(e.target.value as 'PAYABLE' | 'RECEIVABLE');
+                // A payable account means nothing on the receivable report.
+                setAccountCode('');
+              }}
             >
               <option value="PAYABLE">Payables - what the municipality owes</option>
               <option value="RECEIVABLE">Receivables - what is owed to the municipality</option>
@@ -269,6 +288,23 @@ export default function Aging() {
           </Field>
           <Field label="As at" hint="Ages are counted from the entry date to this date.">
             <DateInput value={asOf} onChange={setAsOf} />
+          </Field>
+
+          <Field
+            label="Account"
+            hint="One control account, or every account on this side."
+            className="sm:col-span-2"
+          >
+            <Select value={accountCode} onChange={(e) => setAccountCode(e.target.value)}>
+              <option value="">
+                All {side === 'RECEIVABLE' ? 'receivable' : 'payable'} accounts
+              </option>
+              {relevantAccounts.map((a) => (
+                <option key={a.code} value={a.code}>
+                  {a.code} - {a.name}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
       </Card>
@@ -280,7 +316,10 @@ export default function Aging() {
           <Alert tone="error">{ledger.error}</Alert>
         ) : groups.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-500">
-            Nothing outstanding as at {formatLongDate(asOf)}.
+            Nothing outstanding as at {formatLongDate(asOf)}
+            {accountCode
+              ? ` on ${accountCode}. Choose "All ${side === 'RECEIVABLE' ? 'receivable' : 'payable'} accounts" to see the rest.`
+              : '.'}
           </p>
         ) : (
           <div>

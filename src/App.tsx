@@ -23,7 +23,6 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 const Appropriations = lazy(() => import('./pages/budget/Appropriations'));
 const Allotments = lazy(() => import('./pages/budget/Allotments'));
-const AllotmentReleaseOrders = lazy(() => import('./pages/budget/AllotmentReleaseOrders'));
 const EstimatedReceipts = lazy(() => import('./pages/budget/EstimatedReceipts'));
 const TrustPrograms = lazy(() => import('./pages/accounting/TrustPrograms'));
 const FundUtilization = lazy(() => import('./pages/reports/FundUtilization'));
@@ -136,16 +135,16 @@ export default function App() {
             element={<Guard module="budget"><EstimatedReceipts /></Guard>}
           />
           <Route path="/budget/allotments" element={<Guard module="budget"><Allotments /></Guard>} />
-          {/* One menu item, two tabs. The register is what the menu lands on;
-              the orders are a tab away. `/budget/release-orders` was the old
-              path and still arrives. */}
+          {/* One screen, no tabs. The register and the release orders are one
+              page now, so both old addresses land on it - an officer's
+              bookmark from either of them still arrives somewhere useful. */}
           <Route
             path="/budget/allotments/orders"
-            element={<Guard module="budget"><AllotmentReleaseOrders /></Guard>}
+            element={<Navigate to="/budget/allotments" replace />}
           />
           <Route
             path="/budget/release-orders"
-            element={<Navigate to="/budget/allotments/orders" replace />}
+            element={<Navigate to="/budget/allotments" replace />}
           />
           <Route
             path="/budget/appropriations/upload"

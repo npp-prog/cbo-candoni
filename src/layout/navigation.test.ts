@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { NAVIGATION, groupForPath, toBlocks, type NavChild } from './navigation';
+import { TRUST_TABS } from '@/pages/accounting/trustTabs';
 import {
   PAYMENT_TABS,
   COLLECTION_TABS,
@@ -332,7 +333,8 @@ describe('the menu itself', () => {
    * choose between two entries before knowing what was in either.
    *
    * The register and the orders are one subject with two faces, and they are
-   * tabs now. A second allotment entry brings the confusion back with it.
+   * one page now - no tabs left to switch between. A second allotment entry
+   * brings the confusion back with it.
    */
   it('gives allotment exactly one menu item', () => {
     const budget = NAVIGATION.find((i) => i.to === '/budget');
@@ -424,12 +426,37 @@ describe('the menu itself', () => {
    * not in the Budget menu.
    */
   it('keeps the trust registry with the accounting office that maintains it', () => {
+    // It is a TAB now rather than a menu entry of its own, so the thing to
+    // hold is where it is reachable FROM - which is the point the rule was
+    // ever about. Budget must not carry it.
     const budget = NAVIGATION.find((i) => i.to === '/budget');
-    expect((budget?.children ?? []).some((c) => c.to === '/accounting/trust-registry')).toBe(false);
+    for (const trust of TRUST_TABS) {
+      expect(
+        (budget?.children ?? []).some((c) => c.to === trust.to),
+        `${trust.label} is in the Budget menu`,
+      ).toBe(false);
+    }
 
     const accounting = NAVIGATION.find((i) => i.to === '/accounting');
-    const entry = (accounting?.children ?? []).find((c) => c.to === '/accounting/trust-registry');
-    expect(entry).toBeDefined();
+    const entry = (accounting?.children ?? []).find((c) => c.label === 'Trust Accounts');
+    expect(entry, 'Trust Accounts is not in the Accounting menu').toBeDefined();
+    expect(TRUST_TABS.some((t) => t.to === entry?.to)).toBe(true);
+  });
+
+  /**
+   * The three trust screens are inside Trust Accounts, not beside it.
+   *
+   * Three entries in a row made the officer pick one before knowing what was
+   * in any of them, and they pushed the rest of Monitoring and Setup down the
+   * menu - so the smallest of the three funds took the most room in the list.
+   */
+  it('lists no trust screen as a menu entry of its own', () => {
+    const accounting = NAVIGATION.find((i) => i.to === '/accounting');
+    const entries = (accounting?.children ?? []).filter((c) =>
+      TRUST_TABS.some((t) => t.to === c.to),
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].label).toBe('Trust Accounts');
   });
 
   it('every heading holds at least one item', () => {
