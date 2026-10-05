@@ -71,6 +71,13 @@ const PAIRS = [
   // Check Disbursements Journal. Two versions of it is two versions of that
   // journal, and nothing would have said which was right.
   { source: 'src/lib/treasuryEntry.ts', target: 'functions/src/lib/treasuryEntry.ts' },
+  // `budgetPrograms` joined in patch 86. The ordinance importer and the Budget
+  // Programmes screen both write a programme's record, and they have to land on
+  // the SAME document id. If they disagreed, a programme added by hand and the
+  // same programme arriving in an upload would become two records under one
+  // code, and an appropriation would match whichever the picker happened to
+  // show.
+  { source: 'src/lib/budgetPrograms.ts', target: 'functions/src/lib/budgetPrograms.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

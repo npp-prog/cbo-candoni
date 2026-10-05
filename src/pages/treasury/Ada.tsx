@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Tabs } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
@@ -151,6 +152,14 @@ export default function Ada() {
                 </span>
               );
             })()}
+          {/*
+            Appendix 36 - the instrument itself. On the row rather than behind
+            an Open button, because unlike a report there is no page to open:
+            an advice is one line in this register and one sheet for the bank.
+          */}
+          <Link to={`/treasury/ada/${a.id}/form`} className="text-2xs font-medium underline">
+            Appendix 36
+          </Link>
           {canManage && can('accounting', 'cancel') && !['DEBITED', 'CANCELLED'].includes(a.status) && (
             <Button size="sm" variant="ghost" onClick={() => setCancelling(a)}>
               {canUndoOutright(a) ? 'Undo' : 'Cancel'}

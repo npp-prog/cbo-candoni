@@ -1,3 +1,4 @@
+import { programDocId } from '../lib/budgetPrograms';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
@@ -709,11 +710,23 @@ export const importBudgetLines = onCall(
         for (const r of resolved) {
           if (!r.isProgramme || seen.has(r.fppCode)) continue;
           seen.add(r.fppCode);
+          /*
+           * The id carries the YEAR as well as the code - see
+           * lib/budgetPrograms.ts for why, and it is not a small why: while
+           * the id was the code alone, uploading the FY2027 ordinance
+           * overwrote the FY2026 programme of the same code, so the name
+           * changed underneath last year's appropriations and nothing said so.
+           *
+           * `merge` within a year is still right: loading the same ordinance
+           * twice updates the programme rather than creating a second copy,
+           * and a name edited by hand afterwards is not overwritten.
+           */
           tx.set(
-            db.collection(COL.programs).doc(slug(r.fppCode)),
+            db.collection(COL.programs).doc(programDocId(fiscalYear, r.fppCode)),
             {
               code: r.fppCode,
               name: r.fppName,
+              fiscalYear,
               active: true,
               sourceReference: reference,
               updatedAt: now,

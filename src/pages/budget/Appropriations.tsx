@@ -8,10 +8,11 @@ import { Modal, ConfirmDialog } from '@/components/ui/Modal';
 import { Field, TextInput, Select, DateInput, AmountInput, TextArea } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, OfficePicker } from '@/components/pickers';
+import { Combobox } from '@/components/pickers/Combobox';
 import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAppropriations, useBudgetBalances } from '@/data/queries';
+import { useAppropriations, useBudgetBalances, usePrograms } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
@@ -25,6 +26,7 @@ import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Appropriation, AppropriationKind } from '@/types/budget';
+import { AppropriationTabs } from './appropriationTabs';
 import { fundLabel } from './Obligations';
 
 /**
@@ -230,14 +232,30 @@ export default function Appropriations() {
     },
     {
       key: 'account',
-      header: 'Account',
-      value: (a) => `${a.accountCode} ${a.accountName}`,
-      cell: (a) => (
-        <div>
-          <span className="font-mono text-xs text-slate-500">{a.accountCode}</span>{' '}
-          <span className="text-sm">{a.accountName}</span>
-        </div>
-      ),
+      header: 'Appropriated to',
+      value: (a) => `${a.accountCode} ${a.accountName} ${a.fppCode} ${a.fppName}`,
+      /*
+       * A line appropriated by project has NO object code, and reading a blank
+       * where every other row has a number says "something is missing here".
+       * Nothing is: the ordinance named the project, and the object becomes
+       * known when the obligation is raised. So the row shows what it was
+       * actually appropriated to, and says which kind of line it is.
+       */
+      cell: (a) =>
+        a.accountCode ? (
+          <div>
+            <span className="font-mono text-xs text-slate-500">{a.accountCode}</span>{' '}
+            <span className="text-sm">{a.accountName}</span>
+          </div>
+        ) : (
+          <div>
+            <span className="font-mono text-xs text-slate-500">{a.fppCode}</span>{' '}
+            <span className="text-sm">{a.fppName}</span>
+            <span className="block text-2xs uppercase tracking-wide text-brand-700">
+              By programme
+            </span>
+          </div>
+        ),
     },
     {
       key: 'expenseClass',
@@ -290,21 +308,26 @@ export default function Appropriations() {
       <PageHeader
         title="Appropriations"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
-        breadcrumbs={[{ label: 'Budget' }, { label: 'Appropriation' }]}
+        breadcrumbs={[{ label: 'Budget' }, { label: 'Appropriations' }]}
         actions={
           can('budget', 'create') && (
             <div className="flex items-center gap-2">
               <Button variant="secondary" size="sm" onClick={() => navigate('/budget/appropriations/upload')}>
                 Upload ordinance
               </Button>
-              (
-            <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
-              Record appropriation
-            </Button>
+              {/* A stray bracket sat here and rendered a literal "(" between
+                  the two buttons. */}
+              <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
+                Record appropriation
+              </Button>
             </div>
           )
         }
       />
+
+      <AppropriationTabs active="appropriations" />
+
+      <div className="my-4" />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryTile label="Original" amount={totals.original} />
@@ -416,6 +439,35 @@ function AppropriationForm({
   const [officeName, setOfficeName] = useState('');
   const [accountCode, setAccountCode] = useState<string | null>(null);
   const [accountName, setAccountName] = useState('');
+  /*
+   * ---- WHAT THE ORDINANCE APPROPRIATED TO -----------------------------
+   *
+   * Two kinds of line, and until patch 86 this form could only record one.
+   *
+   * BY OBJECT. "Office Supplies Expenses, 150,000". The object code IS the
+   * Function/Programme/Project, because the ordinance named no other thing to
+   * appropriate to. This was hardcoded - `fppCode: accountCode` - and it is
+   * right for exactly these lines.
+   *
+   * BY PROGRAMME. "Construction of Barangay Health Station, Payauan,
+   * 2,000,000". The ordinance named a PROJECT and no object at all, and the
+   * object becomes known later, when the obligation is raised against it.
+   * `accountCode` is EMPTY on these, deliberately - budget control operates at
+   * the level the appropriation was made at, and filling in a guess would
+   * control the budget at a level the Sanggunian never set.
+   *
+   * CFMS has stored both shapes from the start; the ordinance UPLOAD loads
+   * them correctly. Only this form could not, so a project-level line had to
+   * go through a spreadsheet or not at all.
+   */
+  const [basis, setBasis] = useState<'OBJECT' | 'PROGRAMME'>('OBJECT');
+  const [programCode, setProgramCode] = useState<string | null>(null);
+  const [programName, setProgramName] = useState('');
+  const programs = usePrograms();
+  const yearPrograms = useMemo(
+    () => programs.data.filter((p) => p.fiscalYear === fiscalYear),
+    [programs.data, fiscalYear],
+  );
   const [expenseClass, setExpenseClass] = useState<ExpenseClass>('MOOE');
   const [sector, setSector] = useState('');
   const [serviceSector, setServiceSector] = useState('');
@@ -545,8 +597,33 @@ function AppropriationForm({
 
   const save = async () => {
     if (isRealignment) return postRealignment();
-    if (!officeId || !accountCode || !amount || !actor) {
-      toast.error('Incomplete', 'Office, account and amount are all required.');
+    const byProgramme = basis === 'PROGRAMME';
+
+    if (!officeId || !amount || !actor) {
+      toast.error('Incomplete', 'Office and amount are both required.');
+      return;
+    }
+    if (byProgramme && !programCode) {
+      toast.error(
+        'Choose the programme',
+        'A line appropriated by project or function has to name which one, or there is nothing for an obligation to be charged against.',
+      );
+      return;
+    }
+    if (!byProgramme && !accountCode) {
+      toast.error('Choose the account', 'A line appropriated by object of expenditure needs its object code.');
+      return;
+    }
+    /*
+     * Personnel Services is appropriated by object, always - the engine's own
+     * ordinance importer refuses a PS row with no object code, and a form that
+     * accepted one here would create a line the upload would have rejected.
+     */
+    if (byProgramme && expenseClass === 'PS') {
+      toast.error(
+        'Personnel Services is appropriated by object of expenditure',
+        'Salaries and the rest are named in the ordinance by their own object codes. Choose by object, or change the expense class.',
+      );
       return;
     }
     const chosenSector = findSector(sector);
@@ -573,16 +650,20 @@ function AppropriationForm({
           fundCode,
           officeId,
           officeName,
-          // Recorded one line at a time, this form appropriates by object of
-          // expenditure, so the object code IS the FPP. A project-level
-          // appropriation has no object code and is loaded from the annex,
-          // where the FPP is the project.
-          fppCode: accountCode,
-          fppName: accountName,
+          /*
+           * On a line appropriated BY OBJECT the object code is the FPP: the
+           * ordinance named nothing else to appropriate to. On one appropriated
+           * BY PROGRAMME the FPP is the programme, and the object code is
+           * EMPTY - not blank-for-now, empty on purpose. Budget control
+           * operates at the level the appropriation was made at, and the object
+           * becomes known when the obligation is raised.
+           */
+          fppCode: byProgramme ? programCode : accountCode,
+          fppName: byProgramme ? programName : accountName,
           sector: chosenSector.name,
           serviceSector: chosenSector.fundingSource ? serviceSector : null,
-          accountCode,
-          accountName,
+          accountCode: byProgramme ? '' : accountCode,
+          accountName: byProgramme ? '' : accountName,
           expenseClass,
           kind: storedKind(kind),
           authorityReference: authorityReference.trim() || null,
@@ -679,16 +760,62 @@ function AppropriationForm({
 
         {!isRealignment && (
           <>
-            <Field label="Account" required htmlFor="account">
-              <AccountPicker
-                id="account"
-                value={accountCode}
-                onChange={(code, account) => {
-                  setAccountCode(code);
-                  setAccountName(account?.name ?? '');
-                }}
-              />
+            <Field
+              label="Appropriated to"
+              htmlFor="basis"
+              hint="What the ordinance named on this line."
+            >
+              <Select
+                id="basis"
+                value={basis}
+                onChange={(e) => setBasis(e.target.value as 'OBJECT' | 'PROGRAMME')}
+              >
+                <option value="OBJECT">An object of expenditure</option>
+                <option value="PROGRAMME">A programme, project or function</option>
+              </Select>
             </Field>
+
+            {basis === 'OBJECT' ? (
+              <Field label="Account" required htmlFor="account">
+                <AccountPicker
+                  id="account"
+                  value={accountCode}
+                  onChange={(code, account) => {
+                    setAccountCode(code);
+                    setAccountName(account?.name ?? '');
+                  }}
+                />
+              </Field>
+            ) : (
+              <Field
+                label="Programme"
+                required
+                htmlFor="programme"
+                hint={
+                  yearPrograms.length === 0
+                    ? `No programmes are set up for ${fiscalYear} yet - add them on the Budget Programmes tab.`
+                    : 'From the Budget Programmes tab. The same code next year is a separate programme.'
+                }
+              >
+                <Combobox
+                  id="programme"
+                  options={yearPrograms.map((p) => ({
+                    value: p.code,
+                    code: p.code,
+                    label: p.name,
+                    detail: p.officeName ?? undefined,
+                  }))}
+                  value={programCode}
+                  loading={programs.loading}
+                  placeholder="Programme code or name"
+                  emptyMessage={`No programme matches. Add it on the Budget Programmes tab for ${fiscalYear}.`}
+                  onChange={(v, opt) => {
+                    setProgramCode(v);
+                    setProgramName(opt?.label ?? '');
+                  }}
+                />
+              </Field>
+            )}
 
             <Field label="Expense classification" htmlFor="expenseClass">
               <Select

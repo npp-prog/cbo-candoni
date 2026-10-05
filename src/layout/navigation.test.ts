@@ -467,3 +467,40 @@ describe('the menu itself', () => {
     }
   });
 });
+
+/**
+ * Budget programmes are not master data (patch 86).
+ *
+ * "Budget Structure" sat under Master Data, among the offices and banks and
+ * tax codes - the things that are true until somebody changes them. A budget
+ * programme is not one of those: it is what the Sanggunian appropriated to in
+ * one annual budget, and it is read and added to while an appropriation is
+ * being encoded. It is a tab beside the appropriations now.
+ *
+ * Both of these would be undone by somebody "restoring" the menu entry, which
+ * is the easiest possible thing to do by accident.
+ */
+describe('the budget programmes', () => {
+  it('are not a Master Data entry', () => {
+    const master = NAVIGATION.find((i) => i.to === '/master-data');
+    const ppa = (master?.children ?? []).filter(
+      (c) => c.to === '/master-data/ppa' || /programme|program|budget structure/i.test(c.label),
+    );
+    expect(ppa).toEqual([]);
+  });
+
+  it('are not a menu entry of their own anywhere', () => {
+    const everything = NAVIGATION.flatMap((i) => [i, ...(i.children ?? [])]);
+    expect(
+      everything.filter((i) => i.to === '/budget/appropriations/programmes'),
+    ).toEqual([]);
+  });
+
+  it('leave appropriations as the one budget entry that reaches them', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    const appropriation = (budget?.children ?? []).filter((c) =>
+      c.to?.startsWith('/budget/appropriations'),
+    );
+    expect(appropriation.map((c) => c.to)).toEqual(['/budget/appropriations']);
+  });
+});

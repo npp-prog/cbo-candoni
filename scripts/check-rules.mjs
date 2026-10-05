@@ -1405,6 +1405,81 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 28. A budget programme's record is named one way -----------------------
+
+/*
+ * Two things write a programme record: the ordinance importer, as it meets a
+ * programme in the annex, and the Budget Programmes screen, when somebody adds
+ * one by hand. Both write at a KNOWN document id rather than an auto-generated
+ * one, so that loading the same ordinance twice updates the programme instead
+ * of making a second copy of it.
+ *
+ * Which means the two have to land on the SAME id. If they ever disagreed, a
+ * programme added by hand and the same programme arriving in an upload would
+ * become two records under one code, and an appropriation would be matched to
+ * whichever the picker happened to show.
+ *
+ * The id also has to carry the FISCAL YEAR. While it was the code alone,
+ * uploading the FY2027 ordinance overwrote the FY2026 programme of the same
+ * code - the name changed underneath last year's appropriations and nothing
+ * anywhere said so.
+ *
+ * `programDocId` is the one answer to both, vendored into the engine. This
+ * refuses any other way of naming the record.
+ */
+{
+  const WRITERS = [
+    'functions/src/budget/import.ts',
+    'src/pages/budget/BudgetPrograms.tsx',
+  ];
+
+  let offenders = 0;
+
+  for (const file of WRITERS) {
+    const full = resolve(root, file);
+    if (!existsSync(full)) continue;
+    const source = readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    /*
+     * Every place this file names a document in the programmes collection.
+     * Both shapes are matched: the engine's `collection(COL.programs).doc(x)`
+     * and the screen's `upsertMaster(COL.programs, x, ...)`.
+     */
+    const named = [
+      ...source.matchAll(/COL\.programs\s*\)\s*\.doc\(\s*([^),]+)/g),
+      ...source.matchAll(/upsertMaster\(\s*COL\.programs\s*,\s*([^,]+)/g),
+    ].map((m) => m[1].trim());
+
+    if (named.length === 0) {
+      offenders += 1;
+      failures.push(
+        `${file}: nothing in this file names a programme record any more, so the rule that both ` +
+          'writers use the same id cannot be checked. If programme writing moved, move this ' +
+          'check with it.',
+      );
+      continue;
+    }
+
+    const handRolled = named.filter((expr) => !expr.includes('programDocId'));
+    if (handRolled.length > 0) {
+      offenders += 1;
+      failures.push(
+        `${file}: a budget programme record is named without programDocId (${handRolled.join(', ')}). ` +
+          'The ordinance importer and the Budget Programmes screen both write these records and ' +
+          'must land on the same id, and the id must carry the fiscal year - a programme is what ' +
+          'the Sanggunian appropriated to in ONE annual budget, and an id without the year lets ' +
+          "next year's ordinance overwrite this year's programme.",
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('budget: a programme record is named by programDocId and nothing else');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

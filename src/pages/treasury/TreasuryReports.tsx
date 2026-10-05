@@ -458,10 +458,34 @@ function PrepareReport({
       // deposited like any other collection, under Collections and Deposits,
       // and reaches the ledger through the RCD. Reporting it in two places
       // would be reporting it twice.
+      /*
+       * ---- BOTH LINES NAME THE DISBURSING OFFICER ----------------------
+       *
+       * Advances for Payroll and Due to Officers and Employees are control
+       * accounts kept PER OFFICER. The comment in the engine has said so since
+       * these entries were written; the entry was going out with no subsidiary
+       * at all, so the control accounts carried a balance the subsidiary ledger
+       * could not account for - which is the one thing a cash advance has to be
+       * answerable by name.
+       *
+       * The report already knows who: the disbursing officer it was prepared
+       * for. Where it somehow does not, the lines go without rather than
+       * guessing, and the subsidiary ledger shows a gap that can be found.
+       */
+      const officer =
+        officerId && officerName
+          ? {
+              subsidiaryType: 'EMPLOYEE' as const,
+              subsidiaryId: officerId,
+              subsidiaryName: officerName,
+            }
+          : {};
+
       return [
         {
           accountCode: ACCOUNTS.dueToOfficersAndEmployees.code,
           accountName: ACCOUNTS.dueToOfficersAndEmployees.name,
+          ...officer,
           debit: total,
           credit: 0,
           particulars: `Net pay disbursed per ${short}`,
@@ -469,6 +493,7 @@ function PrepareReport({
         {
           accountCode: ACCOUNTS.advancesForPayroll.code,
           accountName: ACCOUNTS.advancesForPayroll.name,
+          ...officer,
           debit: 0,
           credit: total,
           particulars: `Liquidation of payroll cash advance per ${short}`,
@@ -507,7 +532,7 @@ function PrepareReport({
         particulars: `Collections per ${short}`,
       })),
     ];
-  }, [reportType, total, chosen, collections.data, bankAccount, short]);
+  }, [reportType, total, chosen, collections.data, bankAccount, officerId, officerName, short]);
 
   const entryBalances =
     entry.length > 0 &&

@@ -356,6 +356,20 @@ export default function TreasuryReportDetail() {
                 Certify and forward
               </Button>
             )}
+            {/*
+              The prescribed form. Offered on the report's own page rather than
+              on a row of the register, for the same reason Certify is: the form
+              is what the Treasurer SIGNS, and signing a report nobody has
+              opened is the thing these pages exist to stop.
+            */}
+            {report.reportType !== 'RCD' && (
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/treasury/reports/${report.id}/form`)}
+              >
+                Print the form
+              </Button>
+            )}
             {isRadai && bankRows.length > 0 && (
               <Button
                 variant="secondary"

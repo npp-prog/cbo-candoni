@@ -108,6 +108,35 @@ export interface Program extends SoftDeletable {
   code: string;
   name: string;
   officeId?: Id;
+  officeName?: string;
+
+  /**
+   * The year this programme belongs to.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY A PROGRAMME IS NOT A STANDING LIST
+   * ---------------------------------------------------------------------------
+   * A Function, Programme or Project is what the Sanggunian appropriated to in
+   * ONE annual budget. Next year's ordinance may keep it, rename it, split it
+   * in two or drop it - and when it drops one, the programme does not become
+   * wrong retrospectively. The FY2026 appropriations still have to show what
+   * they were made to.
+   *
+   * So the list is per year, and the same code in two years is two records.
+   * Treating it as one standing list meant renaming a programme this year
+   * silently rewrote the label on last year's appropriations, which is exactly
+   * the kind of change nobody notices until a comparison report disagrees with
+   * a printed budget.
+   *
+   * ABSENT on a programme created before patch 86 - the ordinance importer
+   * wrote those with no year at all. Those appear on the Budget Programmes tab
+   * under "not yet assigned to a year", with a button to adopt them into one.
+   * They are not hidden and they are not guessed at.
+   */
+  fiscalYear?: FiscalYear;
+
+  /** The ordinance or authority that created it, where the importer knows. */
+  sourceReference?: string;
 }
 
 export interface Project extends SoftDeletable {

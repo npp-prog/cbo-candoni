@@ -387,7 +387,19 @@ export const NAVIGATION: NavItem[] = [
       // share to, and it is listed so the Abstract of RPT Collections can
       // name which barangay each peso belongs to.
       { label: 'Barangays', to: '/master-data/barangays' },
-      { label: 'Budget Structure', to: '/master-data/ppa' },
+      /*
+         "Budget Structure" was here, and is not any more.
+
+         It was a two-field screen over the programmes collection, sitting
+         among the things that are true all the time - the offices, the banks,
+         the tax codes. A budget programme is not one of those: it is what the
+         Sanggunian appropriated to in ONE annual budget, and it is read and
+         added to while an appropriation is being encoded.
+
+         It is a tab beside the appropriations now, at
+         /budget/appropriations/programmes, and it keeps a year per programme.
+         The old address still arrives there.
+      */
       { label: 'Banks', to: '/master-data/banks' },
       { label: 'Tax Codes', to: '/master-data/tax-codes' },
       { label: 'Revenue Codes', to: '/master-data/revenue-codes' },

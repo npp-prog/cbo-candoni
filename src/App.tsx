@@ -22,6 +22,7 @@ import type { Action, Module } from './types/system';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 const Appropriations = lazy(() => import('./pages/budget/Appropriations'));
+const BudgetPrograms = lazy(() => import('./pages/budget/BudgetPrograms'));
 const Allotments = lazy(() => import('./pages/budget/Allotments'));
 const EstimatedReceipts = lazy(() => import('./pages/budget/EstimatedReceipts'));
 const TrustPrograms = lazy(() => import('./pages/accounting/TrustPrograms'));
@@ -42,6 +43,8 @@ const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
 const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
 const TreasuryReportDetail = lazy(() => import('./pages/treasury/TreasuryReportDetail'));
+const TreasuryReportForm = lazy(() => import('./pages/treasury/TreasuryReportForm'));
+const AdaAppendix36 = lazy(() => import('./pages/treasury/AdaAppendix36'));
 const PaymentUploads = lazy(() => import('./pages/treasury/PaymentUploads'));
 const AbstractUpload = lazy(() => import('./pages/treasury/AbstractUpload'));
 const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJev'));
@@ -129,6 +132,14 @@ export default function App() {
           {/* Budget */}
           <Route path="/budget" element={<Navigate to="/budget/obligations" replace />} />
           <Route path="/budget/appropriations" element={<Guard module="budget"><Appropriations /></Guard>} />
+          {/* The programmes the ordinance appropriated to, per year. A tab
+              beside the appropriations rather than a Master Data screen: it is
+              read and added to WHILE an appropriation is being encoded, not
+              months earlier in a different part of the menu. */}
+          <Route
+            path="/budget/appropriations/programmes"
+            element={<Guard module="budget"><BudgetPrograms /></Guard>}
+          />
           {/* The financing side. The ordinance carries only expenditure, so
               without this no statement has a budget column for receipts. */}
           <Route
@@ -225,6 +236,12 @@ export default function App() {
           {/* The number series is now a tab inside the ADA screen. Kept as a
               redirect so an old bookmark or notification link still lands. */}
           <Route path="/treasury/ada/numbers" element={<Navigate to="/treasury/ada" replace />} />
+          {/* The printed form comes BEFORE the detail route, which would
+              otherwise read "form" as an advice id. */}
+          <Route
+            path="/treasury/ada/:id/form"
+            element={<Guard module="treasury"><AdaAppendix36 /></Guard>}
+          />
           <Route path="/treasury/ada/:id" element={<Guard module="treasury"><AdaPage /></Guard>} />
           {/* The four treasury reports share one screen, distinguished by the
               type passed in. They are one document with four contents: the
@@ -257,6 +274,11 @@ export default function App() {
               form. One address for all four kinds: the report says which it
               is, and four routes to one screen would be four things to keep
               in step. */}
+          {/* Before the detail route, for the same reason as the ADA above. */}
+          <Route
+            path="/treasury/reports/:id/form"
+            element={<Guard module="treasury"><TreasuryReportForm /></Guard>}
+          />
           <Route
             path="/treasury/reports/:id"
             element={<Guard module="treasury"><TreasuryReportDetail /></Guard>}
@@ -435,6 +457,14 @@ export default function App() {
           <Route
             path="/master-data/accounts/upload"
             element={<Guard module="masterData" action="create"><ChartUpload /></Guard>}
+          />
+          {/* The programmes moved to a tab beside the appropriations, where
+              they are kept per year. The old Master Data address still
+              arrives - a bookmark should not become a dead end. It is listed
+              BEFORE the catch-all below, which would otherwise swallow it. */}
+          <Route
+            path="/master-data/ppa"
+            element={<Navigate to="/budget/appropriations/programmes" replace />}
           />
           <Route path="/master-data/:entity" element={<Guard module="masterData"><MasterData /></Guard>} />
 

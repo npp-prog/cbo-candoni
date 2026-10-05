@@ -23,6 +23,7 @@ import type {
   Liquidation,
   Obligation,
   Office,
+  Program,
   Payee,
   Payroll,
   Rcd,
@@ -81,6 +82,23 @@ export const useBarangays = () =>
     [ACTIVE, orderBy('sortOrder')],
     ['barangays'],
   );
+
+/**
+ * Every active budget programme, whatever year it belongs to.
+ *
+ * Deliberately NOT filtered by fiscal year in the query, and the reason is a
+ * Firestore limitation rather than a preference: a programme created before
+ * patch 86 has no `fiscalYear` field at all, and Firestore cannot match a
+ * field that is absent. A query filtered by year would hide exactly the
+ * records the office most needs to find and sort out, and would hide them
+ * silently.
+ *
+ * The list is small - an ordinance names a hundred or two - so the screen
+ * splits it by year itself, and the ones with no year get their own section
+ * instead of disappearing.
+ */
+export const usePrograms = () =>
+  useCollection<Program>(COL.programs, [ACTIVE, orderBy('code')], ['programs']);
 
 export const usePayees = () =>
   useCollection<Payee>(COL.payees, [ACTIVE, orderBy('name')], ['payees']);

@@ -383,19 +383,17 @@ const CONFIGS: Record<string, EntityConfig> = {
     ],
   },
 
-  ppa: {
-    slug: 'ppa',
-    collection: COL.programs,
-    title: 'Programmes',
-    singular: 'programme',
-    description:
-      'The programme, project and activity structure that budget lines are charged against. Projects and activities are maintained under their own collections and link back to a programme.',
-    defaultSort: 'code',
-    fields: [
-      { key: 'code', label: 'Code', type: 'text', required: true, inTable: true, mono: true, width: '8rem' },
-      { key: 'name', label: 'Programme name', type: 'text', required: true, inTable: true },
-    ],
-  },
+  /*
+    "ppa" was here: a two-field screen over the programmes collection.
+
+    Budget programmes are kept per fiscal year now and live on a tab beside the
+    appropriations, at /budget/appropriations/programmes. A programme is what
+    the Sanggunian appropriated to in ONE annual budget - it is not master data
+    in the sense the rest of this file means, which is things that are true
+    until somebody changes them.
+
+    The old address redirects; see src/App.tsx.
+  */
 
   banks: {
     slug: 'banks',

@@ -23,6 +23,7 @@ import {
   SummaryLine,
   blankRows,
 } from '@/components/print/formParts';
+import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -523,9 +524,30 @@ export default function RcdAppendix34() {
             </tr>
           </thead>
           <tbody>
+            {/*
+              Read from the chart, not written out beside a hardcoded code.
+
+              This row used to print "Cash - Collecting Officers" against
+              account 10101020. 10101020 is PETTY CASH in Candoni's chart, and
+              the entry the RCD actually posts debits 10101010, Cash Local
+              Treasury. So the printed form and the books named different
+              accounts for the same collection - the printout being display
+              only is why nobody caught it, and is no defence: an auditor
+              lining the two up would have found a difference that does not
+              exist.
+
+              This is the fourth appearance of one mistake. The other three are
+              in patches 79 and 81, and the build check that came out of them -
+              a code read from a record never carries a written-out title -
+              does not reach this one, because here the CODE was written out
+              too. Both now come from the same constant, so they cannot
+              disagree.
+            */}
             <tr>
-              <td className="border border-slate-400 px-1.5 py-1">Cash &ndash; Collecting Officers</td>
-              <td className="border border-slate-400 px-1.5 py-1 font-mono">10101020</td>
+              <td className="border border-slate-400 px-1.5 py-1">{CASH_LOCAL_TREASURY.name}</td>
+              <td className="border border-slate-400 px-1.5 py-1 font-mono">
+                {CASH_LOCAL_TREASURY.code}
+              </td>
               <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
                 {formatAmount(totalCollections, false)}
               </td>
