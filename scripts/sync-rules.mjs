@@ -64,6 +64,13 @@ const PAIRS = [
   // written in Accounting carries nobody's. The browser offers the field and
   // the engine refuses the write, so the two must agree about which is which.
   { source: 'src/lib/jevSourceKinds.ts', target: 'functions/src/lib/jevSourceKinds.ts' },
+  // `treasuryEntry` joined in patch 85, when the Report of Checks Issued began
+  // settling Accounts Payable one creditor at a time rather than in a lump.
+  // The entry was written twice - once for a report prepared by hand and once
+  // for one loaded from a bank file - and the entry a report posts IS the
+  // Check Disbursements Journal. Two versions of it is two versions of that
+  // journal, and nothing would have said which was right.
+  { source: 'src/lib/treasuryEntry.ts', target: 'functions/src/lib/treasuryEntry.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

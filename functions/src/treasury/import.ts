@@ -1,3 +1,4 @@
+import { proposePaymentEntry, rebuildPaymentEntry } from '../lib/treasuryEntry';
 import { HttpsError } from 'firebase-functions/v2/https';
 import {
   cashInBankLine,
@@ -479,6 +480,9 @@ export const importTreasuryPayments = onCall(
           sourceId: sourceRef.id,
           sourceNo,
           date: row.date,
+          // So the entry can settle Accounts Payable by creditor rather than
+          // in a lump - see src/lib/treasuryEntry.ts.
+          payeeId: dv.payeeId ?? null,
           payeeName: dv.payeeName,
           particulars: row.particulars || dv.particulars,
           amount,
@@ -521,7 +525,7 @@ export const importTreasuryPayments = onCall(
         serialTo: serials[serials.length - 1] ?? null,
         lines: reportLines,
         totalAmount: matchedTotal,
-        entry: buildEntry(importType, matchedTotal, bank),
+        entry: buildEntry(importType, reportLines as never, bank),
         status: 'DRAFT',
         importId: importRef.id,
         pendingRowCount: pendingCount,
@@ -598,9 +602,30 @@ export const importTreasuryPayments = onCall(
   },
 );
 
+/**
+ * The entry an uploaded RCI or RADAI proposes.
+ *
+ * The shape itself is in `lib/treasuryEntry.ts`, vendored from the browser's
+ * copy. This function is now only the part that is this file's business:
+ * working out the cash line from the bank record, and handing the report's
+ * documents over.
+ *
+ * It used to build the entry itself, as two lines footing to the report total.
+ * The screen that prepares a report by hand built the same two lines
+ * separately. They agreed by inspection on the day they were written and
+ * nothing made them keep agreeing - and the entry a report posts IS the Check
+ * Disbursements Journal.
+ */
 function buildEntry(
   importType: ImportType,
-  total: number,
+  lines: Array<{
+    sourceNo: string;
+    payeeId?: string | null;
+    payeeName?: string | null;
+    particulars?: string | null;
+    amount: number;
+    excluded?: boolean;
+  }>,
   bank: {
     id?: string;
     glAccountCode?: string;
@@ -609,9 +634,6 @@ function buildEntry(
     accountNumber: string;
   },
 ) {
-  if (total === 0) return [];
-  const label = importType === 'RCI' ? 'RCI' : 'RADAI';
-
   /*
    * Named from the ACCOUNT CODE, never from the bank account's own name.
    *
@@ -624,21 +646,19 @@ function buildEntry(
   const cash = cashInBankLine(bank);
   if (!cash) return [];
 
-  return [
-    {
-      accountCode: ACCOUNTS_PAYABLE.code,
-      accountName: ACCOUNTS_PAYABLE.name,
-      debit: total,
-      credit: 0,
-      particulars: `Payments per ${label}`,
-    },
-    {
-      ...cash,
-      debit: 0,
-      credit: total,
-      particulars: `Payments per ${label}`,
-    },
-  ];
+  return proposePaymentEntry({
+    kind: importType === 'RCI' ? 'RCI' : 'RADAI',
+    payable: { code: ACCOUNTS_PAYABLE.code, name: ACCOUNTS_PAYABLE.name },
+    cash,
+    documents: lines.map((l) => ({
+      sourceNo: l.sourceNo,
+      payeeId: l.payeeId ?? null,
+      payeeName: l.payeeName ?? null,
+      particulars: l.particulars ?? null,
+      amount: l.amount,
+      excluded: l.excluded,
+    })),
+  });
 }
 
 /**
@@ -873,6 +893,7 @@ export const resolveImportRow = onCall(
             sourceId: sourceRef.id,
             sourceNo,
             date,
+            payeeId: dv.payeeId ?? null,
             payeeName: dv.payeeName,
             particulars: (row.particulars as string) || dv.particulars,
             amount: dv.netAmount,
@@ -904,10 +925,24 @@ export const resolveImportRow = onCall(
         totalAmount: total,
         serialFrom: serials[0] ?? null,
         serialTo: serials[serials.length - 1] ?? null,
-        // The entry follows the total. It is only a proposal - the Accountant
-        // may replace it - but a proposal that no longer foots to the report is
-        // worse than none.
-        entry: rebuildEntry(report.entry, total),
+        /*
+         * The entry is rebuilt from the lines, not rescaled to the new total.
+         *
+         * Rescaling was right while the entry was two lines footing to one
+         * figure. It is wrong now that the payable is one line per document:
+         * the resolved row is a NEW document, and stretching the existing
+         * debits to cover it would spread one supplier's payment across
+         * everybody else's subsidiary accounts.
+         *
+         * It is only a proposal - the Accountant may replace it - but a
+         * proposal that names the wrong creditors is worse than none.
+         */
+        entry: rebuildPaymentEntry({
+          kind: batch.importType === 'RCI' ? 'RCI' : 'RADAI',
+          payable: { code: ACCOUNTS_PAYABLE.code, name: ACCOUNTS_PAYABLE.name },
+          existing: report.entry as never,
+          documents: lines as never,
+        }),
         pendingRowCount: pendingCount,
       });
 
@@ -935,14 +970,3 @@ export const resolveImportRow = onCall(
 );
 
 /** Keeps the proposed entry's two sides at the report's total. */
-function rebuildEntry(
-  entry: Array<{ debit: number; credit: number; [k: string]: unknown }> | undefined,
-  total: number,
-) {
-  if (!entry?.length) return entry ?? [];
-  return entry.map((line) => ({
-    ...line,
-    debit: line.debit > 0 ? total : 0,
-    credit: line.credit > 0 ? total : 0,
-  }));
-}

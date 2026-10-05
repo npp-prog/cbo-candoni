@@ -650,30 +650,48 @@ if (existsSync(functionsSrc)) {
   }
 }
 
-// --- 15. The voucher does not draw journal numbers --------------------------
+// --- 15. The voucher's own number is never drawn from a series --------------
 /*
- * Approving a voucher PREPARES its journal entry; posting MAKES it. The number
- * is drawn from the journal series at posting, in functions/src/accounting/jev.ts.
+ * ---------------------------------------------------------------------------
+ * THIS GUARD USED TO SAY THE OPPOSITE, AND WHY IT CHANGED
+ * ---------------------------------------------------------------------------
+ * Until patch 85 it refused dv.ts the numbering helpers altogether: approving
+ * a voucher only PREPARED its entry, so a JEV number drawn at approval was
+ * spent whether or not the entry was ever posted, and an approval that was
+ * undone left a gap in the series the office could not account for.
  *
- * A number drawn at approval is spent whether or not the entry is ever posted,
- * and an approval that is undone then leaves a gap in the series that the
- * office cannot account for. dv.ts therefore has no business importing the
- * numbering helpers at all - the voucher's own number is typed in by staff,
- * and the journal's is not its to give.
+ * Approval now posts. The gap that argument guarded against is covered by what
+ * replaced it - taking an approval back REVERSES the posted entry rather than
+ * cancelling an unposted one, so the number is spent on an entry that exists,
+ * with its reversal beside it. Guard 27 is what holds that pair together, and
+ * it is the reason this one could be relaxed rather than merely deleted.
+ *
+ * What has NOT changed is the rule underneath: the DISBURSEMENT VOUCHER's own
+ * number is typed in by accounting staff from the office's book. CFMS reserves
+ * it so it cannot be used twice; CFMS does not issue it. So dv.ts may ask the
+ * numbering series for a JEV number and for nothing else.
  */
 {
   const dvFile = resolve(root, 'functions/src/accounting/dv.ts');
   if (existsSync(dvFile)) {
     const source = readFileSync(dvFile, 'utf8');
-    if (/from '\.\.\/lib\/numbering'/.test(source)) {
+    const naked = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+    // Every document type this file asks the numbering series for.
+    const asked = [...naked.matchAll(/loadNumberingConfig\(\s*['"]([A-Z_]+)['"]\s*\)/g)].map(
+      (m) => m[1],
+    );
+    const wrong = asked.filter((kind) => kind !== 'JEV');
+
+    if (wrong.length > 0) {
       failures.push(
-        'functions/src/accounting/dv.ts imports the numbering helpers. The voucher number is ' +
-          'typed in by accounting staff and the JEV number is drawn when the entry is POSTED, ' +
-          'in functions/src/accounting/jev.ts. A number drawn at approval is lost from the ' +
-          'series if the approval is ever undone.',
+        `functions/src/accounting/dv.ts draws a ${wrong.join(', ')} number from the numbering ` +
+          "series. Only the JEV's is CFMS's to issue. The voucher's own number comes out of " +
+          'the office book and is typed in - CFMS reserves it so it cannot be used twice, ' +
+          'which is a different thing from handing it out.',
       );
     } else {
-      console.log('numbering: the voucher draws no journal number at approval');
+      console.log('numbering: the voucher draws only its journal number');
     }
   }
 }
@@ -1259,6 +1277,131 @@ if (existsSync(functionsSrc)) {
     } else {
       console.log('jevs: a correction cannot repoint an entry at another document');
     }
+  }
+}
+
+// --- 26. What makes a voucher payable is the engine's to write --------------
+
+/*
+ * Patch 85 split approving a voucher from sending it to be paid. Two fields
+ * carry that split:
+ *
+ *   `awaitingTransferToTreasury`  - approved, and Accounting is still holding it
+ *   `forwardedToTreasury`         - who sent it over, and when
+ *
+ * They are written by `approveDv` and `forwardDvToTreasury` and by nothing
+ * else. A browser able to write either could put a voucher in front of the
+ * Treasurer with nobody in Accounting having decided to send it - which is the
+ * single decision the split exists to make somebody take, and the reason the
+ * Treasurer's queue can be trusted to mean what it says.
+ *
+ * `jevPostedAt` is here for the neighbouring reason: approval now posts, and
+ * that field is the voucher's own statement that its entry reached the ledger.
+ */
+{
+  const PAYABILITY_FIELDS = [
+    'awaitingTransferToTreasury',
+    'forwardedToTreasury',
+    'jevId',
+    'jevNo',
+    'jevPostedAt',
+    'checkId',
+    'adaId',
+  ];
+
+  const block = firestore.match(
+    /match \/disbursementVouchers\/\{[^}]*\}\s*\{([\s\S]*?)\n    \}/,
+  );
+
+  if (!block) {
+    failures.push("firestore.rules: no rule block for 'disbursementVouchers'.");
+  } else {
+    // Comments stripped first - a field named only in prose is not protected,
+    // and a semicolon inside a comment would cut the clause short.
+    const naked = block[1].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const update = naked.match(/allow update:([\s\S]*?);/);
+
+    if (!update) {
+      failures.push("firestore.rules: the 'disbursementVouchers' block has no update rule.");
+    } else {
+      const unprotected = PAYABILITY_FIELDS.filter((f) => !update[1].includes(`'${f}'`));
+      if (unprotected.length > 0) {
+        failures.push(
+          `firestore.rules: the 'disbursementVouchers' update rule leaves ${unprotected.join(', ')} ` +
+            'writable from a browser. Those fields decide whether the voucher is in the books ' +
+            'and whether the Treasurer may pay it. Both are decisions an officer takes through ' +
+            'the engine, where they are checked and recorded; a client that could write them ' +
+            'takes the decision without taking it.',
+        );
+      } else {
+        console.log('vouchers: being in the books and being payable are the engine’s to say');
+      }
+    }
+  }
+}
+
+// --- 27. Approval posts, and taking it back reverses ------------------------
+
+/*
+ * Two halves of one rule, and the pair is the point.
+ *
+ * `approveDv` posts the entry it creates. If it ever stops, the General Ledger
+ * goes back to lagging the vouchers by however long it takes somebody to press
+ * Post on a second screen - which is the fault patch 85 was asked to fix.
+ *
+ * `unapproveDv` reverses that posted entry. If THAT ever stops, an approval
+ * either cannot be taken back at all, or - far worse - is taken back while its
+ * entry stays in the ledger with no voucher behind it.
+ *
+ * Checked together because each is only safe while the other holds. Posting at
+ * approval without the reversal leaves entries stranded; the reversal without
+ * the posting is dead code nobody notices has stopped being exercised.
+ */
+{
+  const file = 'functions/src/accounting/dv.ts';
+  const full = resolve(root, file);
+  const source = existsSync(full) ? readFileSync(full, 'utf8') : '';
+
+  const PAIR = [
+    {
+      fn: 'export const approveDv',
+      proof: /postJevInTransaction\s*\(/,
+      why:
+        'approveDv no longer posts the entry it creates. Approving a voucher is the decision ' +
+        'that the claim is proper, and the books say so at that moment - leaving it to a ' +
+        'second button means the ledger lags the vouchers by however long it takes somebody ' +
+        'to remember.',
+    },
+    {
+      fn: 'export const unapproveDv',
+      proof: /buildReversalLines\s*\(/,
+      why:
+        'unapproveDv no longer reverses the posted entry. Since approval posts, taking an ' +
+        'approval back must put a reversing entry in the books - otherwise the approval ' +
+        'cannot be taken back at all, or is taken back leaving ledger lines behind that no ' +
+        'voucher accounts for.',
+    },
+  ];
+
+  let broken = 0;
+
+  for (const half of PAIR) {
+    const start = source.indexOf(half.fn);
+    if (start < 0) {
+      broken += 1;
+      failures.push(`${file}: ${half.fn} is gone; the approval chain cannot be checked.`);
+      continue;
+    }
+    const next = source.indexOf('\nexport const ', start + 10);
+    const body = source.slice(start, next > 0 ? next : undefined);
+    if (!half.proof.test(body)) {
+      broken += 1;
+      failures.push(`${file}: ${half.why}`);
+    }
+  }
+
+  if (broken === 0) {
+    console.log('vouchers: approval posts the entry, and taking it back reverses it');
   }
 }
 

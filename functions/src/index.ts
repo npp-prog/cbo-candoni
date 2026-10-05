@@ -52,7 +52,14 @@ export { recordTrustProgram } from './accounting/trustPrograms';
 export { importChartOfAccounts } from './masterdata/accounts';
 
 // --- Accounting --------------------------------------------------------------
-export { submitDv, reviewDv, approveDv, unapproveDv, cancelDv } from './accounting/dv';
+export {
+  submitDv,
+  reviewDv,
+  approveDv,
+  forwardDvToTreasury,
+  unapproveDv,
+  cancelDv,
+} from './accounting/dv';
 export { postJev, reverseJev, correctJev, amendPostedJev } from './accounting/jev';
 export { issueCheck, cancelCheck, issueAda, cancelAda } from './accounting/payments';
 export { postLiquidation } from './accounting/liquidation';

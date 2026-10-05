@@ -406,7 +406,13 @@ service cloud.firestore {
         && officeAllowed(resource.data.officeId)
         && didNotChange([
           'dvNo', 'createdBy', 'approvedBy', 'certifiedBy',
-          'jevId', 'jevNo', 'checkId', 'adaId',
+          'jevId', 'jevNo', 'jevPostedAt', 'checkId', 'adaId',
+          // Whether this voucher is the Treasurer's to pay. A browser that
+          // could write either of these could put a voucher in front of the
+          // Treasurer without anybody in Accounting having sent it, which is
+          // the one decision the split between approving and sending exists
+          // to make somebody take.
+          'awaitingTransferToTreasury', 'forwardedToTreasury',
           // Engine property; see the obligation rule above.
           'attachmentsLockedAt', 'attachmentsLockedBy'
         ]);

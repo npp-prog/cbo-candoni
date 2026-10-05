@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { awaitingPayment, totalAwaiting, daysWaiting, type PayableVoucher } from './paymentQueue';
+import {
+  awaitingPayment,
+  awaitingTransfer,
+  totalAwaiting,
+  daysWaiting,
+  type PayableVoucher,
+} from './paymentQueue';
 
 const dv = (over: Partial<PayableVoucher> & { id: string }): PayableVoucher => ({
   dvNo: '100-26-01-0001',
@@ -113,5 +119,53 @@ describe('daysWaiting', () => {
 
   it('returns zero rather than NaN on a date it cannot read', () => {
     expect(daysWaiting('not a date', '2026-01-05')).toBe(0);
+  });
+});
+
+/**
+ * The split between approved and sent over (patch 85).
+ *
+ * The case that matters most here is the fourth one. Getting the flag the
+ * wrong way round would have emptied the Treasurer's queue of every voucher
+ * approved before the patch, and nothing would have said so - the suppliers
+ * would simply have stopped being paid.
+ */
+describe('awaitingPayment: Accounting has to send it over', () => {
+  const base = {
+    dvDate: '2026-10-01',
+    payeeName: 'Negros Hardware',
+    particulars: 'Office supplies',
+    netAmount: 100_000,
+    status: 'APPROVED',
+  };
+
+  it('does not offer a voucher Accounting is still holding', () => {
+    const held = { ...base, id: 'a', dvNo: '100-26-10-0001', awaitingTransferToTreasury: true };
+    expect(awaitingPayment([held])).toEqual([]);
+    expect(awaitingTransfer([held]).map((v) => v.id)).toEqual(['a']);
+  });
+
+  it('offers it once it has been sent', () => {
+    const sent = { ...base, id: 'b', dvNo: '100-26-10-0002', awaitingTransferToTreasury: false };
+    expect(awaitingPayment([sent]).map((v) => v.id)).toEqual(['b']);
+    expect(awaitingTransfer([sent])).toEqual([]);
+  });
+
+  it('keeps a voucher approved before patch 85, which carries neither field', () => {
+    const old = { ...base, id: 'c', dvNo: '100-26-09-0099' };
+    expect(awaitingPayment([old]).map((v) => v.id)).toEqual(['c']);
+    expect(awaitingTransfer([old])).toEqual([]);
+  });
+
+  it('never offers a held voucher that somehow already has a check', () => {
+    const paid = {
+      ...base,
+      id: 'd',
+      dvNo: '100-26-10-0003',
+      awaitingTransferToTreasury: true,
+      checkId: 'chk1',
+    };
+    expect(awaitingPayment([paid])).toEqual([]);
+    expect(awaitingTransfer([paid])).toEqual([]);
   });
 });

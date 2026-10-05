@@ -25,6 +25,7 @@ const ACTION_LABELS: Record<string, string> = {
   CANCEL: 'Cancelled',
   REVERSE: 'Reversed',
   REOPEN: 'Reopened',
+  FORWARD: 'Sent to Treasury',
 };
 
 const ACTION_TONE: Record<string, string> = {
@@ -39,6 +40,7 @@ const ACTION_TONE: Record<string, string> = {
   CANCEL: 'bg-rose-600',
   REVERSE: 'bg-violet-600',
   REOPEN: 'bg-violet-600',
+  FORWARD: 'bg-brand-500',
 };
 
 export function WorkflowTimeline({

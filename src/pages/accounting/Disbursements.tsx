@@ -212,6 +212,14 @@ export default function Disbursements() {
           {(d.attachmentCount ?? 0) === 0 && d.status === 'DRAFT' && (
             <Badge tone="amber">No attachments</Badge>
           )}
+          {/*
+            Approved, in the books, and still this office's to release. Without
+            it a voucher held back "for now" is in no list at all, and gets
+            found three weeks later by the supplier asking.
+          */}
+          {d.status === 'APPROVED' && d.awaitingTransferToTreasury && (
+            <Badge tone="amber">Not yet sent</Badge>
+          )}
         </div>
       ),
     },

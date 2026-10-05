@@ -137,16 +137,45 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
   adaNo?: string;
 
   status: DvStatus;
-  /** The entry prepared from this voucher. Set when the voucher is approved. */
+  /** The entry this voucher raised. Set when the voucher is approved. */
   jevId?: Id;
   /**
-   * The entry's journal number, and the moment it was posted. Both are set
-   * when the Accountant posts, and not before: the number is drawn from the
-   * journal series at posting, so a prepared entry has none. These two fields
-   * are therefore also the voucher's own answer to "is it in the books".
+   * The entry's journal number, and the moment it was posted.
+   *
+   * Since patch 85 both are set at APPROVAL, because approving a voucher now
+   * posts its entry in the same act. They used to be set later, when the
+   * Accountant pressed Post on a second screen - which meant the General
+   * Ledger lagged the vouchers by however long that took.
+   *
+   * Either one empty on an approved voucher means it was approved before
+   * patch 85 and its entry is still waiting to be posted by hand.
    */
   jevNo?: string | null;
-  jevPostedAt?: string;
+  jevPostedAt?: string | null;
+
+  /**
+   * Approved and in the books, and Accounting has not sent it to Treasury yet.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS IS NOT JUST "APPROVED"
+   * ---------------------------------------------------------------------------
+   * Approval says the claim is proper. Sending it says the municipality is
+   * ready to pay it, and those are different statements - a voucher can be
+   * perfectly proper and still be one the office wants to hold for cash, for a
+   * supplier query, or to release with a batch.
+   *
+   * Until this split there was only one way to hold a voucher back: not
+   * approve it. Which meant the books waited on a cash decision, and the
+   * Accountant's approval was being used to say something it does not mean.
+   *
+   * Written true by `approveDv`, false by `forwardDvToTreasury`. ABSENT on
+   * every voucher approved before patch 85, which is what keeps those in the
+   * Treasurer's queue instead of making them vanish from it. See
+   * `src/lib/paymentQueue.ts`.
+   */
+  awaitingTransferToTreasury?: boolean | null;
+  /** Who sent it over, and when. */
+  forwardedToTreasury?: ActorStamp | null;
 
   attachmentCount: number;
   /**

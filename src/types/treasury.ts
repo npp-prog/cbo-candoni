@@ -347,6 +347,21 @@ export interface TreasuryReportLine {
   /** Its own number - check number, ADA number, OR number, payroll number. */
   sourceNo: string;
   date: IsoDate;
+  /**
+   * The payee record, where the report knows which one it was.
+   *
+   * The name alone was kept until patch 85, deliberately: a report prints as
+   * it was certified years later, and a denormalised name cannot be changed
+   * out from under it by someone renaming a payee.
+   *
+   * The id is here as well now, and only for the journal entry. The entry
+   * settles Accounts Payable one creditor at a time, and a subsidiary ledger
+   * is kept by RECORD, not by name - two suppliers with similar names would
+   * otherwise be merged into one subsidiary account by a guess. Absent on a
+   * report loaded from a bank file, which has names and no ids; the entry
+   * then leaves those lines without a subsidiary rather than guessing.
+   */
+  payeeId?: Id;
   payeeName?: string;
   particulars?: string;
   /**

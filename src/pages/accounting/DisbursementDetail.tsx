@@ -93,7 +93,16 @@ export default function DisbursementDetail() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<
-    null | 'submit' | 'approve' | 'unapprove' | 'post' | 'return' | 'cancel' | 'check' | 'ada'
+    | null
+    | 'submit'
+    | 'approve'
+    | 'unapprove'
+    | 'post'
+    | 'forward'
+    | 'return'
+    | 'cancel'
+    | 'check'
+    | 'ada'
   >(null);
 
   // --- Form state ----------------------------------------------------------
@@ -258,10 +267,17 @@ export default function DisbursementDetail() {
   /**
    * The entry this voucher raised, still waiting to be posted.
    *
-   * PAID counts. Posting the books and paying the supplier are two officers'
-   * acts and neither waits for the other: a voucher paid by check this morning
-   * may still be posted this afternoon, and refusing it here would leave the
-   * entry unposted with no way to post it.
+   * ---------------------------------------------------------------------------
+   * THIS BUTTON IS NOW FOR OLD VOUCHERS ONLY
+   * ---------------------------------------------------------------------------
+   * Approval posts the entry from patch 85 onwards, so a voucher approved
+   * since then arrives here already in the books and the button never appears.
+   * It remains for the vouchers approved BEFORE that, whose entries are sitting
+   * prepared and unposted. Removing it would leave those with no way to be
+   * posted at all.
+   *
+   * PAID counts, for the same reason it always did: posting the books and
+   * paying the supplier are two officers' acts and neither waits for the other.
    *
    * `jevPostedAt` is the voucher's own record of having been posted, written
    * by the engine in the posting transaction.
@@ -274,9 +290,26 @@ export default function DisbursementDetail() {
     hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   /**
-   * Taking the approval back. Offered only before anything irreversible: the
-   * server refuses once a check or advice exists, or once the entry is posted,
-   * and the button goes with the voucher's status rather than guessing.
+   * Sending it over to Treasury.
+   *
+   * The second half of what approval used to do in one step. A voucher is
+   * approved and in the books the moment the Accountant says the claim is
+   * proper; it becomes the Treasurer's to pay when somebody here sends it.
+   *
+   * Absent on a voucher approved before patch 85 - those went straight to
+   * Treasury on approval and are already there.
+   */
+  const canForward =
+    !isNew &&
+    status === 'APPROVED' &&
+    Boolean(existing?.awaitingTransferToTreasury) &&
+    !existing?.checkId &&
+    !existing?.adaId &&
+    hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+
+  /**
+   * Taking the approval back. The server refuses once a check or an advice has
+   * been drawn; the posted entry is reversed in the same act.
    */
   const canUnapprove =
     !isNew &&
@@ -504,6 +537,11 @@ export default function DisbursementDetail() {
                 Post to General Ledger
               </Button>
             )}
+            {canForward && (
+              <Button variant="primary" onClick={() => setConfirm('forward')}>
+                Send to Treasury
+              </Button>
+            )}
             {canUnapprove && (
               <Button variant="secondary" onClick={() => setConfirm('unapprove')}>
                 Undo approval
@@ -518,8 +556,8 @@ export default function DisbursementDetail() {
               drawing a check something done by whoever had the voucher open,
               which is where that separation stopped being visible.
 
-              The voucher now appears on TREASURY > DISBURSEMENTS FOR PAYMENT
-              as soon as it is approved, and is paid from there.
+              The voucher appears on TREASURY > DISBURSEMENTS FOR PAYMENT once
+              somebody here presses Send to Treasury, and is paid from there.
             */}
             {!isNew && can('accounting', 'cancel') && status !== 'CANCELLED' && (
               <Button variant="danger" onClick={() => setConfirm('cancel')}>
@@ -1027,9 +1065,11 @@ export default function DisbursementDetail() {
             const result = await engine.unapproveDv({ dvId: id!, reason });
             toast.success(
               `DV ${result.dvNo ?? ''} is a draft again`.trim(),
-              result.cancelledJevNo
-                ? `The obligation has its balance back and journal entry ${result.cancelledJevNo} has been cancelled.`
-                : 'The obligation has its balance back.',
+              result.reversingJevNo
+                ? `The obligation has its balance back, and JEV ${result.reversedJevNo} has been reversed by JEV ${result.reversingJevNo}.`
+                : result.cancelledJevNo
+                  ? `The obligation has its balance back and journal entry ${result.cancelledJevNo} has been cancelled.`
+                  : 'The obligation has its balance back.',
             );
           }, 'The approval was not taken back');
         }}
@@ -1043,16 +1083,64 @@ export default function DisbursementDetail() {
             <p>
               The voucher becomes a draft again so the figures can be corrected.{' '}
               {existing?.obrNo ? `OBR ${existing.obrNo}` : 'The obligation'} gets its unpaid
-              balance back, and the journal entry prepared from it is cancelled. It never reached
-              the books and it holds no journal number, so nothing is left out of the series.
+              balance back.
             </p>
+            {existing?.jevPostedAt ? (
+              <p className="mt-2">
+                <strong>A REVERSING ENTRY IS POSTED</strong>, dated today. JEV{' '}
+                <strong className="font-mono">{existing?.jevNo}</strong> stays in the books and a
+                second entry undoes it, so the General Ledger carries what was recorded and what
+                undid it. Nothing is erased, which is why the journal series has no gap in it.
+              </p>
+            ) : (
+              <p className="mt-2">
+                The journal entry prepared from it is cancelled. It never reached the books and
+                holds no journal number, so nothing is left out of the series.
+              </p>
+            )}
             <p className="mt-2">
               It keeps its number, <strong className="font-mono">{existing?.dvNo}</strong>, and
               keeps it reserved, so nobody else can take it while this one is corrected.
             </p>
             <p className="mt-2 text-xs text-slate-500">
               Recorded as a critical audit event. The server refuses it once a check or an advice
-              has been drawn, or once the entry has been posted.
+              has been drawn - undo the payment in Treasury first. The reversal must land in an
+              open month, and the server will say so if it does not.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'forward'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={(remarks) =>
+          void run(async () => {
+            const result = await engine.forwardDvToTreasury({ dvId: id!, remarks });
+            toast.success(
+              `DV ${result.dvNo ?? ''} sent to Treasury`.trim(),
+              'It is now on Disbursements for Payment.',
+            );
+          }, 'The voucher was not sent')
+        }
+        loading={busy}
+        title={`Send DV ${existing?.dvNo ?? ''} to Treasury`.trim()}
+        confirmLabel="Send to Treasury"
+        variant="primary"
+        message={
+          <>
+            <p>
+              The voucher appears on <strong>Treasury &gt; Disbursements for Payment</strong>, and
+              the Treasurer can draw a check or prepare an advice against it.
+            </p>
+            <p className="mt-2">
+              Nothing about the books changes. It is already recorded as JEV{' '}
+              <strong className="font-mono">{existing?.jevNo}</strong>; this is the decision that
+              the municipality is ready to pay it.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              A note here is optional and goes into the approval history - useful where the
+              voucher has been held for a while and somebody will ask why.
             </p>
           </>
         }
@@ -1066,7 +1154,7 @@ export default function DisbursementDetail() {
             const result = await engine.approveDv({ dvId: id! });
             toast.success(
               `Approved as DV ${result.dvNo}`,
-              'Its journal entry is prepared. Post it from this screen to put it in the General Ledger - it takes its JEV number then.',
+              `In the General Ledger as JEV ${result.jevNo}. Send it to Treasury when it is to be paid.`,
             );
           }, 'The voucher was not approved')
         }
@@ -1081,13 +1169,19 @@ export default function DisbursementDetail() {
               {dvCategory === 'TRUST_LIABILITY'
                 ? ' against the trust liability it settles'
                 : ` against OBR ${obrNo ?? ''}`}
-              , and prepares the journal entry.
+              , and <strong>posts its journal entry to the General Ledger</strong>. The entry
+              takes its JEV number now.
+            </p>
+            <p className="mt-2">
+              It does NOT go to Treasury. The voucher stays here until somebody presses{' '}
+              <strong>Send to Treasury</strong>, so a voucher held back for cash or for a
+              supplier query can be held without withholding approval from it.
             </p>
             <p className="mt-2 text-xs text-slate-500">
               {dvCategory === 'TRUST_LIABILITY'
                 ? 'No allotment is consumed: a trust liability settles money the municipality is holding, not an expenditure. That it debits no expense is re-checked on the server.'
                 : 'The unpaid balance of the obligation and the state of the accounting period are re-checked on the server.'}{' '}
-              Posting to the General Ledger is a separate act by the Municipal Accountant.
+              The accounting period must be open, which is also re-checked there.
             </p>
           </>
         }

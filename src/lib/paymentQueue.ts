@@ -29,6 +29,27 @@ export interface PayableVoucher {
   checkId?: Id | null;
   /** Set once an advice has been prepared against it. */
   adaId?: Id | null;
+  /**
+   * Approved, and Accounting has not sent it over yet.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THE FLAG READS THIS WAY ROUND
+   * ---------------------------------------------------------------------------
+   * TRUE means "not yours yet". It is written as true by `approveDv` and set
+   * false by `forwardDvToTreasury`.
+   *
+   * It is deliberately not `forwardedToTreasury: boolean`, because of the
+   * vouchers already in the database. A voucher approved before patch 85 was
+   * payable the moment it was approved and carries NEITHER field. Under this
+   * shape it reads as falsy and stays in the queue, where it has been sitting
+   * and where a supplier is owed. Under the other shape every one of them
+   * would have read as "not forwarded" and disappeared from the Treasurer's
+   * screen on the day the patch went in - owed, and invisible.
+   *
+   * This is the same trap patch 76 fell into with PAID, and the comment below
+   * about PAID is what it cost.
+   */
+  awaitingTransferToTreasury?: boolean | null;
 }
 
 /**
@@ -48,19 +69,43 @@ export interface PayableVoucher {
 const UNPAID_STATUSES = new Set<string>(['APPROVED', 'PAID']);
 
 /**
- * Owed, and nothing drawn against it yet.
+ * Owed, sent over, and nothing drawn against it yet.
  *
  * A voucher that already has a check or an advice is NOT shown. It has been
  * paid once; offering it again is offering to pay it twice, and the server
  * would refuse but the Treasurer should never be put in front of the button.
  *
+ * Nor is one Accounting has not sent over. Approving a voucher says the claim
+ * is proper; sending it says the municipality is ready to pay it. A voucher
+ * held back for cash, for a supplier query, or to go out with a batch is still
+ * approved and still in the books - it is just not the Treasurer's yet.
+ *
  * Note what is NOT a condition: whether the journal entry has been posted.
  * Posting writes the books and paying moves the money; they are two officers'
- * acts and neither waits for the other.
+ * acts and neither waits for the other. (Since patch 85 approval posts, so an
+ * unposted approved voucher is one from before - still payable, as it always
+ * was.)
  */
 export function awaitingPayment<T extends PayableVoucher>(vouchers: T[]): T[] {
   return vouchers
     .filter((v) => UNPAID_STATUSES.has(v.status))
+    .filter((v) => !v.awaitingTransferToTreasury)
+    .filter((v) => !v.checkId && !v.adaId)
+    .slice()
+    .sort(byOldestFirst);
+}
+
+/**
+ * Approved, in the books, and waiting for somebody in Accounting to send it.
+ *
+ * The other half of the same split, so the office can see what it is sitting
+ * on. Without this the held vouchers are in no list at all - which is how a
+ * voucher gets held back "for now" and found three weeks later.
+ */
+export function awaitingTransfer<T extends PayableVoucher>(vouchers: T[]): T[] {
+  return vouchers
+    .filter((v) => v.status === 'APPROVED')
+    .filter((v) => Boolean(v.awaitingTransferToTreasury))
     .filter((v) => !v.checkId && !v.adaId)
     .slice()
     .sort(byOldestFirst);

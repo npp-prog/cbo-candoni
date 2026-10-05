@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { newestFirst } from '@/lib/registerOrder';
 import {
   cashInBankLine,
@@ -61,6 +62,8 @@ interface SourceDoc {
   id: string;
   sourceNo: string;
   date: string;
+  /** Carried onto the report line so the entry can name the creditor. */
+  payeeId?: string;
   payeeName?: string;
   particulars?: string;
   /** What the report reports: the face amount, or a payroll's net. */
@@ -331,6 +334,7 @@ function PrepareReport({
           id: c.id,
           sourceNo: c.checkNo,
           date: c.checkDate,
+          payeeId: c.payeeId,
           payeeName: c.payeeName,
           particulars: c.particulars,
           amount: c.netAmount,
@@ -343,6 +347,7 @@ function PrepareReport({
           id: a.id,
           sourceNo: a.adaNo,
           date: a.adaDate,
+          payeeId: a.payeeId,
           payeeName: a.payeeName,
           particulars: a.particulars,
           amount: a.amount,
@@ -420,21 +425,24 @@ function PrepareReport({
        */
       const cash = bankAccount ? cashInBankLine(bankAccount, accountTitle) : null;
       if (!cash) return [];
-      return [
-        {
-          accountCode: ACCOUNTS.accountsPayable.code,
-          accountName: ACCOUNTS.accountsPayable.name,
-          debit: total,
-          credit: 0,
-          particulars: `Payments per ${short}`,
-        },
-        {
-          ...cash,
-          debit: 0,
-          credit: total,
-          particulars: `Payments per ${short}`,
-        },
-      ];
+      /*
+       * One payable line per check or advice, each naming its creditor. The
+       * shape, and the reasons for it, are in src/lib/treasuryEntry.ts - which
+       * the engine reads the same copy of, so a report prepared here and one
+       * loaded from a bank file propose the same entry.
+       */
+      return proposePaymentEntry({
+        kind: reportType,
+        payable: ACCOUNTS.accountsPayable,
+        cash,
+        documents: chosen.map((d) => ({
+          sourceNo: d.sourceNo,
+          payeeId: d.payeeId ?? null,
+          payeeName: d.payeeName ?? null,
+          particulars: d.particulars ?? null,
+          amount: d.amount,
+        })),
+      });
     }
 
     if (reportType === 'RCDISB') {
@@ -556,6 +564,7 @@ function PrepareReport({
         sourceId: d.id,
         sourceNo: d.sourceNo,
         date: d.date,
+        payeeId: d.payeeId,
         payeeName: d.payeeName,
         particulars: d.particulars,
         amount: d.amount,

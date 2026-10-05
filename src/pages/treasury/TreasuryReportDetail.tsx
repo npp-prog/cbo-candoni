@@ -12,7 +12,8 @@ import { SignedTotalNote } from '@/components/SignedTotalNote';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useAttachments } from '@/data/queries';
+import { useAttachments, usePayees, useEmployees } from '@/data/queries';
+import { buildBankPayrollFile } from '@/lib/bankUpload';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
@@ -71,6 +72,66 @@ export default function TreasuryReportDetail() {
    * screen writes it.
    */
   const { data: jev } = useDocument<JournalEntryVoucher>(COL.jevs, report?.jevId ?? undefined);
+
+  /*
+   * The payees and employees behind an ADA report, read only to find each
+   * one's account at the bank for the upload file below. Loaded only for a
+   * RADAI - every other report type has no use for them and would be paying
+   * for two master queries it never reads.
+   */
+  const isRadai = report?.reportType === 'RADAI';
+  const payees = usePayees();
+  const employees = useEmployees();
+
+  /**
+   * The rows of the file the bank's application reads.
+   *
+   * The account number comes from the EMPLOYEE record where the payee is one,
+   * and from the payee record otherwise. That order is deliberate: a payroll
+   * ADA pays staff, the employee record is the one the HR office keeps current,
+   * and a payee record created for somebody who is also an employee is the
+   * copy more likely to be stale.
+   */
+  const bankRows = useMemo(() => {
+    if (!isRadai || !report) return [];
+    const payeeById = new Map(payees.data.map((p) => [p.id, p]));
+    const employeeById = new Map(employees.data.map((e) => [e.id, e]));
+
+    return report.lines
+      .filter((l) => !l.excluded)
+      .map((l) => {
+        const payee = l.payeeId ? payeeById.get(l.payeeId) : undefined;
+        const employee = payee?.employeeId ? employeeById.get(payee.employeeId) : undefined;
+        return {
+          accountNumber: employee?.bankAccountNumber || payee?.bankAccountNumber || '',
+          name: l.payeeName ?? '',
+          amount: l.amount,
+        };
+      });
+  }, [isRadai, report, payees.data, employees.data]);
+
+  const bankFile = useMemo(() => buildBankPayrollFile(bankRows), [bankRows]);
+
+  /**
+   * Hands the file over.
+   *
+   * Named for the report so a folder of them is readable, and `.csv` because
+   * that is what the bank application takes. If it will not build, the screen
+   * says who is missing an account number rather than producing a file that
+   * the bank rejects after the upload.
+   */
+  const downloadBankFile = () => {
+    if (!bankFile.content || !report) return;
+    const blob = new Blob([bankFile.content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RADAI-${(report.reportNo ?? 'draft').replace(/[^\w.-]+/g, '-')}-bank.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   const [tab, setTab] = useState<'coverage' | 'entry' | 'attachments' | 'history'>('coverage');
   const [confirm, setConfirm] = useState<
@@ -295,6 +356,22 @@ export default function TreasuryReportDetail() {
                 Certify and forward
               </Button>
             )}
+            {isRadai && bankRows.length > 0 && (
+              <Button
+                variant="secondary"
+                disabled={!bankFile.content}
+                title={
+                  bankFile.content
+                    ? 'ATM number, name and amount, for the bank application'
+                    : `${bankFile.missing.length} ${
+                        bankFile.missing.length === 1 ? 'payee has' : 'payees have'
+                      } no account number on file`
+                }
+                onClick={downloadBankFile}
+              >
+                Download for the bank
+              </Button>
+            )}
             {!finished && canCertify && (
               <Button variant="secondary" onClick={() => setConfirm('withdraw')}>
                 Withdraw
@@ -321,6 +398,28 @@ export default function TreasuryReportDetail() {
               Attach it on the Supporting documents tab
             </button>
             . Certify and forward is refused until then, by the server as well as by this screen.
+          </p>
+        </Alert>
+      )}
+
+      {isRadai && bankRows.length > 0 && bankFile.missing.length > 0 && (
+        <Alert
+          tone="warning"
+          className="mb-4"
+          title={`${bankFile.missing.length} ${
+            bankFile.missing.length === 1 ? 'payee has' : 'payees have'
+          } no account number on file`}
+        >
+          <p>
+            The file for the bank cannot be produced until every row has one. A blank account
+            number is either rejected by the bank after the upload - which the office finds out
+            about from the bank, afterwards - or, on a less careful bank application, paid into
+            the account on the line above.
+          </p>
+          <p className="mt-2">
+            Add the number under <strong>Master Data &gt; Payees</strong>, or on the employee
+            record where the payee is a member of staff:{' '}
+            <span className="font-medium">{bankFile.missing.join(', ')}</span>.
           </p>
         </Alert>
       )}

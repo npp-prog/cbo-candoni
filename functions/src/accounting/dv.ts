@@ -12,11 +12,16 @@ import {
   type Role,
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
-import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
+import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
 import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
 import { checkDvCategory, checkDvMath } from '../lib/rules';
-import { createJevInTransaction, type JevLineData } from '../lib/ledger';
-import { UNNUMBERED_JEV } from '../lib/jevNumbers';
+import {
+  createJevInTransaction,
+  postJevInTransaction,
+  buildReversalLines,
+  type JevLineData,
+} from '../lib/ledger';
+import { loadNumberingConfig, issueNumbers, bookCodeForFund } from '../lib/numbering';
 import {
   readTrustProgram,
   applyTrustDelta,
@@ -553,20 +558,44 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     }
 
     /*
-     * ---- THE JEV HAS NO NUMBER YET ------------------------------------
+     * ---- THE JEV NUMBER, DRAWN HERE -----------------------------------
      *
-     * Approving a voucher PREPARES its journal entry; it does not make it.
-     * The entry is made when the Municipal Accountant posts it, and that is
-     * where the number is drawn from the journal series.
+     * Approving a voucher now MAKES its journal entry rather than preparing
+     * one, so the number is drawn here, in the read phase, before any write.
      *
-     * A number drawn here would be spent whether or not the entry was ever
-     * posted. An approval that is undone cancels the entry, and the number it
-     * held becomes a gap in the series that the office cannot account for -
-     * which is exactly the kind of gap an auditor asks about.
+     * It used to be left until the Accountant pressed Post, and the reasoning
+     * was a series with no gaps: a number drawn for an entry that is never
+     * posted is a number the office cannot account for. What happened in
+     * practice was worse than a gap. Posting was a second act on a second
+     * screen, and vouchers approved on a Friday sat unposted - so the General
+     * Ledger lagged the vouchers by however long it took somebody to remember,
+     * and every report drawn in between was short by the vouchers nobody had
+     * got to.
      *
-     * The placeholder is the word both sides of CFMS recognise as "none yet";
-     * see src/lib/jevNumbers.ts.
+     * The gap the old rule guarded against is now covered by what replaced it:
+     * taking back an approval REVERSES the posted entry rather than cancelling
+     * an unposted one, so the number is not freed and not lost - it is spent
+     * on an entry that exists, with its reversal beside it. That is a series an
+     * auditor can read straight through.
+     *
+     * Drawn before any write, as the transaction ordering requires. This is
+     * the only number this transaction issues: the voucher's own number is
+     * typed by staff and reserved above, not issued from a series.
      */
+    const jevCfg = await loadNumberingConfig('JEV');
+    const jevBookCode = await bookCodeForFund(dv.fundCode);
+    const [issuedJevNo] = await issueNumbers(tx, [
+      {
+        cfg: jevCfg,
+        parts: {
+          bookCode: jevBookCode,
+          fundCode: dv.fundCode,
+          fiscalYear: dv.fiscalYear,
+          month: period,
+        },
+      },
+    ]);
+    const jevNo = issuedJevNo as string;
 
     // ---- WRITE PHASE --------------------------------------------------------
 
@@ -593,8 +622,8 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       particulars: l.particulars ?? dv.particulars,
     }));
 
-    const { jevId } = createJevInTransaction(tx, caller, {
-      jevNo: UNNUMBERED_JEV,
+    const jevData = {
+      jevNo,
       jevDate: dv.dvDate,
       fiscalYear: dv.fiscalYear,
       period,
@@ -622,6 +651,26 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       payeeName: dv.payeeName,
       particulars: dv.particulars,
       lines: jevLines,
+    } as const;
+
+    const { jevId, totalDebit, totalCredit } = createJevInTransaction(tx, caller, jevData);
+
+    /*
+     * ---- AND POSTED, IN THE SAME ACT -------------------------------------
+     *
+     * Approving a voucher writes the books. Posting is no longer a second
+     * button on a second screen that somebody has to remember.
+     *
+     * This does NOT make the voucher payable. The Treasurer sees it only once
+     * somebody sends it over - see `awaitingTransferToTreasury` below. Writing
+     * the entry and releasing the money are still two acts; what has been
+     * joined is approving and recording, which were never two decisions.
+     */
+    postJevInTransaction(tx, caller, jevId, {
+      ...jevData,
+      totalDebit,
+      totalCredit,
+      status: 'DRAFT',
     });
 
     // Consume the obligation proportionally across its lines. Where a DV
@@ -729,11 +778,29 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     tx.update(ref, {
       dvNo,
       status: 'APPROVED',
-      assignedToRole: 'MUNICIPAL_TREASURER',
+      /*
+       * It stays with Accounting. The voucher is approved and in the books,
+       * and the one thing left is a decision somebody in this office makes:
+       * whether to send it over to be paid.
+       */
+      assignedToRole: 'MUNICIPAL_ACCOUNTANT',
       jevId,
-      // Deliberately not `jevNo`. The voucher learns its entry's number when
-      // the entry is posted and the screen reads it from the entry itself.
-      jevNo: null,
+      jevNo,
+      jevPostedAt: now,
+      /*
+       * ---- NOT YET THE TREASURER'S ---------------------------------------
+       *
+       * Approval used to drop the voucher straight into Disbursements for
+       * Payment. It no longer does: somebody presses Send to Treasury, and
+       * until they do the voucher is approved, recorded, and nobody's to pay.
+       *
+       * Written as TRUE on approval rather than left absent, and that detail
+       * matters for the vouchers already in the database. A voucher approved
+       * before this patch has no such field at all, so it reads as falsy and
+       * stays in the Treasurer's queue where it has been sitting - rather than
+       * vanishing from it and leaving a supplier owed and invisible.
+       */
+      awaitingTransferToTreasury: true,
       approvedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
 
@@ -748,23 +815,111 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       action: 'APPROVE',
       previousStatus: dv.status,
       newStatus: 'APPROVED',
-      assignedToRole: 'MUNICIPAL_TREASURER',
-      remarks: 'Approved for payment. Its journal entry is prepared and awaiting posting.',
+      assignedToRole: 'MUNICIPAL_ACCOUNTANT',
+      remarks: `Approved and posted to the General Ledger as JEV ${jevNo}. Not yet sent to Treasury.`,
     });
 
-    notifyInTransaction(tx, {
-      recipientRole: 'MUNICIPAL_ACCOUNTANT',
-      kind: 'PENDING_REVIEW',
-      title: 'Journal entry awaiting posting',
-      body: `The journal entry for DV ${dvNo} is prepared and ready to post. It takes its JEV number when you post it.`,
-      entityType: COL.jevs,
-      entityId: jevId,
-      link: `/accounting/jev/${jevId}`,
-    });
-
-    return { dvId, dvNo, jevId, jevNo: null };
+    return { dvId, dvNo, jevId, jevNo };
   });
 });
+
+/**
+ * forwardDvToTreasury - hand an approved voucher over to be paid.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS AN ACT AND NOT A CONSEQUENCE
+ * ---------------------------------------------------------------------------
+ * Approval used to do two things at once: it recorded that the claim was
+ * proper, and it put the voucher in front of the Treasurer to be paid. Those
+ * read as one step and are not.
+ *
+ * A voucher can be perfectly proper and still not be one the municipality
+ * wants paid this week - cash on hand, a supplier query, a document promised
+ * and not yet produced, a batch somebody wants released together. Under the
+ * old arrangement the only way to hold one back was to not approve it, which
+ * meant the books waited on a cash decision and the Accountant's approval was
+ * being used to say something it does not mean.
+ *
+ * So approving now records, and this releases. The Treasurer's queue shows
+ * what Accounting has actually sent over, which is the question that queue is
+ * supposed to answer.
+ *
+ * Accounting's own act, deliberately: the office that approved the claim is
+ * the one that decides when it goes. The Treasurer decides HOW and WHEN to pay
+ * what arrives - that half is unchanged.
+ */
+export const forwardDvToTreasury = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, APPROVING_ROLES);
+    const { dvId, remarks } = (request.data ?? {}) as { dvId?: string; remarks?: string };
+    if (!dvId) throw invalid('A disbursement voucher id is required.');
+
+    return db.runTransaction(async (tx) => {
+      const ref = db.collection(COL.disbursementVouchers).doc(dvId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The disbursement voucher');
+      const dv = snap.data() as DvDoc & { awaitingTransferToTreasury?: boolean };
+
+      if (dv.status !== 'APPROVED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `Only an approved voucher can be sent to Treasury. DV ${dv.dvNo ?? dvId} is ${dv.status.toLowerCase()}.`,
+        );
+      }
+      if (!dv.awaitingTransferToTreasury) {
+        throw new HttpsError(
+          'failed-precondition',
+          `DV ${dv.dvNo} is already with Treasury. It is in Disbursements for Payment there.`,
+        );
+      }
+
+      assertFundInScope(caller, dv.fundCode);
+
+      const now = new Date().toISOString();
+
+      tx.update(ref, {
+        awaitingTransferToTreasury: false,
+        assignedToRole: 'MUNICIPAL_TREASURER',
+        forwardedToTreasury: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+        },
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'APPROVE',
+        entityType: COL.disbursementVouchers,
+        entityId: dvId,
+        entityRef: `DV ${dv.dvNo ?? dvId}`,
+        fiscalYear: dv.fiscalYear,
+        fundCode: dv.fundCode,
+        action: 'FORWARD',
+        previousStatus: 'APPROVED',
+        newStatus: 'APPROVED',
+        assignedToRole: 'MUNICIPAL_TREASURER',
+        remarks: remarks?.trim()
+          ? `Sent to Treasury for payment. ${remarks.trim()}`
+          : 'Sent to Treasury for payment.',
+      });
+
+      notifyInTransaction(tx, {
+        recipientRole: 'MUNICIPAL_TREASURER',
+        kind: 'PENDING_REVIEW',
+        title: 'Voucher for payment',
+        body: `DV ${dv.dvNo} for ${dv.payeeName} has been sent over by Accounting.`,
+        entityType: COL.disbursementVouchers,
+        entityId: dvId,
+        link: `/treasury/payments`,
+      });
+
+      return { dvId, dvNo: dv.dvNo ?? null };
+    });
+  },
+);
 
 export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, APPROVING_ROLES);
@@ -877,6 +1032,15 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
  * an auditor could not account for; a cancelled entry is a hole with its
  * reason attached.
  */
+/** Just enough of a posted entry to reverse it. */
+interface JevDocForReversal {
+  jevNo: string;
+  book: string;
+  status: string;
+  reversedByJevId?: string;
+  lines: JevLineData[];
+}
+
 export const unapproveDv = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
@@ -909,25 +1073,124 @@ export const unapproveDv = onCall(
         );
       }
 
-      let jevSnap = null;
+      /*
+       * ---- THE ENTRY IS POSTED, AND THAT IS NOW THE NORMAL CASE ----------
+       *
+       * This used to refuse outright: "reverse the journal entry instead; an
+       * approval cannot be taken back once the books are written." That was a
+       * fair rule when approval only PREPARED the entry, so the posted case
+       * was the unusual one. Approval now posts, so refusing would mean an
+       * approval could never be taken back at all - a control removed by a
+       * side effect of a different change, which is how controls quietly go
+       * missing.
+       *
+       * So this does in one act what the Accountant would otherwise do in
+       * three: it posts a reversing entry dated today, releases the obligation,
+       * and puts the voucher back in the originating office's hands. The books
+       * carry the entry AND its reversal, which is what actually happened and
+       * what an auditor expects to be able to read.
+       *
+       * Nothing is deleted. The reversal is why the JEV number drawn at
+       * approval is not a gap in the series.
+       */
+      let posted: JevDocForReversal | null = null;
       if (dv.jevId) {
-        jevSnap = await tx.get(db.collection(COL.jevs).doc(dv.jevId));
-        if (jevSnap.exists && jevSnap.data()?.status === 'POSTED') {
-          throw new HttpsError(
-            'failed-precondition',
-            `JEV ${dv.jevNo} has already been posted to the General Ledger. Reverse the journal entry instead; an approval cannot be taken back once the books are written.`,
-          );
+        const jevSnap = await tx.get(db.collection(COL.jevs).doc(dv.jevId));
+        if (jevSnap.exists) {
+          const jev = jevSnap.data() as JevDocForReversal;
+          if (jev.status === 'POSTED') {
+            if (jev.reversedByJevId) {
+              throw new HttpsError(
+                'failed-precondition',
+                `JEV ${dv.jevNo} has already been reversed. The approval cannot be taken back twice.`,
+              );
+            }
+            posted = jev;
+          }
         }
       }
 
       await assertFiscalYearOpen(dv.fiscalYear, tx);
+
+      /*
+       * The reversal is dated TODAY and must land in an open month. Dating it
+       * back to the original would quietly reopen a month that has been
+       * reported on; reopening one is a deliberate act, not a side effect of
+       * taking back an approval.
+       */
+      const revDate = todayPh();
+      const revPeriod = periodOf(revDate);
+      const revYear = Number(revDate.slice(0, 4));
+      let reversingNo: string | null = null;
+
+      if (posted) {
+        await assertFiscalYearOpen(revYear, tx);
+        await assertPeriodOpen(
+          revYear,
+          revPeriod,
+          dv.fundCode,
+          `Reversal of JEV ${dv.jevNo}`,
+          tx,
+        );
+        const cfg = await loadNumberingConfig('JEV');
+        const bookCode = await bookCodeForFund(dv.fundCode);
+        const [issued] = await issueNumbers(tx, [
+          {
+            cfg,
+            parts: {
+              bookCode,
+              fundCode: dv.fundCode,
+              fiscalYear: revYear,
+              month: revPeriod,
+            },
+          },
+        ]);
+        reversingNo = issued as string;
+      }
 
       const reversal = await readDvConsumption(tx, dv);
 
       // ---- WRITE PHASE ------------------------------------------------------
       applyDvConsumption(tx, dv, reversal, -1);
 
-      if (dv.jevId) {
+      let reversingJevId: string | null = null;
+
+      if (posted && reversingNo) {
+        const reversingLines = buildReversalLines(posted.lines);
+        const reversingData = {
+          jevNo: reversingNo,
+          jevDate: revDate,
+          fiscalYear: revYear,
+          period: revPeriod,
+          fundCode: dv.fundCode,
+          book: posted.book,
+          sourceType: 'REVERSING' as const,
+          sourceId: dv.jevId!,
+          referenceNo: posted.jevNo,
+          payeeId: dv.payeeId ?? null,
+          payeeName: dv.payeeName ?? null,
+          particulars: `Reversal of JEV ${posted.jevNo} - approval of DV ${dv.dvNo} taken back. ${reason.trim()}`,
+          lines: reversingLines,
+        };
+
+        const created = createJevInTransaction(tx, caller, reversingData);
+        reversingJevId = created.jevId;
+
+        postJevInTransaction(tx, caller, created.jevId, {
+          ...reversingData,
+          totalDebit: created.totalDebit,
+          totalCredit: created.totalCredit,
+          status: 'DRAFT',
+        });
+
+        // The original stays POSTED and points at what undid it. A reversed
+        // entry is not a cancelled one: both are in the books.
+        tx.update(db.collection(COL.jevs).doc(dv.jevId!), {
+          reversedByJevId: created.jevId,
+        });
+      } else if (dv.jevId) {
+        // An entry that never reached the ledger - a voucher approved before
+        // patch 85, when approval only prepared the entry.
         tx.update(db.collection(COL.jevs).doc(dv.jevId), {
           status: 'CANCELLED',
           cancelledReason: `Approval of DV ${dv.dvNo} taken back: ${reason.trim()}`,
@@ -938,11 +1201,16 @@ export const unapproveDv = onCall(
       tx.update(ref, {
         status: 'DRAFT',
         assignedToRole: null,
-        // The approval is gone, and so is the entry it raised. The workflow
-        // history below keeps both acts rather than erasing the first.
+        awaitingTransferToTreasury: false,
+        forwardedToTreasury: null,
+        // The approval is gone. The ENTRY is not: it was posted, and a posted
+        // entry is reversed rather than erased. The voucher stops pointing at
+        // it because a draft voucher has no entry - the entry and its reversal
+        // are findable in the journal, under the voucher's own number.
         approvedBy: null,
         jevId: null,
         jevNo: null,
+        jevPostedAt: null,
         unapprovedBy: {
           uid: caller.uid,
           name: caller.name,
@@ -965,11 +1233,24 @@ export const unapproveDv = onCall(
         newStatus: 'DRAFT',
         remarks: `Approval taken back, ${(dv.grossAmount / 100).toFixed(2)} released back to ${
           dv.obrNo ? `OBR ${dv.obrNo}` : 'the obligation'
-        }${dv.jevNo ? `, JEV ${dv.jevNo} cancelled` : ''}. Reason: ${reason.trim()}`,
+        }${
+          reversingNo
+            ? `. JEV ${dv.jevNo} reversed by JEV ${reversingNo}`
+            : dv.jevNo
+              ? `, JEV ${dv.jevNo} cancelled`
+              : ''
+        }. Reason: ${reason.trim()}`,
         severity: 'CRITICAL',
       });
 
-      return { dvId, dvNo: dv.dvNo ?? null, cancelledJevNo: dv.jevNo ?? null };
+      return {
+        dvId,
+        dvNo: dv.dvNo ?? null,
+        reversedJevNo: reversingNo ? (dv.jevNo ?? null) : null,
+        reversingJevNo: reversingNo,
+        reversingJevId,
+        cancelledJevNo: reversingNo ? null : (dv.jevNo ?? null),
+      };
     });
   },
 );

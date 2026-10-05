@@ -256,23 +256,48 @@ export const engine = {
     call<typeof p, { dvId: Id; status: string }>('reviewDv', p),
 
   /**
-   * Approves a DV, draws its number if not yet drawn, and generates the
-   * proposed JEV. The JEV is created in DRAFT - approval of a voucher and
-   * posting to the ledger are two distinct acts by two distinct roles.
+   * Approves a DV, consumes its obligation, and POSTS its journal entry to the
+   * General Ledger in the same act.
+   *
+   * Posting used to be a second button on a second screen. It is not any more:
+   * approving a voucher is the decision that the claim is proper, and the
+   * books should say so the moment it is made rather than whenever somebody
+   * next opens the entry.
+   *
+   * It does NOT make the voucher payable. See `forwardDvToTreasury`.
    */
   approveDv: (p: { dvId: Id }) =>
-    // `jevNo` is null: the entry takes its journal number when it is POSTED.
-    call<typeof p, { dvId: Id; dvNo: string; jevId: Id; jevNo: string | null }>('approveDv', p),
+    call<typeof p, { dvId: Id; dvNo: string; jevId: Id; jevNo: string }>('approveDv', p),
+
+  /**
+   * Hands an approved voucher over to Treasury to be paid.
+   *
+   * The second half of what approval used to do in one step. Approving records
+   * that the claim is proper; this releases it for payment, and a voucher the
+   * office wants to hold back can now be held without withholding approval.
+   */
+  forwardDvToTreasury: (p: { dvId: Id; remarks?: string }) =>
+    call<typeof p, { dvId: Id; dvNo: string | null }>('forwardDvToTreasury', p),
 
   /**
    * The Accountant takes an approval back so the voucher can be corrected.
-   * Refused once a check or advice exists, or once the entry is posted.
+   *
+   * Refused once a check or advice exists. The posted entry is REVERSED in the
+   * same act - the books carry the entry and its reversal, and the voucher
+   * goes back to DRAFT.
    */
   unapproveDv: (p: { dvId: Id; reason: string }) =>
-    call<typeof p, { dvId: Id; dvNo: string | null; cancelledJevNo: string | null }>(
-      'unapproveDv',
-      p,
-    ),
+    call<
+      typeof p,
+      {
+        dvId: Id;
+        dvNo: string | null;
+        reversedJevNo: string | null;
+        reversingJevNo: string | null;
+        reversingJevId: Id | null;
+        cancelledJevNo: string | null;
+      }
+    >('unapproveDv', p),
 
   cancelDv: (p: { dvId: Id; reason: string }) => call<typeof p, { dvId: Id }>('cancelDv', p),
 

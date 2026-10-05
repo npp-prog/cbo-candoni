@@ -107,7 +107,15 @@ export type WorkflowAction =
   | 'REJECT'
   | 'CANCEL'
   | 'REVERSE'
-  | 'REOPEN';
+  | 'REOPEN'
+  /*
+   * Handing an approved voucher over to Treasury to be paid.
+   *
+   * Its own action rather than a second APPROVE, because the timeline is read
+   * to answer "where is this and who has it", and two entries both reading
+   * "Approved" would answer it twice and differently.
+   */
+  | 'FORWARD';
 
 export interface WorkflowInput {
   caller: Caller;
