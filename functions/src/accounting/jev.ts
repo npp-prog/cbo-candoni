@@ -507,13 +507,14 @@ export const correctJev = onCall(
  *   the particulars and the total WERE, who changed them and why. The screen
  *   shows it. An entry corrected twice says so on its face.
  *
- *   THE TOTAL STAYS TIED TO THE DOCUMENT BEHIND IT. On an entry raised by a
- *   voucher or a certified treasury report the accounts, the date and the
- *   particulars are the Accountant's to correct, but the amount is a figure
- *   another officer signed. If THAT is wrong, the voucher is corrected - undo
- *   the approval, fix it, approve again - which corrects its entry with it.
- *   An entry written in General Transactions has no such document, so its
- *   amount is editable like everything else.
+ *   AN AMOUNT THAT LEAVES ITS DOCUMENT SAYS SO. The total was once refused on
+ *   an entry raised by a voucher or a certified treasury report, because the
+ *   amount is a figure another officer signed. The Municipal Accountant has
+ *   asked for it to be correctable, so instead of refusing, CFMS records what
+ *   the document was signed for and shows the disagreement on the entry, on
+ *   the document, and in the audit trail until it is resolved. Correcting the
+ *   entry back to the signed figure clears it. Refusing only ever moved the
+ *   correction somewhere CFMS could not see.
  *
  *   THE MONTH CANNOT CHANGE. The JEV number carries the month it belongs to,
  *   and the journal series is kept per month. Moving an entry into another
@@ -558,6 +559,7 @@ export const amendPostedJev = onCall(
         reversedByJevId?: string;
         postedAt?: string;
         corrections?: unknown[];
+        signedTotal?: number | null;
       };
 
       if (original.status !== 'POSTED') {
@@ -619,15 +621,33 @@ export const amendPostedJev = onCall(
       await assertExpenseDebitsCarryAnFpp(corrected);
 
       /*
-       * The amount a document fixed stays fixed. See the note at the head of
-       * this function.
+       * ---------------------------------------------------------------------
+       * THE AMOUNT ON A DOCUMENT-SOURCED ENTRY
+       * ---------------------------------------------------------------------
+       * CFMS used to REFUSE this outright, and the argument for refusing is
+       * still true: the total on an entry raised by a disbursement voucher or
+       * a certified treasury report is a figure another officer signed, and an
+       * entry that quietly stops agreeing with the paper behind it is the
+       * thing an auditor is looking for.
+       *
+       * The Municipal Accountant has asked for the amount to be correctable
+       * like everything else, and that is his call to make. So the control
+       * moves from PREVENTING the disagreement to RECORDING it, which is the
+       * next best thing and arguably the more honest one: the refusal only
+       * ever pushed the correction somewhere CFMS could not see it.
+       *
+       * `signedTotal` is the figure on the paper, captured the FIRST time the
+       * entry diverges and never overwritten afterwards - a second correction
+       * must not quietly reset the baseline to the first correction's figure,
+       * which would make the entry look as though it agreed with a document it
+       * no longer agrees with. Correcting back to the signed figure clears it.
        */
-      if (!isDirectEntry(original.sourceType) && totalDebit !== original.totalDebit) {
-        throw new HttpsError(
-          'failed-precondition',
-          `This entry was raised by ${original.referenceNo ? `${original.sourceType} ${original.referenceNo}` : `a ${original.sourceType.toLowerCase()}`}, which was signed for ${(original.totalDebit / 100).toFixed(2)}. The accounts, the date and the particulars are yours to correct, but the amount is that document's. If the amount itself is wrong, correct the document and its entry is corrected with it.`,
-        );
-      }
+      const documentSourced = !isDirectEntry(original.sourceType);
+      const signedBefore = original.signedTotal ?? null;
+      /** What the document was signed for, whether or not it has diverged yet. */
+      const signedTotal = documentSourced ? signedBefore ?? original.totalDebit : null;
+      const divergesNow = signedTotal !== null && totalDebit !== signedTotal;
+      const divergedBefore = signedBefore !== null && original.totalDebit !== signedBefore;
 
       // ---- WRITE PHASE ----------------------------------------------------
 
@@ -646,6 +666,11 @@ export const amendPostedJev = onCall(
          * What it said before, appended rather than replaced. An entry
          * corrected twice carries both corrections, and the screen shows them.
          */
+        /*
+         * Set while the ledger disagrees with the signed paper, cleared when a
+         * later correction brings it back. Both screens read this one field.
+         */
+        signedTotal: divergesNow ? signedTotal : null,
         corrections: FieldValue.arrayUnion({
           at: now,
           by: { uid: caller.uid, name: caller.name, position: caller.position ?? null },
@@ -670,7 +695,30 @@ export const amendPostedJev = onCall(
         action: 'POST',
         previousStatus: 'POSTED',
         newStatus: 'POSTED',
-        remarks: `Posted entry corrected in an open month: ${result.removed} ledger ${result.removed === 1 ? 'line' : 'lines'} replaced with ${result.written}. ${reason.trim()}`,
+        remarks: [
+          `Posted entry corrected in an open month: ${result.removed} ledger ${result.removed === 1 ? 'line' : 'lines'} replaced with ${result.written}.`,
+          /*
+           * Spelled out in the audit trail rather than left to be worked out
+           * from two totals in two places. An auditor filtering on CRITICAL
+           * gets the sentence that matters without opening anything.
+           */
+          divergesNow
+            ? `AMOUNT NO LONGER AGREES WITH THE SOURCE DOCUMENT: ${
+                original.referenceNo
+                  ? `${original.sourceType} ${original.referenceNo}`
+                  : `the ${original.sourceType.toLowerCase()}`
+              } was signed for ${(signedTotal! / 100).toFixed(2)}; this entry now carries ${(
+                totalDebit / 100
+              ).toFixed(2)}.`
+            : divergedBefore
+              ? `Amount brought back to the ${(signedTotal! / 100).toFixed(
+                  2,
+                )} the source document was signed for.`
+              : null,
+          reason.trim(),
+        ]
+          .filter(Boolean)
+          .join(' '),
         severity: 'CRITICAL',
       });
 
@@ -679,6 +727,8 @@ export const amendPostedJev = onCall(
         jevNo: original.jevNo,
         ledgerEntryCount: result.written,
         replaced: result.removed,
+        /** So the screen can say so without re-reading the entry. */
+        signedTotal: divergesNow ? signedTotal : null,
       };
     });
   },

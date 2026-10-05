@@ -72,7 +72,7 @@ export default function TreasuryReportJev() {
    * which has sat for a week is the one that matters. That was right while
    * this screen was only a queue. It is now also where a journalized report is
    * found again, and a history read bottom-up is a history nobody reads. What
-   * is waiting is on the tab counts instead, and in the status filter.
+   * is waiting is in the status filter instead.
    */
   const rows = useMemo(() => {
     let out = tab ? data.filter((r) => r.reportType === tab) : data;
@@ -80,20 +80,34 @@ export default function TreasuryReportJev() {
     return newestFirst(out, (r) => ({ ref: r.reportNo, date: r.reportDate }));
   }, [data, tab, status]);
 
-  const waitingIn = (type: string) =>
-    data.filter((r) => r.status === 'CERTIFIED' && (!type || r.reportType === type)).length;
-
+  /*
+   * The tabs carry no count.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THE NUMBER CAME OFF
+   * ---------------------------------------------------------------------------
+   * It counted the reports still AWAITING an entry, while the tab it sat on
+   * holds every report received - journalized ones included, which is the
+   * whole reason this screen stopped being only a queue. So "RCI (0)" sat
+   * above a tab with a year of journalized RCIs in it, and the only reading a
+   * number in that position has is "there is nothing here".
+   *
+   * Showing the total instead would have been no better: it would duplicate
+   * the row count the table prints at its foot, and it would move every time
+   * the status filter beside it moved.
+   *
+   * What is still waiting is a question the STATUS FILTER answers, exactly and
+   * without ambiguity. One control for it, not two that disagree.
+   */
   const tabs = useMemo(
     () => [
-      { id: '', label: 'All reports', count: waitingIn('') },
+      { id: '', label: 'All reports' },
       ...TREASURY_REPORT_TYPES.map((t) => ({
         id: t,
         label: TREASURY_REPORT_SHORT[t],
-        count: waitingIn(t),
       })),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data],
+    [],
   );
 
   const columns: Column<TreasuryReport>[] = [

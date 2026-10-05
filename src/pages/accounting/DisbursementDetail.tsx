@@ -15,12 +15,13 @@ import {
   PayeePicker,
 } from '@/components/pickers';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
+import { SignedTotalNote } from '@/components/SignedTotalNote';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useTaxCodes, useDisbursementVouchers } from '@/data/queries';
+import { useTaxCodes, useDisbursementVouchers, usePayees } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
@@ -33,7 +34,7 @@ import {
   type DeductionLite,
   type ObligationLineLite,
 } from './proposeEntry';
-import type { DisbursementVoucher } from '@/types/accounting';
+import type { DisbursementVoucher, JournalEntryVoucher } from '@/types/accounting';
 import {
   DV_CATEGORIES,
   DV_CATEGORY_HINTS,
@@ -79,6 +80,12 @@ export default function DisbursementDetail() {
     isNew ? null : COL.disbursementVouchers,
     id,
   );
+  /*
+   * The entry this voucher raised, read only. It is here so the voucher can
+   * say when the Accountant's correction has left the entry carrying a
+   * different amount from the one on this paper - see SignedTotalNote.
+   */
+  const { data: jev } = useDocument<JournalEntryVoucher>(COL.jevs, existing?.jevId ?? undefined);
   const taxCodes = useTaxCodes();
   const allVouchers = useDisbursementVouchers(fiscalYear, fundCode);
 
@@ -119,6 +126,16 @@ export default function DisbursementDetail() {
   const [payeeName, setPayeeName] = useState('');
   const [payeeTin, setPayeeTin] = useState('');
   const [payeeAddress, setPayeeAddress] = useState('');
+  /*
+   * Whether the TIN on this screen is the encoder's own typing.
+   *
+   * It stops the master data writing over a correction. Set when somebody
+   * types in the box, and when an existing voucher is loaded - a saved
+   * voucher shows the TIN it was SAVED with, because that is the number that
+   * was on the paper, and a payee whose TIN was corrected in Master Data last
+   * week must not silently restate a voucher signed the week before.
+   */
+  const [tinTouched, setTinTouched] = useState(false);
   const [officeId, setOfficeId] = useState<string | null>(null);
   const [officeName, setOfficeName] = useState('');
   const [particulars, setParticulars] = useState('');
@@ -139,6 +156,7 @@ export default function DisbursementDetail() {
     setPayeeName(existing.payeeName);
     setPayeeTin(existing.payeeTin ?? '');
     setPayeeAddress(existing.payeeAddress ?? '');
+    setTinTouched(true);
     setOfficeId(existing.officeId);
     setOfficeName(existing.officeName);
     setParticulars(existing.particulars);
@@ -162,11 +180,41 @@ export default function DisbursementDetail() {
         fppName: l.fppName,
         debit: l.debit,
         credit: l.credit,
+        // Dropped here until patch 84, so a saved voucher came back with an
+        // empty Subsidiary ledger column however carefully it had been filled.
+        subsidiaryType: l.subsidiaryType,
+        subsidiaryId: l.subsidiaryId,
+        subsidiaryName: l.subsidiaryName,
         particulars: l.particulars,
       })),
     );
     setEntryTouched(true);
   }, [existing]);
+
+  /*
+   * The TIN and the address, from the payee's record in Master Data.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS IS AN EFFECT AND NOT PART OF THE PAYEE PICKER
+   * ---------------------------------------------------------------------------
+   * There are two ways a payee lands on a voucher: somebody picks one, or they
+   * pick an OBLIGATION and the payee arrives with it. The picker filled the
+   * TIN in; the obligation did not - so a voucher raised the normal way, from
+   * its Obligation Request, came up with the TIN box empty and the number was
+   * typed again on a voucher whose payee CFMS already knew.
+   *
+   * Keyed on the payee rather than on how the payee got here, so both routes
+   * are answered by one piece of code and a third route added later is
+   * answered by it too.
+   */
+  const payees = usePayees();
+  useEffect(() => {
+    if (tinTouched || !payeeId) return;
+    const payee = payees.data.find((p) => p.id === payeeId);
+    if (!payee) return;
+    setPayeeTin(payee.tin ?? '');
+    setPayeeAddress((current) => current || payee.address || '');
+  }, [payeeId, payees.data, tinTouched]);
 
   const totalDeductions = useMemo(() => deductions.reduce((s, d) => s + d.amount, 0), [deductions]);
   const netAmount = (grossAmount ?? 0) - totalDeductions;
@@ -185,10 +233,20 @@ export default function DisbursementDetail() {
         // Always Accounts Payable, whatever the payment method. The voucher
         // recognises the liability; the check or ADA credits cash and clears it.
         // See the note at the top of proposeEntry.ts.
+        payee: payeeId && payeeName ? { id: payeeId, name: payeeName } : null,
         particulars: particulars || undefined,
       }),
     );
-  }, [grossAmount, deductions, netAmount, obligationLines, particulars, entryTouched]);
+  }, [
+    grossAmount,
+    deductions,
+    netAmount,
+    obligationLines,
+    particulars,
+    payeeId,
+    payeeName,
+    entryTouched,
+  ]);
 
   const status = existing?.status ?? 'DRAFT';
   const editable = isNew || ['DRAFT', 'RETURNED'].includes(status);
@@ -327,6 +385,11 @@ export default function DisbursementDetail() {
       debit: l.debit,
       credit: l.credit,
       officeId: officeId ?? null,
+      // The engine carries these onto the journal entry; dropping them here
+      // meant the subsidiary chosen on the screen never reached the ledger.
+      subsidiaryType: l.subsidiaryType ?? null,
+      subsidiaryId: l.subsidiaryId ?? null,
+      subsidiaryName: l.subsidiaryName ?? null,
       particulars: l.particulars ?? null,
     })),
     bankAccountId: bankAccountId ?? null,
@@ -502,6 +565,8 @@ export default function DisbursementDetail() {
         </Alert>
       )}
 
+      <SignedTotalNote jev={jev} from="document" />
+
       <Tabs
         tabs={[
           { id: 'details', label: 'Voucher' },
@@ -607,6 +672,8 @@ export default function DisbursementDetail() {
                         if (obr) {
                           setPayeeId(obr.payeeId);
                           setPayeeName(obr.payeeName);
+                          // Let the master data answer for the TIN again.
+                          setTinTouched(false);
                           setOfficeId(obr.officeId);
                           setOfficeName(obr.officeName);
                           if (!particulars) setParticulars(obr.particulars);
@@ -625,16 +692,27 @@ export default function DisbursementDetail() {
                     disabled={!canEdit}
                     allowAdd
                     onChange={(v, p) => {
+                      // The TIN and the address are filled by the effect above,
+                      // which also covers the payee arriving with an obligation.
                       setPayeeId(v);
                       setPayeeName(p?.name ?? '');
-                      setPayeeTin(p?.tin ?? '');
-                      setPayeeAddress(p?.address ?? '');
+                      setTinTouched(false);
+                      setPayeeAddress('');
                     }}
                   />
                 </Field>
 
                 <Field label="TIN" htmlFor="tin">
-                  <TextInput id="tin" value={payeeTin} onChange={(e) => setPayeeTin(e.target.value)} disabled={!canEdit} />
+                  <TextInput
+                    id="tin"
+                    value={payeeTin}
+                    onChange={(e) => {
+                      setTinTouched(true);
+                      setPayeeTin(e.target.value);
+                    }}
+                    disabled={!canEdit}
+                    placeholder="000-000-000-000"
+                  />
                 </Field>
 
                 <Field label="Office" required htmlFor="office">

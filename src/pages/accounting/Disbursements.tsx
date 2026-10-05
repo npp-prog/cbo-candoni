@@ -175,14 +175,31 @@ export default function Disbursements() {
       header: 'Payment',
       width: '9rem',
       value: (d) => d.checkNo ?? d.adaNo ?? '',
-      cell: (d) => (
-        <div className="text-xs">
-          <span className="text-slate-500">Not yet paid</span>
-          {(d.checkNo || d.adaNo) && (
-            <span className="block font-mono text-navy-800">{d.checkNo ?? d.adaNo}</span>
-          )}
-        </div>
-      ),
+      /*
+       * "Not yet paid" used to be printed on EVERY row, with the check number
+       * added underneath where there was one - so a voucher paid by check last
+       * Tuesday read:
+       *
+       *     Not yet paid
+       *     100-26-09-0043
+       *
+       * which is the register contradicting itself in two lines. The engine
+       * was right all along: `issueCheck` and `issueAda` write the number and
+       * set the voucher to PAID in the same transaction as the instrument.
+       * Only this cell was wrong.
+       */
+      cell: (d) => {
+        const paidWith = d.checkNo ?? d.adaNo ?? null;
+        if (!paidWith) return <span className="text-xs text-slate-500">Not yet paid</span>;
+        return (
+          <div className="text-xs">
+            <span className="text-2xs uppercase tracking-wide text-slate-500">
+              {d.checkNo ? 'Check' : 'ADA'}
+            </span>
+            <span className="block font-mono text-navy-800">{paidWith}</span>
+          </div>
+        );
+      },
     },
     {
       key: 'status',

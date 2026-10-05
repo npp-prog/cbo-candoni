@@ -440,10 +440,11 @@ service cloud.firestore {
       // reviewers stop at FOR_REVIEW: once the Accountant has approved the
       // entry, changing it is the Accountant's act.
       //
-      // POSTED is absent from both lists on purpose. A posted entry is
-      // corrected through correctJev, which reverses it in the ledger and
-      // opens a fresh draft - so the books carry the mistake, the reversal and
-      // the correction, which is what an auditor expects to find.
+      // POSTED is absent from both lists on purpose. A posted entry is never
+      // written from a browser. It is corrected by the engine: correctJev
+      // reverses it and opens a fresh draft, and amendPostedJev rewrites it in
+      // place while its month is open - both after checks no client can make,
+      // and both leaving a record on the entry itself.
       allow update: if signedIn()
         && resource.data.status in ['DRAFT', 'FOR_REVIEW', 'APPROVED']
         && request.resource.data.status in ['DRAFT', 'FOR_REVIEW', 'APPROVED']
@@ -453,10 +454,26 @@ service cloud.firestore {
             && hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER', 'ACCOUNTING_ENCODER']))
           || hasAny(['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'])
         )
-        && didNotChange([
-          'jevNo', 'createdBy', 'postedBy', 'postedAt',
-          'reversesJevId', 'reversedByJevId', 'sourceType', 'sourceId'
-        ]);
+        && didNotChange(
+          // `corrections` and `signedTotal` are the entry's own record of
+          // having been changed after posting, and of no longer agreeing with
+          // the document it came from. Both are written by the engine inside
+          // the transaction that makes the change true. A browser that could
+          // write either could erase the evidence of the edit it just made.
+          //
+          // `referenceNo` is conditional, and that is the point. On an entry
+          // written in Accounting it is the office's own journal voucher or
+          // memo number, typed by the person raising it. On an entry raised by
+          // a document the reference IS that document, and repointing it at
+          // another one leaves an entry describing paper that does not
+          // describe it - which is the one change the Accountant asked to keep
+          // locked when everything else was opened up.
+          resource.data.sourceType in ['MANUAL', 'ADJUSTING', 'CLOSING', 'PRIOR_PERIOD']
+            ? ['jevNo', 'createdBy', 'postedBy', 'postedAt', 'corrections', 'signedTotal',
+               'reversesJevId', 'reversedByJevId', 'sourceType', 'sourceId']
+            : ['jevNo', 'createdBy', 'postedBy', 'postedAt', 'corrections', 'signedTotal',
+               'reversesJevId', 'reversedByJevId', 'sourceType', 'sourceId', 'referenceNo']
+        );
 
       allow delete: if signedIn() && isAdmin() && isDraft();
     }

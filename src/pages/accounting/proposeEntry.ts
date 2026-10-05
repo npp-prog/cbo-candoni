@@ -1,5 +1,5 @@
 import type { GridLine } from '@/components/journal/JournalEntryGrid';
-import { ACCOUNTS_PAYABLE, CASH_IN_BANK_CURRENT } from '@/lib/chartOfAccounts';
+import { ACCOUNTS_PAYABLE, CASH_IN_BANK_CURRENT, requiresSubsidiaryFor } from '@/lib/chartOfAccounts';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -81,6 +81,36 @@ export function proposeDvEntry(input: {
    * by the check or ADA, not by the voucher.
    */
   creditAccount?: { code: string; name: string };
+  /**
+   * The voucher's payee, put on the payable line as its subsidiary.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THE PAYABLE AND NOTHING ELSE
+   * ---------------------------------------------------------------------------
+   * Accounts Payable is a CONTROL account: the General Ledger carries one
+   * figure for it and the subsidiary ledger carries who that figure is owed
+   * to. A payable posted with no subsidiary is a sum the municipality owes
+   * somebody it cannot name, and it is the Aging of Payables - the report the
+   * office is asked for most - that goes blank because of it.
+   *
+   * The voucher already knows the answer. It was typed in at the top of the
+   * same screen, so asking for it again on the entry was asking a question
+   * CFMS could answer itself.
+   *
+   * NOT the expense debits: an expense account is not kept per party, and a
+   * subsidiary on every one of them would fill the Subsidiary Ledger report
+   * with lines nobody asked it to keep.
+   *
+   * NOT the deductions: "Due to BIR" names its creditor in its own title, and
+   * the party owed the withholding is the BIR, not the supplier it was
+   * withheld from. Writing the supplier there would say the municipality owes
+   * them money it is in fact holding back.
+   *
+   * It is a proposal, like the rest of this entry. The encoder can change it
+   * on the line, and a voucher paid to a payee acting for somebody else is
+   * exactly when they should.
+   */
+  payee?: { id: string; name: string } | null;
   particulars?: string;
 }): GridLine[] {
   const lines: GridLine[] = [];
@@ -146,12 +176,22 @@ export function proposeDvEntry(input: {
   // --- Credit: the net payable ---------------------------------------------
 
   const credit = input.creditAccount ?? ACCOUNTS_PAYABLE;
+  /*
+   * Only where the account is actually kept per party. `requiresSubsidiaryFor`
+   * is the same list the Chart of Accounts screen and the posting check read,
+   * so a payable the office has turned the requirement off for does not get a
+   * subsidiary it never asked for.
+   */
+  const withSubsidiary = Boolean(input.payee) && requiresSubsidiaryFor(credit.code);
   lines.push({
     lineNo: lineNo++,
     accountCode: credit.code,
     accountName: credit.name,
     debit: 0,
     credit: input.netAmount,
+    subsidiaryType: withSubsidiary ? 'PAYEE' : undefined,
+    subsidiaryId: withSubsidiary ? input.payee!.id : undefined,
+    subsidiaryName: withSubsidiary ? input.payee!.name : undefined,
     particulars: input.particulars,
   });
 

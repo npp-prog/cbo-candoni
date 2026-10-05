@@ -8,6 +8,7 @@ import { Field, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
+import { SignedTotalNote } from '@/components/SignedTotalNote';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
@@ -20,6 +21,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate, formatInstant, monthName } from '@/lib/dates';
 import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
+import type { JournalEntryVoucher } from '@/types/accounting';
 import { SECTION_TABS } from './sections';
 
 /**
@@ -63,6 +65,12 @@ export default function TreasuryReportDetail() {
    * after the report is certified and the browser can no longer write to it.
    */
   const attachments = useAttachments(COL.treasuryReports, id ?? null);
+  /*
+   * The entry this report raised, read only so that the report can say when
+   * the Accountant's correction has left the two disagreeing. Nothing on this
+   * screen writes it.
+   */
+  const { data: jev } = useDocument<JournalEntryVoucher>(COL.jevs, report?.jevId ?? undefined);
 
   const [tab, setTab] = useState<'coverage' | 'entry' | 'attachments' | 'history'>('coverage');
   const [confirm, setConfirm] = useState<
@@ -316,6 +324,8 @@ export default function TreasuryReportDetail() {
           </p>
         </Alert>
       )}
+
+      <SignedTotalNote jev={jev} from="document" />
 
       {report.status === 'JOURNALIZED' && (
         <Alert tone="success" className="mb-4">

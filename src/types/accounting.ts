@@ -259,6 +259,30 @@ export interface JournalEntryVoucher extends Partial<AuditStamps> {
    * said before and who changed it. An entry corrected twice carries both.
    */
   corrections?: JevCorrection[];
+
+  /**
+   * The amount the source document was signed for, where this entry no longer
+   * agrees with it.
+   *
+   * ---------------------------------------------------------------------------
+   * WHAT IT MEANS WHEN THIS IS SET
+   * ---------------------------------------------------------------------------
+   * An entry raised by a disbursement voucher or a certified treasury report
+   * takes its total from that document. CFMS used to refuse an amendment that
+   * changed it. It no longer does - the Municipal Accountant asked for the
+   * amount to be correctable like everything else - so the disagreement has to
+   * be visible instead of prevented.
+   *
+   * This is the figure on the paper. `totalDebit` is what the ledger now
+   * carries. While the two differ the entry and the document both say so on
+   * their face, and the correction is in the audit trail as a CRITICAL event.
+   *
+   * Null, or absent, means the entry and its document agree - which includes
+   * an entry corrected back to the signed figure, and every entry written in
+   * Accounting, which has no signed document behind it at all.
+   */
+  signedTotal?: Centavos | null;
+
   totalDebit: Centavos;
   totalCredit: Centavos;
 

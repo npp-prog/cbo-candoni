@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
+import { SignedTotalNote } from '@/components/SignedTotalNote';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
@@ -150,17 +151,32 @@ export default function JevDetail() {
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
 
   /**
-   * The total a document fixed.
+   * The amount the source document was signed for.
    *
-   * On an entry raised by a voucher or a certified treasury report the
-   * accounts, the date and the particulars are the Accountant's to correct,
-   * but the amount is a figure another officer signed. The server refuses a
-   * changed total there; this says so before the round trip rather than after
-   * it.
+   * ---------------------------------------------------------------------------
+   * IT USED TO BE A LOCK, AND IS NOW A BASELINE
+   * ---------------------------------------------------------------------------
+   * On an entry raised by a voucher or a certified treasury report, the total
+   * is a figure another officer signed, and CFMS used to refuse a correction
+   * that changed it. The Municipal Accountant asked for the amount to be
+   * correctable like everything else, so it is - and what takes the refusal's
+   * place is that the disagreement is recorded on the entry, shown on the
+   * document, and written to the audit trail as a CRITICAL event until the
+   * entry is brought back.
+   *
+   * `signedTotal` is written by the engine the FIRST time an entry diverges
+   * and is never overwritten, so a second correction is still measured against
+   * the paper rather than against the first correction.
    */
-  const lockedTotal =
-    existing && !isDirectEntry(existing.sourceType) ? (existing.totalDebit ?? 0) : null;
-  const totalLockBroken = lockedTotal !== null && amending && totalDebit !== lockedTotal;
+  const signedTotal =
+    existing && !isDirectEntry(existing.sourceType)
+      ? (existing.signedTotal ?? existing.totalDebit ?? 0)
+      : null;
+  /** Diverging as a result of what is on screen right now. */
+  const totalWillDiverge = signedTotal !== null && amending && totalDebit !== signedTotal;
+  /** Diverging as the books stand, with nothing being edited. */
+  const totalHasDiverged =
+    !amending && existing != null && (existing.signedTotal ?? null) !== null;
 
   const save = async () => {
     if (!particulars.trim()) {
@@ -267,6 +283,14 @@ export default function JevDetail() {
                 Post to General Ledger
               </Button>
             )}
+            {/* Offered only once the entry is in the books. A printed voucher
+                for an entry that is not posted says the municipality recorded
+                something it has not recorded. */}
+            {!isNew && isPosted && (
+              <Button variant="secondary" onClick={() => navigate(`/accounting/jev/${id}/print`)}>
+                Print (Appendix 30)
+              </Button>
+            )}
             {canAmend && !amending && (
               <Button variant="primary" onClick={() => setAmending(true)}>
                 Correct this entry
@@ -277,7 +301,7 @@ export default function JevDetail() {
                 <Button
                   variant="primary"
                   onClick={() => setConfirm('amend')}
-                  disabled={!check.ok || totalLockBroken}
+                  disabled={!check.ok}
                 >
                   Save the correction
                 </Button>
@@ -339,25 +363,43 @@ export default function JevDetail() {
             is still open. Once the month is closed the only correction is a reversing entry, and
             the server will say so.
           </p>
-          {lockedTotal !== null && (
+          {signedTotal !== null && (
             <p className="mt-2">
-              The total stays at <strong>{formatPeso(lockedTotal)}</strong>. This entry was raised
-              by {existing?.referenceNo ? `${existing.sourceType} ${existing.referenceNo}` : 'a document'},
-              which another officer signed for that amount - the accounts, the date and the
-              particulars are yours to correct, the amount is that document's.
+              This entry was raised by{' '}
+              {existing?.referenceNo ? `${existing.sourceType} ${existing.referenceNo}` : 'a document'},
+              which another officer signed for <strong>{formatPeso(signedTotal)}</strong>. You may
+              change the amount; if you do, the entry and that document will no longer agree, and
+              both will say so until one of them is put right.
             </p>
           )}
+          <p className="mt-2">
+            What cannot change is which document this entry came from. Its date, particulars,
+            accounts and amounts are all yours.
+          </p>
         </Alert>
       )}
 
-      {totalLockBroken && (
-        <Alert tone="error" title="The total has changed" className="mb-4">
-          This entry must still come to {formatPeso(lockedTotal ?? 0)}; it now comes to{' '}
-          {formatPeso(totalDebit)}. If the amount itself is wrong, correct the document behind it -
-          undo the approval on the voucher, fix it and approve again - and its entry is corrected
-          with it.
+      {totalWillDiverge && (
+        <Alert tone="warning" title="This will leave the entry disagreeing with its document" className="mb-4">
+          <p>
+            {existing?.referenceNo ? `${existing.sourceType} ${existing.referenceNo}` : 'The document behind this entry'}{' '}
+            was signed for <strong>{formatPeso(signedTotal ?? 0)}</strong>. Saving puts{' '}
+            <strong>{formatPeso(totalDebit)}</strong> in the books.
+          </p>
+          <p className="mt-2">
+            CFMS will not stop you, and it will not keep it quiet either: the entry and the
+            document both carry a standing note while they disagree, and the correction goes to
+            the audit trail as a critical event naming both figures. It clears the moment the
+            entry is brought back to {formatPeso(signedTotal ?? 0)}.
+          </p>
+          <p className="mt-2">
+            The other way round is still open to you - undo the approval on the document, correct
+            it, approve it again - and nothing disagrees with anything.
+          </p>
         </Alert>
       )}
+
+      {totalHasDiverged && <SignedTotalNote jev={existing} from="entry" />}
 
       {!amending && (existing?.corrections?.length ?? 0) > 0 && (
         <Alert

@@ -35,6 +35,7 @@ const Disbursements = lazy(() => import('./pages/accounting/Disbursements'));
 const DisbursementDetail = lazy(() => import('./pages/accounting/DisbursementDetail'));
 const Jevs = lazy(() => import('./pages/accounting/Jevs'));
 const JevDetail = lazy(() => import('./pages/accounting/JevDetail'));
+const JevAppendix30 = lazy(() => import('./pages/accounting/JevAppendix30'));
 const JournalEntriesRegister = lazy(() => import('./pages/accounting/JournalEntriesRegister'));
 const Checks = lazy(() => import('./pages/treasury/Checks'));
 const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'));
@@ -201,6 +202,14 @@ export default function App() {
           />
           <Route path="/accounting/jev" element={<Navigate to="/accounting/general-transactions" replace />} />
           <Route path="/accounting/jev/:id" element={<Guard module="accounting"><JevDetail /></Guard>} />
+          {/* The entry as COA prints it. A page of its own rather than a print
+              stylesheet over the working screen: the two share no layout at
+              all, and a form that is a hidden copy of a screen drifts from it
+              the first time the screen changes. */}
+          <Route
+            path="/accounting/jev/:id/print"
+            element={<Guard module="accounting"><JevAppendix30 /></Guard>}
+          />
           {/* Checks and ADA are Treasury's work: the Treasurer draws them against a
               completed voucher. They live under /treasury and are guarded by the
               treasury module. The old /accounting paths redirect so that links in

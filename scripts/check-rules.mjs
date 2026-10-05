@@ -1135,6 +1135,133 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 24. The evidence of a correction cannot be written from a browser -------
+
+/*
+ * Two fields on a journal entry exist only to say that something happened to
+ * it after the ledger took it:
+ *
+ *   `corrections`  - what the entry said before, who changed it and why.
+ *   `signedTotal`  - the figure the source document was signed for, set while
+ *                    the entry no longer agrees with it.
+ *
+ * Both are written by the engine, inside the same transaction that makes the
+ * change true. Patch 84 opened the amount on a document-sourced entry at the
+ * Municipal Accountant's request, and the ONLY thing that makes that
+ * defensible is that the disagreement is recorded and visible. A browser able
+ * to write either field could erase the record of the edit it had just made,
+ * which would be worse than never having allowed the edit at all.
+ *
+ * `sourceType` and `sourceId` are here for the same reason: they are the
+ * document the entry came from, and that is not the entry's to change.
+ */
+{
+  const EVIDENCE_FIELDS = ['corrections', 'signedTotal', 'sourceType', 'sourceId'];
+
+  const block = firestore.match(/match \/jevs\/\{[^}]*\}\s*\{([\s\S]*?)\n    \}/);
+  if (!block) {
+    failures.push("firestore.rules: no rule block for 'jevs' to check the evidence fields in.");
+  } else {
+    // Comments are stripped first: a field named only in prose is not a field
+    // the rule protects, and a semicolon inside a comment would cut the clause
+    // short. Both have caught this file out before.
+    const naked = block[1]
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const update = naked.match(/allow update:([\s\S]*?);/);
+
+    if (!update) {
+      failures.push("firestore.rules: the 'jevs' block has no update rule to check.");
+    } else {
+      /*
+       * Every branch, not just one. The rule protects a different list
+       * depending on how the entry was raised, and a field protected in one
+       * branch and forgotten in the other is protected on exactly half the
+       * entries - which is the half nobody tests.
+       */
+      const lists = update[1].match(/\[[^\]]*\]/g) ?? [];
+      const guarding = lists.filter((l) => l.includes("'jevNo'"));
+
+      if (guarding.length === 0) {
+        failures.push(
+          "firestore.rules: the 'jevs' update rule no longer protects any field list that " +
+            'includes jevNo, so the protected-field check cannot be read at all.',
+        );
+      } else {
+        const unprotected = EVIDENCE_FIELDS.filter((f) =>
+          guarding.some((l) => !l.includes(`'${f}'`)),
+        );
+        if (unprotected.length > 0) {
+          failures.push(
+            `firestore.rules: the 'jevs' update rule leaves ${unprotected.join(', ')} writable ` +
+              'from a browser in at least one branch. Those fields are the entry’s own record ' +
+              'of having been corrected after posting and of no longer agreeing with the ' +
+              'document behind it. They are written by the engine in the transaction that ' +
+              'makes the change true; a client that could write them could erase the evidence ' +
+              'of its own edit.',
+          );
+        } else {
+          console.log(`jevs: ${EVIDENCE_FIELDS.join(', ')} are the engine's to write`);
+        }
+      }
+    }
+  }
+}
+
+// --- 25. A correction never repoints an entry at another document -----------
+
+/*
+ * `amendPostedJev` rewrites a posted entry in place. The Municipal Accountant
+ * asked for the date, the particulars, the accounts and the amount to be
+ * correctable; he asked for ONE thing to stay locked - which document the
+ * entry came from.
+ *
+ * The lock is structural rather than a check: the callable simply does not
+ * read those fields from the request, so there is nothing to validate and
+ * nothing to get wrong. This refuses the day somebody adds them to the
+ * destructuring "for completeness". An entry repointed at another document
+ * describes paper that does not describe it, and nothing downstream - not the
+ * voucher, not the treasury report, not the audit trail - would show it.
+ */
+{
+  const file = 'functions/src/accounting/jev.ts';
+  const full = resolve(root, file);
+  const source = existsSync(full) ? readFileSync(full, 'utf8') : '';
+  const start = source.indexOf('export const amendPostedJev');
+
+  if (start < 0) {
+    failures.push(`${file}: amendPostedJev is gone; the correction rules cannot be checked.`);
+  } else {
+    const next = source.indexOf('\nexport const ', start + 10);
+    const body = source.slice(start, next > 0 ? next : undefined);
+    // Only the destructuring of the request, not the whole function: the
+    // ORIGINAL entry's sourceType is read all over the body, and rightly so.
+    const destructure = body.match(/\}\s*=\s*\(request\.data\s*\?\?\s*\{\}\)\s*as/);
+    const head = destructure ? body.slice(0, destructure.index) : body;
+
+    const accepted = ['sourceType', 'sourceId', 'referenceNo'].filter((f) =>
+      new RegExp(`\\b${f}\\b`).test(head),
+    );
+
+    if (!destructure) {
+      failures.push(
+        `${file}: amendPostedJev no longer reads its request in the usual shape, so what it ` +
+          'accepts from the caller cannot be read. The source document reference must stay ' +
+          'out of it.',
+      );
+    } else if (accepted.length > 0) {
+      failures.push(
+        `${file}: amendPostedJev now accepts ${accepted.join(', ')} from the caller. The ` +
+          'document an entry came from is not the entry’s to change: repointing it leaves an ' +
+          'entry describing paper that does not describe it, and no screen or report would ' +
+          'show the difference.',
+      );
+    } else {
+      console.log('jevs: a correction cannot repoint an entry at another document');
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {
