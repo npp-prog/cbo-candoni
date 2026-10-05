@@ -936,6 +936,81 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 20. The ledger is written in one file, and nowhere else ----------------
+/*
+ * Patch 80 gave the Municipal Accountant the ability to correct a posted entry
+ * while its month is open, which means CFMS now DELETES ledger entries - the
+ * first time anything has. That is defensible only because it happens in one
+ * place, hedged by a period check, a role, a reason and a recorded history.
+ *
+ * A second place that wrote or deleted a ledger entry would have none of that,
+ * and nothing about the books would look wrong afterwards: the trial balance
+ * would still foot, to a figure nobody could account for.
+ */
+if (existsSync(functionsSrc)) {
+  const OWNER = 'functions/src/lib/ledger.ts';
+  const MUTATIONS = /(?:tx|batch)\.(?:create|set|update|delete)\(([\s\S]{0,400}?)\)/g;
+  let offenders = 0;
+
+  for (const file of walkTs(functionsSrc)) {
+    const name = file.slice(root.length + 1).split('\\').join('/');
+    if (name === OWNER) continue;
+
+    const source = readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    for (const call of source.matchAll(MUTATIONS)) {
+      if (!call[1].includes('ledgerEntries')) continue;
+      offenders += 1;
+      failures.push(
+        `${name}: writes or deletes a ledgerEntries document. Only ${OWNER} may - it is the one ` +
+          'place where posting and correcting are hedged by the period check, the role, the ' +
+          'reason and the history kept on the entry. A ledger written from anywhere else still ' +
+          'foots, to a figure nobody can account for.',
+      );
+      break;
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('ledger: only lib/ledger.ts writes or removes a ledger entry');
+  }
+}
+
+// --- 21. Correcting a posted entry checks the month is open -----------------
+/*
+ * The whole case for rewriting a posted entry in place is that the month is
+ * still open: nothing outside this office has relied on it yet. Take that
+ * check away and CFMS silently becomes a system in which a closed, reported,
+ * audited month can be edited - with no error, no reversal and no sign.
+ */
+{
+  const file = resolve(root, 'functions/src/accounting/jev.ts');
+  if (existsSync(file)) {
+    const source = readFileSync(file, 'utf8');
+    const start = source.indexOf('export const amendPostedJev');
+    if (start < 0) {
+      console.log('ledger: amendPostedJev is not present (nothing to check)');
+    } else {
+      const end = source.indexOf('\nexport const ', start + 10);
+      const body = source.slice(start, end > 0 ? end : undefined);
+      const missing = ['assertFiscalYearOpen(', 'assertPeriodOpen('].filter(
+        (call) => !body.includes(call),
+      );
+      if (missing.length > 0) {
+        failures.push(
+          `functions/src/accounting/jev.ts: amendPostedJev no longer calls ${missing.join(' or ')}. ` +
+            'Rewriting a posted entry is allowed only while its month and fiscal year are open. ' +
+            'Without that check a closed month could be edited, with no error and no reversal.',
+        );
+      } else {
+        console.log('ledger: a posted entry is only corrected while its month is open');
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

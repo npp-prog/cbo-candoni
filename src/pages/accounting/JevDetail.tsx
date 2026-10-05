@@ -17,7 +17,7 @@ import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
-import { formatInstant, formatLongDate, todayPh } from '@/lib/dates';
+import { formatInstant, formatLongDate, formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { checkDoubleEntry } from '@/lib/accounting-rules';
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
@@ -56,7 +56,9 @@ export default function JevDetail() {
   const [tab, setTab] = useState<'entry' | 'history'>('entry');
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState<null | 'post' | 'reverse' | 'correct'>(null);
+  const [confirm, setConfirm] = useState<null | 'post' | 'reverse' | 'correct' | 'amend'>(null);
+  /** Editing a posted entry in place, rather than only reading it. */
+  const [amending, setAmending] = useState(false);
 
   const [jevDate, setJevDate] = useState(todayPh());
   const [sourceType, setSourceType] = useState<string>('MANUAL');
@@ -116,6 +118,18 @@ export default function JevDetail() {
   /** Reverse it AND open a corrected copy - one act instead of three. */
   const canCorrect = canReverse;
 
+  /*
+   * Correcting a POSTED entry in place, while its month is still open.
+   *
+   * The screen offers it; the server decides. It is the server that knows
+   * whether the period and the fiscal year are open, and a browser that
+   * guessed would either hide the button on an open month or offer it on a
+   * closed one. So the button is shown to the Accountant on any posted entry
+   * and a closed month comes back as a refusal naming the month.
+   */
+  const canAmend = isPosted && isAccountant && !existing?.reversedByJevId;
+
+
   const check = useMemo(
     () =>
       checkDoubleEntry(
@@ -130,6 +144,19 @@ export default function JevDetail() {
   );
 
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
+
+  /**
+   * The total a document fixed.
+   *
+   * On an entry raised by a voucher or a certified treasury report the
+   * accounts, the date and the particulars are the Accountant's to correct,
+   * but the amount is a figure another officer signed. The server refuses a
+   * changed total there; this says so before the round trip rather than after
+   * it.
+   */
+  const lockedTotal =
+    existing && !isDirectEntry(existing.sourceType) ? (existing.totalDebit ?? 0) : null;
+  const totalLockBroken = lockedTotal !== null && amending && totalDebit !== lockedTotal;
 
   const save = async () => {
     if (!particulars.trim()) {
@@ -236,9 +263,55 @@ export default function JevDetail() {
                 Post to General Ledger
               </Button>
             )}
-            {canCorrect && (
-              <Button variant="secondary" onClick={() => setConfirm('correct')}>
+            {canAmend && !amending && (
+              <Button variant="primary" onClick={() => setAmending(true)}>
                 Correct this entry
+              </Button>
+            )}
+            {amending && (
+              <>
+                <Button
+                  variant="primary"
+                  onClick={() => setConfirm('amend')}
+                  disabled={!check.ok || totalLockBroken}
+                >
+                  Save the correction
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setAmending(false);
+                    // Put back what is in the books, so an abandoned
+                    // correction leaves nothing half-typed on screen.
+                    if (existing) {
+                      setJevDate(existing.jevDate);
+                      setParticulars(existing.particulars);
+                      setReferenceNo(existing.referenceNo ?? '');
+                      setLines(
+                        existing.lines.map((l) => ({
+                          lineNo: l.lineNo,
+                          accountCode: l.accountCode,
+                          accountName: l.accountName,
+                          fppCode: l.fppCode ?? undefined,
+                          fppName: l.fppName ?? undefined,
+                          debit: l.debit,
+                          credit: l.credit,
+                          particulars: l.particulars ?? undefined,
+                          subsidiaryType: l.subsidiaryType ?? undefined,
+                          subsidiaryId: l.subsidiaryId ?? undefined,
+                          subsidiaryName: l.subsidiaryName ?? undefined,
+                        })),
+                      );
+                    }
+                  }}
+                >
+                  Cancel
+                </Button>
+              </>
+            )}
+            {canCorrect && !amending && (
+              <Button variant="secondary" onClick={() => setConfirm('correct')}>
+                Reverse and copy
               </Button>
             )}
             {canReverse && (
@@ -250,7 +323,61 @@ export default function JevDetail() {
         }
       />
 
-      {isPosted && (
+      {amending && (
+        <Alert tone="warning" title="Correcting an entry that is in the books" className="mb-4">
+          <p>
+            Saving this rewrites the ledger lines for JEV {existing?.jevNo} in place - what the
+            General Ledger, the Trial Balance and the financial statements show for this entry
+            changes with it. No reversing entry is made.
+          </p>
+          <p className="mt-2">
+            CFMS allows this only while {existing?.period ? monthName(existing.period) : 'the month'}{' '}
+            is still open. Once the month is closed the only correction is a reversing entry, and
+            the server will say so.
+          </p>
+          {lockedTotal !== null && (
+            <p className="mt-2">
+              The total stays at <strong>{formatPeso(lockedTotal)}</strong>. This entry was raised
+              by {existing?.referenceNo ? `${existing.sourceType} ${existing.referenceNo}` : 'a document'},
+              which another officer signed for that amount - the accounts, the date and the
+              particulars are yours to correct, the amount is that document's.
+            </p>
+          )}
+        </Alert>
+      )}
+
+      {totalLockBroken && (
+        <Alert tone="error" title="The total has changed" className="mb-4">
+          This entry must still come to {formatPeso(lockedTotal ?? 0)}; it now comes to{' '}
+          {formatPeso(totalDebit)}. If the amount itself is wrong, correct the document behind it -
+          undo the approval on the voucher, fix it and approve again - and its entry is corrected
+          with it.
+        </Alert>
+      )}
+
+      {!amending && (existing?.corrections?.length ?? 0) > 0 && (
+        <Alert
+          tone="warning"
+          title={`Corrected ${existing?.corrections?.length === 1 ? 'once' : `${existing?.corrections?.length} times`} after posting`}
+          className="mb-4"
+        >
+          <ul className="space-y-1.5">
+            {existing?.corrections?.map((c, i) => (
+              <li key={i}>
+                <span className="font-medium">{c.by?.name ?? 'Someone'}</span> on{' '}
+                {formatInstant(c.at)} - {c.reason}
+                <span className="block text-xs opacity-80">
+                  was dated {formatShortDate(c.previous?.jevDate ?? '')}, for{' '}
+                  {formatPeso(c.previous?.totalDebit ?? 0)} across {c.previous?.lineCount ?? 0}{' '}
+                  {c.previous?.lineCount === 1 ? 'line' : 'lines'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
+      {isPosted && !amending && (
         <Alert tone="success" title="Posted to the General Ledger" className="mb-4">
           Posted by {existing?.postedBy?.name} on {formatInstant(existing?.postedAt)}. A posted
           entry is never edited or deleted - the ledger is evidence of what was posted, and an
@@ -310,7 +437,12 @@ export default function JevDetail() {
             <Card title="Journal entry voucher">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Field label="Date" required htmlFor="jevDate">
-                  <DateInput id="jevDate" value={jevDate} onChange={setJevDate} disabled={!canEdit} />
+                  <DateInput
+                    id="jevDate"
+                    value={jevDate}
+                    onChange={setJevDate}
+                    disabled={!canEdit && !amending}
+                  />
                 </Field>
 
                 <Field label="Type" htmlFor="sourceType">
@@ -364,7 +496,7 @@ export default function JevDetail() {
                     rows={2}
                     value={particulars}
                     onChange={(e) => setParticulars(e.target.value)}
-                    disabled={!canEdit}
+                    disabled={!canEdit && !amending}
                   />
                 </Field>
               </div>
@@ -377,7 +509,7 @@ export default function JevDetail() {
                 fppOptions={fppOptions}
                 expenseCodes={expenseCodes}
                 fundCode={fundCode}
-                readOnly={!canEdit}
+                readOnly={!canEdit && !amending}
               />
             </Card>
 
@@ -476,6 +608,66 @@ export default function JevDetail() {
             <p className="mt-2">
               The original entry is not deleted or altered. Both remain in the General Ledger, so
               the books show what happened and how it was corrected.
+            </p>
+          </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'amend'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={(reason) =>
+          void run(async () => {
+            const result = await engine.amendPostedJev({
+              jevId: id!,
+              jevDate,
+              particulars: particulars.trim(),
+              lines: lines.map((l, i) => ({
+                lineNo: i + 1,
+                accountCode: l.accountCode,
+                accountName: l.accountName,
+                fppCode: l.fppCode ?? null,
+                fppName: l.fppName ?? null,
+                debit: l.debit,
+                credit: l.credit,
+                particulars: l.particulars ?? null,
+                subsidiaryType: l.subsidiaryType ?? null,
+                subsidiaryId: l.subsidiaryId ?? null,
+                subsidiaryName: l.subsidiaryName ?? null,
+              })),
+              reason: reason!,
+            });
+            setAmending(false);
+            toast.success(
+              `JEV ${result.jevNo} corrected`,
+              `${result.replaced} ledger ${result.replaced === 1 ? 'line' : 'lines'} replaced with ${result.ledgerEntryCount}. The General Ledger now shows the corrected entry.`,
+            );
+          }, 'The entry was not corrected')
+        }
+        loading={busy}
+        title={`Correct JEV ${existing?.jevNo ?? ''}`}
+        confirmLabel="Rewrite the ledger"
+        variant="danger"
+        requireReason
+        minReasonLength={15}
+        reasonLabel="What was wrong with it"
+        reasonHint="Recorded against the entry, shown on this screen afterwards, and recorded as a critical audit event."
+        message={
+          <>
+            <p>
+              The ledger lines for this entry are replaced with what is on screen. The General
+              Ledger, the Trial Balance and every report drawn from them change with it, and no
+              reversing entry is made.
+            </p>
+            <p className="mt-2">
+              This is allowed because{' '}
+              {existing?.period ? monthName(existing.period) : 'the month'} is still open. The
+              correction and what the entry said before it are kept on the entry itself, so an
+              auditor reading this voucher can see that it was changed, by whom, and why.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              If the server finds the month closed it will refuse and say so. From that point the
+              correction is a reversing entry.
             </p>
           </>
         }

@@ -295,6 +295,25 @@ export const engine = {
       { originalJevId: Id; reversingJevId: Id; reversingJevNo: string; correctedJevId: Id }
     >('correctJev', p),
 
+  /**
+   * Correct a posted entry in place, while its month is still open.
+   *
+   * The ledger lines are rewritten rather than reversed. The server refuses
+   * once the period or the fiscal year is closed, and refuses a changed TOTAL
+   * on an entry raised by a document that another officer signed.
+   */
+  amendPostedJev: (p: {
+    jevId: Id;
+    jevDate: IsoDate;
+    particulars: string;
+    lines: unknown[];
+    reason: string;
+  }) =>
+    call<typeof p, { jevId: Id; jevNo: string; ledgerEntryCount: number; replaced: number }>(
+      'amendPostedJev',
+      p,
+    ),
+
   postJev: (p: { jevId: Id }) =>
     call<typeof p, { jevId: Id; jevNo: string; ledgerEntryCount: number; postedAt: string }>(
       'postJev',

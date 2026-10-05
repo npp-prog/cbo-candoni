@@ -1,4 +1,5 @@
 import { HttpsError } from 'firebase-functions/v2/https';
+import { FieldValue } from 'firebase-admin/firestore';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import {
@@ -13,12 +14,21 @@ import { recordTransition } from '../lib/audit';
 import { checkExpenseDebitsHaveFpp } from '../lib/rules';
 import { issueNumber, issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { hasJevNumber, UNNUMBERED_JEV } from '../lib/jevNumbers';
-import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
+import {
+  assertPeriodOpen,
+  assertFiscalYearOpen,
+  periodOf,
+  monthName,
+  todayPh,
+} from '../lib/period';
+import { isDirectEntry } from '../lib/jevSourceKinds';
 import {
   postJevInTransaction,
+  replaceLedgerLines,
   buildReversalLines,
   createJevInTransaction,
   type JevData,
+  type JevLineData,
 } from '../lib/ledger';
 
 /**
@@ -461,6 +471,214 @@ export const correctJev = onCall(
         reversingJevId,
         reversingJevNo: reversingNo,
         correctedJevId,
+      };
+    });
+  },
+);
+
+/**
+ * amendPostedJev - correct a posted entry in place, while the month is open.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS, HAVING ARGUED AGAINST IT
+ * ---------------------------------------------------------------------------
+ * CFMS used to refuse this absolutely: a posted entry was corrected by
+ * reversing it and posting a replacement, because a ledger that can be
+ * rewritten is not evidence of anything.
+ *
+ * That is the right rule for a month that has been CLOSED - reported on,
+ * submitted, relied upon by somebody outside this office. It is the wrong rule
+ * for a wrong account code found on the same afternoon it was keyed, and
+ * insisting on it there produces books in which every small mistake drags
+ * three entries behind it. Accountants do not work that way and should not
+ * have to.
+ *
+ * So the line moves from "never" to "while the month is open", and what makes
+ * that defensible is not the edit but everything attached to it:
+ *
+ *   THE PERIOD AND THE FISCAL YEAR MUST BOTH BE OPEN. Closing a month is
+ *   already a deliberate act in CFMS. From that moment this is refused and
+ *   the only correction is a reversing entry.
+ *
+ *   ONLY THE MUNICIPAL ACCOUNTANT, with a reason, recorded as a CRITICAL
+ *   audit event - the severity an auditor filters on.
+ *
+ *   THE ENTRY KEEPS ITS OWN HISTORY. Every correction appends what the date,
+ *   the particulars and the total WERE, who changed them and why. The screen
+ *   shows it. An entry corrected twice says so on its face.
+ *
+ *   THE TOTAL STAYS TIED TO THE DOCUMENT BEHIND IT. On an entry raised by a
+ *   voucher or a certified treasury report the accounts, the date and the
+ *   particulars are the Accountant's to correct, but the amount is a figure
+ *   another officer signed. If THAT is wrong, the voucher is corrected - undo
+ *   the approval, fix it, approve again - which corrects its entry with it.
+ *   An entry written in General Transactions has no such document, so its
+ *   amount is editable like everything else.
+ *
+ *   THE MONTH CANNOT CHANGE. The JEV number carries the month it belongs to,
+ *   and the journal series is kept per month. Moving an entry into another
+ *   month would leave its number in the wrong series, which no report could
+ *   explain. Moving an entry between months is a reversal and a re-entry.
+ */
+export const amendPostedJev = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, CORRECTING_ROLES);
+    const {
+      jevId,
+      jevDate,
+      particulars,
+      lines: linesIn,
+      reason,
+    } = (request.data ?? {}) as {
+      jevId?: string;
+      jevDate?: string;
+      particulars?: string;
+      lines?: JevLineData[];
+      reason?: string;
+    };
+
+    if (!jevId) throw invalid('A journal entry voucher id is required.');
+    if (!reason?.trim()) {
+      throw invalid(
+        'A reason for the correction is required. It is recorded against the entry and in the audit trail.',
+      );
+    }
+    if (!Array.isArray(linesIn) || linesIn.length === 0) {
+      throw invalid('The corrected entry has no lines.');
+    }
+    if (!particulars?.trim()) throw invalid('The entry needs its particulars.');
+
+    return db.runTransaction(async (tx) => {
+      const ref = db.collection(COL.jevs).doc(jevId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The journal entry voucher');
+
+      const original = snap.data() as JevData & {
+        reversedByJevId?: string;
+        postedAt?: string;
+        corrections?: unknown[];
+      };
+
+      if (original.status !== 'POSTED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} is ${original.status.toLowerCase()}, not posted. An entry that has not reached the ledger is edited directly.`,
+        );
+      }
+      if (original.reversedByJevId) {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} has been reversed. Correct the entry that replaced it.`,
+        );
+      }
+
+      assertFundInScope(caller, original.fundCode);
+
+      const newDate = String(jevDate ?? original.jevDate).trim();
+      const newPeriod = periodOf(newDate);
+      const newYear = Number(newDate.slice(0, 4));
+
+      if (newYear !== original.fiscalYear || newPeriod !== original.period) {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} is dated ${original.jevDate} and its number belongs to that month's series. A correction can move the date within ${monthName(original.period)}, but moving the entry to another month would leave its number in the wrong series - that is a reversing entry and a new one.`,
+        );
+      }
+
+      /*
+       * The month this entry is IN must be open. Not the month it is being
+       * moved to - it cannot move - so one check, on its own period.
+       */
+      await assertFiscalYearOpen(original.fiscalYear, tx);
+      await assertPeriodOpen(
+        original.fiscalYear,
+        original.period,
+        original.fundCode,
+        `JEV ${original.jevNo}`,
+        tx,
+      );
+
+      const lines = linesIn.map((l, i) => ({ ...l, lineNo: i + 1 }));
+      let totalDebit = 0;
+      let totalCredit = 0;
+      for (const l of lines) {
+        totalDebit += l.debit ?? 0;
+        totalCredit += l.credit ?? 0;
+      }
+
+      const corrected: JevData = {
+        ...original,
+        jevDate: newDate,
+        particulars: particulars.trim(),
+        lines,
+        totalDebit,
+        totalCredit,
+      };
+
+      await assertExpenseDebitsCarryAnFpp(corrected);
+
+      /*
+       * The amount a document fixed stays fixed. See the note at the head of
+       * this function.
+       */
+      if (!isDirectEntry(original.sourceType) && totalDebit !== original.totalDebit) {
+        throw new HttpsError(
+          'failed-precondition',
+          `This entry was raised by ${original.referenceNo ? `${original.sourceType} ${original.referenceNo}` : `a ${original.sourceType.toLowerCase()}`}, which was signed for ${(original.totalDebit / 100).toFixed(2)}. The accounts, the date and the particulars are yours to correct, but the amount is that document's. If the amount itself is wrong, correct the document and its entry is corrected with it.`,
+        );
+      }
+
+      // ---- WRITE PHASE ----------------------------------------------------
+
+      const postedAt = original.postedAt ?? new Date().toISOString();
+      const result = await replaceLedgerLines(tx, caller, jevId, corrected, postedAt);
+
+      const now = new Date().toISOString();
+
+      tx.update(ref, {
+        jevDate: newDate,
+        particulars: particulars.trim(),
+        lines,
+        totalDebit,
+        totalCredit,
+        /*
+         * What it said before, appended rather than replaced. An entry
+         * corrected twice carries both corrections, and the screen shows them.
+         */
+        corrections: FieldValue.arrayUnion({
+          at: now,
+          by: { uid: caller.uid, name: caller.name, position: caller.position ?? null },
+          reason: reason.trim(),
+          previous: {
+            jevDate: original.jevDate,
+            particulars: original.particulars,
+            totalDebit: original.totalDebit,
+            lineCount: (original.lines ?? []).length,
+          },
+        }),
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'EDIT',
+        entityType: COL.jevs,
+        entityId: jevId,
+        entityRef: `JEV ${original.jevNo}`,
+        fiscalYear: original.fiscalYear,
+        fundCode: original.fundCode,
+        action: 'POST',
+        previousStatus: 'POSTED',
+        newStatus: 'POSTED',
+        remarks: `Posted entry corrected in an open month: ${result.removed} ledger ${result.removed === 1 ? 'line' : 'lines'} replaced with ${result.written}. ${reason.trim()}`,
+        severity: 'CRITICAL',
+      });
+
+      return {
+        jevId,
+        jevNo: original.jevNo,
+        ledgerEntryCount: result.written,
+        replaced: result.removed,
       };
     });
   },

@@ -59,6 +59,11 @@ const PAIRS = [
   // placeholder printed in the JEV No. column of every line, and nothing
   // anywhere would refuse it.
   { source: 'src/lib/jevNumbers.ts', target: 'functions/src/lib/jevNumbers.ts' },
+  // `jevSourceKinds` decides whether a posted entry's AMOUNT may be corrected:
+  // an entry raised by a signed voucher carries that voucher's figure, and one
+  // written in Accounting carries nobody's. The browser offers the field and
+  // the engine refuses the write, so the two must agree about which is which.
+  { source: 'src/lib/jevSourceKinds.ts', target: 'functions/src/lib/jevSourceKinds.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

@@ -192,6 +192,57 @@ export function postJevInTransaction(
 
   const postedAt = new Date().toISOString();
 
+  writeLedgerLines(tx, jevId, jev, {
+    postedAt,
+    postedByUid: caller.uid,
+    isReversal: opts.isReversal ?? false,
+  });
+
+  tx.update(db.collection(COL.jevs).doc(jevId), {
+    status: 'POSTED',
+    // Written back because an entry raised from a voucher has no number until
+    // it is posted: postJev draws one and passes it in here. For every other
+    // path this writes the number the entry already had.
+    jevNo: jev.jevNo,
+    postedAt,
+    postedBy: {
+      uid: caller.uid,
+      name: caller.name,
+      position: caller.position ?? null,
+      at: postedAt,
+    },
+  });
+
+  auditInTransaction(tx, {
+    caller,
+    event: 'POST',
+    entityType: COL.jevs,
+    entityId: jevId,
+    entityRef: `JEV ${jev.jevNo}`,
+    fiscalYear: jev.fiscalYear,
+    fundCode: jev.fundCode,
+    remarks: `Posted ${jev.lines.length} ledger entries totalling ${(jev.totalDebit / 100).toFixed(2)}.`,
+    severity: 'NOTICE',
+  });
+
+  return { ledgerEntryCount: jev.lines.length, postedAt };
+}
+
+/**
+ * Writes one `ledgerEntries` document per journal line.
+ *
+ * Pulled out of postJevInTransaction so that amendPostedJev can write the
+ * corrected lines through the SAME code. Two line-writers would be two shapes
+ * of ledger entry, and the second one would be missing a field that some
+ * report reads - which is the kind of fault that shows up as a report
+ * mysteriously excluding half a month.
+ */
+function writeLedgerLines(
+  tx: Transaction,
+  jevId: string,
+  jev: JevData,
+  stamp: { postedAt: string; postedByUid: string; isReversal: boolean },
+): void {
   for (const line of jev.lines) {
     const entryRef = db.collection(COL.ledgerEntries).doc();
     tx.create(entryRef, {
@@ -230,40 +281,77 @@ export function postJevInTransaction(
       payeeName: jev.payeeName ?? null,
       particulars: line.particulars ?? jev.particulars,
 
-      postedAt,
-      postedByUid: caller.uid,
-      isReversal: opts.isReversal ?? false,
+      postedAt: stamp.postedAt,
+      postedByUid: stamp.postedByUid,
+      isReversal: stamp.isReversal,
+    });
+  }
+}
+
+/**
+ * Replaces the ledger lines of an entry that is already posted.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS IS THE ONE PLACE A LEDGER ENTRY IS EVER REMOVED
+ * ---------------------------------------------------------------------------
+ * Everywhere else in CFMS a ledger entry is written once and never touched,
+ * and that is what makes a trial balance printed from it worth printing. This
+ * exists because the Municipal Accountant asked for the thing accountants
+ * actually do: correct a mistake found in the same month it was made, rather
+ * than carry a reversal and a re-entry through the books for a wrong account
+ * code.
+ *
+ * What keeps it honest is everything around it, not the deletion itself:
+ *
+ *   - only while the month AND the fiscal year are open, so nothing that has
+ *     been reported on can move
+ *   - only the Municipal Accountant
+ *   - with a reason, recorded as a CRITICAL audit event
+ *   - and the entry keeps a `corrections` history of every rewrite, with what
+ *     the figures were before, which the screen shows
+ *
+ * So the ledger says what the books say now, and the entry and the audit trail
+ * together say what they said before and who changed it. A month that has been
+ * closed is beyond all of this: from then on it is a reversing entry.
+ *
+ * The old lines are read inside the transaction, so an entry cannot be added
+ * or removed between the read and the delete.
+ */
+export async function replaceLedgerLines(
+  tx: Transaction,
+  caller: Caller,
+  jevId: string,
+  jev: JevData,
+  /** Kept from the original posting, so the ledger's order does not jump. */
+  postedAt: string,
+): Promise<{ removed: number; written: number }> {
+  const existing = await tx.get(
+    db.collection(COL.ledgerEntries).where('jevId', '==', jevId),
+  );
+
+  const check = checkDoubleEntry(
+    jev.lines.map((l) => ({
+      lineNo: l.lineNo,
+      accountCode: l.accountCode,
+      debit: l.debit,
+      credit: l.credit,
+    })),
+  );
+  if (!check.ok) {
+    throw new HttpsError('failed-precondition', check.violations[0].message, {
+      violations: check.violations,
     });
   }
 
-  tx.update(db.collection(COL.jevs).doc(jevId), {
-    status: 'POSTED',
-    // Written back because an entry raised from a voucher has no number until
-    // it is posted: postJev draws one and passes it in here. For every other
-    // path this writes the number the entry already had.
-    jevNo: jev.jevNo,
+  for (const doc of existing.docs) tx.delete(doc.ref);
+
+  writeLedgerLines(tx, jevId, jev, {
     postedAt,
-    postedBy: {
-      uid: caller.uid,
-      name: caller.name,
-      position: caller.position ?? null,
-      at: postedAt,
-    },
+    postedByUid: caller.uid,
+    isReversal: false,
   });
 
-  auditInTransaction(tx, {
-    caller,
-    event: 'POST',
-    entityType: COL.jevs,
-    entityId: jevId,
-    entityRef: `JEV ${jev.jevNo}`,
-    fiscalYear: jev.fiscalYear,
-    fundCode: jev.fundCode,
-    remarks: `Posted ${jev.lines.length} ledger entries totalling ${(jev.totalDebit / 100).toFixed(2)}.`,
-    severity: 'NOTICE',
-  });
-
-  return { ledgerEntryCount: jev.lines.length, postedAt };
+  return { removed: existing.size, written: jev.lines.length };
 }
 
 /**

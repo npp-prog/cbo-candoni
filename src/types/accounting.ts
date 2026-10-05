@@ -173,6 +173,20 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
 // jevs/{id}   and   ledgerEntries/{id}
 // ---------------------------------------------------------------------------
 
+/** One correction made to a posted entry, kept on the entry itself. */
+export interface JevCorrection {
+  at: string;
+  by: { uid: Id; name: string; position?: string | null };
+  reason: string;
+  /** What the entry said before this correction. */
+  previous: {
+    jevDate: IsoDate;
+    particulars: string;
+    totalDebit: Centavos;
+    lineCount: number;
+  };
+}
+
 export interface JevLine {
   lineNo: number;
   accountCode: string;
@@ -237,6 +251,14 @@ export interface JournalEntryVoucher extends Partial<AuditStamps> {
   particulars: string;
 
   lines: JevLine[];
+  /**
+   * Every correction made to this entry AFTER it was posted, oldest first.
+   *
+   * Written by the engine (amendPostedJev), only while the month is open, and
+   * never removed. The ledger says what the books say now; this says what they
+   * said before and who changed it. An entry corrected twice carries both.
+   */
+  corrections?: JevCorrection[];
   totalDebit: Centavos;
   totalCredit: Centavos;
 

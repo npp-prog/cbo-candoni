@@ -1,4 +1,5 @@
 import { JEV_SOURCE_TYPES, type JevSourceType } from '@/types/enums';
+import { DOCUMENT_SOURCED_KINDS, isDirectEntry } from './jevSourceKinds';
 
 /**
  * Which journal entries the Accountant writes, and which ones a document
@@ -36,17 +37,8 @@ import { JEV_SOURCE_TYPES, type JevSourceType } from '@/types/enums';
  * from it - and an entry that appears where it does not belong is noticed in a
  * day, whereas one that appears nowhere is noticed when the books are closed.
  */
-export const DOCUMENT_SOURCED: readonly JevSourceType[] = [
-  'DV',
-  'CHECK',
-  'ADA',
-  'RCI',
-  'RADAI',
-  'RCD',
-  'RCDISB',
-  'PAYROLL',
-  'LIQUIDATION',
-];
+export const DOCUMENT_SOURCED: readonly JevSourceType[] =
+  DOCUMENT_SOURCED_KINDS as readonly JevSourceType[];
 
 /**
  * True for an entry the Accountant writes rather than one a document raises.
@@ -54,10 +46,7 @@ export const DOCUMENT_SOURCED: readonly JevSourceType[] = [
  * Takes a plain string rather than the union, because this is also asked of
  * entries read back from the database, where the value is whatever was stored.
  */
-export function isDirectEntry(sourceType: string | undefined | null): boolean {
-  if (!sourceType) return true;
-  return !DOCUMENT_SOURCED.includes(sourceType as JevSourceType);
-}
+export { isDirectEntry };
 
 /** The direct kinds, in the order they appear in the registry. */
 export const DIRECT_ENTRY_TYPES: readonly JevSourceType[] = JEV_SOURCE_TYPES.filter((t) =>
