@@ -1708,6 +1708,100 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+
+// --- 32. A master-data list has the index it needs --------------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * A SCREEN THAT LOADS NOTHING AND SAYS SO IN RED
+ * ---------------------------------------------------------------------------
+ * Almost every master-data list asks Firestore the same question: the active
+ * records, in order. Two constraints, and Firestore needs a composite index
+ * for the pair. Without it the query does not return an empty list - it FAILS,
+ * and the screen shows "This view needs a Firestore index that has not been
+ * created yet".
+ *
+ * It has now happened twice. Budget Programmes shipped in patch 86 with no
+ * index for `programs`, and the office found it by opening the screen. Patch
+ * 91 added Collection Intermediaries with the same omission, which would have
+ * been found the same way a week later.
+ *
+ * Both are one line in firestore.indexes.json that nobody thought of, and
+ * nothing anywhere connected the query to the file. Which is the shape this
+ * project has a standing answer to: when a rule lives in two places, a build
+ * check compares them.
+ *
+ * WHAT THIS DOES NOT COVER, said plainly. It reads the queries declared in
+ * src/data/queries.ts of the exact form [ACTIVE, orderBy('field')] - the shape
+ * that has failed twice. Queries built elsewhere, or with further `where`
+ * clauses, are not checked, so a green run here is not a promise that every
+ * index exists. It is a promise about this one family.
+ */
+{
+  const queriesFile = resolve(root, 'src/data/queries.ts');
+  const indexFile = resolve(root, 'firestore.indexes.json');
+
+  if (!existsSync(queriesFile) || !existsSync(indexFile)) {
+    failures.push(
+      'src/data/queries.ts or firestore.indexes.json is missing; the master-data index check ' +
+        'cannot run.',
+    );
+  } else {
+    const source = readFileSync(queriesFile, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    /* COL.<key> -> the Firestore collection name it stands for. */
+    const collections = {};
+    const colSource = readFileSync(resolve(root, 'src/lib/collections.ts'), 'utf8');
+    for (const m of colSource.matchAll(/(\w+)\s*:\s*'([^']+)'/g)) {
+      collections[m[1]] = m[2];
+    }
+
+    const index = JSON.parse(readFileSync(indexFile, 'utf8'));
+    const have = new Set(
+      (index.indexes ?? []).map(
+        (i) => `${i.collectionGroup}|${(i.fields ?? []).map((f) => f.fieldPath).join(',')}`,
+      ),
+    );
+
+    let offenders = 0;
+    let checked = 0;
+
+    for (const m of source.matchAll(/useCollection<[^>]+>\(\s*COL\.(\w+)\s*,\s*\[([^\]]*)\]/g)) {
+      const key = m[1];
+      const constraints = m[2].replace(/\s+/g, ' ');
+      if (!/\bACTIVE\b/.test(constraints)) continue;
+
+      const ordered = /orderBy\('([^']+)'/.exec(constraints);
+      if (!ordered) continue;
+
+      /* Only the plain two-constraint shape; anything richer is out of scope. */
+      const parts = constraints.split(',').map((p) => p.trim()).filter(Boolean);
+      if (parts.length !== 2) continue;
+
+      const collection = collections[key] ?? key;
+      const field = ordered[1];
+      checked += 1;
+
+      if (!have.has(`${collection}|active,${field}`)) {
+        offenders += 1;
+        failures.push(
+          `firestore.indexes.json: the ${collection} list asks for the active records ordered by ` +
+            `'${field}', and there is no index for it. Firestore does not answer that query with ` +
+            'an empty list - it refuses it, and the screen shows a red "this view needs a ' +
+            'Firestore index" where the records should be. Add { collectionGroup: ' +
+            `"${collection}", fields: [active, ${field}] } and deploy the indexes.`,
+        );
+      }
+    }
+
+    if (offenders === 0) {
+      console.log(`indexes: ${checked} master-data lists each have the index they need`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

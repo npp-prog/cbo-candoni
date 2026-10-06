@@ -866,6 +866,20 @@
       ]
     },
     {
+      "collectionGroup": "intermediaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "name",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "jevs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1317,6 +1331,20 @@
         {
           "fieldPath": "reportDate",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "programs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "code",
+          "order": "ASCENDING"
         }
       ]
     },
