@@ -13,10 +13,12 @@ import { Letterhead, blankRows } from '@/components/print/formParts';
 import {
   TREASURY_REPORT_LABELS,
   TREASURY_REPORT_SHORT,
+  isECollectionReport,
   type TreasuryReportType,
 } from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
+import ECollectionReportForm from './ECollectionReportForm';
 
 /**
  * The Treasurer's reports as COA prints them - Appendices 37, 38 and 39.
@@ -182,6 +184,16 @@ export default function TreasuryReportForm() {
         That report does not exist, or it has been deleted.
       </Alert>
     );
+  }
+
+  /*
+   * The three COA Circular 2021-014 reports have a page of their own, for the
+   * reasons set out at the top of it. One print address still reaches all
+   * seven reports, so nothing that links to a printed report has to know which
+   * kind it is.
+   */
+  if (isECollectionReport(report.reportType)) {
+    return <ECollectionReportForm report={report} />;
   }
 
   if (report.reportType === 'RCD') {

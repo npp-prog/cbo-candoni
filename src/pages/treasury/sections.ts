@@ -17,10 +17,26 @@ import type { TreasuryReportType } from '@/types/enums';
  */
 export const COLLECTION_TABS = [
   { label: 'Collections', to: '/treasury/collections' },
+  /*
+   * Money that arrived without anybody handing cash over a counter - paid
+   * through GCash or Maya, or straight into the bank account.
+   *
+   * On this strip and not a section of its own, deliberately. It is a
+   * collection: it hits the same revenue accounts, it is deposited to the same
+   * bank, and it must not be counted twice with the cash. Putting it elsewhere
+   * in the menu would have invited exactly that - two places money comes in,
+   * and a Cashbook that reads one of them.
+   */
+  { label: 'e-Collections', to: '/treasury/collections/electronic' },
   { label: 'Deposits', to: '/treasury/collections/deposits' },
   // The primary reports a collecting officer closes before the RCD is drawn.
   { label: 'Primary Reports', to: '/treasury/collections/primary' },
   { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
+  /*
+   * Annexes E, F and G of COA Circular 2021-014, behind one tab. Three
+   * reports, one piece of work - the reasoning is in ECollectionReports.
+   */
+  { label: 'e-Collections and Deposits (eRCD)', to: '/treasury/collections/ercd' },
   // Everything else drawn off the same collections. Each of these was a menu
   // item of its own, which put four documents about collections beside the
   // collections rather than in them - so the clerk who had just recorded the
@@ -101,6 +117,10 @@ export const SECTION_TABS: Record<TreasuryReportType, Array<{ label: string; to:
   RADAI: PAYMENT_TABS,
   RCD: COLLECTION_TABS,
   RCDISB: PAYROLL_TABS,
+  // The e-collection reports belong with the collections they report on.
+  ERCD_AR: COLLECTION_TABS,
+  ERCD_EOR: COLLECTION_TABS,
+  ERCD_DIRECT: COLLECTION_TABS,
 };
 
 /** The breadcrumb trail shared by every page in the collections section. */

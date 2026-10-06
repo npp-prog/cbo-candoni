@@ -159,6 +159,35 @@ export interface Activity extends SoftDeletable {
 }
 
 // ---------------------------------------------------------------------------
+// intermediaries/{id}
+// ---------------------------------------------------------------------------
+
+/**
+ * Somebody who collects money on the municipality's behalf.
+ *
+ * GCash, Maya, Land Bank's Link.BizPortal. COA Circular 2021-014 calls them
+ * intermediaries and names one on the face of two of its three reports, which
+ * is why this is master data rather than text typed on each receipt: the same
+ * intermediary spelt three ways is three intermediaries on the report, and the
+ * remittance from one of them cannot be reconciled against the collections it
+ * covers.
+ *
+ * NOT a payee and not a bank. A payee is somebody the municipality pays; a bank
+ * account is the municipality's own. An intermediary is neither - it holds the
+ * municipality's money for a few days and then remits it.
+ */
+export interface Intermediary extends SoftDeletable {
+  id: Id;
+  code: string;
+  name: string;
+  /** How the municipality identifies itself to them, where they issue one. */
+  merchantId?: string;
+  /** The bank account their remittances land in, where it is always the same. */
+  bankAccountId?: Id;
+  notes?: string;
+}
+
+// ---------------------------------------------------------------------------
 // payees/{payeeId}
 // ---------------------------------------------------------------------------
 

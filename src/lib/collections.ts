@@ -24,6 +24,8 @@ export const COL = {
    * Payauan as somewhere to charge an expense.
    */
   barangays: 'barangays',
+  /** Who collects on the municipality's behalf: GCash, Maya, a bank's portal. */
+  intermediaries: 'intermediaries',
   responsibilityCenters: 'responsibilityCenters',
   programs: 'programs',
   projects: 'projects',

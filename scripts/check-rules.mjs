@@ -1636,6 +1636,78 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+
+// --- 31. One pile of collections, divided by kind ---------------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * FOUR REPORTS READING ONE REGISTER
+ * ---------------------------------------------------------------------------
+ * An e-collection is an ordinary `collections` document carrying a kind - the
+ * reasoning is on `Collection.eCollectionKind`, and it is the decision the
+ * whole of patch 91 rests on. It buys one register, one Cashbook, one Abstract
+ * of Collections and one SRE, which is what the office asked for when it said
+ * all online collections should be presented together.
+ *
+ * What it costs is this: the Report of Collections and Deposits and COA
+ * Circular 2021-014's three reports all draw on that one pile, and the ONLY
+ * thing dividing it is the kind recorded on each document.
+ *
+ * If the division were lost, a GCash receipt would be offered to the RCD as
+ * well as to its own report, and whichever was certified first would claim it
+ * - because a document is claimed by one report and one only, which is the
+ * control that stops a receipt reaching the ledger twice. The other report
+ * would then foot to less than the money it covers, the officer would certify
+ * a statement that is untrue, and the only visible symptom would be a bank
+ * reconciliation that will not close.
+ *
+ * The screen filters the list it offers. The screen is not the authority. So
+ * this asserts that the ENGINE still refuses the mismatch, inside the
+ * transaction that certifies.
+ */
+{
+  const file = resolve(root, 'functions/src/treasury/reports.ts');
+  const source = existsSync(file)
+    ? readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '')
+    : '';
+
+  if (!source) {
+    failures.push(
+      'functions/src/treasury/reports.ts: not found. The treasury report engine is where the ' +
+        'RCD and the three e-collection reports are kept apart.',
+    );
+  } else if (!/collectionBelongsOnReport\s*\(/.test(source)) {
+    failures.push(
+      'functions/src/treasury/reports.ts: certifyTreasuryReport no longer checks that a ' +
+        'collection belongs on the report claiming it. The RCD and the three COA Circular ' +
+        '2021-014 reports draw on one `collections` register and are divided only by ' +
+        '`eCollectionKind`; without this check a receipt can be certified onto the wrong ' +
+        'report, which claims it for good and leaves the right report short. ' +
+        'Call collectionBelongsOnReport from src/lib/eCollections.ts.',
+    );
+  } else {
+    /*
+     * And that the mapping is the SHARED one. A copy written out here would
+     * be a second answer to "which report is this collection for", and the
+     * browser decides what to offer from the first.
+     */
+    const importsShared = /from\s+'\.\.\/lib\/eCollections'/.test(source);
+    if (!importsShared) {
+      failures.push(
+        'functions/src/treasury/reports.ts: the report-to-kind mapping is not the shared one ' +
+          "from '../lib/eCollections'. The browser decides what to OFFER from that mapping and " +
+          'the engine decides what to ACCEPT; two copies of it is two answers, and the day they ' +
+          'differ a receipt is offered to a report the engine then refuses - or worse, accepted ' +
+          'onto one the screen never meant.',
+      );
+    } else {
+      console.log('collections: the RCD and the eRCDs are divided by the same mapping');
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

@@ -173,6 +173,11 @@ export const JEV_SOURCE_TYPES = [
   'RADAI',
   'RCD',
   'RCDISB',
+  // COA Circular 2021-014's three reports of electronic money. The source
+  // type is the report type, as it is for the other four.
+  'ERCD_AR',
+  'ERCD_EOR',
+  'ERCD_DIRECT',
   'PAYROLL',
   'LIQUIDATION',
   // Written in Accounting itself.
@@ -194,6 +199,9 @@ export const JEV_SOURCE_LABELS: Record<JevSourceType, string> = {
   RADAI: 'Report of ADA Issued',
   RCD: 'Report of Collections and Deposits',
   RCDISB: 'Report of Cash Disbursement',
+  ERCD_AR: 'Report of e-Collections and Deposits (by Intermediary)',
+  ERCD_EOR: 'Report of e-Collections and Deposits',
+  ERCD_DIRECT: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
   PAYROLL: 'Payroll',
   LIQUIDATION: 'Liquidation Report',
   BANK_ADJUSTMENT: 'Bank Adjustment',
@@ -244,7 +252,42 @@ export type AdaStatus = (typeof ADA_STATUSES)[number];
  * why they share a collection, a status flow and a pair of engine functions
  * rather than having four of each.
  */
-export const TREASURY_REPORT_TYPES = ['RCI', 'RADAI', 'RCD', 'RCDISB'] as const;
+/**
+ * The reports the Treasury certifies and hands to Accounting.
+ *
+ * ---------------------------------------------------------------------------
+ * THE THREE e-COLLECTION REPORTS
+ * ---------------------------------------------------------------------------
+ * COA Circular 2021-014 prescribes three, and they are three because the money
+ * arrives three different ways. They are NOT one report with a filter:
+ *
+ *   ERCD_AR     Annex E. An INTERMEDIARY collected on the municipality's
+ *               behalf - GCash, Maya, a payment gateway - and issued its own
+ *               Acknowledgement Receipt. The designated officer reports what
+ *               the intermediary collected and remitted.
+ *
+ *   ERCD_EOR    Annex F. The municipality's OWN collecting officer issued an
+ *               electronic Official Receipt, with the money held by an
+ *               intermediary and deposited to the agency's bank account.
+ *
+ *   ERCD_DIRECT Annex G. A payor paid STRAIGHT into the bank account and
+ *               showed proof of deposit. Nobody issued a receipt first, so
+ *               there is no intermediary on the form and the reference is the
+ *               bank's own transaction confirmation.
+ *
+ * Who certifies differs, what the number column holds differs, and the
+ * certification sentence differs. Collapsing them would produce a report that
+ * is correct for none of the three.
+ */
+export const TREASURY_REPORT_TYPES = [
+  'RCI',
+  'RADAI',
+  'RCD',
+  'RCDISB',
+  'ERCD_AR',
+  'ERCD_EOR',
+  'ERCD_DIRECT',
+] as const;
 export type TreasuryReportType = (typeof TREASURY_REPORT_TYPES)[number];
 
 export const TREASURY_REPORT_LABELS: Record<TreasuryReportType, string> = {
@@ -252,6 +295,9 @@ export const TREASURY_REPORT_LABELS: Record<TreasuryReportType, string> = {
   RADAI: 'Report of ADA Issued',
   RCD: 'Report of Collections and Deposits',
   RCDISB: 'Report of Cash Disbursement',
+  ERCD_AR: 'Report of e-Collections and Deposits (by Intermediary)',
+  ERCD_EOR: 'Report of e-Collections and Deposits',
+  ERCD_DIRECT: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
 };
 
 export const TREASURY_REPORT_SHORT: Record<TreasuryReportType, string> = {
@@ -259,7 +305,18 @@ export const TREASURY_REPORT_SHORT: Record<TreasuryReportType, string> = {
   RADAI: 'RADAI',
   RCD: 'RCD',
   RCDISB: 'RCDisb',
+  ERCD_AR: 'eRCD (AR)',
+  ERCD_EOR: 'eRCD',
+  ERCD_DIRECT: 'Direct deposits',
 };
+
+/** The three that report money which arrived electronically. */
+export const E_COLLECTION_REPORT_TYPES = ['ERCD_AR', 'ERCD_EOR', 'ERCD_DIRECT'] as const;
+export type ECollectionReportType = (typeof E_COLLECTION_REPORT_TYPES)[number];
+
+export function isECollectionReport(t: string): t is ECollectionReportType {
+  return (E_COLLECTION_REPORT_TYPES as readonly string[]).includes(t);
+}
 
 /**
  * DRAFT        Treasury is still adding documents to it.

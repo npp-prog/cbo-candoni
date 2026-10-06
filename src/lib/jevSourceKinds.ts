@@ -25,6 +25,19 @@ export const DOCUMENT_SOURCED_KINDS: readonly string[] = [
   'RADAI',
   'RCD',
   'RCDISB',
+  /*
+   * COA Circular 2021-014's three reports, added in patch 91. They are
+   * document-sourced for exactly the reason the RCD is: the figure comes from
+   * a report an officer certified under oath, not from the Accountant.
+   *
+   * Left off this list they would have counted as DIRECT entries - the
+   * fallback - and the amount of a certified report's journal entry would have
+   * been editable in Accounting. That is the one thing the split between
+   * certifying and journalizing exists to prevent.
+   */
+  'ERCD_AR',
+  'ERCD_EOR',
+  'ERCD_DIRECT',
   'PAYROLL',
   'LIQUIDATION',
 ];

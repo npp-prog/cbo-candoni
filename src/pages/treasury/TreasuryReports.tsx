@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { newestFirst } from '@/lib/registerOrder';
@@ -33,10 +33,16 @@ import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
-import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT, type TreasuryReportType } from '@/types/enums';
+import {
+  TREASURY_REPORT_LABELS,
+  TREASURY_REPORT_SHORT,
+  isECollectionReport,
+  type TreasuryReportType,
+} from '@/types/enums';
 import type { TreasuryReport, TreasuryReportLine } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 import { SECTION_TABS } from './sections';
+import { kindForReport } from './eCollectionKinds';
 
 /**
  * Treasury reports: RCI, RADAI, RCD and RCDisb.
@@ -93,7 +99,19 @@ const ACCOUNTS = {
  * those checks without going back to the sidebar.
  */
 
-export default function TreasuryReports({ reportType }: { reportType: TreasuryReportType }) {
+export default function TreasuryReports({
+  reportType,
+  aside,
+}: {
+  reportType: TreasuryReportType;
+  /**
+   * Rendered under the tab strip. The e-collection registers use it to carry
+   * the choice between Annexes E, F and G - three COA reports that are one
+   * piece of work to the officer preparing them, so they share a tab rather
+   * than taking three.
+   */
+  aside?: ReactNode;
+}) {
   const { fiscalYear, fundCode } = useFilters();
   const { can, user, profile } = useAuth();
   const navigate = useNavigate();
@@ -216,7 +234,13 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
               ? 'The advices to debit account sent to the bank in the period, certified and forwarded to Accounting for journalizing.'
               : reportType === 'RCD'
                 ? 'A collecting officer&rsquo;s receipts for the period with the deposits made against them, certified and forwarded to Accounting.'
-                : 'Cash paid out in the period - a cash payroll, for instance - certified by the disbursing officer and forwarded to Accounting.'
+                : reportType === 'ERCD_AR'
+                  ? "Collections an intermediary made on the municipality's behalf against its own Acknowledgement Receipts, certified by the designated officer. COA Circular 2021-014, Annex E."
+                  : reportType === 'ERCD_EOR'
+                    ? 'Collections receipted by electronic Official Receipt, the money held by an intermediary until it reaches the bank. Certified by the collecting officer. COA Circular 2021-014, Annex F.'
+                    : reportType === 'ERCD_DIRECT'
+                      ? "Money a payor paid straight into the municipality's bank account, reported once the proof of deposit is in hand. COA Circular 2021-014, Annex G."
+                      : 'Cash paid out in the period - a cash payroll, for instance - certified by the disbursing officer and forwarded to Accounting.'
         }
         actions={
           canPrepare ? <Button onClick={() => setShowForm(true)}>Prepare {short}</Button> : undefined
@@ -224,6 +248,8 @@ export default function TreasuryReports({ reportType }: { reportType: TreasuryRe
       />
 
       <SectionTabs tabs={SECTION_TABS[reportType]} />
+
+      {aside}
 
       <Card>
         <DataTable
@@ -353,9 +379,26 @@ function PrepareReport({
           amount: a.amount,
         }));
     }
-    if (reportType === 'RCD') {
+    /*
+     * The RCD and the three e-collection reports all draw on `collections`,
+     * and each must see only its own half.
+     *
+     * An e-collection is an ordinary collection carrying a kind - the reasons
+     * are on `Collection.eCollectionKind`. The price of that decision is paid
+     * here: without the kind filter a GCash receipt would be offered to the
+     * RCD as well as to its own report, and whichever was certified first
+     * would claim it. The other report would then be short by that amount with
+     * nothing saying why.
+     *
+     * The server refuses the mismatch too, in certifyTreasuryReport. This
+     * filter is so the officer is never offered the wrong document; that one
+     * is so the browser is not the authority.
+     */
+    if (reportType === 'RCD' || isECollectionReport(reportType)) {
+      const wantedKind = kindForReport(reportType);
       return collections.data
         .filter((c) => unreported(c as never))
+        .filter((c) => (c.eCollectionKind ?? null) === wantedKind)
         .map((c) => ({
           id: c.id,
           sourceNo: c.orNumber,
@@ -501,7 +544,34 @@ function PrepareReport({
       ];
     }
 
-    // RCD: the credits are the revenue accounts the receipts recorded.
+    /*
+     * RCD and the three e-collection reports: the credits are the revenue
+     * accounts the receipts recorded, gathered across the whole report.
+     *
+     * ---- AND WHAT IS DEBITED -------------------------------------------
+     *
+     * Annexes E and F  Dr CASH - LOCAL TREASURY, exactly as the RCD does.
+     *                  The money is receipted but not yet in the bank: under
+     *                  the Collect-Aggregate-Remit scheme the intermediary
+     *                  remits on the next banking day, and even Self-Collect
+     *                  and Credit has a window. The officer who signed the
+     *                  report is accountable for it until it is deposited,
+     *                  which is what Cash - Local Treasury means.
+     *
+     *                  The deposit is then recorded under Deposits like any
+     *                  other - Dr Cash in Bank, Cr Cash - Local Treasury - so
+     *                  electronic money takes the same two steps as cash and
+     *                  the undeposited balance on the face of the annex is a
+     *                  figure CFMS already knows.
+     *
+     * Annex G          Dr CASH IN BANK, named with the bank account. Nobody
+     *                  ever held this money: the payor paid the account
+     *                  itself, and the report is prepared only once the proof
+     *                  of deposit is in hand. Debiting Cash - Local Treasury
+     *                  here would make an officer accountable for cash that
+     *                  never passed through any hands, and would then need a
+     *                  deposit entry for a deposit that already happened.
+     */
     const byAccount = new Map<string, { accountCode: string; accountName: string; amount: number }>();
     for (const doc of chosen) {
       const collection = collections.data.find((c) => c.id === doc.id);
@@ -516,12 +586,26 @@ function PrepareReport({
           });
       }
     }
+    const debitLine =
+      reportType === 'ERCD_DIRECT'
+        ? // Named from the ACCOUNT CODE, not the bank record's own name - see
+          // cashInBankLine. Without a bank account chosen there is no honest
+          // debit, so the entry is left empty and the screen says so rather
+          // than proposing a guess.
+          bankAccount
+          ? { ...cashInBankLine(bankAccount, accountTitle), debit: total, credit: 0 }
+          : null
+        : {
+            accountCode: ACCOUNTS.cashLocalTreasury.code,
+            accountName: ACCOUNTS.cashLocalTreasury.name,
+            debit: total,
+            credit: 0,
+          };
+    if (!debitLine || !debitLine.accountCode) return [];
+
     return [
       {
-        accountCode: ACCOUNTS.cashLocalTreasury.code,
-        accountName: ACCOUNTS.cashLocalTreasury.name,
-        debit: total,
-        credit: 0,
+        ...debitLine,
         particulars: `Collections per ${short}`,
       },
       ...[...byAccount.values()].map((a) => ({
@@ -532,7 +616,7 @@ function PrepareReport({
         particulars: `Collections per ${short}`,
       })),
     ];
-  }, [reportType, total, chosen, collections.data, bankAccount, officerId, officerName, short]);
+  }, [reportType, total, chosen, collections.data, bankAccount, accountTitle, officerId, officerName, short]);
 
   const entryBalances =
     entry.length > 0 &&
@@ -540,8 +624,19 @@ function PrepareReport({
     entry.reduce((s, l) => s + l.debit, 0) === total;
 
   const isPayroll = reportType === 'RCDISB';
-  const needsBank = reportType === 'RCI' || reportType === 'RADAI';
-  const needsOfficer = reportType === 'RCD' || reportType === 'RCDISB';
+  /*
+   * Annex G names the bank account on the face of the report, and its entry
+   * debits that account, so it needs one exactly as the RCI and RADAI do.
+   */
+  const needsBank = reportType === 'RCI' || reportType === 'RADAI' || reportType === 'ERCD_DIRECT';
+  /*
+   * Annex E is certified by the DESIGNATED OFFICER and Annex F by the
+   * COLLECTING OFFICER. Annex G is certified by the Cash/Treasury Unit and
+   * names no officer on the form - but the report still records who prepared
+   * it, so it is asked for there too.
+   */
+  const needsOfficer =
+    reportType === 'RCD' || reportType === 'RCDISB' || isECollectionReport(reportType);
 
   const save = async () => {
     if (!chosen.length) {
@@ -697,8 +792,14 @@ function PrepareReport({
 
         {needsOfficer && (
           <Field
-            label={reportType === 'RCD' ? 'Collecting officer' : 'Disbursing officer'}
-            hint="The accountable officer this report belongs to."
+            label={
+              reportType === 'ERCD_AR'
+                ? 'Designated officer'
+                : reportType === 'RCD' || reportType === 'ERCD_EOR' || reportType === 'ERCD_DIRECT'
+                  ? 'Collecting officer'
+                  : 'Disbursing officer'
+            }
+            hint="The accountable officer this report belongs to, and who certifies it."
           >
             <EmployeePicker
               value={officerId}

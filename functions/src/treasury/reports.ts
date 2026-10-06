@@ -16,6 +16,7 @@ import {
   reserveDocumentNumber,
 } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
+import { collectionBelongsOnReport, isECollectionReportType } from '../lib/eCollections';
 import {
   createJevInTransaction,
   postJevInTransaction,
@@ -65,7 +66,32 @@ const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF'
  */
 const ACCOUNTANT: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT'];
 
-type ReportType = 'RCI' | 'RADAI' | 'RCD' | 'RCDISB';
+type ReportType =
+  | 'RCI'
+  | 'RADAI'
+  | 'RCD'
+  | 'RCDISB'
+  /*
+   * COA Circular 2021-014's three reports of electronic money, added in patch
+   * 91. They reuse this whole file rather than getting an engine of their own,
+   * and that is the point: certify -> journalize, the attachment lock, the
+   * document claim, the numbering and the handover to Accounting are the same
+   * controls. A second implementation would be a second set of them, and the
+   * second set is always the one that is missing a check.
+   */
+  | 'ERCD_AR'
+  | 'ERCD_EOR'
+  | 'ERCD_DIRECT';
+
+const REPORT_TYPES: ReportType[] = [
+  'RCI',
+  'RADAI',
+  'RCD',
+  'RCDISB',
+  'ERCD_AR',
+  'ERCD_EOR',
+  'ERCD_DIRECT',
+];
 
 interface ReportLine {
   sourceId: string;
@@ -121,6 +147,12 @@ const SOURCE_COLLECTION: Record<ReportType, string> = {
   RADAI: COL.ada,
   RCD: COL.collections,
   RCDISB: COL.payrolls,
+  // All three draw on the SAME collection as the RCD. An e-collection is an
+  // ordinary collections document carrying a kind; what divides the pile is
+  // the kind check below, not a separate store.
+  ERCD_AR: COL.collections,
+  ERCD_EOR: COL.collections,
+  ERCD_DIRECT: COL.collections,
 };
 
 /** The field on the source document that records which report claimed it. */
@@ -131,6 +163,12 @@ const JOURNAL_BOOK: Record<ReportType, string> = {
   RADAI: 'ADA_DISBURSEMENTS_JOURNAL',
   RCD: 'CASH_RECEIPTS_JOURNAL',
   RCDISB: 'CASH_DISBURSEMENTS_JOURNAL',
+  // The Cash Receipts Journal, the same book the RCD posts to. Money received
+  // is money received; a separate journal for the electronic kind would split
+  // the municipality's receipts across two books for no reason the GAM gives.
+  ERCD_AR: 'CASH_RECEIPTS_JOURNAL',
+  ERCD_EOR: 'CASH_RECEIPTS_JOURNAL',
+  ERCD_DIRECT: 'CASH_RECEIPTS_JOURNAL',
 };
 
 const REPORT_LABEL: Record<ReportType, string> = {
@@ -138,10 +176,15 @@ const REPORT_LABEL: Record<ReportType, string> = {
   RADAI: 'Report of ADA Issued',
   RCD: 'Report of Collections and Deposits',
   RCDISB: 'Report of Cash Disbursement',
+  ERCD_AR: 'Report of e-Collections and Deposits (by Intermediary)',
+  ERCD_EOR: 'Report of e-Collections and Deposits',
+  ERCD_DIRECT: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
 };
 
 function assertReportType(value: unknown): ReportType {
-  if (value === 'RCI' || value === 'RADAI' || value === 'RCD' || value === 'RCDISB') return value;
+  if (typeof value === 'string' && (REPORT_TYPES as string[]).includes(value)) {
+    return value as ReportType;
+  }
   throw invalid('Unknown treasury report type.');
 }
 
@@ -315,6 +358,36 @@ export const certifyTreasuryReport = onCall(
           throw invalid(
             `${line.sourceNo} has already been reported. A document is reported once only - otherwise the same disbursement reaches the General Ledger twice.`,
           );
+        }
+
+        /*
+         * ---- A COLLECTION MUST BE ON ITS OWN REPORT ----------------------
+         *
+         * The RCD and the three e-collection reports all draw on `collections`
+         * and are divided only by the kind recorded on the document. The
+         * screen filters the list it offers, but the screen is not the
+         * authority - the browser could send any collection id in this fund.
+         *
+         * What the mismatch would cost: a GCash receipt certified onto the
+         * Report of Collections and Deposits is claimed by it, so the eRCD
+         * that should have carried it can never list it again. The eRCD then
+         * foots to less than the intermediary's remittance, the Treasurer
+         * signs a certificate that is untrue, and the only visible symptom is
+         * a bank reconciliation that will not close.
+         *
+         * Both sides normalise to null, so a collection recorded before patch
+         * 91 - no kind field at all - is a counter receipt and belongs on the
+         * RCD. Which is what it is.
+         */
+        if (type === 'RCD' || isECollectionReportType(type)) {
+          const kind = source.eCollectionKind as string | null | undefined;
+          if (!collectionBelongsOnReport(type, kind)) {
+            throw invalid(
+              kind
+                ? `${line.sourceNo} was received electronically (${kind}) and belongs on its own COA Circular 2021-014 report, not on this ${label}. Remove it and report it under Treasury, Collections and Deposits, e-Collections and Deposits.`
+                : `${line.sourceNo} was received over the counter and belongs on the Report of Collections and Deposits, not on this ${label}. Remove it from this report.`,
+            );
+          }
         }
 
         // ---- a payroll on an RCDisb --------------------------------------

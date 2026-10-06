@@ -55,6 +55,8 @@ const LiquidationDetail = lazy(() => import('./pages/accounting/LiquidationDetai
 const IndexOfPayments = lazy(() => import('./pages/accounting/IndexOfPayments'));
 
 const TreasuryCollections = lazy(() => import('./pages/treasury/Collections'));
+const ECollections = lazy(() => import('./pages/treasury/ECollections'));
+const ECollectionReports = lazy(() => import('./pages/treasury/ECollectionReports'));
 const Rcd = lazy(() => import('./pages/treasury/Rcd'));
 const Deposits = lazy(() => import('./pages/treasury/Deposits'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
@@ -270,6 +272,13 @@ export default function App() {
             path="/treasury/payroll/rcdisb"
             element={<Guard module="treasury"><TreasuryReportRegister reportType="RCDISB" /></Guard>}
           />
+          {/* Annexes E, F and G of COA Circular 2021-014 behind one address.
+              They are three reports and stay three; the choice of which is
+              made on the page. See ECollectionReports. */}
+          <Route
+            path="/treasury/collections/ercd"
+            element={<Guard module="treasury"><ECollectionReports /></Guard>}
+          />
           {/* One report, on a page of its own, so it can carry the signed
               form. One address for all four kinds: the report says which it
               is, and four routes to one screen would be four things to keep
@@ -317,6 +326,13 @@ export default function App() {
           <Route
             path="/treasury/collections/upload"
             element={<Guard module="treasury"><AbstractUpload /></Guard>}
+          />
+          {/* Money that arrived without anybody handing cash over a counter.
+              Inside the collections section, not beside it: it IS a
+              collection, and the reasons are on Collection.eCollectionKind. */}
+          <Route
+            path="/treasury/collections/electronic"
+            element={<Guard module="treasury"><ECollections /></Guard>}
           />
           <Route path="/treasury/rcd" element={<Guard module="treasury"><Rcd /></Guard>} />
           <Route path="/treasury/rcd/:id" element={<Guard module="treasury"><Rcd /></Guard>} />

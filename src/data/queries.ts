@@ -24,6 +24,7 @@ import type {
   Obligation,
   Office,
   Program,
+  Intermediary,
   Payee,
   Payroll,
   Rcd,
@@ -99,6 +100,10 @@ export const useBarangays = () =>
  */
 export const usePrograms = () =>
   useCollection<Program>(COL.programs, [ACTIVE, orderBy('code')], ['programs']);
+
+/** GCash, Maya, a bank's portal - whoever collects on the municipality's behalf. */
+export const useIntermediaries = () =>
+  useCollection<Intermediary>(COL.intermediaries, [ACTIVE, orderBy('name')], ['intermediaries']);
 
 export const usePayees = () =>
   useCollection<Payee>(COL.payees, [ACTIVE, orderBy('name')], ['payees']);

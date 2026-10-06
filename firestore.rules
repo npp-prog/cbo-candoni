@@ -651,7 +651,8 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
-    // treasuryReports - RCI, RADAI, RCD and RCDisb
+    // treasuryReports - RCI, RADAI, RCD, RCDisb and the three eRCDs
+    //                    (COA Circular 2021-014, Annexes E, F and G)
     // ---------------------------------------------------------------------
     //
     // The handover between two offices, so the rules split along the same
@@ -879,6 +880,17 @@ service cloud.firestore {
     match /activities/{id} {
       allow read: if masterRead();
       allow create, update: if masterWrite();
+      allow delete: if false;
+    }
+
+    // Who collects on the municipality's behalf. Master data, written by the
+    // same people who keep the banks and the revenue codes - and by Treasury
+    // staff, because an intermediary turns up for the first time while a
+    // collection is being recorded, exactly as a payee does mid-voucher.
+    match /intermediaries/{id} {
+      allow read: if masterRead();
+      allow create: if signedIn() && hasAny(masterDataWriters().concat(['TREASURY_STAFF']));
+      allow update: if masterWrite();
       allow delete: if false;
     }
 

@@ -78,6 +78,14 @@ const PAIRS = [
   // code, and an appropriation would match whichever the picker happened to
   // show.
   { source: 'src/lib/budgetPrograms.ts', target: 'functions/src/lib/budgetPrograms.ts' },
+  // `eCollections` joined in patch 91, with COA Circular 2021-014's three
+  // reports. An e-collection is an ordinary collection carrying a kind, so the
+  // RCD and the three eRCDs all draw on one pile of documents and this mapping
+  // is what divides it. The browser decides what to OFFER and the engine
+  // decides what to ACCEPT; a drifted copy would let a GCash receipt be
+  // certified onto the Report of Collections and Deposits, and the report that
+  // should have carried it would be short with nothing saying why.
+  { source: 'src/lib/eCollections.ts', target: 'functions/src/lib/eCollections.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

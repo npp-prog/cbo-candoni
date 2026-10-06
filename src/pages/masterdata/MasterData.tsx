@@ -395,6 +395,29 @@ const CONFIGS: Record<string, EntityConfig> = {
     The old address redirects; see src/App.tsx.
   */
 
+  intermediaries: {
+    slug: 'intermediaries',
+    collection: COL.intermediaries,
+    title: 'Collection Intermediaries',
+    singular: 'intermediary',
+    description:
+      "Who collects money on the municipality's behalf - GCash, Maya, a bank's online portal. COA Circular 2021-014 names one on the face of the e-collection reports, so they are kept here rather than typed on each receipt: the same intermediary spelt three ways is three intermediaries on the report, and a remittance cannot then be reconciled against the collections it covers.",
+    defaultSort: 'name',
+    fields: [
+      { key: 'code', label: 'Code', type: 'text', required: true, inTable: true, mono: true, width: '8rem' },
+      { key: 'name', label: 'Name', type: 'text', required: true, inTable: true },
+      {
+        key: 'merchantId',
+        label: 'Merchant or biller ID',
+        type: 'text',
+        inTable: true,
+        mono: true,
+        width: '12rem',
+      },
+      { key: 'notes', label: 'Notes', type: 'text' },
+    ],
+  },
+
   banks: {
     slug: 'banks',
     collection: COL.bankAccounts,

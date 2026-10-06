@@ -127,6 +127,70 @@ export interface Collection extends Partial<AuditStamps> {
   totalAmount: Centavos;
 
   paymentForm: 'CASH' | 'CHECK' | 'ONLINE' | 'CARD';
+
+  /**
+   * Which of COA Circular 2021-014's three reports this collection belongs on.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY AN e-COLLECTION IS A COLLECTION AND NOT ITS OWN RECORD
+   * ---------------------------------------------------------------------------
+   * It was tempting to give online money a collection of its own. It would have
+   * been wrong. Money paid through GCash hits the same revenue accounts as money
+   * paid at the counter, is deposited to the same bank, and appears in the same
+   * Cashbook, the same Abstract of Collections and the same Statement of
+   * Receipts and Expenditures.
+   *
+   * A second collection would have meant every one of those reports reading two
+   * places - and the day one of them was written to read only the first, the
+   * online money would have vanished from it silently. That is the fault the
+   * office asked to avoid when it said all online collections should be
+   * presented together.
+   *
+   * So this is a collection with a kind. Absent on a cash receipt, which is the
+   * ordinary case and reads as "no electronic report".
+   *
+   *   AR     an intermediary collected and issued its own Acknowledgement
+   *          Receipt (Annex E)
+   *   EOR    our collecting officer issued an electronic Official Receipt
+   *          (Annex F)
+   *   DIRECT a payor paid straight into the bank account (Annex G)
+   */
+  eCollectionKind?: 'AR' | 'EOR' | 'DIRECT';
+
+  /**
+   * Who held the money: GCash, Maya, Land Bank's portal.
+   *
+   * Named on Annexes E and F. Absent on a DIRECT deposit, where there is no
+   * intermediary - the payor paid the municipality's bank account itself.
+   */
+  intermediaryId?: Id;
+  intermediaryName?: string;
+
+  /**
+   * Two columns the e-collection forms carry and the cash receipt does not.
+   *
+   * The responsibility centre is the office the collection is credited to, and
+   * it is the first consumer CFMS has for an office's own function code. The
+   * PREXC/PAP is the programme the collection relates to, which for an LGU is
+   * the Function/Programme/Project code.
+   */
+  responsibilityCenterCode?: string;
+  prexcPap?: string;
+
+  /**
+   * The treasury report that claimed this collection, written by
+   * `certifyTreasuryReport`.
+   *
+   * It has been written on collections since treasury reports were first
+   * certified - the RCD claims its receipts through exactly this field, and it
+   * is what stops one receipt reaching the ledger on two reports. It was
+   * simply never declared on the client type, because no screen read it back
+   * until the e-collection register needed to show what had been reported and
+   * what had not.
+   */
+  treasuryReportId?: Id;
+  treasuryReportNo?: string;
+  treasuryReportType?: TreasuryReportType;
   /** For collections received by check. */
   checkNo?: string;
   checkBank?: string;

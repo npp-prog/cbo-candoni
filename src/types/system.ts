@@ -228,6 +228,14 @@ export const DOCUMENT_TYPES = [
   'RCI',
   'RADAI',
   'RCDISB',
+  // COA Circular 2021-014's reports of electronic money, and the proof the
+  // money reached the bank. The circular asks for the proof by name: Annex F
+  // is submitted to Accounting "together with the corresponding proof of
+  // deposit", and Annex G says a photocopy of it "should be attached to this
+  // report". It is a second right answer beside the signed report, the way the
+  // Abstract is beside the RCD - not a loose "supporting document".
+  'ERCD',
+  'PROOF_OF_DEPOSIT',
   'OTHER',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -241,6 +249,8 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   RCI: 'Report of Checks Issued (RCI)',
   RADAI: 'Report of ADA Issued (RADAI)',
   RCDISB: 'Report of Cash Disbursement (RCDisb)',
+  ERCD: 'Report of e-Collections and Deposits (eRCD)',
+  PROOF_OF_DEPOSIT: 'Proof of deposit or fund transfer',
   /**
    * The supporting paper behind a journal entry written in Accounting - a
    * memorandum, a bank debit advice, the office's own journal voucher. CFMS

@@ -68,6 +68,25 @@ export function attachmentTypesFor(
           return ['RADAI'];
         case 'RCDISB':
           return ['RCDISB'];
+        /*
+         * All three COA Circular 2021-014 reports take the same pair, and the
+         * circular asks for both by name.
+         *
+         * Annex E is certified on the strength of a list and a Certification
+         * of Deposit the INTERMEDIARY produced - the designated officer is
+         * swearing that somebody else's figures are in order, so the thing
+         * that makes the certificate meaningful is the proof the money
+         * arrived. Annex F is submitted to Accounting "together with the
+         * corresponding proof of deposit", and Annex G says a photocopy of the
+         * validated deposit slip or fund transfer "should be attached to this
+         * report".
+         *
+         * Two right answers, like the RCD and its Abstract. Not seven.
+         */
+        case 'ERCD_AR':
+        case 'ERCD_EOR':
+        case 'ERCD_DIRECT':
+          return ['ERCD', 'PROOF_OF_DEPOSIT'];
         default:
           return ['OTHER'];
       }

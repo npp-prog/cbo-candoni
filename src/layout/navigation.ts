@@ -407,6 +407,9 @@ export const NAVIGATION: NavItem[] = [
          The old address still arrives there.
       */
       { label: 'Banks', to: '/master-data/banks' },
+      // GCash, Maya, a bank's online portal. Beside the banks because that is
+      // what an officer is thinking of when they look for one.
+      { label: 'Collection Intermediaries', to: '/master-data/intermediaries' },
       { label: 'Tax Codes', to: '/master-data/tax-codes' },
       { label: 'Revenue Codes', to: '/master-data/revenue-codes' },
       { label: 'Accountable Forms', to: '/master-data/accountable-forms' },

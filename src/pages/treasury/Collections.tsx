@@ -41,9 +41,20 @@ export default function Collections() {
   const [showForm, setShowForm] = useState(false);
   const [source, setSource] = useState('');
 
+  /*
+   * The counter's own receipts, and only those.
+   *
+   * An e-collection is a `collections` document like any other - that is the
+   * decision the e-collection work rests on, and the reasons are written out
+   * on `Collection.eCollectionKind`. The cost of it is exactly here: two
+   * screens read one register, so each has to show its own half or the day's
+   * takings read twice. This screen shows what came over the counter; the
+   * e-Collections tab shows what arrived electronically.
+   */
   const rows = useMemo(
     () =>
       data
+        .filter((c) => !c.eCollectionKind)
         .filter((c) => !period || Number(c.orDate?.slice(5, 7)) === period)
         .filter((c) => !source || c.revenueSource === source),
     [data, period, source],
