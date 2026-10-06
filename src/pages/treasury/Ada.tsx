@@ -153,12 +153,12 @@ export default function Ada() {
               );
             })()}
           {/*
-            Appendix 36 - the instrument itself. On the row rather than behind
+            The ADA form itself. On the row rather than behind
             an Open button, because unlike a report there is no page to open:
             an advice is one line in this register and one sheet for the bank.
           */}
           <Link to={`/treasury/ada/${a.id}/form`} className="text-2xs font-medium underline">
-            Appendix 36
+            ADA Form
           </Link>
           {canManage && can('accounting', 'cancel') && !['DEBITED', 'CANCELLED'].includes(a.status) && (
             <Button size="sm" variant="ghost" onClick={() => setCancelling(a)}>

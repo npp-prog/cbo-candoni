@@ -288,7 +288,7 @@ export default function JevDetail() {
                 something it has not recorded. */}
             {!isNew && isPosted && (
               <Button variant="secondary" onClick={() => navigate(`/accounting/jev/${id}/print`)}>
-                Print (Appendix 30)
+                Print JEV
               </Button>
             )}
             {canAmend && !amending && (

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { entryGridColumns } from '@/lib/entryGridColumns';
 import clsx from 'clsx';
 import { AccountPicker, SubsidiaryPicker } from '@/components/pickers';
 import { AmountInput, Select, TextInput } from '@/components/ui/Field';
@@ -87,6 +88,16 @@ export function JournalEntryGrid({
    */
   expenseCodes?: Set<string>;
 }) {
+  /*
+   * The column layout, so the totals row and the header cannot disagree about
+   * how many columns there are. See src/lib/entryGridColumns.ts - the counting
+   * has been wrong once already.
+   */
+  const layout = useMemo(
+    () => entryGridColumns({ showParticulars, withFpp: Boolean(fppOptions) }),
+    [showParticulars, fppOptions],
+  );
+
   const totals = useMemo(() => {
     const totalDebit = lines.reduce((s, l) => s + (l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + (l.credit || 0), 0);
@@ -152,14 +163,33 @@ export function JournalEntryGrid({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
+            {/*
+              ----------------------------------------------------------------
+              THE COLUMN ORDER IS THE ORDER AN ENTRY IS READ IN
+              ----------------------------------------------------------------
+              Account, what it was for, how much, and only then the two
+              classifications - who it is traced to and which budget line it is
+              charged against.
+
+              It used to run Account, Budget line, Subsidiary, Particulars,
+              Debit, Credit, which put two long dropdowns between the account
+              and its own figures. On a voucher with four lines the amounts
+              were off the right-hand edge, so the one thing the Accountant is
+              checking - does this balance - needed a sideways scroll to see.
+
+              The amounts sit next to the account now. The classifications
+              trail, which is also the order they are FILLED in: an encoder
+              knows the account and the amount before they know which budget
+              line the Budget Office wants it against.
+            */}
             <tr>
               <th className="cbo-th w-10">#</th>
               <th className="cbo-th min-w-[18rem]">Account</th>
-              {fppOptions && <th className="cbo-th min-w-[16rem]">Budget line (FPP)</th>}
-              <th className="cbo-th min-w-[14rem]">Subsidiary ledger</th>
               {showParticulars && <th className="cbo-th min-w-[12rem]">Particulars</th>}
               <th className="cbo-th cbo-amount-col">Debit</th>
               <th className="cbo-th cbo-amount-col">Credit</th>
+              <th className="cbo-th min-w-[14rem]">Subsidiary ledger</th>
+              {fppOptions && <th className="cbo-th min-w-[16rem]">Budget line (FPP)</th>}
               {!readOnly && <th className="cbo-th w-10" />}
             </tr>
           </thead>
@@ -184,70 +214,6 @@ export function JournalEntryGrid({
                         })
                       }
                       invalid={!line.accountCode && (line.debit > 0 || line.credit > 0)}
-                    />
-                  )}
-                </td>
-
-                {fppOptions && (
-                  <td className="cbo-td">
-                    {readOnly ? (
-                      line.fppCode ? (
-                        <div>
-                          <span className="font-mono text-xs text-slate-500">{line.fppCode}</span>{' '}
-                          <span className="text-xs text-navy-900">{line.fppName}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">&mdash;</span>
-                      )
-                    ) : (
-                      <Select
-                        value={line.fppCode ?? ''}
-                        onChange={(e) => {
-                          const chosen = fppOptions.find((o) => o.fppCode === e.target.value);
-                          update(index, {
-                            fppCode: chosen?.fppCode ?? '',
-                            fppName: chosen?.fppName ?? '',
-                          });
-                        }}
-                        invalid={needsFpp(line)}
-                        className="py-1.5 text-xs"
-                      >
-                        <option value="">
-                          {needsFpp(line) ? 'An expense needs a budget line' : 'None'}
-                        </option>
-                        {fppOptions.map((o) => (
-                          <option key={o.fppCode} value={o.fppCode}>
-                            {o.fppCode} — {o.fppName}
-                            {o.officeName ? ` (${o.officeName})` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </td>
-                )}
-
-                <td className="cbo-td">
-                  {readOnly ? (
-                    line.subsidiaryName ? (
-                      <span className="text-xs text-navy-900">{line.subsidiaryName}</span>
-                    ) : (
-                      <span className="text-xs text-slate-400">&mdash;</span>
-                    )
-                  ) : (
-                    <SubsidiaryPicker
-                      fundCode={fundCode}
-                      value={
-                        line.subsidiaryType && line.subsidiaryId
-                          ? `${line.subsidiaryType}:${line.subsidiaryId}`
-                          : null
-                      }
-                      onChange={(chosen) =>
-                        update(index, {
-                          subsidiaryType: chosen?.type,
-                          subsidiaryId: chosen?.id,
-                          subsidiaryName: chosen?.name,
-                        })
-                      }
                     />
                   )}
                 </td>
@@ -291,6 +257,69 @@ export function JournalEntryGrid({
                   )}
                 </td>
 
+                <td className="cbo-td">
+                  {readOnly ? (
+                    line.subsidiaryName ? (
+                      <span className="text-xs text-navy-900">{line.subsidiaryName}</span>
+                    ) : (
+                      <span className="text-xs text-slate-400">&mdash;</span>
+                    )
+                  ) : (
+                    <SubsidiaryPicker
+                      fundCode={fundCode}
+                      value={
+                        line.subsidiaryType && line.subsidiaryId
+                          ? `${line.subsidiaryType}:${line.subsidiaryId}`
+                          : null
+                      }
+                      onChange={(chosen) =>
+                        update(index, {
+                          subsidiaryType: chosen?.type,
+                          subsidiaryId: chosen?.id,
+                          subsidiaryName: chosen?.name,
+                        })
+                      }
+                    />
+                  )}
+                </td>
+
+                {fppOptions && (
+                  <td className="cbo-td">
+                    {readOnly ? (
+                      line.fppCode ? (
+                        <div>
+                          <span className="font-mono text-xs text-slate-500">{line.fppCode}</span>{' '}
+                          <span className="text-xs text-navy-900">{line.fppName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">&mdash;</span>
+                      )
+                    ) : (
+                      <Select
+                        value={line.fppCode ?? ''}
+                        onChange={(e) => {
+                          const chosen = fppOptions.find((o) => o.fppCode === e.target.value);
+                          update(index, {
+                            fppCode: chosen?.fppCode ?? '',
+                            fppName: chosen?.fppName ?? '',
+                          });
+                        }}
+                        invalid={needsFpp(line)}
+                        className="py-1.5 text-xs"
+                      >
+                        <option value="">
+                          {needsFpp(line) ? 'An expense needs a budget line' : 'None'}
+                        </option>
+                        {fppOptions.map((o) => (
+                          <option key={o.fppCode} value={o.fppCode}>
+                            {o.fppCode} — {o.fppName}
+                            {o.officeName ? ` (${o.officeName})` : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </td>
+                )}
                 {!readOnly && (
                   <td className="cbo-td text-center">
                     <button
@@ -317,16 +346,18 @@ export function JournalEntryGrid({
           <tfoot>
             <tr className="bg-slate-50 font-medium">
               {/*
-                Every optional column has to be counted here or the totals
-                slide out from under the Debit and Credit they add up. The
-                budget line column was being missed, so on a JEV that charges
-                a budget line - which is most of them - Total sat one column
-                to the left of its own figures.
+                Every optional column has to be counted or the totals slide out
+                from under the Debit and Credit they add up. It has been wrong
+                once already - the budget line column was missed, so on a JEV
+                that charges one, Total sat a column to the left of its own
+                figures.
+
+                With Debit and Credit moved next to the account, what precedes
+                them is the line number, the account and - if shown - the
+                particulars; what follows is the subsidiary and the budget
+                line.
               */}
-              <td
-                className="cbo-td"
-                colSpan={3 + (fppOptions ? 1 : 0) + (showParticulars ? 1 : 0)}
-              >
+              <td className="cbo-td" colSpan={layout.leading}>
                 <span className="text-sm text-navy-900">Total</span>
               </td>
               <td className="cbo-td cbo-amount text-navy-900">
@@ -335,6 +366,7 @@ export function JournalEntryGrid({
               <td className="cbo-td cbo-amount text-navy-900">
                 {formatPeso(totals.totalCredit, { symbol: false })}
               </td>
+              <td className="cbo-td" colSpan={layout.trailing} />
               {!readOnly && <td className="cbo-td" />}
             </tr>
           </tfoot>

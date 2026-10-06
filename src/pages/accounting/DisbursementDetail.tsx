@@ -705,8 +705,45 @@ export default function DisbursementDetail() {
                     required
                     htmlFor="obr"
                     className="lg:col-span-2"
-                    hint="Selecting an obligation fills in the payee, office, particulars and the accounting distribution."
+                    hint={
+                      canEdit
+                        ? 'Selecting an obligation fills in the payee, office, particulars and the accounting distribution.'
+                        : undefined
+                    }
                   >
+                    {/*
+                      ----------------------------------------------------------
+                      THE NUMBER IS READ FROM THE VOUCHER, NOT FROM THE PICKER
+                      ----------------------------------------------------------
+                      The picker offers obligations with an unpaid balance -
+                      which is right for CHOOSING one, and wrong for showing the
+                      one already chosen. An obligation fully drawn by this
+                      voucher has no unpaid balance left, so it drops out of the
+                      list, the picker finds nothing to display, and the screen
+                      goes blank in the place where the OBR number was.
+
+                      The voucher knows its own OBR number: `obrNo` is stored on
+                      the record and has been since it was first saved. So a
+                      saved voucher shows that, and the picker is offered only
+                      while there is still a choice to make.
+
+                      Same shape as the "Not yet paid" fault in patch 84 - the
+                      record was right, the screen was reading from the wrong
+                      place.
+                    */}
+                    {!canEdit && existing?.obrNo ? (
+                      <div className="flex items-baseline gap-2 py-1.5">
+                        <span className="font-mono text-sm text-navy-900">{existing.obrNo}</span>
+                        {existing.obligationId && (
+                          <Link
+                            to={`/budget/obligations/${existing.obligationId}`}
+                            className="text-xs font-medium underline"
+                          >
+                            Open it
+                          </Link>
+                        )}
+                      </div>
+                    ) : (
                     <ObligationPicker
                       id="obr"
                       value={obligationId}
@@ -730,6 +767,19 @@ export default function DisbursementDetail() {
                         }
                       }}
                     />
+                    )}
+                    {/*
+                      While the voucher is still editable, the stored number is
+                      shown under the picker as well. An encoder who has just
+                      saved should see what was saved, not have to trust that
+                      the box they are looking at is reading it back.
+                    */}
+                    {canEdit && existing?.obrNo && (
+                      <p className="mt-1 text-2xs text-slate-500">
+                        Saved against{' '}
+                        <span className="font-mono text-slate-700">{existing.obrNo}</span>
+                      </p>
+                    )}
                   </Field>
                 )}
 

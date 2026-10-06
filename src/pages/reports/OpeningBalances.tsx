@@ -364,7 +364,7 @@ export default function OpeningBalances() {
               </Button>
               <span className="text-xs text-slate-500">
                 The sheet needs a column for the account code and one each for debit and credit.
-                For payables, receivables and cash advances, add a column naming the party, one for
+                For payables, receivables and cash advances, add a column naming the subsidiary ledger account, one for
                 the reference document, and one for the date it arose - that date is what the aging
                 report counts from, and it is the one thing the old system knows that cannot be
                 worked out later. Other columns are ignored.
@@ -380,8 +380,15 @@ export default function OpeningBalances() {
                     Account code
                   </th>
                   <th className="px-2 py-2 text-left">Account</th>
+                  {/*
+                    "Party" said who the balance was with; "Subsidiary Ledger
+                    Account" says what it IS. The column carries the supplier,
+                    the officer or the debtor whose subsidiary account this
+                    opening balance opens - which is the same thing, named the
+                    way the ledger names it rather than the way a form does.
+                  */}
                   <th className="px-2 py-2 text-left" style={{ width: '13rem' }}>
-                    Party
+                    Subsidiary ledger account
                   </th>
                   <th className="px-2 py-2 text-left" style={{ width: '9rem' }}>
                     Reference
