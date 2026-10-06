@@ -34,6 +34,8 @@ import {
   type SreMapping,
 } from '@/lib/sre';
 import type { Centavos, PeriodNo } from '@/types/common';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { BUDGET_REPORT_TABS } from '@/layout/sections';
 
 /**
  * Statement of Receipts and Expenditures.
@@ -239,6 +241,7 @@ export default function Sre() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={BUDGET_REPORT_TABS} />}
       meta={{
         title: 'Statement of Receipts and Expenditures',
         fundLabel: 'All funds — General, Special Education and Trust',

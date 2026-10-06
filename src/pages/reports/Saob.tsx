@@ -10,6 +10,8 @@ import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TABS } from '@/layout/sections';
 
 interface SaobRow {
   key: string;
@@ -130,6 +132,7 @@ export default function Saob() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={REPORT_TABS} />}
       meta={{
         title: 'Statement of Appropriations, Obligations and Balances',
         fundLabel: fundLabel(fundCode),

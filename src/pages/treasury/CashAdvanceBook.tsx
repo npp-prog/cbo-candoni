@@ -11,6 +11,8 @@ import { todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildCashAdvanceBook, type CbcaBook } from './cashAdvanceBookReport';
 import { fundLabel } from '@/pages/budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { CASH_BOOK_TABS } from '@/layout/sections';
 
 /**
  * Cash Book - Cash Advances. GAM for LGUs, Appendix 26.
@@ -75,6 +77,7 @@ export default function CashAdvanceBook() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={CASH_BOOK_TABS} />}
       meta={{
         title: 'Cash Book - Cash Advances',
         fundLabel: fundLabel(fundCode),

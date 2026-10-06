@@ -1,4 +1,13 @@
 import { registerForPath } from '@/pages/treasury/sections';
+import {
+  ACCOUNTING_MONITORING_TABS,
+  ACCOUNTING_SETUP_TABS,
+  BUDGET_MONITORING_TABS,
+  BUDGET_REPORT_TABS,
+  CASH_BOOK_TABS,
+  PRINTING_TABS,
+  REPORT_TABS,
+} from './sections';
 import type { Module } from '@/types/system';
 
 /**
@@ -104,42 +113,19 @@ export const NAVIGATION: NavItem[] = [
        * good answer.
        */
 
-      { group: 'Monitoring', label: 'Registry (RAAO)', to: '/budget/registry' },
       /*
-       * The income side of the same pair of books, GAM Appendix 23.
+       * MONITORING AND REPORTS ARE ONE ITEM EACH NOW.
        *
-       * Beside the RAAO and not inside it: the RAAO tabs are four cuts of one
-       * subject, expenditure. This is the other subject, and burying it in an
-       * expenditure register is how it would never be opened.
+       * Each was a folded heading over two or three screens that are read one
+       * after the other. The heading named the kind of thing; the tab strip on
+       * the page says the same and puts the next screen one click away instead
+       * of three. Every address is unchanged.
+       *
+       * Ungrouped, because a heading over a single item is a fold that hides
+       * one line - which is what these two already were.
        */
-      { group: 'Monitoring', label: 'Registry of Income (REAIRR)', to: '/budget/registry-income' },
-
-      /*
-       * The Local Budget Accountability reports, and only the three the
-       * municipality will actually file.
-       *
-       * The manual defines six. Three of them - LBAc 3, 5 and 6 - want
-       * physical targets and outputs, which are the Planning Office's to
-       * state and which CFMS holds none of. Building shells for them would
-       * put three mostly-empty forms in this menu and invite somebody to
-       * fill the financial half and submit it as though it were complete.
-       *
-       * They sit here rather than under Reports because they are budget
-       * accountability, prepared by the Budget Officer, the Treasurer and
-       * the Accountant against the budget - not statements drawn off the
-       * books, which is what the Reports menu holds.
-       */
-      { group: 'Reports', label: 'Report of Receipts (LBAc 1)', to: '/budget/reports/receipts' },
-      {
-        group: 'Reports',
-        label: 'Financial Report of Operations (LBAc 2)',
-        to: '/budget/reports/quarterly-financial',
-      },
-      {
-        group: 'Reports',
-        label: 'Receipts and Expenditures (SRE)',
-        to: '/budget/reports/sre',
-      },
+      { label: 'Monitoring', to: BUDGET_MONITORING_TABS[0].to },
+      { label: 'Reports', to: BUDGET_REPORT_TABS[0].to },
     ],
   },
   {
@@ -207,19 +193,28 @@ export const NAVIGATION: NavItem[] = [
        *
        * The three are tabs on the screen now. See trustTabs.tsx.
        */
-      { group: 'Monitoring and Setup', label: 'Trust Accounts', to: '/accounting/trust-programs' },
-      { group: 'Monitoring and Setup', label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
-      { group: 'Monitoring and Setup', label: 'Index of Payment', to: '/accounting/index-of-payments' },
-      // The ageing of receivables, payables and unliquidated advances. It was
-      // filed under Reports, where it was the only screen anybody opened to act
-      // on rather than to submit: an overdue advance is chased, not filed.
-      { group: 'Monitoring and Setup', label: 'Aging Reports', to: '/reports/aging' },
-      // Encoding the balances the books open with is not a report, though it
-      // lived under Reports until somebody went looking for it in Accounting
-      // and could not find it. It is the one-time act that opens the ledger:
-      // the payables, the receivables and the unliquidated cash advances
-      // carried in from whatever the municipality kept before.
-      { group: 'Monitoring and Setup', label: 'Opening Balances', to: '/accounting/opening-balances' },
+      /*
+       * MONITORING AND SETUP WERE TWO JOBS IN ONE HEADING.
+       *
+       * Three of the five were standing questions the Accountant asks of the
+       * books - what is held in trust, what advances are outstanding, what a
+       * payee has been paid - plus the ageing of what is overdue. The fourth
+       * thing under that heading, Opening Balances, is done ONCE when a fund
+       * is set up and then never again.
+       *
+       * They are two items now, each with its own tab strip, so nothing is
+       * monitored on the setup screen and nothing is set up on the monitoring
+       * ones. Addresses are unchanged.
+       *
+       *   Monitoring   Trust Accounts, Cash Advance Summary,
+       *                Index of Payment, Aging Reports
+       *   Setup        Opening Balances
+       *
+       * Aging Reports keeps its /reports/ address, which is where it was
+       * built. sectionHeadForPath is what tells the sidebar it belongs here.
+       */
+      { label: 'Monitoring', to: ACCOUNTING_MONITORING_TABS[0].to },
+      { label: 'Setup', to: ACCOUNTING_SETUP_TABS[0].to },
     ],
   },
   {
@@ -285,13 +280,18 @@ export const NAVIGATION: NavItem[] = [
       // column - and an officer who wants to know what is in their hands looks
       // in one place for all three.
       // ----------------------------------------------------------------
-      { group: 'Cash Books', label: 'Cash in Bank', to: '/treasury/cash-in-bank' },
-      { group: 'Cash Books', label: 'Cash in Local Treasury', to: '/reports/cash-in-local-treasury' },
-      // GAM Appendix 26. The third book of the same kind: cash the
-      // municipality holds, this time in a disbursing officer's hands rather
-      // than in the bank or the vault.
-      { group: 'Cash Books', label: 'Cash Advances', to: '/treasury/cash-advance-book' },
-      { group: 'Cash Books', label: 'Cash Position', to: '/treasury/cash-position' },
+      /*
+       * THE CASH BOOKS ARE ONE ITEM.
+       *
+       * Four views of one question - what have we got, and where - read one
+       * after the other when the Treasurer closes the day. The heading said
+       * that; the tab strip says it and puts the next view one click away.
+       *
+       * Cash in Local Treasury keeps its /reports/ address, which is where it
+       * was built. sectionHeadForPath is what tells the sidebar it belongs
+       * here and not under Reports.
+       */
+      { label: 'Cash Books', to: CASH_BOOK_TABS[0].to },
 
       // ----------------------------------------------------------------
       // A "TREASURY REPORTS" GROUP WAS HERE, AND IS NOT ANY MORE
@@ -327,8 +327,7 @@ export const NAVIGATION: NavItem[] = [
       // because they are the last thing done - after the check is signed and
       // the collection is recorded, never before.
       // ----------------------------------------------------------------
-      { group: 'Printing', label: 'Print Checks', to: '/treasury/print/checks' },
-      { group: 'Printing', label: 'Print Receipts', to: '/treasury/print/receipts' },
+      { label: 'Printing', to: PRINTING_TABS[0].to },
     ],
   },
   {
@@ -336,66 +335,24 @@ export const NAVIGATION: NavItem[] = [
     to: '/reconciliation',
     module: 'reconciliation',
     icon: 'reconciliation',
-    children: [{ label: 'Bank Reconciliation', to: '/reconciliation/bank' }],
-  },
-  {
-    label: 'Reports',
-    to: '/reports',
-    module: 'reports',
-    icon: 'reports',
-    /**
-     * One list, no headings.
-     *
-     * There were two - Budget Reports and Accounting Reports - and once the
-     * treasury reports left for the Treasury menu, they were a heading over one
-     * item and a heading over six. A fold that saves nothing and a label that
-     * groups nothing are both just something else to read on the way to the
-     * Trial Balance.
-     *
-     * The RAAO is not here: it is in the Budget menu, beside the
-     * appropriations, allotments and obligations it registers. Nor are the
-     * treasury reports, nor the ageing - the ageing moved to Accounting, under
-     * Monitoring and Setup, because it is the one report in this list nobody
-     * submits. An overdue advance is chased, not filed.
-     *
-     * What is left is what the municipality actually presents: the statement of
-     * its budget, and its books.
+    /*
+     * No children. The section had exactly one, so the fold hid a single line
+     * behind an arrow - the officer had to open a heading to discover that
+     * the heading WAS the screen. /reconciliation already redirects to it.
      */
-    children: [
-      { label: 'SAOB', to: '/reports/saob' },
-      // The SAOB is the budget module compared with itself. This one puts the
-      // budget beside the General Ledger, which is the only way a disagreement
-      // between the two can show at all.
-      { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
-      // The SRE and the two LBAc forms are NOT here. They are budget
-      // accountability reports, listed under Budget > Reports with the budget
-      // they account for. What is left in this menu is drawn off the books.
-      { label: 'Trial Balance', to: '/reports/trial-balance' },
-      { label: 'Financial Statements', to: '/reports/financial-statements' },
-      { label: 'General Ledger', to: '/reports/general-ledger' },
-      { label: 'Subsidiary Ledger', to: '/reports/subsidiary-ledger' },
-      { label: 'Journals', to: '/reports/journals' },
-      { label: 'Registers', to: '/reports/registers' },
-    ],
   },
   /*
-   * MASTER DATA IS ONE ITEM, NOT A GROUP OF ELEVEN.
+   * REPORTS IS ONE ITEM AND EIGHT TABS.
    *
-   * It listed every entity as a child - Chart of Accounts, Payees, Employees,
-   * Offices, Barangays, Banks, Collection Intermediaries, Tax Codes, Revenue
-   * Codes, Accountable Forms, Funds - and the SCREEN already carried a strip
-   * of the same eleven. So the eleven were on the page twice, and the sidebar
-   * paid for it: the longest group in the menu, for the part of CFMS somebody
-   * opens when they set it up and then a few times a year.
+   * It listed eight statements with no heading over them, which made it the
+   * longest flat run in the menu. They are eight cuts of ONE thing - the
+   * General Ledger - read from the summary a mayor sees down to the detail an
+   * auditor traces, and an officer who has just read the Trial Balance is
+   * usually about to open the General Ledger behind it.
    *
-   * The strip is a tab bar now, like Treasury's. The sidebar names the area
-   * and the tabs name what is in it - which is what patch 87 did for the
-   * Treasury Reports group, for the same reason.
-   *
-   * The children's addresses are UNCHANGED, so a bookmark, a notification or
-   * a link from a picker still lands where it did; /master-data itself goes to
-   * the Chart of Accounts.
+   * The order is unchanged. Every address is unchanged. See REPORT_TABS.
    */
+  { label: 'Reports', to: REPORT_TABS[0].to, module: 'reports', icon: 'reports' },
   { label: 'Master Data', to: '/master-data', module: 'masterData', icon: 'masterData' },
   { label: 'Documents', to: '/documents', module: 'documents', icon: 'documents' },
   {

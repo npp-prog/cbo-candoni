@@ -8,6 +8,8 @@ import { formatShortDate, todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { CASH_BOOK_TABS } from '@/layout/sections';
 
 interface PositionRow {
   bankAccountId: string;
@@ -109,6 +111,7 @@ export default function CashPosition() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={CASH_BOOK_TABS} />}
       meta={{
         title: 'Cash Position Report',
         fundLabel: fundLabel(fundCode),

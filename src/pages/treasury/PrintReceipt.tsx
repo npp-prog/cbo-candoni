@@ -25,6 +25,8 @@ import {
 import { CalibrationPanel } from '@/components/print/CalibrationPanel';
 import type { Collection } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { PRINTING_TABS } from '@/layout/sections';
 
 /**
  * Printing an Official Receipt onto Accountable Form No. 51.
@@ -172,6 +174,8 @@ export default function PrintReceipt() {
           </>
         }
       />
+
+      <SectionTabs tabs={PRINTING_TABS} />
 
       <Alert tone="info" title="The form already carries its number" className="mb-4 no-print">
         Put the booklet in the printer at the serial shown beside the collection. CFMS prints the

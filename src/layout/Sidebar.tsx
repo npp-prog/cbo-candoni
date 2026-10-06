@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { NAVIGATION, ICONS, toBlocks, groupForPath, type NavChild } from './navigation';
+import { sectionHeadForPath } from './sections';
 import { useAuth } from '@/auth/AuthProvider';
 
 /**
@@ -77,15 +78,44 @@ export function Sidebar({
 
   const visible = useMemo(() => NAVIGATION.filter((item) => can(item.module, 'view')), [can]);
 
+  /*
+   * THE MENU ITEM HOLDING THE CURRENT SCREEN, WHERE THE ADDRESS DOES NOT SAY.
+   *
+   * The sidebar used to work this out by matching the address against the
+   * menu, which was true while every screen was a menu item. It is not any
+   * more - most screens are tabs now - and in two places it was never quite
+   * true: Aging Reports lives at /reports/aging but belongs to Accounting, and
+   * Cash in Local Treasury lives at /reports/cash-in-local-treasury but
+   * belongs to the Treasurer's cash books. Matching on the address alone lit
+   * up Reports for both and left the officer's own heading shut.
+   *
+   * The strips answer it: a screen's menu item is the head of whichever strip
+   * carries it. See src/layout/sections.ts.
+   */
+  const sectionHead = sectionHeadForPath(location.pathname);
+
+  /** Whether a menu entry is the one holding the current screen. */
+  const holdsCurrent = useCallback(
+    (to: string, children?: readonly NavChild[]) => {
+      if (to === '/') return location.pathname === '/';
+      if (sectionHead !== null) {
+        if (to === sectionHead) return true;
+        if (children?.some((c) => c.to === sectionHead)) return true;
+      }
+      return location.pathname === to || location.pathname.startsWith(`${to}/`);
+    },
+    [location.pathname, sectionHead],
+  );
+
   // Keep the section containing the current route open.
   useEffect(() => {
     const match = NAVIGATION.find(
-      (item) => item.children && location.pathname.startsWith(item.to) && item.to !== '/',
+      (item) => item.children && item.to !== '/' && holdsCurrent(item.to, item.children),
     );
     if (match) {
       setOpenSections((s) => new Set(s).add(match.to));
     }
-  }, [location.pathname]);
+  }, [location.pathname, holdsCurrent]);
 
   // Open the heading holding the current screen, so the user can always see
   // where they are standing.
@@ -118,7 +148,13 @@ export function Sidebar({
         className={({ isActive: active }) =>
           clsx(
             'block rounded px-2.5 py-1.5 text-xs transition-colors',
-            active
+            /*
+              `active` alone is NavLink's own address match, which goes dark the
+              moment the officer moves to a tab whose address sits elsewhere -
+              Cash in Local Treasury, say, under /reports/. The entry holding
+              the screen must stay lit wherever its tabs happen to live.
+            */
+            active || child.to === sectionHead
               ? 'bg-brand-600/20 text-white font-medium'
               : 'text-slate-400 hover:bg-navy-800/60 hover:text-white',
           )
@@ -161,8 +197,7 @@ export function Sidebar({
           <ul className="space-y-0.5">
             {visible.map((item) => {
               const isOpen = openSections.has(item.to);
-              const isActive =
-                item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to);
+              const isActive = holdsCurrent(item.to, item.children);
 
               return (
                 <li key={item.to}>

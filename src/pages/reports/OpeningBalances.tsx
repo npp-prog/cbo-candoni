@@ -14,6 +14,8 @@ import { formatPeso, parsePeso } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
 import type { Centavos } from '@/types/common';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTING_SETUP_TABS } from '@/layout/sections';
 
 /**
  * Opening balances.
@@ -289,6 +291,8 @@ export default function OpeningBalances() {
         breadcrumbs={[{ label: 'Accounting' }, { label: 'Opening balances' }]}
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}. Posted as a journal entry, so every later report is computed from the ledger as usual.`}
       />
+
+      <SectionTabs tabs={ACCOUNTING_SETUP_TABS} />
 
       {/*
         ---------------------------------------------------------------------

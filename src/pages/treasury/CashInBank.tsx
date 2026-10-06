@@ -29,6 +29,8 @@ import {
   type BankLedgerRow,
 } from '@/types/bankLedger';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { CASH_BOOK_TABS } from '@/layout/sections';
 
 /**
  * Cash in Bank - the running book for one account.
@@ -188,6 +190,8 @@ export default function CashInBank() {
           </>
         }
       />
+
+      <SectionTabs tabs={CASH_BOOK_TABS} />
 
       <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 no-print">
         <Field label="Bank account" className="max-w-md">

@@ -15,6 +15,8 @@ import { formatPeso, formatAmount } from '@/lib/money';
 import { checkTrustProgram, TRUST_PROGRAM_STATUSES } from '@/lib/trustPrograms';
 import type { TrustProgram } from '@/types/budget';
 import type { Centavos } from '@/types/common';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * Trust Fund programmes — the Fund Receipts Program.
@@ -269,6 +271,8 @@ export default function TrustPrograms() {
           ) : undefined
         }
       />
+
+      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
 
       <TrustTabs active="programs" />
 

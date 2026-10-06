@@ -26,6 +26,8 @@ import {
 import { CalibrationPanel } from '@/components/print/CalibrationPanel';
 import type { Check } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { PRINTING_TABS } from '@/layout/sections';
 
 /**
  * Printing a check onto LANDBANK stock.
@@ -190,6 +192,8 @@ export default function PrintChecks() {
           </>
         }
       />
+
+      <SectionTabs tabs={PRINTING_TABS} />
 
       <Alert tone="info" title="Before the first real check" className="mb-4 no-print">
         Tick <strong>Print the alignment guide</strong>, print onto a sheet of plain paper, and hold

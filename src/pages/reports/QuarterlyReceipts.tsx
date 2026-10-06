@@ -24,6 +24,8 @@ import {
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { BUDGET_REPORT_TABS } from '@/layout/sections';
 
 /**
  * LBAc Form No. 1 — the Report of Receipts.
@@ -183,6 +185,7 @@ export default function QuarterlyReceipts() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={BUDGET_REPORT_TABS} />}
       meta={{
         title: 'Report of Receipts',
         fundLabel: fundLabel(fundCode),

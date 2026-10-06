@@ -11,6 +11,8 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { DisbursementVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * The Index of Payments.
@@ -156,6 +158,8 @@ export default function IndexOfPayments() {
         }
         breadcrumbs={[{ label: 'Accounting' }, { label: 'Index of Payments' }]}
       />
+
+      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
 
       <Card className="mb-4" bodyClassName="py-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

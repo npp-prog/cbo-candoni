@@ -7,6 +7,16 @@ import {
   PAYROLL_TABS,
   ACCOUNTABLE_FORM_TABS,
 } from '@/pages/treasury/sections';
+import {
+  ACCOUNTING_MONITORING_TABS,
+  ACCOUNTING_SETUP_TABS,
+  BUDGET_MONITORING_TABS,
+  BUDGET_REPORT_TABS,
+  CASH_BOOK_TABS,
+  PRINTING_TABS,
+  REPORT_TABS,
+  sectionHeadForPath,
+} from './sections';
 
 /**
  * The menu is data, and these are the properties of that data the sidebar
@@ -58,9 +68,11 @@ describe('toBlocks', () => {
 
 describe('groupForPath', () => {
   it('finds the heading a screen sits under', () => {
-    expect(groupForPath('/treasury/print/receipts')).toEqual({
+    // Printing stopped being a heading in patch 94 - it is one menu item with
+    // two tabs - so the surviving headings are the ones to ask about.
+    expect(groupForPath('/treasury/collections')).toEqual({
       sectionTo: '/treasury',
-      group: 'Printing',
+      group: 'Registers',
     });
   });
 
@@ -126,19 +138,38 @@ describe('the menu itself', () => {
   });
 
   /**
-   * Within one section, either everything carries a heading or nothing does.
-   * A section with some grouped and some loose items renders the loose ones
-   * with no heading above them, which reads as though they belonged to
-   * whichever heading happened to come before.
+   * A loose item never comes BEFORE a heading in the same section.
+   *
+   * ---------------------------------------------------------------------
+   * THIS RULE USED TO SAY "ALL OR NOTHING", AND IT WAS RIGHT UNTIL IT WAS NOT
+   * ---------------------------------------------------------------------
+   * The worry was that a loose item renders with no heading above it, so it
+   * reads as though it belonged to whichever heading came before. While every
+   * child was grouped, forbidding the mixture was the simplest way to say so.
+   *
+   * Patch 94 turned four headings into single items with tab strips, so
+   * Budget, Accounting and Treasury each have a grouped run followed by two
+   * loose ones. The renderer does not have the problem the rule feared: a
+   * heading's items are nested INSIDE the heading's own list element, and a
+   * loose item is a sibling of the heading, not of its contents.
+   *
+   * What is still true, and is what this now checks, is the direction. A loose
+   * item written BEFORE a heading sits above it with nothing to say which of
+   * the two it belongs to - and the one exception, Estimated Receipts, is
+   * inside the Budget transactions group precisely because of it.
    */
-  it('groups a section all or nothing', () => {
+  it('never puts a loose item between two headings', () => {
     for (const item of NAVIGATION) {
-      const children = item.children ?? [];
-      if (children.length === 0) continue;
-      const grouped = children.filter((c) => c.group).length;
-      expect(grouped === 0 || grouped === children.length, `${item.label} is half grouped`).toBe(
-        true,
-      );
+      const blocks = toBlocks(item.children ?? []);
+      const firstGrouped = blocks.findIndex((b) => b.group);
+      if (firstGrouped === -1) continue;
+      const lastGrouped = blocks.map((b) => !!b.group).lastIndexOf(true);
+      for (let i = firstGrouped; i <= lastGrouped; i++) {
+        expect(
+          blocks[i].group,
+          `${item.label}: "${blocks[i].items.map((x) => x.label).join(', ')}" sits between two headings`,
+        ).toBeTruthy();
+      }
     }
   });
 
@@ -314,13 +345,19 @@ describe('the menu itself', () => {
    * hold physical performance data, not because the list looked incomplete.
    */
   it('lists the three LBAc reports the municipality files, under Budget', () => {
-    const budget = NAVIGATION.find((i) => i.to === '/budget');
-    const reports = (budget?.children ?? []).filter((c) => c.group === 'Reports');
-    expect(reports.map((r) => r.to)).toEqual([
+    // They are a tab strip now rather than a heading, and the strip is reached
+    // from the Budget menu - which is the part that ever mattered.
+    expect(BUDGET_REPORT_TABS.map((r) => r.to)).toEqual([
       '/budget/reports/receipts',
       '/budget/reports/quarterly-financial',
       '/budget/reports/sre',
     ]);
+
+    const budget = NAVIGATION.find((i) => i.to === '/budget');
+    expect(
+      (budget?.children ?? []).some((c) => c.to === BUDGET_REPORT_TABS[0].to),
+      'the Budget menu does not reach the LBAc reports',
+    ).toBe(true);
   });
 
   /**
@@ -404,10 +441,8 @@ describe('the menu itself', () => {
    * would describe one of the four things the screen does.
    */
   it('does not call the LBAc forms quarterly in the menu', () => {
-    const budget = NAVIGATION.find((i) => i.to === '/budget');
-    const reports = (budget?.children ?? []).filter((c) => c.group === 'Reports');
-    expect(reports.length).toBeGreaterThan(0);
-    for (const r of reports) {
+    expect(BUDGET_REPORT_TABS.length).toBeGreaterThan(0);
+    for (const r of BUDGET_REPORT_TABS) {
       expect(r.label.toLowerCase()).not.toContain('quarterly');
     }
   });
@@ -440,10 +475,13 @@ describe('the menu itself', () => {
    * strip is how a register nobody opens comes about.
    */
   it('lists the income registry beside the expenditure one, not inside it', () => {
-    const budget = NAVIGATION.find((i) => i.to === '/budget');
-    const income = (budget?.children ?? []).find((c) => c.to === '/budget/registry-income');
-    expect(income).toBeDefined();
-    expect(income!.group).toBe('Monitoring');
+    // Beside it on the Monitoring strip, which is what "Monitoring" was as a
+    // heading. What must not happen is Appendix 23 becoming a tab of the
+    // EXPENDITURE registry, which is a different subject.
+    expect(BUDGET_MONITORING_TABS.map((t) => t.to)).toEqual([
+      '/budget/registry',
+      '/budget/registry-income',
+    ]);
   });
 
   /**
@@ -465,10 +503,15 @@ describe('the menu itself', () => {
       ).toBe(false);
     }
 
+    // Reached from Accounting > Monitoring, whose first tab it is.
+    expect(ACCOUNTING_MONITORING_TABS[0].label).toBe('Trust Accounts');
+    expect(TRUST_TABS.some((t) => t.to === ACCOUNTING_MONITORING_TABS[0].to)).toBe(true);
+
     const accounting = NAVIGATION.find((i) => i.to === '/accounting');
-    const entry = (accounting?.children ?? []).find((c) => c.label === 'Trust Accounts');
-    expect(entry, 'Trust Accounts is not in the Accounting menu').toBeDefined();
-    expect(TRUST_TABS.some((t) => t.to === entry?.to)).toBe(true);
+    expect(
+      (accounting?.children ?? []).some((c) => c.to === ACCOUNTING_MONITORING_TABS[0].to),
+      'the Accounting menu does not reach Trust Accounts',
+    ).toBe(true);
   });
 
   /**
@@ -483,8 +526,10 @@ describe('the menu itself', () => {
     const entries = (accounting?.children ?? []).filter((c) =>
       TRUST_TABS.some((t) => t.to === c.to),
     );
+    // Exactly one, and it is the Monitoring item - whose first tab is Trust
+    // Accounts - not three entries in a row.
     expect(entries).toHaveLength(1);
-    expect(entries[0].label).toBe('Trust Accounts');
+    expect(entries[0].label).toBe('Monitoring');
   });
 
   it('every heading holds at least one item', () => {
@@ -595,5 +640,126 @@ describe('the reports that left the Treasury menu', () => {
     for (const strip of [COLLECTION_TABS, PAYMENT_TABS, PAYROLL_TABS, ACCOUNTABLE_FORM_TABS]) {
       expect(registers, strip[0].label).toContain(strip[0].to);
     }
+  });
+});
+
+
+/**
+ * The condition under which patch 94 was allowed to delete five menu headings.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS THE TEST THAT MATTERS
+ * ---------------------------------------------------------------------------
+ * Monitoring, Reports, Cash Books, Printing and the eight-item Reports section
+ * came out of the sidebar, and every screen that was in them is now a tab.
+ * That is right - they are read one after the other, and a heading that hides
+ * four lines behind an arrow is a fold, not a map.
+ *
+ * But a menu entry is the only thing most people ever use to find a screen.
+ * Delete a heading without putting its contents on a strip, and those screens
+ * are reachable only by typing the address: nobody notices for months, and
+ * then somebody asks where the Subsidiary Ledger went. That exact thing nearly
+ * happened to the RAAF in patch 87.
+ *
+ * So these are not tests about tabs. They are the deletion's preconditions,
+ * written down.
+ */
+describe('the headings that left the menu in patch 94', () => {
+  const STRIPS = {
+    'Budget > Monitoring': BUDGET_MONITORING_TABS,
+    'Budget > Reports': BUDGET_REPORT_TABS,
+    'Accounting > Monitoring': ACCOUNTING_MONITORING_TABS,
+    'Accounting > Setup': ACCOUNTING_SETUP_TABS,
+    'Treasury > Cash Books': CASH_BOOK_TABS,
+    'Treasury > Printing': PRINTING_TABS,
+    Reports: REPORT_TABS,
+  };
+
+  const menuTargets = () =>
+    NAVIGATION.flatMap((i) => [i.to, ...(i.children ?? []).map((c) => c.to)]);
+
+  /**
+   * The head of a strip is the screen the menu names. If it were not in the
+   * menu, the whole strip would be unreachable - which is the fault this file
+   * exists to prevent.
+   */
+  it.each(Object.entries(STRIPS))('%s is reachable from the sidebar', (_name, strip) => {
+    expect(menuTargets()).toContain(strip[0].to);
+  });
+
+  /** Every screen on a strip, reachable. Nothing was orphaned by the change. */
+  it.each(Object.entries(STRIPS))('%s carries every screen it took', (name, strip) => {
+    expect(strip.length, `${name} is empty`).toBeGreaterThan(0);
+    for (const tab of strip) {
+      expect(sectionHeadForPath(tab.to), `${tab.label} resolves to no section`).toBe(strip[0].to);
+    }
+  });
+
+  /**
+   * Two screens live at an address that does not say which office they belong
+   * to, because that is where they were built. Both are the reason
+   * sectionHeadForPath exists rather than the sidebar matching on the address.
+   */
+  it('puts the two misfiled addresses under the office that owns them', () => {
+    expect(sectionHeadForPath('/reports/aging')).toBe(ACCOUNTING_MONITORING_TABS[0].to);
+    expect(sectionHeadForPath('/reports/cash-in-local-treasury')).toBe(CASH_BOOK_TABS[0].to);
+  });
+
+  /** A screen below a tab still belongs to that tab's strip. */
+  it('resolves a detail screen to the strip above it', () => {
+    expect(sectionHeadForPath('/reports/budget-vs-actual/lines')).toBe(REPORT_TABS[0].to);
+  });
+
+  it('claims nothing it does not own', () => {
+    expect(sectionHeadForPath('/audit-trail')).toBeNull();
+    expect(sectionHeadForPath('/nowhere')).toBeNull();
+    // Not a child of /reports/aging, however much the text matches.
+    expect(sectionHeadForPath('/reports/aging-x')).toBeNull();
+  });
+
+  /**
+   * A strip head is named ONCE in the menu. Listed twice - under its own
+   * section and again somewhere else - the sidebar would light two entries for
+   * one screen, which tells the reader nothing about where they are.
+   */
+  it('names each strip head once', () => {
+    const targets = menuTargets();
+    for (const strip of Object.values(STRIPS)) {
+      const head = strip[0].to;
+      expect(targets.filter((t) => t === head), head).toHaveLength(1);
+    }
+  });
+
+  /**
+   * And the screens BEHIND a head are not also menu entries. That is the
+   * whole point of the change: one door per screen.
+   */
+  it('leaves no tab behind a head also listed in the menu', () => {
+    const targets = new Set(menuTargets());
+    for (const strip of Object.values(STRIPS)) {
+      for (const tab of strip.slice(1)) {
+        expect(targets.has(tab.to), `${tab.label} is both a tab and a menu item`).toBe(false);
+      }
+    }
+  });
+
+  /** The headings themselves are gone, not merely emptied. */
+  it.each([
+    ['/budget', 'Monitoring'],
+    ['/budget', 'Reports'],
+    ['/accounting', 'Monitoring and Setup'],
+    ['/treasury', 'Cash Books'],
+    ['/treasury', 'Printing'],
+  ])('leaves no %s > %s heading behind', (sectionTo, heading) => {
+    const section = NAVIGATION.find((i) => i.to === sectionTo);
+    const groups = new Set((section?.children ?? []).map((c) => c.group));
+    expect(groups.has(heading)).toBe(false);
+  });
+
+  /** Reconciliation and Reports are single items now, with nothing folded. */
+  it.each(['/reconciliation', REPORT_TABS[0].to])('%s is a plain item with no children', (to) => {
+    const item = NAVIGATION.find((i) => i.to === to);
+    expect(item, `${to} is not in the menu`).toBeTruthy();
+    expect(item?.children).toBeUndefined();
   });
 });

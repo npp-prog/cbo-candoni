@@ -8,6 +8,8 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { type PrimaryReport } from '@/types/primaryReports';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { CASH_BOOK_TABS } from '@/layout/sections';
 
 /**
  * Cash in Local Treasury.
@@ -119,6 +121,7 @@ export default function CashInLocalTreasury() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={CASH_BOOK_TABS} />}
       meta={{
         title: 'Cash in Local Treasury',
         fundLabel: fundLabel(fundCode),

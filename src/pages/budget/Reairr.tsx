@@ -10,6 +10,8 @@ import { todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildReairr, type ReairrEntry } from './reairrReport';
 import { fundLabel } from './Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { BUDGET_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * Registry of Estimated and Actual Income/Revenues and Receipts.
@@ -64,6 +66,7 @@ export default function Reairr() {
 
   return (
     <ReportShell
+      tabs={<SectionTabs tabs={BUDGET_MONITORING_TABS} />}
       meta={{
         title: 'Registry of Estimated and Actual Income/Revenues and Receipts',
         fundLabel: fundLabel(fundCode),

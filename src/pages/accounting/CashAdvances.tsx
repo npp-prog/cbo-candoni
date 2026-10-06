@@ -11,6 +11,8 @@ import { AGING_LABELS, agingBucket, daysBetween, formatShortDate, todayPh } from
 import type { CashAdvance } from '@/types/accounting';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * Cash advance monitoring.
@@ -172,6 +174,8 @@ export default function CashAdvances() {
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear} - ${formatPeso(totalOutstanding)} outstanding`}
         breadcrumbs={[{ label: 'Accounting' }, { label: 'Cash Advances' }]}
       />
+
+      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
 
       {overdue.length > 0 && (
         <Alert tone="error" title="Cash advances past their liquidation deadline" className="mb-4">

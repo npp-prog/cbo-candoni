@@ -32,6 +32,7 @@ import {
 import { COMPARISON_TABS } from './comparisonTabs';
 import { fundLabel } from '../budget/Obligations';
 import { COLLECTED } from '../budget/reairrReport';
+import { REPORT_TABS } from '@/layout/sections';
 
 /**
  * Statement of Comparison of Budget and Actual Amounts - GAM Annex 8.
@@ -167,7 +168,13 @@ export default function Scbaa() {
         preparedBy: 'Municipal Accountant',
       }}
       breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Budget and Actual' }]}
-      tabs={<SectionTabs tabs={COMPARISON_TABS} />}
+      tabs={
+        <>
+          <SectionTabs tabs={REPORT_TABS} />
+          <SectionTabs tabs={COMPARISON_TABS} />
+        </>
+      }
+
       rows={exportRows}
       exportColumns={exportColumns}
       filters={

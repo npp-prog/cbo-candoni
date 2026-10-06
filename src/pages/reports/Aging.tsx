@@ -10,6 +10,8 @@ import { todayPh } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
 import type { LedgerEntry } from '@/types/accounting';
 import type { Centavos } from '@/types/common';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * Aging of receivables and payables.
@@ -270,6 +272,8 @@ export default function Aging() {
           </Button>
         }
       />
+
+      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
 
       <Card className="no-print">
         <div className="grid gap-4 sm:grid-cols-2">

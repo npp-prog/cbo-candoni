@@ -15,6 +15,7 @@ import type { ExportColumn } from '@/lib/export';
 import type { PeriodNo } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
 import { INCOME_CLASS_LABELS, type IncomeClass } from '@/lib/estimatedReceipts';
+import { REPORT_TABS } from '@/layout/sections';
 import {
   buildComparison,
   buildReceiptComparison,
@@ -188,7 +189,13 @@ export default function BudgetVsActual() {
             : `For the period January to ${monthName(throughPeriod)} ${fiscalYear}`,
       }}
       breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Budget and Actual' }]}
-      tabs={<SectionTabs tabs={COMPARISON_TABS} />}
+      tabs={
+        <>
+          <SectionTabs tabs={REPORT_TABS} />
+          <SectionTabs tabs={COMPARISON_TABS} />
+        </>
+      }
+
       rows={rows}
       exportColumns={exportColumns}
       filters={
