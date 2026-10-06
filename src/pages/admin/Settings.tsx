@@ -29,13 +29,44 @@ import { ROLES, ROLE_LABELS, type Role, type SystemSettings } from '@/types/syst
 export default function Settings() {
   const { hasRole, user, profile } = useAuth();
   const toast = useToast();
-  const { data } = useDocument<SystemSettings & { allowSelfApproval?: boolean }>(
+  const { data } = useDocument<
+    SystemSettings & {
+      allowSelfApproval?: boolean;
+      entityName?: string;
+      address?: string;
+      officials?: Record<string, { name: string; position: string }>;
+    }
+  >(
     COL.settings,
     'general',
   );
 
   const [municipality, setMunicipality] = useState('Municipality of Candoni');
   const [province, setProvince] = useState('Province of Negros Occidental');
+  /*
+   * The two lines the PRESCRIBED COA FORMS print, which are not the two above.
+   *
+   * A COA appendix is headed "Republic of the Philippines / MUNICIPAL
+   * GOVERNMENT OF CANDONI / Municipal Building, Rizal St., ...". The
+   * municipality and province above are what the EXPORTS head their pages
+   * with. Both are real and they are different, so both are editable.
+   */
+  const [entityName, setEntityName] = useState('MUNICIPAL GOVERNMENT OF CANDONI');
+  const [address, setAddress] = useState(
+    'Municipal Building, Rizal St., Candoni, Negros Occidental, 6110',
+  );
+  /*
+   * Who signs the prescribed forms, by office.
+   *
+   * Written into the source until patch 89, which meant an election changed
+   * who signs and nothing could print correctly until the next patch.
+   */
+  const [officials, setOfficials] = useState({
+    localTreasurer: { name: '', position: 'Local Treasurer' },
+    municipalMayor: { name: '', position: 'Municipal Mayor' },
+    municipalAccountant: { name: '', position: 'Municipal Accountant' },
+    bookkeeper: { name: '', position: 'Bookkeeper' },
+  });
   const [checkStaleMonths, setCheckStaleMonths] = useState(6);
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(45);
   const [allowBudgetOverride, setAllowBudgetOverride] = useState(true);
@@ -53,6 +84,18 @@ export default function Settings() {
     if (!data) return;
     setMunicipality(data.municipality ?? 'Municipality of Candoni');
     setProvince(data.province ?? 'Province of Negros Occidental');
+    setEntityName(data.entityName ?? 'MUNICIPAL GOVERNMENT OF CANDONI');
+    setAddress(
+      data.address ?? 'Municipal Building, Rizal St., Candoni, Negros Occidental, 6110',
+    );
+    if (data.officials) {
+      setOfficials((current) => ({
+        localTreasurer: data.officials?.localTreasurer ?? current.localTreasurer,
+        municipalMayor: data.officials?.municipalMayor ?? current.municipalMayor,
+        municipalAccountant: data.officials?.municipalAccountant ?? current.municipalAccountant,
+        bookkeeper: data.officials?.bookkeeper ?? current.bookkeeper,
+      }));
+    }
     setCheckStaleMonths(data.checkStaleMonths ?? 6);
     setSessionTimeoutMinutes(data.sessionTimeoutMinutes ?? 45);
     setAllowBudgetOverride(data.allowBudgetOverride !== false);
@@ -80,6 +123,9 @@ export default function Settings() {
         {
           municipality,
           province,
+          entityName: entityName.trim(),
+          address: address.trim(),
+          officials,
           reportHeaderLines: ['Republic of the Philippines', province, municipality],
           checkStaleMonths,
           sessionTimeoutMinutes,
@@ -151,6 +197,62 @@ export default function Settings() {
                 disabled={!isAdmin}
               />
             </Field>
+
+            <Field
+              label="Entity name, as the COA forms print it"
+              htmlFor="entityName"
+              className="sm:col-span-2"
+              hint="The second line of every prescribed appendix, in capitals."
+            >
+              <TextInput
+                id="entityName"
+                value={entityName}
+                onChange={(e) => setEntityName(e.target.value)}
+                disabled={!isAdmin}
+              />
+            </Field>
+
+            <Field
+              label="Address"
+              htmlFor="address"
+              className="sm:col-span-2"
+              hint="The third line. A COA appendix carries the street address where an export carries the province."
+            >
+              <TextInput
+                id="address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                disabled={!isAdmin}
+              />
+            </Field>
+          </div>
+        </Card>
+
+        <Card
+          title="Officials"
+          subtitle="Printed over the signature lines of the prescribed COA forms. Leave a name empty and the line prints blank, to be signed by hand."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            {(
+              [
+                ['localTreasurer', 'Local Treasurer'],
+                ['municipalMayor', 'Municipal Mayor'],
+                ['municipalAccountant', 'Municipal Accountant'],
+                ['bookkeeper', 'Bookkeeper'],
+              ] as const
+            ).map(([key, label]) => (
+              <Field key={key} label={label} htmlFor={key}>
+                <TextInput
+                  id={key}
+                  value={officials[key].name}
+                  onChange={(e) =>
+                    setOfficials((o) => ({ ...o, [key]: { ...o[key], name: e.target.value } }))
+                  }
+                  disabled={!isAdmin}
+                  placeholder="Name as it is printed"
+                />
+              </Field>
+            ))}
           </div>
 
           <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-center">

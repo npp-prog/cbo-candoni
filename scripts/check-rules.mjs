@@ -1553,6 +1553,89 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 30. A printed form takes its heading from the municipality -------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * EVERY FORM CFMS PRINTED HAD THE WRONG HEADING ON IT
+ * ---------------------------------------------------------------------------
+ * Two components wrote the entity heading out in code, and they wrote two
+ * DIFFERENT headings:
+ *
+ *   formParts.tsx   Republic / Province of Negros Occidental /
+ *                   Municipality of Candoni / an office
+ *   ReportShell.tsx Republic / Province / Municipality
+ *
+ * The municipality's own COA forms say neither. They say Republic / MUNICIPAL
+ * GOVERNMENT OF CANDONI / the street address, with no province line and no
+ * office line - so every prescribed appendix CFMS printed was headed wrongly,
+ * in two different wrong ways, and neither could be corrected without a patch.
+ *
+ * It comes from Settings now, through `useEntity`. This refuses the day
+ * somebody writes it out again, which is the easiest possible thing to do:
+ * the lines are short, they look like boilerplate, and a form that prints
+ * them looks right until somebody lays it beside the real one.
+ */
+{
+  /*
+   * The one file allowed to carry the words is the one that supplies them.
+   * ReportShell is allowed them as a FALLBACK for an export whose meta does
+   * not name a municipality, which is a different thing from a prescribed
+   * form's letterhead.
+   */
+  const ALLOWED = new Set([
+    // Supplies the lines.
+    'src/lib/entity.ts',
+    'src/data/useEntity.ts',
+    // The EXPORTS' own heading, and its fallback. An exported spreadsheet is
+    // not a prescribed appendix: it heads its pages with the municipality and
+    // the province, which is a different heading and a correct one.
+    'src/components/ReportShell.tsx',
+    'src/lib/export.ts',
+    // Where the office TYPES the heading. A default value in the box it is
+    // typed into is the one place the words belong in code.
+    'src/pages/admin/Settings.tsx',
+  ]);
+
+  const MARKERS = [/Republic of the Philippines/, /MUNICIPAL GOVERNMENT OF/];
+
+  const files = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.test.ts')) files.push(full);
+    }
+  };
+  walk(resolve(root, 'src'));
+
+  let offenders = 0;
+
+  for (const full of files) {
+    const name = full.slice(root.length + 1).split('\\').join('/');
+    if (ALLOWED.has(name)) continue;
+
+    const source = readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    if (MARKERS.some((m) => m.test(source))) {
+      offenders += 1;
+      failures.push(
+        `${name}: the entity's heading is written out here. It belongs to the municipality, not ` +
+          'to a component - a COA appendix is headed with the entity name and street address the ' +
+          'office has set, and two files writing it out is how CFMS came to print two different ' +
+          'wrong headings. Read it from useEntity().',
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log("forms: the heading comes from the municipality's own settings");
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

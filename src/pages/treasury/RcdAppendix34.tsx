@@ -24,6 +24,7 @@ import {
   blankRows,
 } from '@/components/print/formParts';
 import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
+import { useEntity } from '@/data/useEntity';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -56,6 +57,7 @@ const FORM_CODE = (c: { accountableForm?: string; accountableFormId?: string }) 
     .replace(/[^A-Z0-9]/g, '');
 
 export default function RcdAppendix34() {
+  const entity = useEntity();
   const { id } = useParams<{ id: string }>();
   const { fiscalYear, fundCode } = useFilters();
 
@@ -221,7 +223,7 @@ export default function RcdAppendix34() {
       />
 
       <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" />
+        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" lines={entity.headingLines} />
 
         <table className="mb-4 w-full text-2xs">
           <tbody>

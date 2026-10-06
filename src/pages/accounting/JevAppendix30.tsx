@@ -4,11 +4,12 @@ import { PageHeader, Alert, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useDocument } from '@/hooks/useFirestore';
 import { COL } from '@/lib/collections';
-import { formatAmount, amountInWords } from '@/lib/money';
+import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasJevNumber } from '@/lib/jevNumbers';
 import { Letterhead, SignatureLine, blankRows } from '@/components/print/formParts';
 import type { JournalEntryVoucher } from '@/types/accounting';
+import { useEntity } from '@/data/useEntity';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -51,13 +52,17 @@ import { fundLabel } from '../budget/Obligations';
  * nothing in the system stands behind.
  *
  * ---------------------------------------------------------------------------
- * ONE THING TO SETTLE WITH THE OFFICE
+ * IT IS THE JOURNAL VOUCHER, AND THAT IS SETTLED
  * ---------------------------------------------------------------------------
- * The GAM appendix index the municipality supplied (`data/gam-appendix-index.csv`)
- * calls Appendix 30 the JOURNAL VOUCHER (JV). Every screen in CFMS, and the
- * office in conversation, calls it the Journal Entry Voucher. The heading below
- * follows the office. If COA wants the appendix's own wording it is one word on
- * one line.
+ * CFMS calls this entry a JEV everywhere, and so does the office in
+ * conversation, so patch 84 printed "JOURNAL ENTRY VOUCHER" on the form and
+ * left the question open.
+ *
+ * The municipality's own Appendix 30 - sheet A30-JEV of `Appendix_Forms.xlsx`,
+ * already carrying Candoni's name - is headed JOURNAL VOUCHER, and its number
+ * box is JV No. The appendix index said the same and I did not follow it. The
+ * printed form follows the form now; the screens go on saying JEV, which is
+ * what the office says and what every other part of CFMS is built around.
  */
 
 /** Minimum ruled rows, so a two-line entry still fills the sheet. */
@@ -66,6 +71,7 @@ const BLANK_ROWS = 12;
 export default function JevAppendix30() {
   const { id } = useParams<{ id: string }>();
   const { data: jev, loading } = useDocument<JournalEntryVoucher>(COL.jevs, id);
+  const entity = useEntity();
 
   const lines = useMemo(() => [...(jev?.lines ?? [])].sort((a, b) => a.lineNo - b.lineNo), [jev]);
 
@@ -96,7 +102,7 @@ export default function JevAppendix30() {
     <div>
       <div className="no-print">
         <PageHeader
-          title={hasJevNumber(jev.jevNo) ? `JEV ${jev.jevNo}` : 'Journal entry (unnumbered)'}
+          title={hasJevNumber(jev.jevNo) ? `JV ${jev.jevNo}` : "Journal voucher (unnumbered)"}
           subtitle="Appendix 30 - the form as COA prints it"
           breadcrumbs={[
             { label: 'Accounting' },
@@ -139,33 +145,51 @@ export default function JevAppendix30() {
 
       {/* --- the form ------------------------------------------------------- */}
       <div className="mx-auto max-w-[8.5in] bg-white p-6 text-[11px] text-navy-900 ring-1 ring-slate-200 print:p-0 print:ring-0">
-        <Letterhead
-          appendix="Appendix 30"
-          title="Journal Entry Voucher"
-          office="Office of the Municipal Accountant"
-        />
+        <Letterhead appendix="Appendix 30" title="Journal Voucher" lines={entity.headingLines} />
 
-        <table className="mb-2 w-full border-collapse">
+        {/*
+          ------------------------------------------------------------------
+          THE FORM AS THE MUNICIPALITY'S OWN APPENDIX 30 PRINTS IT
+          ------------------------------------------------------------------
+          Rebuilt in patch 89 against `Appendix_Forms.xlsx`, sheet A30-JEV -
+          the workbook already carrying Candoni's name. What CFMS printed
+          before was built from the field set and was wrong in four places:
+
+            * the heading said JOURNAL ENTRY VOUCHER. The form says JOURNAL
+              VOUCHER, and the number is JV No., not JEV No. The appendix
+              index said so and I kept the office's spoken name instead.
+            * it carried Entity Name and Fund Cluster boxes. The form has
+              Fund and JV No. on one line and Date under them; the entity is
+              the letterhead.
+            * the first column was Particulars. On the form it is FPP - the
+              budget line - and the account column is headed "Accounts and
+              Explanation".
+            * it had three signature blocks. The form has two: Prepared by,
+              and Certified Correct.
+
+          There is also a narrow "P" column between the account code and the
+          amounts. It is the posting reference, ticked by hand when the entry
+          is written into the ledger, and it stays blank here deliberately:
+          CFMS posts to the ledger itself, and printing a tick would assert
+          somebody had done the manual step.
+        */}
+        <table className="mb-2 w-full">
           <tbody>
             <tr>
-              <td className="w-1/2 border border-slate-400 px-1.5 py-1">
-                <span className="text-slate-500">Entity Name:</span>{' '}
-                <span className="font-semibold">Municipality of Candoni</span>
+              <td className="w-1/2 py-0.5">
+                <span className="text-slate-500">Fund :</span>{' '}
+                <span className="font-semibold">{fundLabel(jev.fundCode)}</span>
               </td>
-              <td className="border border-slate-400 px-1.5 py-1">
-                <span className="text-slate-500">JEV No.:</span>{' '}
+              <td className="py-0.5">
+                <span className="text-slate-500">JV No.:</span>{' '}
                 <span className="font-mono font-semibold">
                   {hasJevNumber(jev.jevNo) ? jev.jevNo : ''}
                 </span>
               </td>
             </tr>
             <tr>
-              <td className="border border-slate-400 px-1.5 py-1">
-                <span className="text-slate-500">Fund Cluster:</span>{' '}
-                <span className="font-semibold">{fundLabel(jev.fundCode)}</span>
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1">
-                <span className="text-slate-500">Date:</span>{' '}
+              <td className="py-0.5" colSpan={2}>
+                <span className="text-slate-500">Date :</span>{' '}
                 <span className="font-semibold">{formatShortDate(jev.jevDate)}</span>
               </td>
             </tr>
@@ -175,31 +199,31 @@ export default function JevAppendix30() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="border border-slate-400 px-1.5 py-1 text-left">Particulars</th>
-              <th className="w-24 border border-slate-400 px-1.5 py-1 text-left">Ref.</th>
+              <th className="w-20 border border-slate-400 px-1.5 py-1 text-left" rowSpan={2}>
+                FPP
+              </th>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-center"
+                colSpan={4}
+              >
+                ACCOUNTING ENTRIES
+              </th>
+            </tr>
+            <tr>
+              <th className="border border-slate-400 px-1.5 py-1 text-left">
+                Accounts and Explanation
+              </th>
               <th className="w-24 border border-slate-400 px-1.5 py-1 text-left">Account Code</th>
               <th className="w-28 border border-slate-400 px-1.5 py-1 text-right">Debit</th>
               <th className="w-28 border border-slate-400 px-1.5 py-1 text-right">Credit</th>
             </tr>
           </thead>
           <tbody>
-            {/*
-              The entry's own particulars head the body, as on the paper form:
-              the lines below say which accounts moved, and this says what the
-              transaction WAS. Printing only the per-line text would leave a
-              voucher whose every line reads "Fuel and oil" and nothing saying
-              for which vehicle in which month.
-            */}
-            <tr>
-              <td className="border border-slate-400 px-1.5 py-1 font-semibold" colSpan={3}>
-                {jev.particulars}
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1" />
-              <td className="border border-slate-400 px-1.5 py-1" />
-            </tr>
-
             {lines.map((line) => (
               <tr key={line.lineNo}>
+                <td className="border border-slate-400 px-1.5 py-1 font-mono text-[10px]">
+                  {line.fppCode ?? ''}
+                </td>
                 <td className="border border-slate-400 px-1.5 py-1">
                   {/* A credit is indented under the debits it answers, the way
                       a journal entry is written by hand. */}
@@ -209,9 +233,6 @@ export default function JevAppendix30() {
                       {line.subsidiaryName}
                     </span>
                   )}
-                </td>
-                <td className="border border-slate-400 px-1.5 py-1 font-mono text-[10px]">
-                  {reference}
                 </td>
                 <td className="border border-slate-400 px-1.5 py-1 font-mono text-[10px]">
                   {line.accountCode}
@@ -224,6 +245,22 @@ export default function JevAppendix30() {
                 </td>
               </tr>
             ))}
+
+            {/*
+              "Explanation" is the other half of that column's heading. The
+              entry's own particulars go under the accounts, where a hand-
+              written voucher puts them - the lines above say which accounts
+              moved, this says what the transaction was.
+            */}
+            <tr>
+              <td className="border border-slate-400 px-1.5 py-1" />
+              <td className="border border-slate-400 px-1.5 py-1 italic" colSpan={4}>
+                {jev.particulars}
+                {reference && (
+                  <span className="not-italic text-slate-500"> ({reference})</span>
+                )}
+              </td>
+            </tr>
 
             {blankRows(BLANK_ROWS - lines.length, 5, 'jev')}
           </tbody>
@@ -242,26 +279,16 @@ export default function JevAppendix30() {
           </tfoot>
         </table>
 
-        <p className="mt-2 border border-slate-400 px-1.5 py-1">
-          <span className="text-slate-500">Amount in words:</span>{' '}
-          <span className="font-semibold">{amountInWords(totals.debit)}</span>
-        </p>
-
-        <div className="mt-6 grid grid-cols-3 gap-6">
+        <div className="mt-8 grid grid-cols-2 gap-10">
           <SignatureLine
             label="Prepared by:"
-            name={jev.createdBy?.name}
-            role={jev.createdBy?.position ?? 'Accounting Staff'}
+            name={jev.createdBy?.name || entity.bookkeeper.name}
+            role={jev.createdBy?.position || entity.bookkeeper.position}
           />
           <SignatureLine
-            label="Certified Correct by:"
-            name={jev.reviewedBy?.name ?? jev.approvedBy?.name}
-            role={(jev.reviewedBy ?? jev.approvedBy)?.position ?? 'Accounting Reviewer'}
-          />
-          <SignatureLine
-            label="Approved by:"
-            name={jev.postedBy?.name}
-            role={jev.postedBy?.position ?? 'Municipal Accountant'}
+            label="Certified Correct:"
+            name={jev.postedBy?.name || entity.municipalAccountant.name}
+            role={jev.postedBy?.position || entity.municipalAccountant.position}
           />
         </div>
       </div>

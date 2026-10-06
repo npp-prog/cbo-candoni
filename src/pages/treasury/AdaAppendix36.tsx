@@ -5,9 +5,9 @@ import { useDocument } from '@/hooks/useFirestore';
 import { COL } from '@/lib/collections';
 import { formatAmount, amountInWords } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
-import { Letterhead, SignatureLine } from '@/components/print/formParts';
+import { Letterhead, blankRows } from '@/components/print/formParts';
 import type { Ada } from '@/types/accounting';
-import { fundLabel } from '../budget/Obligations';
+import { useEntity } from '@/data/useEntity';
 
 /**
  * The Authority to Debit Account - Appendix 36.
@@ -37,6 +37,7 @@ import { fundLabel } from '../budget/Obligations';
 export default function AdaAppendix36() {
   const { id } = useParams<{ id: string }>();
   const { data: ada, loading } = useDocument<Ada>(COL.ada, id);
+  const entity = useEntity();
 
   if (loading) return <Spinner label="Loading the advice" />;
 
@@ -83,70 +84,98 @@ export default function AdaAppendix36() {
 
       {/* --- the form ------------------------------------------------------- */}
       <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <Letterhead appendix="Appendix 36" title="Authority to Debit Account" />
+        <Letterhead
+          appendix="Appendix 36"
+          title="Authority to Debit Account (ADA)"
+          lines={entity.headingLines}
+        />
 
-        <table className="mb-4 w-full border-collapse">
+        {/*
+          ------------------------------------------------------------------
+          THE FORM AS THE MUNICIPALITY'S OWN APPENDIX 36 PRINTS IT
+          ------------------------------------------------------------------
+          Rebuilt in patch 89 against sheet A36-ADA of `Appendix_Forms.xlsx`.
+          Patch 86 built it from the field set, and got the SHAPE right - it is
+          a letter to the bank, not a schedule - but three details wrong:
+
+            * the body is a prescribed sentence, "Please debit the agency
+              Account No. ___ in the amount of ___ (Php___)", followed by
+              "Please credit the accounts of the listed creditors to cover
+              payment of payables". I had written my own wording.
+            * the columns are Office/Department/Payee, Reference and Amount.
+              I had Creditor, Particulars and Amount.
+            * the signatures are two AGENCY AUTHORIZED SIGNATORIES, numbered
+              1 and 2 under one heading - the Local Treasurer and the Municipal
+              Mayor. I had two separate blocks with invented labels.
+
+          I also invented a block recording what the bank had done with the
+          advice - submitted, reference number, debited. It is not on the form
+          and it is gone. Those dates are on the ADA register, which is where
+          somebody asking "has it been debited" is actually looking.
+        */}
+        <table className="mb-4 w-full">
           <tbody>
             <tr>
-              <td className="w-1/2 py-0.5">
-                <span className="text-slate-500">Fund:</span>{' '}
-                <span className="font-semibold">{fundLabel(ada.fundCode)}</span>
+              <td className="w-1/2 py-0.5 align-top">
+                <p className="font-semibold">THE MANAGER</p>
+                <p>{ada.bankName}</p>
               </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">ADA No.:</span>{' '}
-                <span className="font-mono font-semibold">{ada.adaNo}</span>
-              </td>
-            </tr>
-            <tr>
-              <td className="py-0.5">
-                <span className="text-slate-500">DV No.:</span>{' '}
-                <span className="font-mono font-semibold">{ada.dvNo}</span>
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">Date:</span>{' '}
-                <span className="font-semibold">{formatLongDate(ada.adaDate)}</span>
+              <td className="py-0.5 align-top">
+                <p>
+                  <span className="text-slate-500">ADA No.</span>{' '}
+                  <span className="font-mono font-semibold">{ada.adaNo}</span>
+                </p>
+                <p>
+                  <span className="text-slate-500">Date:</span>{' '}
+                  <span className="font-semibold">{formatLongDate(ada.adaDate)}</span>
+                </p>
               </td>
             </tr>
           </tbody>
         </table>
 
-        <div className="mb-4">
-          <p className="text-2xs text-slate-500">To:</p>
-          <p className="font-semibold">{ada.bankName}</p>
-          <p>
-            Account No. <span className="font-mono">{ada.bankAccountNumber}</span>
-          </p>
-        </div>
+        <p className="mb-3">Sir/Madam:</p>
 
         <p className="leading-relaxed">
-          You are hereby authorised to debit the account of the{' '}
-          <strong>Municipality of Candoni</strong> stated above in the sum of{' '}
-          <strong>{amountInWords(ada.amount)}</strong> (
-          <span className="font-mono">{formatAmount(ada.amount, false)}</span>) and to credit the
-          same to the account of the creditor named below, in settlement of the obligation
-          described.
+          Please debit the agency Account No.{' '}
+          <span className="font-mono font-semibold underline">{ada.bankAccountNumber}</span> in the
+          amount of <span className="font-semibold underline">{amountInWords(ada.amount)}</span> (
+          <span className="font-mono font-semibold">Php {formatAmount(ada.amount, false)}</span>).
+        </p>
+        <p className="mt-2 leading-relaxed">
+          Please credit the accounts of the listed creditors to cover payment of payables.
         </p>
 
         <table className="mt-4 w-full border-collapse text-2xs">
           <thead>
             <tr className="bg-slate-100">
-              <th className="border border-slate-400 px-1.5 py-1 text-left">Creditor</th>
-              <th className="border border-slate-400 px-1.5 py-1 text-left">Particulars</th>
+              <th className="border border-slate-400 px-1.5 py-1 text-left">
+                Office/Department/Payee
+              </th>
+              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '12rem' }}>
+                Reference
+              </th>
               <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '9rem' }}>
                 Amount
               </th>
             </tr>
           </thead>
           <tbody>
+            {/*
+              One creditor. The form is drawn for a list - an office may issue
+              one advice covering several payables - but CFMS issues one ADA per
+              disbursement voucher, so there is one line and one reference. The
+              ruled blanks below say the sheet was considered and found to have
+              one row, rather than stopping short.
+            */}
             <tr>
-              <td className="border border-slate-400 px-1.5 py-2 align-top font-semibold">
-                {ada.payeeName}
-              </td>
-              <td className="border border-slate-400 px-1.5 py-2 align-top">{ada.particulars}</td>
-              <td className="border border-slate-400 px-1.5 py-2 text-right align-top tabular-nums">
+              <td className="border border-slate-400 px-1.5 py-1">{ada.payeeName}</td>
+              <td className="border border-slate-400 px-1.5 py-1 font-mono">DV {ada.dvNo}</td>
+              <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
                 {formatAmount(ada.amount, false)}
               </td>
             </tr>
+            {blankRows(5, 3, 'ada')}
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 font-bold">
@@ -160,41 +189,26 @@ export default function AdaAppendix36() {
           </tfoot>
         </table>
 
-        {/*
-          What the bank has done with it, where CFMS knows. Printed because a
-          filed copy of an advice is read later to answer exactly this - and
-          because a blank line is the honest answer while it is still out.
-        */}
-        <table className="mt-4 w-full border-collapse text-2xs">
-          <tbody>
-            <tr>
-              <td className="w-1/3 border border-slate-400 px-1.5 py-1 text-slate-500">
-                Submitted to the bank
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1">
-                {ada.dateSubmittedToBank ? formatLongDate(ada.dateSubmittedToBank) : ' '}
-              </td>
-            </tr>
-            <tr>
-              <td className="border border-slate-400 px-1.5 py-1 text-slate-500">
-                Bank reference no.
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1 font-mono">
-                {ada.bankReferenceNo ?? ' '}
-              </td>
-            </tr>
-            <tr>
-              <td className="border border-slate-400 px-1.5 py-1 text-slate-500">Date debited</td>
-              <td className="border border-slate-400 px-1.5 py-1">
-                {ada.dateDebited ? formatLongDate(ada.dateDebited) : ' '}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="mt-8 grid gap-8 sm:grid-cols-2">
-          <SignatureLine label="Certified Correct" role="Municipal Treasurer" />
-          <SignatureLine label="Approved for payment" role="Local Chief Executive" />
+        <p className="mt-6 text-2xs font-semibold">Agency Authorized Signatories</p>
+        <div className="mt-2 grid gap-10 sm:grid-cols-2">
+          <div>
+            <p className="text-2xs">1.</p>
+            <p className="mt-10 border-t border-slate-500 pt-1 text-center text-2xs font-semibold">
+              {entity.localTreasurer.name || ' '}
+            </p>
+            <p className="text-center text-[9px] text-slate-500">
+              {entity.localTreasurer.position}
+            </p>
+          </div>
+          <div>
+            <p className="text-2xs">2.</p>
+            <p className="mt-10 border-t border-slate-500 pt-1 text-center text-2xs font-semibold">
+              {entity.municipalMayor.name || ' '}
+            </p>
+            <p className="text-center text-[9px] text-slate-500">
+              {entity.municipalMayor.position}
+            </p>
+          </div>
         </div>
       </div>
     </div>

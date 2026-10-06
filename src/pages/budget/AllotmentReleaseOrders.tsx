@@ -15,6 +15,7 @@ import { checkAllotmentAgainstAppropriation } from '@/lib/accounting-rules';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Allotment, BudgetBalance } from '@/types/budget';
 import type { Centavos } from '@/types/common';
+import { useEntity } from '@/data/useEntity';
 import { fundLabel } from './Obligations';
 
 /**
@@ -114,6 +115,7 @@ export default function AllotmentReleaseOrders({
   building?: boolean;
   onBuildingChange?: (next: boolean) => void;
 } = {}) {
+  const entity = useEntity();
   const { fiscalYear, fundCode } = useFilters();
   const { hasRole } = useAuth();
   const toast = useToast();
@@ -619,7 +621,7 @@ export default function AllotmentReleaseOrders({
         <div className="print-only">
           <Letterhead
             appendix={formOf(printing.expenseClass)}
-            office="Office of the Municipal Budget Officer"
+            lines={entity.headingLines}
             title="Allotment Release Order"
           />
 

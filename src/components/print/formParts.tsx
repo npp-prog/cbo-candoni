@@ -12,26 +12,56 @@ import { formatAmount } from '@/lib/money';
  * auditor lines the two printouts up.
  */
 
-/** The four-line heading, with the appendix tag in the corner. */
+/**
+ * The heading, with the appendix tag in the corner.
+ *
+ * ---------------------------------------------------------------------------
+ * THE LINES COME FROM THE MUNICIPALITY, NOT FROM HERE
+ * ---------------------------------------------------------------------------
+ * This used to print four lines written out in code - Republic, Province,
+ * Municipality of Candoni, and an office. The municipality's own COA forms do
+ * not say that. They say Republic / MUNICIPAL GOVERNMENT OF CANDONI / the
+ * street address, with no province line and no office line, and every form
+ * CFMS printed had the wrong heading on it.
+ *
+ * `useEntity()` reads them from Settings. Passing them in rather than reading
+ * them here keeps this component what it is - furniture, with no opinion about
+ * which municipality is using it - and means the printed page cannot show one
+ * heading while the exported spreadsheet shows another.
+ */
 export function Letterhead({
   appendix,
   title,
-  office = 'Office of the Municipal Treasurer',
+  lines,
+  /** A sub-heading under the title, where the form has one. */
+  subtitle,
 }: {
   appendix?: string;
   title: string;
-  office?: string;
+  lines: string[];
+  subtitle?: string;
 }) {
   return (
     <div className="relative mb-4 text-center">
       {appendix && (
         <span className="absolute right-0 top-0 text-2xs italic text-slate-500">{appendix}</span>
       )}
-      <p className="text-2xs">Republic of the Philippines</p>
-      <p className="text-2xs">Province of Negros Occidental</p>
-      <p className="text-sm font-bold uppercase tracking-wide">Municipality of Candoni</p>
-      <p className="text-2xs">{office}</p>
+      {lines.map((line, i) => (
+        <p
+          key={i}
+          className={
+            /*
+              The entity's own name is the one line printed large. It is the
+              second on every COA form, between the Republic and the address.
+            */
+            i === 1 ? 'text-sm font-bold uppercase tracking-wide' : 'text-2xs'
+          }
+        >
+          {line}
+        </p>
+      ))}
       <h2 className="mt-3 text-sm font-bold uppercase tracking-wide">{title}</h2>
+      {subtitle && <p className="text-2xs">{subtitle}</p>}
     </div>
   );
 }

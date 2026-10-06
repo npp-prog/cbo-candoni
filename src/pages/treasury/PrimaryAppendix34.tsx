@@ -14,6 +14,7 @@ import { usePrimaryReports, useRcds } from '@/data/queries';
 import { formatAmount, amountInWords } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { PRIMARY_REPORT_TYPE_LABELS, reconcileDeposit } from '@/types/primaryReports';
+import { useEntity } from '@/data/useEntity';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -39,6 +40,7 @@ import { fundLabel } from '../budget/Obligations';
 const BLANK_ROWS = { a1: 6, a2: 8, b: 3, c: 4 };
 
 export default function PrimaryAppendix34() {
+  const entity = useEntity();
   const { id } = useParams<{ id: string }>();
   const { fiscalYear, fundCode } = useFilters();
 
@@ -129,7 +131,7 @@ export default function PrimaryAppendix34() {
       )}
 
       <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" />
+        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" lines={entity.headingLines} />
 
         <table className="mb-4 w-full text-2xs">
           <tbody>
