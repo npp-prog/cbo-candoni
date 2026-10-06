@@ -46,7 +46,7 @@ setGlobalOptions({
 export { approveAppropriation, releaseAllotment } from './budget/appropriations';
 export { certifyObligation, uncertifyObligation, cancelObligation } from './budget/obligations';
 export { importBudgetLines } from './budget/import';
-export { issueAro } from './budget/aro';
+export { issueAro, releaseHeldAllotment } from './budget/aro';
 export { recordEstimatedReceipts } from './budget/estimatedReceipts';
 export { recordTrustProgram } from './accounting/trustPrograms';
 export { importChartOfAccounts } from './masterdata/accounts';

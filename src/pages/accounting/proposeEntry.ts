@@ -54,7 +54,17 @@ export interface DeductionLite {
   code: string;
   description: string;
   accountCode: string;
+  /**
+   * The ACCOUNT's own title, from the Chart of Accounts.
+   *
+   * Not the tax's description. Every tax the municipality withholds is owed to
+   * one creditor and posts to one account - Due to BIR - and writing the tax's
+   * own name here put two different titles against one code in the General
+   * Ledger. Which tax it was belongs in the subsidiary below.
+   */
   accountName: string;
+  /** The tax code record, which becomes the line's subsidiary ledger. */
+  taxCodeId?: string;
   amount: Centavos;
 }
 
@@ -169,6 +179,19 @@ export function proposeDvEntry(input: {
       accountName: deduction.accountName,
       debit: 0,
       credit: deduction.amount,
+      /*
+       * WHICH tax, as the subsidiary. Due to BIR is one control account
+       * carrying every tax withheld; without this the account's balance is a
+       * single figure that cannot be broken down by the remittance it belongs
+       * to, which is exactly what the office has to do when it files.
+       *
+       * Left empty for a deduction typed in by hand with no tax code behind
+       * it - a one-off retention, say - rather than inventing a subsidiary
+       * for something that is not a tax.
+       */
+      subsidiaryType: deduction.taxCodeId ? 'TAX_CODE' : undefined,
+      subsidiaryId: deduction.taxCodeId,
+      subsidiaryName: deduction.taxCodeId ? deduction.description : undefined,
       particulars: deduction.description,
     });
   }
@@ -208,7 +231,22 @@ export function proposeDvEntry(input: {
  * the tax code's definition rather than something a clerk decides each time.
  */
 export function computeDeduction(
-  taxCode: { code: string; description: string; rate: number; base: 'GROSS' | 'NET_OF_VAT'; accountCode: string },
+  taxCode: {
+    id?: string;
+    code: string;
+    description: string;
+    rate: number;
+    base: 'GROSS' | 'NET_OF_VAT';
+    accountCode: string;
+  },
+  /**
+   * The ACCOUNT's title, looked up from the Chart of Accounts by the caller.
+   *
+   * It used to be handed the tax code's own description, which is how
+   * "Expanded withholding tax on goods (1%)" came to be the account name on a
+   * line posted to 20201010. The parameter is unchanged; what callers pass it
+   * is. The tax's description travels on its own, as the subsidiary.
+   */
   accountName: string,
   grossAmount: Centavos,
   vatRate = 0.12,
@@ -223,6 +261,7 @@ export function computeDeduction(
     description: taxCode.description,
     accountCode: taxCode.accountCode,
     accountName,
+    taxCodeId: taxCode.id,
     base,
     rate: taxCode.rate,
     amount,

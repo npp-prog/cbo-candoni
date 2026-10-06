@@ -12,7 +12,7 @@ import { SignedTotalNote } from '@/components/SignedTotalNote';
 import { JournalEntryGrid, type GridLine } from '@/components/journal/JournalEntryGrid';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useAttachments, usePayees, useEmployees } from '@/data/queries';
+import { useAttachments, usePayees, useEmployees, useAda } from '@/data/queries';
 import { buildBankPayrollFile } from '@/lib/bankUpload';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
@@ -82,6 +82,12 @@ export default function TreasuryReportDetail() {
   const isRadai = report?.reportType === 'RADAI';
   const payees = usePayees();
   const employees = useEmployees();
+  /*
+   * The advices this report covers, read to find out WHO each line was paid
+   * to - see the note on `bankRows` below for why the report line is not
+   * always enough on its own.
+   */
+  const ada = useAda(isRadai ? (report?.bankAccountId ?? undefined) : undefined);
 
   /**
    * The rows of the file the bank's application reads.
@@ -96,21 +102,45 @@ export default function TreasuryReportDetail() {
     if (!isRadai || !report) return [];
     const payeeById = new Map(payees.data.map((p) => [p.id, p]));
     const employeeById = new Map(employees.data.map((e) => [e.id, e]));
+    const adaById = new Map(ada.data.map((a) => [a.id, a]));
 
     return report.lines
       .filter((l) => !l.excluded)
       .map((l) => {
-        const payee = l.payeeId ? payeeById.get(l.payeeId) : undefined;
+        /*
+         * ---- WHICH PAYEE RECORD THIS LINE WAS PAID TO --------------------
+         *
+         * Two ways to find out, and the second is why this was broken.
+         *
+         * The report line carries `payeeId` - but only on a report prepared
+         * AFTER patch 85, which is where that field was added. A report
+         * prepared before it has the payee's NAME and no id, so the lookup
+         * found nothing and the screen reported a payee with no account
+         * number while the payee record plainly had one. That is what
+         * happened to RADAI 2.
+         *
+         * So where the line has no id, the ADVICE it covers is asked instead.
+         * `sourceId` is the advice's document id and the advice has carried
+         * `payeeId` since it was first issued, so this is a join through a
+         * real reference - not a guess from the name. Guessing from the name
+         * is still refused, here as in the journal entry: two suppliers with
+         * similar names merged into one is worse than a blank.
+         */
+        const advice = adaById.get(l.sourceId);
+        const payeeId = l.payeeId ?? advice?.payeeId;
+        const payee = payeeId ? payeeById.get(payeeId) : undefined;
         const employee = payee?.employeeId ? employeeById.get(payee.employeeId) : undefined;
         return {
           accountNumber: employee?.bankAccountNumber || payee?.bankAccountNumber || '',
-          name: l.payeeName ?? '',
+          name: l.payeeName ?? payee?.name ?? '',
           amount: l.amount,
         };
       });
-  }, [isRadai, report, payees.data, employees.data]);
+  }, [isRadai, report, payees.data, employees.data, ada.data]);
 
   const bankFile = useMemo(() => buildBankPayrollFile(bankRows), [bankRows]);
+  /** Everything the account-number lookup depends on being here. */
+  const lookupsLoading = payees.loading || employees.loading || ada.loading;
 
   /**
    * Hands the file over.
@@ -373,7 +403,7 @@ export default function TreasuryReportDetail() {
             {isRadai && bankRows.length > 0 && (
               <Button
                 variant="secondary"
-                disabled={!bankFile.content}
+                disabled={!bankFile.content || lookupsLoading}
                 title={
                   bankFile.content
                     ? 'ATM number, name and amount, for the bank application'
@@ -416,7 +446,14 @@ export default function TreasuryReportDetail() {
         </Alert>
       )}
 
-      {isRadai && bankRows.length > 0 && bankFile.missing.length > 0 && (
+      {/*
+        Held back until the advices and the master data have loaded. Shown
+        while they were still arriving, this said a payee had no account
+        number on the strength of a lookup that had not happened yet - which
+        is how a screen tells somebody to go and fix something that is not
+        broken.
+      */}
+      {isRadai && bankRows.length > 0 && bankFile.missing.length > 0 && !lookupsLoading && (
         <Alert
           tone="warning"
           className="mb-4"

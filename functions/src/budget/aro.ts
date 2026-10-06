@@ -359,3 +359,240 @@ export const issueAro = onCall(
     });
   },
 );
+
+/**
+ * releaseHeldAllotment — releasing what was held back for later.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS BEING RELEASED, AND WHY IT WAS HELD
+ * ---------------------------------------------------------------------------
+ * Column 5 of the Allotment Release Order is "For Later Release", and the
+ * Budget Operations Manual is explicit about what it is for: it exists "to
+ * provide safeguards for shortfalls in the collection of revenues". The
+ * Sanggunian appropriates against an estimate of what the municipality will
+ * collect. If the collections do not come in, the appropriation is still on
+ * the books and the obligation would still be legal - so the Budget Officer
+ * withholds part of the release until the money is actually there.
+ *
+ * `issueAro` records the holding back. This is the other half: putting the
+ * authority into the offices' hands once the collections have arrived.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE SERVER DOES NOT DECIDE
+ * ---------------------------------------------------------------------------
+ * The screen shows actual collections against the Estimated Receipts, and the
+ * Budget Officer decides. The engine checks the arithmetic - that the amount
+ * is really held, that the year is open, that the authority exists - and
+ * records who released it and on what collection figure.
+ *
+ * It does not refuse on the collection figure itself, and that is deliberate.
+ * A release may be right for a reason the figure does not show: a receipt
+ * certain but not yet deposited, a grant confirmed in writing, a reallocation
+ * the Sanggunian has approved. Refusing on the arithmetic would mean the
+ * Budget Officer worked around CFMS on exactly the occasions that matter most,
+ * and nothing would be recorded at all. What is recorded instead is the figure
+ * as it stood when they decided, so the decision can be read afterwards
+ * against what was known at the time.
+ */
+export const releaseHeldAllotment = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, BUDGET_APPROVERS);
+    const { allotmentId, amount, date, reason, collectionsAtRelease, estimateAtRelease } =
+      (request.data ?? {}) as {
+        allotmentId?: string;
+        amount?: number;
+        date?: string;
+        reason?: string;
+        collectionsAtRelease?: number;
+        estimateAtRelease?: number;
+      };
+
+    if (!allotmentId) throw invalid('An allotment line is required.');
+    if (!reason?.trim()) {
+      throw invalid(
+        'Say why the held allotment is being released. It is recorded against the release and in the audit trail.',
+      );
+    }
+
+    const releasing = Math.round(Number(amount ?? 0));
+    if (!Number.isFinite(releasing) || releasing <= 0) {
+      throw invalid('The amount to release must be a positive figure.');
+    }
+
+    return db.runTransaction(async (tx) => {
+      // ---- READ PHASE -------------------------------------------------------
+      const ref = db.collection(COL.allotments).doc(allotmentId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFoundAllotment();
+
+      const line = snap.data() as {
+        fiscalYear: number;
+        fundCode: string;
+        officeId: string;
+        officeName?: string;
+        fppCode: string;
+        fppName?: string;
+        accountCode: string;
+        accountName?: string;
+        sector?: string | null;
+        serviceSector?: string | null;
+        expenseClass: string;
+        allotmentNo?: string;
+        aroNo?: string;
+        aroPurpose?: string;
+        forLaterRelease?: number;
+        status?: string;
+      };
+
+      const held = Math.round(Number(line.forLaterRelease ?? 0));
+      if (held <= 0) {
+        throw new HttpsError(
+          'failed-precondition',
+          `Nothing is held back on ${line.aroNo ? `ARO ${line.aroNo}` : 'this allotment'}. There is no later release to make.`,
+        );
+      }
+      if (releasing > held) {
+        throw new HttpsError(
+          'failed-precondition',
+          `Only ${(held / 100).toFixed(2)} is held for later release on this line; the release asks for ${(releasing / 100).toFixed(2)}. Release what is held, or issue a fresh Allotment Release Order against the appropriation.`,
+        );
+      }
+      if (line.status === 'CANCELLED') {
+        throw new HttpsError(
+          'failed-precondition',
+          'That allotment line has been cancelled. Nothing can be released from it.',
+        );
+      }
+
+      assertFundInScope(caller, line.fundCode);
+      await assertFiscalYearOpen(line.fiscalYear, tx);
+
+      const key: BudgetKey = {
+        fiscalYear: line.fiscalYear,
+        fundCode: line.fundCode,
+        officeId: line.officeId,
+        fppCode: line.fppCode,
+        accountCode: line.accountCode,
+      };
+      const balance = await readBudgetBalance(tx, key);
+
+      /*
+       * The balance is the authority, not the line.
+       *
+       * A line says what THIS order held back; the balance says what is held
+       * across every order on this budget line. Releasing against the line
+       * alone would let two releases from two orders take the same held peso
+       * out twice, and the registry would show more released than was ever
+       * appropriated.
+       */
+      const heldOnBalance = Math.round(Number(balance?.forLaterRelease ?? 0));
+      if (releasing > heldOnBalance) {
+        throw new HttpsError(
+          'failed-precondition',
+          `This budget line holds ${(heldOnBalance / 100).toFixed(2)} for later release in total, and the release asks for ${(releasing / 100).toFixed(2)}. Another order may already have released part of it.`,
+        );
+      }
+
+      // ---- WRITE PHASE ------------------------------------------------------
+      const now = new Date().toISOString();
+      const releaseDate = String(date ?? now.slice(0, 10)).slice(0, 10);
+      const stamp = {
+        uid: caller.uid,
+        name: caller.name,
+        position: caller.position ?? null,
+        at: now,
+      };
+
+      /*
+       * A release is a NEW allotment line, not an edit of the old one.
+       *
+       * The register is a ledger: it shows the order that held the money back
+       * and, separately, the act that let it go, each with its own date and
+       * its own authority. Reducing the original in place would leave a
+       * register in which the holding back had never happened.
+       */
+      tx.create(db.collection(COL.allotments).doc(), {
+        fiscalYear: line.fiscalYear,
+        fundCode: line.fundCode,
+        allotmentNo: line.allotmentNo ?? line.aroNo ?? '',
+        aroNo: line.aroNo ?? null,
+        aroPurpose: line.aroPurpose ?? null,
+        allotmentDate: releaseDate,
+        officeId: line.officeId,
+        officeName: line.officeName ?? '',
+        fppCode: line.fppCode,
+        fppName: line.fppName ?? '',
+        sector: line.sector ?? null,
+        serviceSector: line.serviceSector ?? null,
+        accountCode: line.accountCode,
+        accountName: line.accountName ?? '',
+        expenseClass: line.expenseClass,
+        amount: releasing,
+        forLaterRelease: 0,
+        particulars: `Release of allotment held for later release. ${reason.trim()}`,
+        /*
+         * What was known when the decision was taken. The engine does not
+         * refuse on these figures - see the note at the head of this function -
+         * so recording them is what makes the decision readable afterwards.
+         */
+        releasedFromHeld: {
+          allotmentId,
+          collections: Math.round(Number(collectionsAtRelease ?? 0)),
+          estimate: Math.round(Number(estimateAtRelease ?? 0)),
+          reason: reason.trim(),
+        },
+        status: 'APPROVED',
+        postedAt: now,
+        createdBy: stamp,
+        approvedBy: stamp,
+      });
+
+      tx.update(ref, { forLaterRelease: held - releasing });
+
+      applyBudgetDelta(
+        tx,
+        key,
+        balance,
+        { forLaterRelease: -releasing, allotmentReleased: releasing },
+        {
+          officeName: balance.officeName ?? line.officeName ?? '',
+          accountName: balance.accountName ?? line.accountName ?? '',
+          fppName: balance.fppName ?? line.fppName ?? '',
+          sector: balance.sector ?? line.sector ?? null,
+          serviceSector: balance.serviceSector ?? line.serviceSector ?? null,
+          expenseClass: line.expenseClass as never,
+        },
+      );
+      applySummaryDelta(tx, line.fiscalYear, line.fundCode, { allotmentReleased: releasing });
+
+      recordTransition(tx, {
+        caller,
+        event: 'APPROVE',
+        entityType: COL.allotments,
+        entityId: allotmentId,
+        entityRef: line.aroNo ? `ARO ${line.aroNo}` : 'Allotment',
+        fiscalYear: line.fiscalYear,
+        fundCode: line.fundCode,
+        action: 'APPROVE',
+        previousStatus: 'APPROVED',
+        newStatus: 'APPROVED',
+        remarks:
+          `Released ${(releasing / 100).toFixed(2)} held for later release on ${line.accountCode || line.fppCode}. ` +
+          `Collections ${((Number(collectionsAtRelease ?? 0)) / 100).toFixed(2)} against an estimate of ` +
+          `${((Number(estimateAtRelease ?? 0)) / 100).toFixed(2)} at the time. ${reason.trim()}`,
+        severity: 'CRITICAL',
+      });
+
+      return {
+        allotmentId,
+        released: releasing,
+        stillHeld: held - releasing,
+      };
+    });
+  },
+);
+
+function notFoundAllotment(): HttpsError {
+  return new HttpsError('not-found', 'That allotment line no longer exists.');
+}

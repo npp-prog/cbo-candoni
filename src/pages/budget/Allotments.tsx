@@ -11,7 +11,12 @@ import { OfficePicker } from '@/components/pickers';
 import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAllotments, useBudgetBalances } from '@/data/queries';
+import {
+  useAllotments,
+  useBudgetBalances,
+  useEstimatedReceipts,
+  useCollections,
+} from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
@@ -66,6 +71,8 @@ export default function Allotments() {
     opened from this page's header - so the state behind the button is here.
   */
   const [building, setBuilding] = useState(false);
+  /** The held allotment line whose release window is open. */
+  const [releasing, setReleasing] = useState<Allotment | null>(null);
   const [approving, setApproving] = useState<Allotment | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -191,6 +198,27 @@ export default function Allotments() {
               Approve
             </Button>
           )}
+          {/*
+            Column 5 of the Allotment Release Order, released.
+
+            The hold exists "to provide safeguards for shortfalls in the
+            collection of revenues", so the button is offered wherever
+            something is still held - and the window it opens shows what has
+            actually been collected against the year's Estimated Receipts,
+            which is the figure the decision rests on.
+          */}
+          {(a.forLaterRelease ?? 0) > 0 && a.status === 'APPROVED' && can('budget', 'approve') && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                setReleasing(a);
+              }}
+            >
+              Release
+            </Button>
+          )}
         </div>
       ),
       fixed: true,
@@ -259,6 +287,15 @@ export default function Allotments() {
           periodLabel: `For the fiscal year ${fiscalYear}`,
         }}
       />
+
+      {releasing && (
+        <ReleaseHeldForm
+          allotment={releasing}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          onClose={() => setReleasing(null)}
+        />
+      )}
 
       {showForm && (
         <AllotmentForm
@@ -537,5 +574,205 @@ function Figure({
         {formatPeso(value)}
       </dd>
     </div>
+  );
+}
+
+/**
+ * Releasing allotment that an Allotment Release Order held back.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE COLLECTION FIGURE IS ON THIS SCREEN
+ * ---------------------------------------------------------------------------
+ * Column 5 of the ARO - "For Later Release" - exists, in the Budget Operations
+ * Manual's own words, "to provide safeguards for shortfalls in the collection
+ * of revenues". The Sanggunian appropriates against an ESTIMATE of what the
+ * municipality will collect; the Budget Officer holds part of the release back
+ * until the money is actually there.
+ *
+ * So the one question this window has to answer is: has it come in? It shows
+ * what has actually been collected this year against the year's Estimated
+ * Receipts, and how much of the estimate that is.
+ *
+ * CFMS DOES NOT DECIDE. It shows the figure and records it against the
+ * release. A release may be right for a reason the figure does not show - a
+ * receipt certain but not yet deposited, a grant confirmed in writing, a
+ * reallocation the Sanggunian has approved - and refusing on the arithmetic
+ * would mean the Budget Officer worked around CFMS on exactly the occasions
+ * that matter most, with nothing recorded at all. What is recorded is the
+ * figure as it stood when they decided.
+ */
+function ReleaseHeldForm({
+  allotment,
+  fiscalYear,
+  fundCode,
+  onClose,
+}: {
+  allotment: Allotment;
+  fiscalYear: number;
+  fundCode: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const estimates = useEstimatedReceipts(fiscalYear, fundCode);
+  const collections = useCollections(fiscalYear, fundCode);
+
+  const held = allotment.forLaterRelease ?? 0;
+  const [amount, setAmount] = useState<number | null>(held);
+  const [date, setDate] = useState(todayPh());
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const estimate = useMemo(
+    () => estimates.data.reduce((sum, e) => sum + (e.annual ?? 0), 0),
+    [estimates.data],
+  );
+
+  /*
+   * Collected, not receipted-and-still-in-a-drawer.
+   *
+   * A cancelled receipt is not money. Everything else counts: the safeguard is
+   * about whether the revenue has come in, and a collection sitting
+   * undeposited has still been collected.
+   */
+  const collected = useMemo(
+    () =>
+      collections.data
+        .filter((c) => c.status !== 'CANCELLED')
+        .reduce((sum, c) => sum + (c.totalAmount ?? 0), 0),
+    [collections.data],
+  );
+
+  const share = estimate > 0 ? collected / estimate : 0;
+  const loading = estimates.loading || collections.loading;
+
+  const release = async () => {
+    if (!amount || amount <= 0) {
+      toast.error('Nothing to release', 'Enter the amount being released.');
+      return;
+    }
+    if (amount > held) {
+      toast.error(
+        'More than is held',
+        `Only ${formatPeso(held)} is held for later release on this line.`,
+      );
+      return;
+    }
+    if (!reason.trim()) {
+      toast.error('A reason is required', 'It is recorded against the release and in the audit trail.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const result = await engine.releaseHeldAllotment({
+        allotmentId: allotment.id,
+        amount,
+        date,
+        reason: reason.trim(),
+        collectionsAtRelease: collected,
+        estimateAtRelease: estimate,
+      });
+      toast.success(
+        `${formatPeso(result.released)} released`,
+        result.stillHeld > 0
+          ? `${formatPeso(result.stillHeld)} is still held on this line.`
+          : 'Nothing is held on this line any more.',
+      );
+      onClose();
+    } catch (err) {
+      toast.error('Nothing was released', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Release allotment held on ${allotment.aroNo ? `ARO ${allotment.aroNo}` : 'this line'}`}
+      description={`${allotment.accountName || allotment.fppName} - ${allotment.officeName}`}
+      footer={
+        <div className="flex gap-2">
+          <Button variant="primary" loading={saving} onClick={() => void release()}>
+            Release
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      }
+    >
+      <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+        <p className="text-2xs uppercase tracking-wider text-slate-500">
+          Collections against the estimate, fiscal year {fiscalYear}
+        </p>
+        {loading ? (
+          <p className="mt-1 text-sm text-slate-500">Reading the collections…</p>
+        ) : (
+          <>
+            <p className="mt-1 font-mono text-lg font-semibold tabular text-navy-900">
+              {formatPeso(collected)}{' '}
+              <span className="font-sans text-sm font-normal text-slate-500">
+                of {formatPeso(estimate)} estimated
+              </span>
+            </p>
+            {estimate > 0 ? (
+              <p className="mt-1 text-xs text-slate-600">
+                {(share * 100).toFixed(1)}% of the year's Estimated Receipts have come in.
+                {share < 0.5 && (
+                  <span className="font-medium text-amber-700">
+                    {' '}
+                    Less than half. This is what the hold was for.
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-amber-700">
+                No Estimated Receipts are recorded for {fiscalYear}, so there is nothing to
+                measure the collections against. Load them under Budget &gt; Estimated Receipts.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Amount to release"
+          required
+          htmlFor="relAmount"
+          hint={`${formatPeso(held)} is held on this line.`}
+        >
+          <AmountInput id="relAmount" value={amount} onChange={setAmount} />
+        </Field>
+
+        <Field label="Release date" required htmlFor="relDate">
+          <DateInput id="relDate" value={date} onChange={setDate} />
+        </Field>
+
+        <Field
+          label="Reason"
+          required
+          htmlFor="relReason"
+          className="sm:col-span-2"
+          hint="Recorded against the release and in the audit trail, with the collection figure above."
+        >
+          <TextArea
+            id="relReason"
+            rows={2}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Collections for the first semester have reached the estimate for the Real Property Tax."
+          />
+        </Field>
+      </div>
+
+      <p className="mt-4 text-xs text-slate-500">
+        The release is recorded as a NEW allotment line, so the register shows both the order
+        that held the money back and the act that let it go. The offices can obligate against it
+        from the moment it is released.
+      </p>
+    </Modal>
   );
 }

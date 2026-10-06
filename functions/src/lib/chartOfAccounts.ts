@@ -483,6 +483,33 @@ export const DUE_TO_OFFICERS_AND_EMPLOYEES: NamedAccount = {
   name: 'Due to Officers and Employees',
 };
 
+/**
+ * 2-02-01-010. Every tax the municipality withholds is owed to this one
+ * creditor.
+ *
+ * ---------------------------------------------------------------------------
+ * ONE ACCOUNT, MANY TAXES
+ * ---------------------------------------------------------------------------
+ * Expanded withholding tax on goods, final VAT withholding, the percentage
+ * taxes - they are not separate accounts in the Revised Chart. They are all
+ * DUE TO BIR, and which tax a particular peso was withheld under belongs in
+ * the SUBSIDIARY ledger, not in the account title.
+ *
+ * CFMS used to write the tax code's own description into the account name:
+ *
+ *     20201010  Expanded withholding tax on goods (1%)
+ *     20201010  Final VAT withholding on goods (5%)
+ *
+ * Two different titles against one code, neither of them the account's name,
+ * in the General Ledger. The Trial Balance showed one figure for the account
+ * and the ledger showed two names for it, and nothing said which was the
+ * account and which was the reason.
+ */
+export const DUE_TO_BIR: NamedAccount = {
+  code: '20201010',
+  name: 'Due to BIR',
+};
+
 export const NAMED_ACCOUNTS: readonly NamedAccount[] = [
   CASH_LOCAL_TREASURY,
   PETTY_CASH,
@@ -491,6 +518,7 @@ export const NAMED_ACCOUNTS: readonly NamedAccount[] = [
   ADVANCES_FOR_PAYROLL,
   ACCOUNTS_PAYABLE,
   DUE_TO_OFFICERS_AND_EMPLOYEES,
+  DUE_TO_BIR,
 ];
 
 /**

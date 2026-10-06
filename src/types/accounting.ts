@@ -56,7 +56,7 @@ export interface DvAccountLine {
   officeId?: Id;
   responsibilityCenterId?: Id;
   /** Subsidiary ledger reference, e.g. a payee for Accounts Payable. */
-  subsidiaryType?: 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'PROJECT' | 'BANK_ACCOUNT';
+  subsidiaryType?: 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'PROJECT' | 'BANK_ACCOUNT' | 'TAX_CODE';
   subsidiaryId?: Id;
   subsidiaryName?: string;
   particulars?: string;
@@ -252,7 +252,7 @@ export interface JevLine {
   officeId?: Id;
   officeName?: string;
   responsibilityCenterId?: Id;
-  subsidiaryType?: 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'PROJECT' | 'BANK_ACCOUNT';
+  subsidiaryType?: 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'PROJECT' | 'BANK_ACCOUNT' | 'TAX_CODE';
   subsidiaryId?: Id;
   subsidiaryName?: string;
   cashFlowClass?: CashFlowClass;

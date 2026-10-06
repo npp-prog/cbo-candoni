@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
 import { Button } from '@/components/ui/Button';
 import { Field, DateInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
@@ -287,16 +286,30 @@ export default function OpeningBalances() {
     <>
       <PageHeader
         title="Opening balances"
-        breadcrumbs={[{ label: 'Reports' }, { label: 'Opening balances' }]}
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Opening balances' }]}
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}. Posted as a journal entry, so every later report is computed from the ledger as usual.`}
       />
 
-      <SectionTabs
-        tabs={[
-          { label: 'Trial Balance', to: '/reports/trial-balance' },
-          { label: 'Opening balances', to: '/accounting/opening-balances' },
-        ]}
-      />
+      {/*
+        ---------------------------------------------------------------------
+        NO TAB STRIP, AND THE TRIAL BALANCE IS NOT A SIBLING OF THIS SCREEN
+        ---------------------------------------------------------------------
+        It used to sit on a two-tab strip beside the Trial Balance, which put
+        them side by side as if they were two views of one thing. They are
+        opposites.
+
+        The Trial Balance is a REPORT: it reads the ledger and shows what is
+        in it, and nothing on it can be typed. This is the one-time act that
+        WRITES the ledger - the payables, receivables and unliquidated cash
+        advances carried in from whatever the municipality kept before,
+        entered by hand and posted as a journal entry.
+
+        A strip saying "Trial Balance | Opening balances" invited somebody
+        looking for the balances to find a screen with an Upload button and a
+        grid of empty rows on it, which is not a reassuring thing to arrive at
+        by accident. It belongs under Accounting, where it already is in the
+        menu, and on its own.
+      */}
 
       {checking ? null : existing ? (
         <Alert tone="info">

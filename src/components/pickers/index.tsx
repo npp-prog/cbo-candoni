@@ -6,6 +6,7 @@ import { PAYEE_CREATOR_ROLES } from '@/lib/payees';
 import {
   useAccounts,
   useBankAccounts,
+  useTaxCodes,
   useEmployees,
   useOffices,
   usePayees,
@@ -416,13 +417,16 @@ export { Combobox };
 export type { Option };
 
 /** What a journal line's subsidiary ledger can be. */
-export type SubsidiaryKind = 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'BANK_ACCOUNT';
+export type SubsidiaryKind = 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'BANK_ACCOUNT' | 'TAX_CODE';
 
 const SUBSIDIARY_KIND_LABELS: Record<SubsidiaryKind, string> = {
   PAYEE: 'Payee',
   EMPLOYEE: 'Employee',
   OFFICE: 'Office',
   BANK_ACCOUNT: 'Bank account',
+  // Due to BIR is one account carrying every tax the municipality withholds.
+  // WHICH tax is the subsidiary - see DUE_TO_BIR in chartOfAccounts.ts.
+  TAX_CODE: 'Tax withheld',
 };
 
 /**
@@ -468,6 +472,7 @@ export function SubsidiaryPicker({
   const employees = useEmployees();
   const offices = useOffices();
   const banks = useBankAccounts(fundCode);
+  const taxCodes = useTaxCodes();
 
   const options = useMemo<Option[]>(() => {
     const out: Option[] = [];
@@ -491,8 +496,16 @@ export function SubsidiaryPicker({
         detail: 'Bank account',
       });
     }
+    for (const t of taxCodes.data) {
+      out.push({
+        value: `TAX_CODE:${t.id}`,
+        code: t.code,
+        label: t.description,
+        detail: t.atc ? `Tax withheld - ATC ${t.atc}` : 'Tax withheld',
+      });
+    }
     return out;
-  }, [payees.data, employees.data, offices.data, banks.data]);
+  }, [payees.data, employees.data, offices.data, banks.data, taxCodes.data]);
 
   return (
     <Combobox
@@ -500,9 +513,15 @@ export function SubsidiaryPicker({
       options={options}
       value={value}
       disabled={disabled}
-      loading={payees.loading || employees.loading || offices.loading || banks.loading}
+      loading={
+        payees.loading ||
+        employees.loading ||
+        offices.loading ||
+        banks.loading ||
+        taxCodes.loading
+      }
       placeholder="None"
-      emptyMessage="No payee, employee, office or bank account matches"
+      emptyMessage="No payee, employee, office, bank account or tax matches"
       onChange={(next, option) => {
         if (!next || !option) {
           onChange(null);

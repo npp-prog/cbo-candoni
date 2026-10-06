@@ -113,3 +113,96 @@ describe('proposeDvEntry: the subsidiary ledger', () => {
     expect(lines.reduce((s, l) => s + l.credit, 0)).toBe(100_000);
   });
 });
+
+/**
+ * The withholding lines (patch 88).
+ *
+ * Every tax the municipality withholds posts to ONE account - Due to BIR. The
+ * entry used to carry the TAX's own name as the account name, so the General
+ * Ledger showed two different titles against code 20201010 and neither of them
+ * was the account's name.
+ */
+describe('proposeDvEntry: what a withholding line says', () => {
+  const EWT_WITH_CODE = {
+    code: 'WE010',
+    description: 'Expanded withholding tax on goods (1%)',
+    accountCode: '20201010',
+    accountName: 'Due to BIR',
+    taxCodeId: 'tc-ewt',
+    amount: 1_000,
+  };
+
+  it('names the account, and puts the tax in the subsidiary', () => {
+    const lines = proposeDvEntry({
+      grossAmount: 100_000,
+      deductions: [EWT_WITH_CODE],
+      netAmount: 99_000,
+      obligationLines: OBLIGATION_LINES,
+      payee: PAYEE,
+    });
+
+    const withheld = lines.find((l) => l.accountCode === '20201010');
+    expect(withheld).toMatchObject({
+      accountName: 'Due to BIR',
+      subsidiaryType: 'TAX_CODE',
+      subsidiaryId: 'tc-ewt',
+      subsidiaryName: 'Expanded withholding tax on goods (1%)',
+    });
+  });
+
+  /*
+   * Two taxes on one voucher is the case that made the old shape visible: one
+   * code, two names. They must now agree on the account and differ only in the
+   * subsidiary.
+   */
+  it('gives two taxes one account and two subsidiaries', () => {
+    const lines = proposeDvEntry({
+      grossAmount: 100_000,
+      deductions: [
+        EWT_WITH_CODE,
+        {
+          code: 'WV020',
+          description: 'Final VAT withholding on goods (5%)',
+          accountCode: '20201010',
+          accountName: 'Due to BIR',
+          taxCodeId: 'tc-vat',
+          amount: 5_000,
+        },
+      ],
+      netAmount: 94_000,
+      obligationLines: OBLIGATION_LINES,
+      payee: PAYEE,
+    });
+
+    const withheld = lines.filter((l) => l.accountCode === '20201010');
+    expect(withheld).toHaveLength(2);
+    expect(new Set(withheld.map((l) => l.accountName))).toEqual(new Set(['Due to BIR']));
+    expect(withheld.map((l) => l.subsidiaryId)).toEqual(['tc-ewt', 'tc-vat']);
+  });
+
+  /*
+   * A retention typed in by hand has no tax code behind it. Inventing a
+   * subsidiary for it would put something in the BIR's subsidiary ledger that
+   * is not a tax.
+   */
+  it('leaves a hand-typed deduction without a subsidiary', () => {
+    const lines = proposeDvEntry({
+      grossAmount: 100_000,
+      deductions: [
+        {
+          code: 'RET',
+          description: 'Retention, 10%',
+          accountCode: '20101010',
+          accountName: 'Accounts Payable',
+          amount: 10_000,
+        },
+      ],
+      netAmount: 90_000,
+      obligationLines: OBLIGATION_LINES,
+      payee: null,
+    });
+
+    const retention = lines.filter((l) => l.credit === 10_000);
+    expect(retention[0].subsidiaryType).toBeUndefined();
+  });
+});

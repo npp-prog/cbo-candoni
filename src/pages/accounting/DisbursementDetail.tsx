@@ -21,10 +21,11 @@ import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useTaxCodes, useDisbursementVouchers, usePayees } from '@/data/queries';
+import { useTaxCodes, useDisbursementVouchers, usePayees, useAccounts } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
+import { namedAccountTitle } from '@/lib/chartOfAccounts';
 import { formatPeso, amountInWords } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
 import { checkDvCategory, checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
@@ -87,6 +88,15 @@ export default function DisbursementDetail() {
    */
   const { data: jev } = useDocument<JournalEntryVoucher>(COL.jevs, existing?.jevId ?? undefined);
   const taxCodes = useTaxCodes();
+  /*
+   * The Chart of Accounts, read so a withholding line can be named by the
+   * ACCOUNT it posts to rather than by the tax that produced it.
+   */
+  const accounts = useAccounts();
+  const accountTitle = useMemo(() => {
+    const byCode = new Map(accounts.data.map((a) => [a.code, a.name]));
+    return (code: string) => byCode.get(String(code ?? '').trim()) ?? null;
+  }, [accounts.data]);
   const allVouchers = useDisbursementVouchers(fiscalYear, fundCode);
 
   const [tab, setTab] = useState<'details' | 'entry' | 'attachments' | 'history'>('details');
@@ -824,6 +834,7 @@ export default function DisbursementDetail() {
                     deductions={deductions}
                     grossAmount={grossAmount ?? 0}
                     taxCodes={taxCodes.data}
+                    accountTitle={accountTitle}
                     disabled={!canEdit}
                     onChange={(d) => {
                       setDeductions(d);
@@ -1230,6 +1241,7 @@ function DeductionsEditor({
   deductions,
   grossAmount,
   taxCodes,
+  accountTitle,
   disabled,
   onChange,
 }: {
@@ -1243,15 +1255,42 @@ function DeductionsEditor({
     base: 'GROSS' | 'NET_OF_VAT';
     accountCode: string;
   }>;
+  /** The Chart of Accounts, so a line is named by the account not the tax. */
+  accountTitle: (code: string) => string | null;
   disabled?: boolean;
   onChange: (deductions: DeductionLite[]) => void;
 }) {
+  const toast = useToast();
   const [selectedTaxCode, setSelectedTaxCode] = useState('');
 
   const addTaxCode = () => {
     const tc = taxCodes.find((t) => t.id === selectedTaxCode);
     if (!tc || !grossAmount) return;
-    const computed = computeDeduction(tc, tc.description, grossAmount);
+    /*
+     * The ACCOUNT's title, from the chart - not `tc.description`.
+     *
+     * It used to pass the tax code's own description, so a line posted to
+     * 20201010 came out named "Expanded withholding tax on goods (1%)" and the
+     * next one "Final VAT withholding on goods (5%)". Two titles, one code, in
+     * the General Ledger - and neither of them the account's name. Which tax it
+     * was travels as the SUBSIDIARY now; see proposeEntry.ts.
+     *
+     * `accountTitle` reads the loaded Chart of Accounts and falls back to the
+     * named list, so an office that has renamed Due to BIR gets its own title
+     * rather than ours.
+     */
+    const computed = computeDeduction(
+      tc,
+      accountTitle(tc.accountCode) ?? namedAccountTitle(tc.accountCode) ?? '',
+      grossAmount,
+    );
+    if (!computed.accountName) {
+      toast.error(
+        `Account ${tc.accountCode} is not in the Chart of Accounts`,
+        `The tax code "${tc.description}" posts to it. Add the account, or point the tax code at one that exists, before using it on a voucher.`,
+      );
+      return;
+    }
     onChange([...deductions, computed]);
     setSelectedTaxCode('');
   };

@@ -153,6 +153,32 @@ export const engine = {
     >('issueAro', p),
 
   /**
+   * Releasing allotment that an Allotment Release Order held back.
+   *
+   * Column 5 of the ARO exists "to provide safeguards for shortfalls in the
+   * collection of revenues". This is the act that lets the money go once the
+   * collections have come in - a NEW allotment line, so the register shows
+   * both the holding back and the release, each with its own date.
+   *
+   * `collectionsAtRelease` and `estimateAtRelease` are what the screen was
+   * showing when the Budget Officer decided. The engine does not refuse on
+   * them; it records them, so the decision can be read afterwards against what
+   * was known at the time.
+   */
+  releaseHeldAllotment: (p: {
+    allotmentId: Id;
+    amount: Centavos;
+    date: IsoDate;
+    reason: string;
+    collectionsAtRelease: Centavos;
+    estimateAtRelease: Centavos;
+  }) =>
+    call<typeof p, { allotmentId: Id; released: Centavos; stillHeld: Centavos }>(
+      'releaseHeldAllotment',
+      p,
+    ),
+
+  /**
    * The budget year's estimated receipts - LBP Form No. 1, section II.
    *
    * REPLACE leaves the year's estimate for that fund matching the file sent,

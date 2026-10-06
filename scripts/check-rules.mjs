@@ -1480,6 +1480,79 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 29. A withholding line is named by its account, not by its tax ---------
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE FIFTH APPEARANCE OF ONE MISTAKE
+ * ---------------------------------------------------------------------------
+ * Every tax the municipality withholds posts to ONE account - Due to BIR,
+ * 20201010. Which tax it was belongs in the subsidiary ledger.
+ *
+ * `computeDeduction` takes the account's title as its second argument, and
+ * every caller was handing it the TAX CODE's description. So the General
+ * Ledger carried:
+ *
+ *     20201010  Expanded withholding tax on goods (1%)
+ *     20201010  Final VAT withholding on goods (5%)
+ *
+ * Two titles against one code, neither of them the account's name. The Trial
+ * Balance showed one figure for the account and the ledger showed two names
+ * for it.
+ *
+ * This is the same fault as patches 79, 81 and 86 - a code read from a record
+ * carrying a written-out title beside it - and guard 22 did not reach it,
+ * because here the title is not written out as a literal. It is read from a
+ * DIFFERENT record. So the guard is written for the call rather than for the
+ * literal: the account title handed to `computeDeduction` may not come off
+ * the tax code.
+ */
+{
+  const files = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.test.ts')) files.push(full);
+    }
+  };
+  walk(resolve(root, 'src'));
+  walk(resolve(root, 'functions/src'));
+
+  let offenders = 0;
+
+  for (const full of files) {
+    const name = full.slice(root.length + 1);
+    const source = readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    /*
+     * The call's arguments, flattened. Only the first two matter: the tax code
+     * and the account title. A call that names `.description` in that second
+     * position is handing the tax's own name to the account.
+     */
+    for (const m of source.matchAll(/computeDeduction\s*\(([\s\S]{0,300}?)\)\s*;/g)) {
+      const args = m[1].replace(/\s+/g, ' ');
+      const second = args.split(',')[1] ?? '';
+      if (/\.description\b/.test(second)) {
+        offenders += 1;
+        failures.push(
+          `${name}: computeDeduction is given a tax code's own description as the ACCOUNT title ` +
+            `(${second.trim()}). Every tax withheld posts to Due to BIR; writing the tax's name ` +
+            'there puts two different titles against one account code in the General Ledger. ' +
+            'Read the title from the Chart of Accounts and let the tax travel as the subsidiary.',
+        );
+      }
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('accounts: a withholding line is named by its account, not by its tax');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {
