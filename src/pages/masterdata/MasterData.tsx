@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { orderBy } from 'firebase/firestore';
 import { PageHeader, Alert } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -525,6 +526,52 @@ const CONFIGS: Record<string, EntityConfig> = {
   },
 };
 
+/**
+ * The order the tabs run in.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY IT IS WRITTEN DOWN RATHER THAN TAKEN FROM CONFIGS
+ * ---------------------------------------------------------------------------
+ * The strip used to be `Object.values(CONFIGS)`, so the order was whatever
+ * order the configurations happened to be declared in - which put Revenue
+ * Codes and Accountable Forms, two things a clerk opens a few times a year,
+ * in front of the Chart of Accounts and the Payees, which are opened daily.
+ *
+ * The SIDEBAR had a considered order, and the sidebar is what this strip
+ * replaces. So the order moves here rather than being lost with the menu:
+ * the records consulted constantly first, then the people and places, then
+ * the codes and the controls.
+ *
+ * Anything not named here is appended rather than dropped. A new entity added
+ * without a thought for where it belongs should appear at the end of the
+ * strip, not vanish off it - a screen nothing links to is a screen the office
+ * stops knowing about.
+ */
+const TAB_ORDER = [
+  'accounts',
+  'payees',
+  'employees',
+  'offices',
+  // A barangay is not an office. It is a separate local government unit the
+  // municipality collects real property tax for and remits a share to.
+  'barangays',
+  'banks',
+  // GCash, Maya, a bank's online portal. Beside the banks, because that is
+  // what an officer is thinking of when they go looking for one.
+  'intermediaries',
+  'tax-codes',
+  'revenue-codes',
+  'accountable-forms',
+  'funds',
+];
+
+export const MASTER_DATA_TABS = [
+  ...TAB_ORDER.map((slug) => Object.values(CONFIGS).find((c) => c.slug === slug)).filter(
+    (c): c is EntityConfig => !!c,
+  ),
+  ...Object.values(CONFIGS).filter((c) => !TAB_ORDER.includes(c.slug)),
+].map((c) => ({ label: c.title, to: `/master-data/${c.slug}` }));
+
 export default function MasterData() {
   const { entity } = useParams<{ entity: string }>();
   const config = entity ? CONFIGS[entity] : undefined;
@@ -644,21 +691,7 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
         }
       />
 
-      <nav className="mb-4 flex flex-wrap gap-1.5 no-print">
-        {Object.values(CONFIGS).map((c) => (
-          <Link
-            key={c.slug}
-            to={`/master-data/${c.slug}`}
-            className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-              c.slug === config.slug
-                ? 'bg-brand-600 text-white'
-                : 'bg-white text-navy-700 ring-1 ring-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {c.title}
-          </Link>
-        ))}
-      </nav>
+      <SectionTabs tabs={MASTER_DATA_TABS} />
 
       <DataTable
         rows={rows}

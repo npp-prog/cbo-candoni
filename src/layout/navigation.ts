@@ -378,44 +378,25 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Registers', to: '/reports/registers' },
     ],
   },
-  {
-    label: 'Master Data',
-    to: '/master-data',
-    module: 'masterData',
-    icon: 'masterData',
-    children: [
-      { label: 'Chart of Accounts', to: '/master-data/accounts' },
-      { label: 'Payees', to: '/master-data/payees' },
-      { label: 'Employees', to: '/master-data/employees' },
-      { label: 'Offices', to: '/master-data/offices' },
-      // A barangay is not an office. It is a separate local government unit
-      // that the municipality collects real property tax for and remits a
-      // share to, and it is listed so the Abstract of RPT Collections can
-      // name which barangay each peso belongs to.
-      { label: 'Barangays', to: '/master-data/barangays' },
-      /*
-         "Budget Structure" was here, and is not any more.
-
-         It was a two-field screen over the programmes collection, sitting
-         among the things that are true all the time - the offices, the banks,
-         the tax codes. A budget programme is not one of those: it is what the
-         Sanggunian appropriated to in ONE annual budget, and it is read and
-         added to while an appropriation is being encoded.
-
-         It is a tab beside the appropriations now, at
-         /budget/appropriations/programmes, and it keeps a year per programme.
-         The old address still arrives there.
-      */
-      { label: 'Banks', to: '/master-data/banks' },
-      // GCash, Maya, a bank's online portal. Beside the banks because that is
-      // what an officer is thinking of when they look for one.
-      { label: 'Collection Intermediaries', to: '/master-data/intermediaries' },
-      { label: 'Tax Codes', to: '/master-data/tax-codes' },
-      { label: 'Revenue Codes', to: '/master-data/revenue-codes' },
-      { label: 'Accountable Forms', to: '/master-data/accountable-forms' },
-      { label: 'Funds', to: '/master-data/funds' },
-    ],
-  },
+  /*
+   * MASTER DATA IS ONE ITEM, NOT A GROUP OF ELEVEN.
+   *
+   * It listed every entity as a child - Chart of Accounts, Payees, Employees,
+   * Offices, Barangays, Banks, Collection Intermediaries, Tax Codes, Revenue
+   * Codes, Accountable Forms, Funds - and the SCREEN already carried a strip
+   * of the same eleven. So the eleven were on the page twice, and the sidebar
+   * paid for it: the longest group in the menu, for the part of CFMS somebody
+   * opens when they set it up and then a few times a year.
+   *
+   * The strip is a tab bar now, like Treasury's. The sidebar names the area
+   * and the tabs name what is in it - which is what patch 87 did for the
+   * Treasury Reports group, for the same reason.
+   *
+   * The children's addresses are UNCHANGED, so a bookmark, a notification or
+   * a link from a picker still lands where it did; /master-data itself goes to
+   * the Chart of Accounts.
+   */
+  { label: 'Master Data', to: '/master-data', module: 'masterData', icon: 'masterData' },
   { label: 'Documents', to: '/documents', module: 'documents', icon: 'documents' },
   {
     label: 'Administration',
