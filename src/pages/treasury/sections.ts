@@ -226,3 +226,27 @@ export function registerForPath(pathname: string): string | null {
   }
   return null;
 }
+
+/**
+ * Whether a treasury report's screen draws the COLLECTIONS strip, which is in
+ * groups rather than flat.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A FUNCTION AND NOT A GLANCE AT SECTION_TABS
+ * ---------------------------------------------------------------------------
+ * One screen serves all seven treasury reports. Five of them sit in sections
+ * whose strip is a flat row; the RCD and the two eRCDs sit in Collections and
+ * Deposits, which is long enough to be drawn in four groups.
+ *
+ * The screen rendered the flat strip unconditionally, so patch 97 reached the
+ * office with the RCD and the eRCD showing twelve tabs on three wrapped rows
+ * while every other screen in that section showed the groups. Nothing failed -
+ * it just looked like two different systems.
+ *
+ * Asked as a question with a name, rather than by comparing SECTION_TABS to
+ * COLLECTION_TABS at the call site, because the comparison would be true by
+ * accident the day another section happened to share a strip.
+ */
+export function usesCollectionGroups(reportType: TreasuryReportType): boolean {
+  return reportType === 'RCD' || reportType === 'ERCD_AR' || reportType === 'ERCD_EOR';
+}

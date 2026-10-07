@@ -10,7 +10,7 @@ import {
   DUE_TO_OFFICERS_AND_EMPLOYEES,
 } from '@/lib/chartOfAccounts';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs, SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -41,7 +41,7 @@ import {
 } from '@/types/enums';
 import type { TreasuryReport, TreasuryReportLine } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { SECTION_TABS } from './sections';
+import { COLLECTION_TAB_GROUPS, SECTION_TABS, usesCollectionGroups } from './sections';
 import { kindForReport } from './eCollectionKinds';
 
 /**
@@ -233,7 +233,7 @@ export default function TreasuryReports({
             : reportType === 'RADAI'
               ? 'The advices to debit account sent to the bank in the period, certified and forwarded to Accounting for journalizing.'
               : reportType === 'RCD'
-                ? 'A collecting officer&rsquo;s receipts for the period with the deposits made against them, certified and forwarded to Accounting.'
+                ? "A collecting officer's receipts for the period with the deposits made against them, certified and forwarded to Accounting."
                 : reportType === 'ERCD_AR'
                   ? "Collections an intermediary made on the municipality's behalf against its own Acknowledgement Receipts, certified by the designated officer. COA Circular 2021-014, Annex E."
                   : reportType === 'ERCD_EOR'
@@ -245,7 +245,22 @@ export default function TreasuryReports({
         }
       />
 
-      <SectionTabs tabs={SECTION_TABS[reportType]} />
+      {/*
+        The collections section is drawn in GROUPS - it is the one strip long
+        enough to need them. This screen is the RCD and the eRCD as well as
+        the RCI, RADAI and RCDisb, so it has to ASK which section it is in
+        rather than assume a flat strip.
+
+        It assumed one, which is how patch 97 reached the office with the RCD
+        and eRCD still showing twelve tabs on three rows while every other
+        screen in the section showed four groups. A build check now refuses
+        the flat strip for this section.
+      */}
+      {usesCollectionGroups(reportType) ? (
+        <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
+      ) : (
+        <SectionTabs tabs={SECTION_TABS[reportType]} />
+      )}
 
       {aside}
 

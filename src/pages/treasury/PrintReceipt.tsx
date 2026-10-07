@@ -145,7 +145,7 @@ export default function PrintReceipt() {
     });
 
   if (!can('treasury', 'view')) {
-    return <Alert tone="warning" title="This screen is for the Treasurer&rsquo;s office." />;
+    return <Alert tone="warning" title="This screen is for the Treasurer's office." />;
   }
 
   return (

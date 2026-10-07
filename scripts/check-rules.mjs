@@ -1878,6 +1878,125 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+
+// --- 34. The collections strip is drawn in groups, everywhere ---------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * ONE SECTION, TWO DIFFERENT STRIPS
+ * ---------------------------------------------------------------------------
+ * Collections and Deposits is the one section long enough to be drawn in
+ * groups - twelve tabs flat is three wrapped rows, and at that length a strip
+ * stops being a map.
+ *
+ * Patch 97 converted the screens in that section one at a time, and missed
+ * two: the Report of Collections and Deposits and the eRCD are not pages of
+ * their own, they are the shared treasury-report screen, which rendered the
+ * FLAT strip unconditionally. So the office opened the RCD and saw twelve tabs
+ * on three rows, with every other screen in the same section showing four
+ * groups. Nothing failed. It just looked like two different systems, and the
+ * only way to find it was to open each screen.
+ *
+ * This refuses the flat strip for that section's tabs. `usesCollectionGroups`
+ * is how the shared screen asks which section it is in.
+ */
+{
+  const files = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx$/.test(entry.name)) files.push(full);
+    }
+  };
+  walk(resolve(root, 'src'));
+
+  let offenders = 0;
+
+  for (const full of files) {
+    const name = full.slice(root.length + 1).split('\\').join('/');
+    const source = readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    if (/<SectionTabs\s+tabs=\{COLLECTION_TABS\}/.test(source)) {
+      offenders += 1;
+      failures.push(
+        `${name}: renders the collections strip FLAT. That section is drawn in groups - ` +
+          'twelve tabs in a row is three wrapped rows and stops being a map. Use ' +
+          '<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />.',
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('tabs: the collections section is drawn in groups everywhere');
+  }
+}
+
+// --- 35. No HTML entity inside a JavaScript string --------------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * "A collecting officer&rsquo;s receipts"
+ * ---------------------------------------------------------------------------
+ * That is what the Report of Collections and Deposits printed under its own
+ * heading, because the apostrophe was written as an HTML entity inside a
+ * STRING rather than in JSX text. In JSX text `&rsquo;` is an apostrophe; in a
+ * string handed to a prop it is six literal characters, and React renders them
+ * faithfully.
+ *
+ * Nothing breaks, which is why it survived - it is just the municipality's
+ * financial system showing gibberish on a page an auditor may read.
+ *
+ * Only STRING LITERALS are checked. An entity in JSX text is correct and
+ * common, and this must not chase people away from writing it there.
+ */
+{
+  const files = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.test.ts')) files.push(full);
+    }
+  };
+  walk(resolve(root, 'src'));
+
+  /* The entities that read as words when they fail. */
+  const ENTITY = /&(rsquo|lsquo|ldquo|rdquo|mdash|ndash|nbsp|amp|hellip|times|middot);/;
+
+  let offenders = 0;
+
+  for (const full of files) {
+    const name = full.slice(root.length + 1).split('\\').join('/');
+    const source = readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    /* Single- and double-quoted strings only; template literals too. */
+    for (const m of source.matchAll(/'([^'\n\\]*)'|"([^"\n\\]*)"|`([^`\\]*)`/g)) {
+      const text = m[1] ?? m[2] ?? m[3] ?? '';
+      const hit = ENTITY.exec(text);
+      if (!hit) continue;
+      offenders += 1;
+      failures.push(
+        `${name}: the string "${text.slice(0, 60)}${text.length > 60 ? '…' : ''}" contains ` +
+          `${hit[0]}. Inside a string that is not an entity - it is the literal characters, and ` +
+          'the screen prints them. Write the character itself, or move the text into JSX where ' +
+          'an entity is read as one.',
+      );
+    }
+  }
+
+  if (offenders === 0) {
+    console.log('text: no HTML entity is hiding inside a string literal');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {
