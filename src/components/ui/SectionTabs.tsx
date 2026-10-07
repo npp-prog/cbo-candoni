@@ -78,3 +78,97 @@ export function SectionTabs({
     </div>
   );
 }
+
+/**
+ * A section strip in two levels: the group, then its tabs.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A SECOND LEVEL RATHER THAN A LONGER ROW
+ * ---------------------------------------------------------------------------
+ * Collections and Deposits reached twelve tabs on two wrapped rows, and at
+ * that length a strip stops being a map. Twelve things in a row all look
+ * equally likely, so finding one meant reading the whole strip - which is the
+ * failure the sidebar had before patch 94, moved one level down.
+ *
+ * The group holding the current screen is the one whose tabs are shown. There
+ * is no state: the address decides, so a tab can be linked to and a reload
+ * lands where it left off.
+ *
+ * Both rows are LINKS. Clicking a group goes to its first tab rather than
+ * merely revealing the row - a control that only reveals leaves the reader
+ * looking at a list and still one click from anywhere.
+ */
+export function GroupedSectionTabs({
+  groups,
+}: {
+  groups: Array<{ group: string; tabs: Array<{ label: string; to: string }> }>;
+}) {
+  const { pathname } = useLocation();
+
+  /*
+   * Longest match wins, across every tab of every group - the same rule
+   * SectionTabs uses, and for the same reason: /treasury/collections is a
+   * prefix of /treasury/collections/deposits, and the more specific one is the
+   * true answer. Without it, standing on Deposits would light Transactions by
+   * way of Collections, which happens to be right, and standing on the RCD
+   * would light it too, which is not.
+   */
+  let best: { group: string; to: string } | null = null;
+  for (const g of groups) {
+    for (const tab of g.tabs) {
+      if (pathname !== tab.to && !pathname.startsWith(`${tab.to}/`)) continue;
+      if (best === null || tab.to.length > best.to.length) best = { group: g.group, to: tab.to };
+    }
+  }
+
+  /* Nothing matched - a screen reached by an address no tab carries. Show the
+     first group rather than an empty strip. */
+  const activeGroup = best?.group ?? groups[0]?.group;
+  const shown = groups.find((g) => g.group === activeGroup) ?? groups[0];
+
+  return (
+    <div className="mb-4 no-print">
+      <nav className="flex flex-wrap gap-1 border-b border-slate-200 pb-0" aria-label="Section">
+        {groups.map((g) => {
+          const active = g.group === activeGroup;
+          return (
+            <Link
+              key={g.group}
+              to={g.tabs[0]?.to ?? '#'}
+              aria-current={active ? 'true' : undefined}
+              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+                active
+                  ? 'border-brand-600 text-brand-700'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800'
+              }`}
+            >
+              {g.group}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* The chosen group's tabs. Lighter than the groups above them, so the
+          two rows cannot be mistaken for one. */}
+      <nav className="flex flex-wrap gap-x-1 px-1 pt-1" aria-label={shown?.group}>
+        {(shown?.tabs ?? []).map((tab) => {
+          const active = tab.to === best?.to;
+          return (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              aria-current={active ? 'page' : undefined}
+              className={`whitespace-nowrap rounded px-3 py-1.5 text-sm transition-colors ${
+                active
+                  ? 'bg-brand-50 font-medium text-brand-700'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-navy-800'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}

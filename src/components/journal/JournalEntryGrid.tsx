@@ -227,7 +227,7 @@ export function JournalEntryGrid({
                         value={line.particulars ?? ''}
                         onChange={(e) => update(index, { particulars: e.target.value })}
                         placeholder="Optional"
-                        className="py-1.5 text-xs"
+                        className="py-1.5"
                       />
                     )}
                   </td>
@@ -260,7 +260,7 @@ export function JournalEntryGrid({
                 <td className="cbo-td">
                   {readOnly ? (
                     line.subsidiaryName ? (
-                      <span className="text-xs text-navy-900">{line.subsidiaryName}</span>
+                      <span className="text-sm text-navy-900">{line.subsidiaryName}</span>
                     ) : (
                       <span className="text-xs text-slate-400">&mdash;</span>
                     )
@@ -305,7 +305,7 @@ export function JournalEntryGrid({
                           });
                         }}
                         invalid={needsFpp(line)}
-                        className="py-1.5 text-xs"
+                        className="py-1.5"
                       >
                         <option value="">
                           {needsFpp(line) ? 'An expense needs a budget line' : 'None'}

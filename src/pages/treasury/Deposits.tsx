@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { PageHeader, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { PageHeader, Alert, DetailField } from '@/components/ui/Layout';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker, EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useDeposits, useUndepositedCollections } from '@/data/queries';
+import { useCollections, useDeposits, useUndepositedCollections } from '@/data/queries';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
@@ -18,7 +18,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import type { Deposit } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 
 /**
  * Deposits.
@@ -36,6 +36,16 @@ export default function Deposits() {
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [showForm, setShowForm] = useState(false);
+  /*
+   * The slip being read, and the one being corrected.
+   *
+   * A deposit is correctable while it is still RECORDED - before the bank has
+   * credited it and before reconciliation has matched it to a statement line.
+   * After that the record is answering to something outside CFMS and is left
+   * alone; the security rules say the same.
+   */
+  const [viewing, setViewing] = useState<Deposit | null>(null);
+  const [editing, setEditing] = useState<Deposit | null>(null);
   const [recording, setRecording] = useState<Deposit | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -163,7 +173,7 @@ export default function Deposits() {
         }
       />
 
-      <SectionTabs tabs={COLLECTION_TABS} />
+      <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
 
       {undepositedTotal > 0 && (
         <Alert tone="warning" className="mb-4" title="Collections awaiting deposit">
@@ -177,6 +187,7 @@ export default function Deposits() {
         rows={rows}
         columns={columns}
         rowKey={(d) => d.id}
+        onRowClick={(d) => setViewing(d)}
         loading={loading}
         error={error}
         searchPlaceholder="Deposit slip, bank or RCD"
@@ -206,6 +217,28 @@ export default function Deposits() {
           periodLabel: `For the fiscal year ${fiscalYear}`,
         }}
       />
+
+      {viewing && (
+        <DepositDetail
+          deposit={viewing}
+          canEdit={can('treasury', 'create') && viewing.status === 'RECORDED'}
+          onEdit={() => {
+            setEditing(viewing);
+            setViewing(null);
+          }}
+          onClose={() => setViewing(null)}
+        />
+      )}
+
+      {editing && (
+        <DepositForm
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+        />
+      )}
 
       {showForm && (
         <DepositForm
@@ -252,26 +285,143 @@ export default function Deposits() {
   );
 }
 
+/**
+ * One deposit slip, opened from its row.
+ *
+ * It says which receipts the slip banked, which is the question the register
+ * could not answer at all until patch 96 - a deposit pointed at an RCD, and
+ * that list had been empty since the RCD became a treasury report.
+ */
+function DepositDetail({
+  deposit,
+  canEdit,
+  onEdit,
+  onClose,
+}: {
+  deposit: Deposit;
+  canEdit: boolean;
+  onEdit: () => void;
+  onClose: () => void;
+}) {
+  const banked = deposit.collectionIds?.length ?? 0;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Deposit slip ${deposit.depositSlipNo}`}
+      description={`${formatPeso(deposit.amount)} on ${formatShortDate(deposit.depositDate)}`}
+      size="md"
+      footer={
+        <>
+          <Button onClick={onClose}>Close</Button>
+          {canEdit && (
+            <Button variant="primary" onClick={onEdit}>
+              Correct this slip
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <DetailField label="Bank">
+          {deposit.bankName || <span className="text-slate-400">Not recorded</span>}{' '}
+          <span className="font-mono text-xs text-slate-500">{deposit.bankAccountNumber}</span>
+        </DetailField>
+        <DetailField label="Status">
+          <StatusBadge status={deposit.status} />
+        </DetailField>
+        <DetailField label="Bank reference">
+          {deposit.referenceNo ?? <span className="text-slate-400">&mdash;</span>}
+        </DetailField>
+        <DetailField label="Credited by the bank">
+          {deposit.creditedDate ? (
+            formatShortDate(deposit.creditedDate)
+          ) : (
+            <span className="text-slate-500">Not yet</span>
+          )}
+        </DetailField>
+        <DetailField label="Collecting officer" className="sm:col-span-2">
+          {deposit.collectingOfficerName ?? <span className="text-slate-400">&mdash;</span>}
+        </DetailField>
+        <DetailField label="Receipts banked" className="sm:col-span-2">
+          {banked > 0 ? (
+            `${banked} receipt${banked === 1 ? '' : 's'}`
+          ) : deposit.rcdNo ? (
+            /* A slip recorded before the link moved from the RCD to the
+               receipts. It still says what it had. */
+            <>
+              RCD <span className="font-mono">{deposit.rcdNo}</span>
+            </>
+          ) : (
+            <span className="text-slate-500">None attached</span>
+          )}
+        </DetailField>
+      </div>
+
+      {deposit.status !== 'RECORDED' && (
+        <p className="mt-4 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <span className="font-semibold">This slip can no longer be corrected.</span> It is{' '}
+          {deposit.status.toLowerCase().replace('_', ' ')} - the record is answering to a bank
+          statement now, and a slip that could be edited afterwards would break the match that
+          reconciliation relies on.
+        </p>
+      )}
+    </Modal>
+  );
+}
+
 function DepositForm({
   fiscalYear,
   fundCode,
+  existing,
   onClose,
   onSaved,
 }: {
   fiscalYear: number;
   fundCode: string;
+  /**
+   * The slip being corrected, where one is.
+   *
+   * The receipts it banks can be changed too, and that is the part worth
+   * getting right: the ones taken OFF go back to awaiting deposit and the ones
+   * added are marked banked, so the undeposited figure stays true however the
+   * correction goes.
+   */
+  existing?: Deposit | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const toast = useToast();
   const { user, profile } = useAuth();
-  const undeposited = useUndepositedCollections(fundCode);
+  /*
+   * Every receipt of the year, filtered here rather than by the query.
+   *
+   * The undeposited-only query cannot serve a CORRECTION: the receipts this
+   * slip already banked are DEPOSITED, so they would be missing from the list
+   * and would silently un-tick themselves the moment the officer opened the
+   * form. The list is "awaiting deposit, plus the ones this slip already
+   * has" - which is exactly what a person correcting it expects to see.
+   */
+  const allCollections = useCollections(fiscalYear, fundCode);
+  const mine = useMemo(() => new Set(existing?.collectionIds ?? []), [existing?.collectionIds]);
+  const undeposited = useMemo(
+    () => ({
+      data: allCollections.data.filter(
+        (c) =>
+          (c.status !== 'CANCELLED' && !c.depositId) || mine.has(c.id),
+      ),
+    }),
+    [allCollections.data, mine],
+  );
 
-  const [depositDate, setDepositDate] = useState(todayPh());
-  const [bankAccountId, setBankAccountId] = useState<string | null>(null);
-  const [depositSlipNo, setDepositSlipNo] = useState('');
-  const [referenceNo, setReferenceNo] = useState('');
-  const [amount, setAmount] = useState<number | null>(null);
+  const [depositDate, setDepositDate] = useState(existing?.depositDate ?? todayPh());
+  const [bankAccountId, setBankAccountId] = useState<string | null>(
+    existing?.bankAccountId ?? null,
+  );
+  const [depositSlipNo, setDepositSlipNo] = useState(existing?.depositSlipNo ?? '');
+  const [referenceNo, setReferenceNo] = useState(existing?.referenceNo ?? '');
+  const [amount, setAmount] = useState<number | null>(existing?.amount ?? null);
   /*
    * WHICH RECEIPTS THIS DEPOSIT BANKS.
    *
@@ -285,8 +435,12 @@ function DepositForm({
    * a deposit slip. The Annex E and F summaries already work the undeposited
    * balance out from exactly this link.
    */
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [officerId, setOfficerId] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(
+    new Set(existing?.collectionIds ?? []),
+  );
+  const [officerId, setOfficerId] = useState<string | null>(
+    existing?.collectingOfficerId ?? null,
+  );
   const [officerName, setOfficerName] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -333,9 +487,7 @@ function DepositForm({
 
     setSaving(true);
     try {
-      const depositId = await createDraft(
-        COL.deposits,
-        {
+      const payload = {
           fiscalYear,
           period: Number(depositDate.slice(5, 7)),
           fundCode,
@@ -350,14 +502,21 @@ function DepositForm({
           collectionIds: banked.map((c) => c.id),
           collectingOfficerId: officerId ?? banked[0]?.collectingOfficerId ?? null,
           collectingOfficerName: officerName || banked[0]?.collectingOfficerName || null,
-          status: 'RECORDED',
-        },
-        actorStamp({
-          uid: user.uid,
-          name: profile?.displayName ?? user.email ?? user.uid,
-          position: profile?.position,
-        }),
-      );
+      };
+
+      const stamp = actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      });
+
+      let depositId: string;
+      if (existing) {
+        await updateDraft(COL.deposits, existing.id, payload, stamp);
+        depositId = existing.id;
+      } else {
+        depositId = await createDraft(COL.deposits, { ...payload, status: 'RECORDED' }, stamp);
+      }
 
       /*
        * Then stamp the receipts, so each one knows it has been banked.
@@ -367,18 +526,23 @@ function DepositForm({
        * The other way round - a deposit written and a stamp that failed -
        * shows as a receipt still awaiting deposit, which is visible on the
        * screen and can be put right by recording it again.
+       *
+       * ON A CORRECTION, THE ONES TAKEN OFF GO BACK. A receipt dropped from
+       * the slip and left marked DEPOSITED would be money the register says is
+       * banked and no slip claims - invisible, and short in the undeposited
+       * figure for good.
        */
-      const stamp = actorStamp({
-        uid: user.uid,
-        name: profile?.displayName ?? user.email ?? user.uid,
-        position: profile?.position,
-      });
+      const nowBanked = new Set(banked.map((c) => c.id));
+      for (const id of existing?.collectionIds ?? []) {
+        if (nowBanked.has(id)) continue;
+        await updateDraft(COL.collections, id, { depositId: null, status: 'ISSUED' }, stamp);
+      }
       for (const c of banked) {
         await updateDraft(COL.collections, c.id, { depositId, status: 'DEPOSITED' }, stamp);
       }
 
       toast.success(
-        'Deposit recorded',
+        existing ? 'Deposit corrected' : 'Deposit recorded',
         banked.length > 0
           ? `${formatPeso(amount)} against ${banked.length} receipt${banked.length === 1 ? '' : 's'}.`
           : `${formatPeso(amount)} recorded. No receipts were attached to it.`,
@@ -395,13 +559,13 @@ function DepositForm({
     <Modal
       open
       onClose={onClose}
-      title="Record a deposit"
+      title={existing ? `Correct slip ${existing.depositSlipNo}` : 'Record a deposit'}
       size="md"
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={saving} onClick={() => void save()}>
-            Record
+            {existing ? 'Save the correction' : 'Record'}
           </Button>
         </>
       }

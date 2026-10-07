@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { PageHeader, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -17,12 +17,12 @@ import { formatPeso } from '@/lib/money';
 import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
 import { isRptAccount, sharesWithBarangay } from '@/pages/reports/rptAbstractReport';
 import { receiptDetailProblems, describeProblems, receiptIsIncomplete } from '@/lib/receiptDetail';
-import { collectionEditable } from '@/lib/collectionEditable';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
+import { CollectionDetail } from './CollectionDetail';
 
 
 /**
@@ -42,6 +42,8 @@ export default function Collections() {
   const [showForm, setShowForm] = useState(false);
   /* The receipt being corrected, if any. See collectionEditable. */
   const [editing, setEditing] = useState<Collection | null>(null);
+  /* The receipt being READ. The row opens this; the detail offers the edit. */
+  const [viewing, setViewing] = useState<Collection | null>(null);
   const [source, setSource] = useState('');
 
   /*
@@ -156,18 +158,6 @@ export default function Collections() {
       cell: (c) => <span className="font-mono text-xs text-slate-500">{c.rcdNo ?? '-'}</span>,
     },
     {
-      key: 'edit',
-      header: '',
-      width: '5rem',
-      value: () => '',
-      cell: (c) =>
-        can('treasury', 'create') && collectionEditable(c) ? (
-          <Button size="sm" variant="ghost" onClick={() => setEditing(c)}>
-            Edit
-          </Button>
-        ) : null,
-    },
-    {
       key: 'status',
       header: 'Status',
       width: '8rem',
@@ -191,7 +181,7 @@ export default function Collections() {
         }
       />
 
-      <SectionTabs tabs={COLLECTION_TABS} />
+      <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
 
       {incomplete.length > 0 && (
         <Alert
@@ -230,6 +220,7 @@ export default function Collections() {
         rows={rows}
         columns={columns}
         rowKey={(c) => c.id}
+        onRowClick={(c) => setViewing(c)}
         loading={loading}
         error={error}
         searchPlaceholder="OR number, payor or collecting officer"
@@ -267,6 +258,18 @@ export default function Collections() {
           </tr>
         }
       />
+
+      {viewing && (
+        <CollectionDetail
+          collection={viewing}
+          canEdit={can('treasury', 'create')}
+          onEdit={() => {
+            setEditing(viewing);
+            setViewing(null);
+          }}
+          onClose={() => setViewing(null)}
+        />
+      )}
 
       {editing && (
         <CollectionForm

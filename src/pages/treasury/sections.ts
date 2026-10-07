@@ -1,4 +1,5 @@
 import type { TreasuryReportType } from '@/types/enums';
+import type { SectionTab } from '@/layout/sections';
 
 /**
  * The tab strips that sit under each Treasury page heading.
@@ -15,41 +16,100 @@ import type { TreasuryReportType } from '@/types/enums';
  * the RCD reports the pair. Splitting them into two sidebar items invited the
  * reading that they are separate activities that happen to be near each other.
  */
-export const COLLECTION_TABS = [
-  { label: 'Collections', to: '/treasury/collections' },
-  /*
-   * Money that arrived without anybody handing cash over a counter - paid
-   * through GCash or Maya, or straight into the bank account.
-   *
-   * On this strip and not a section of its own, deliberately. It is a
-   * collection: it hits the same revenue accounts, it is deposited to the same
-   * bank, and it must not be counted twice with the cash. Putting it elsewhere
-   * in the menu would have invited exactly that - two places money comes in,
-   * and a Cashbook that reads one of them.
-   */
-  { label: 'e-Collections', to: '/treasury/collections/electronic' },
-  { label: 'Deposits', to: '/treasury/collections/deposits' },
-  // The primary reports a collecting officer closes before the RCD is drawn.
-  { label: 'Primary Reports', to: '/treasury/collections/primary' },
-  { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
-  /*
-   * Annexes E, F and G of COA Circular 2021-014, behind one tab. Three
-   * reports, one piece of work - the reasoning is in ECollectionReports.
-   */
-  { label: 'e-Collections and Deposits (eRCD)', to: '/treasury/collections/ercd' },
-  // Everything else drawn off the same collections. Each of these was a menu
-  // item of its own, which put four documents about collections beside the
-  // collections rather than in them - so the clerk who had just recorded the
-  // day's receipts had to go back out to the sidebar to report on them.
-  { label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
-  { label: 'Abstract of General Collection', to: '/reports/abstract-of-collections' },
-  // The Accountant's abstract, not the Treasurer's: GAM Section 68 puts it in
-  // Accounting because its purpose is working out what is owed to the province
-  // and the barangays, not reporting what was taken in.
-  { label: 'Abstract of RPT Collections', to: '/reports/rpt-abstract' },
-  { label: 'Summary of Collections', to: '/reports/summary-of-collections' },
-  { label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
+/**
+ * Collections and Deposits, in four groups.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE STRIP GREW A SECOND LEVEL
+ * ---------------------------------------------------------------------------
+ * It reached twelve tabs on two wrapped rows, and at that length a strip stops
+ * being a map. Twelve things in a row all look equally likely, so finding the
+ * Abstract of RPT Collections meant reading the whole strip - which is the
+ * same failure the sidebar had before patch 94, moved one level down.
+ *
+ * The office does not think of them as twelve. It thinks of them as four kinds
+ * of work: recording what came in, abstracting it, reporting it, and the
+ * summaries drawn off all of that. So the strip says that: the group first,
+ * its tabs underneath.
+ */
+export const COLLECTION_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }> = [
+  {
+    /* What is recorded as the money arrives. */
+    group: 'Transactions',
+    tabs: [
+      { label: 'Collections', to: '/treasury/collections' },
+      /*
+       * Money that arrived without anybody handing cash over a counter - paid
+       * through GCash or Maya, or straight into the bank account.
+       *
+       * Beside the cash, deliberately. It is a collection: it hits the same
+       * revenue accounts, is deposited to the same bank, and must not be
+       * counted twice with the cash.
+       */
+      { label: 'e-Collections', to: '/treasury/collections/electronic' },
+      { label: 'Deposits', to: '/treasury/collections/deposits' },
+    ],
+  },
+  {
+    /* The same receipts, cut by accountable form and by revenue account. */
+    group: 'Abstract',
+    tabs: [
+      { label: 'Abstract of General Collections', to: '/reports/abstract-of-collections' },
+      { label: 'Abstract of e-Collections', to: '/reports/abstract-of-e-collections' },
+      /*
+       * The Accountant's abstract, not the Treasurer's: GAM Section 68 puts it
+       * in Accounting because its purpose is working out what is owed to the
+       * province and the barangays, not reporting what was taken in.
+       */
+      { label: 'Abstract of RPT Collections', to: '/reports/rpt-abstract' },
+    ],
+  },
+  {
+    /* What is certified and sent to Accounting. */
+    group: 'RCD',
+    tabs: [
+      { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
+      /*
+       * Annexes E and F of COA Circular 2021-014 behind one tab - two reports,
+       * one piece of work. The reasoning is in ECollectionReports.
+       */
+      { label: 'e-Collections and Deposits (eRCD)', to: '/treasury/collections/ercd' },
+      /*
+       * The two layers above a collector's own report, which were one tab
+       * called "Primary Reports" - a name out of the manual that said nothing
+       * about which of the two you were about to open.
+       *
+       *   Collector's Report        one collecting officer's remittances for
+       *                             the day, received by the Liquidating
+       *                             Officer.
+       *   Consolidated Collection   several of those gathered into one.
+       *
+       * One screen behind both, filtered. A second implementation would be a
+       * second set of the rules about closing and re-opening them.
+       */
+      { label: "Collector's Report", to: '/treasury/collections/collectors' },
+      { label: 'Consolidated Collection Report', to: '/treasury/collections/consolidated' },
+      { label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
+    ],
+  },
+  {
+    group: 'Reports',
+    tabs: [
+      { label: 'Summary of Collections', to: '/reports/summary-of-collections' },
+      { label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
+    ],
+  },
 ];
+
+/**
+ * Every tab in the section, flattened.
+ *
+ * `registerForPath` and the sidebar work on a flat list - a screen belongs to
+ * the register at the head of whichever strip carries it, and that is true
+ * whether or not the strip is drawn in groups.
+ */
+export const COLLECTION_TABS: SectionTab[] = COLLECTION_TAB_GROUPS.flatMap((g) => g.tabs);
+
 
 /**
  * Checks and ADA are ONE section, with the payment queue at the head of it.

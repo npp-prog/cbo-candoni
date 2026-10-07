@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, TextInput } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -8,7 +8,7 @@ import { useRcds } from '@/data/queries';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from '../treasury/sections';
 
 /**
  * Summary of Reports of Collection and Deposit - the transmittal.
@@ -61,7 +61,7 @@ export default function RcdTransmittal() {
         periodLabel: `For collection / deposit dated ${formatShortDate(from)} to ${formatShortDate(to)}`,
       }}
       breadcrumbs={[...COLLECTION_CRUMBS, { label: 'RCD Transmittal' }]}
-      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
+      tabs={<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />}
       filters={
         <>
           <Field label="From" className="w-40">

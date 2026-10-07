@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select, DateInput } from '@/components/ui/Field';
@@ -9,7 +9,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from '../treasury/sections';
 
 type ReportId = 'daily' | 'monthly' | 'cashbook' | 'deposits' | 'revenue' | 'undeposited';
 
@@ -58,7 +58,7 @@ export default function TreasuryReports() {
         certifiedBy: 'Municipal Treasurer',
       }}
       breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Collection Reports and Cashbook' }]}
-      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
+      tabs={<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />}
       filters={
         <>
           <Field label="Report" className="min-w-[20rem]">

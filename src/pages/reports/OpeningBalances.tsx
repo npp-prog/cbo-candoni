@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, DateInput, TextInput } from '@/components/ui/Field';
+import { SubsidiaryPicker } from '@/components/pickers';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
@@ -47,12 +48,39 @@ interface Row {
   debit: Centavos;
   credit: Centavos;
   /**
-   * Who the balance belongs to, and what document it came from.
+   * The SUBSIDIARY LEDGER ACCOUNT this balance opens, and what document it
+   * came from.
    *
-   * Blank for an ordinary account - Cash in Bank needs no party. Required for a
-   * control account, because an opening payable encoded without the supplier can
-   * never be split apart afterwards: the detail is simply gone, and the aging
-   * report has nothing to age.
+   * ---------------------------------------------------------------------------
+   * IT IS A RECORD NOW, NOT A TYPED NAME
+   * ---------------------------------------------------------------------------
+   * This used to be free text, and posting fabricated a subsidiary out of it:
+   * the type was assumed to be PAYEE and the ID was the typed words in
+   * capitals. So an opening payable to a supplier opened a subsidiary account
+   * called "ABC TRADING", while every voucher paid to that same supplier posts
+   * to the subsidiary keyed by their PAYEE RECORD.
+   *
+   * Two subsidiary accounts for one creditor. The opening balance then never
+   * came down as the supplier was paid - it sat there looking like a creditor
+   * nobody had settled, the subsidiary ledger did not agree with Accounts
+   * Payable, and nothing on any screen said why.
+   *
+   * It is the same picker the journal entry uses now, over the same payees,
+   * employees, offices, bank accounts and tax codes - so an opening balance and
+   * the vouchers that pay it down land in ONE subsidiary account.
+   *
+   * Blank for an ordinary account: Cash in Bank needs no subsidiary. It matters
+   * for a control account, because an opening payable encoded without the
+   * supplier can never be split apart afterwards.
+   */
+  subsidiaryType: string;
+  subsidiaryId: string;
+  subsidiaryName: string;
+  /**
+   * The name as the uploaded spreadsheet wrote it, before anybody matched it.
+   *
+   * Kept so the officer can see what the file said while they choose the
+   * record it means. Cleared once a record is chosen.
    */
   party: string;
   reference: string;
@@ -97,6 +125,9 @@ const blankRow = (): Row => ({
   accountName: '',
   debit: 0,
   credit: 0,
+  subsidiaryType: '',
+  subsidiaryId: '',
+  subsidiaryName: '',
   party: '',
   reference: '',
   since: '',
@@ -215,6 +246,19 @@ export default function OpeningBalances() {
 
         imported.push({
           key: nextKey++,
+          /*
+           * The spreadsheet's wording is kept as `party` and the subsidiary is
+           * left EMPTY for the officer to choose.
+           *
+           * Matching a name to a record automatically was the old behaviour's
+           * mistake in another form: "ABC Trdg." and "ABC Trading Inc." are
+           * the same supplier to a person and two different strings to a
+           * computer, and a wrong match is worse than no match - it opens a
+           * payable against the wrong creditor and nothing says so.
+           */
+          subsidiaryType: '',
+          subsidiaryId: '',
+          subsidiaryName: '',
           accountCode: code,
           accountName: account?.name ?? '',
           debit,
@@ -266,9 +310,11 @@ export default function OpeningBalances() {
           accountName: r.accountName,
           debit: r.debit,
           credit: r.credit,
-          subsidiaryType: r.party ? 'PAYEE' : null,
-          subsidiaryId: r.party ? r.party.toUpperCase() : null,
-          subsidiaryName: r.party || null,
+          // The chosen record, or nothing. Never a name turned into an id -
+          // see the note on the row type.
+          subsidiaryType: r.subsidiaryId ? r.subsidiaryType : null,
+          subsidiaryId: r.subsidiaryId || null,
+          subsidiaryName: r.subsidiaryId ? r.subsidiaryName : null,
           referenceNo: r.reference || null,
           agingDate: r.since || null,
         })),
@@ -417,7 +463,7 @@ export default function OpeningBalances() {
                         value={row.accountCode}
                         onChange={(e) => setRow(row.key, { accountCode: e.target.value })}
                         placeholder="50203010"
-                        className="font-mono text-xs"
+                        className="font-mono"
                       />
                     </td>
                     <td className="px-2 py-1">
@@ -430,19 +476,46 @@ export default function OpeningBalances() {
                       )}
                     </td>
                     <td className="px-2 py-1">
-                      <TextInput
-                        value={row.party}
-                        onChange={(e) => setRow(row.key, { party: e.target.value })}
-                        placeholder="Supplier or officer"
-                        className="text-xs"
-                      />
+                      <>
+                        <SubsidiaryPicker
+                          fundCode={fundCode}
+                          value={
+                            row.subsidiaryType && row.subsidiaryId
+                              ? `${row.subsidiaryType}:${row.subsidiaryId}`
+                              : null
+                          }
+                          onChange={(chosen) =>
+                            setRow(row.key, {
+                              subsidiaryType: chosen?.type ?? '',
+                              subsidiaryId: chosen?.id ?? '',
+                              subsidiaryName: chosen?.name ?? '',
+                              // The spreadsheet's wording has done its job once
+                              // a record is chosen.
+                              party: chosen ? '' : row.party,
+                            })
+                          }
+                        />
+                        {row.party && !row.subsidiaryId && (
+                          /*
+                            The uploaded file named somebody CFMS could not
+                            match. Shown rather than silently dropped: the
+                            officer is the only one who knows which record
+                            "ABC Trdg." means, and an unmatched line posted
+                            with no subsidiary is an opening payable that can
+                            never be aged.
+                          */
+                          <p className="mt-1 text-xs text-amber-700">
+                            The file said &ldquo;{row.party}&rdquo; - choose the record it means.
+                          </p>
+                        )}
+                      </>
                     </td>
                     <td className="px-2 py-1">
                       <TextInput
                         value={row.reference}
                         onChange={(e) => setRow(row.key, { reference: e.target.value })}
                         placeholder="DV 2025-08-0142"
-                        className="font-mono text-xs"
+                        className="font-mono"
                       />
                     </td>
                     <td className="px-2 py-1">
@@ -450,7 +523,6 @@ export default function OpeningBalances() {
                         type="date"
                         value={row.since}
                         onChange={(e) => setRow(row.key, { since: e.target.value })}
-                        className="text-xs"
                       />
                     </td>
                     <td className="px-2 py-1">

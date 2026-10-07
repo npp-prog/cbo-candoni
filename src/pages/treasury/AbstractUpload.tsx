@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { Button } from '@/components/ui/Button';
 import { Field, Select } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
@@ -9,7 +9,7 @@ import { useFunds, useRevenueCodes } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 import { parseAbstractFile, revenueCodesUsed, type AbstractReceipt } from './parseAbstract';
 
 /**
@@ -166,7 +166,7 @@ export default function AbstractUpload() {
         breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Upload' }]}
       />
 
-      <SectionTabs tabs={COLLECTION_TABS} />
+      <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
 
       <Card title="New upload">
         <Field

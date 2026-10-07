@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { Field, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useCollections, useLedgerEntries } from '@/data/queries';
@@ -15,7 +15,7 @@ function lastDayOf(year: number, month: number): string {
 }
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from '../treasury/sections';
 import { fundLabel } from '../budget/Obligations';
 import {
   BASIS,
@@ -96,7 +96,7 @@ export default function RptAbstract() {
         certifiedBy: 'Municipal Accountant',
       }}
       breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Abstract of RPT Collections' }]}
-      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
+      tabs={<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />}
       rows={data.months}
       exportColumns={exportColumns}
       filters={

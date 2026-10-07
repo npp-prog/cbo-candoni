@@ -251,7 +251,7 @@ export default function BankReconciliation() {
             <Select
               value=""
               onChange={(e) => e.target.value && void classify(t, e.target.value)}
-              className="w-auto py-1 text-xs"
+              className="w-auto py-1.5"
               aria-label="Classify"
             >
               <option value="">Classify...</option>

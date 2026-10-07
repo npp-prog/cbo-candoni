@@ -345,9 +345,30 @@ export default function App() {
           {/* The layer above the collector's own report: the Liquidating
               Officer gathers several secondaries into one primary, and
               closing it is what freezes them. */}
+          {/* The two layers above a collector's own report, one screen each
+              way. The old address still arrives at the first of them. */}
+          <Route
+            path="/treasury/collections/collectors"
+            element={
+              <Guard module="treasury">
+                <PrimaryReports types={['COLLECTION']} title="Collector's Report" />
+              </Guard>
+            }
+          />
+          <Route
+            path="/treasury/collections/consolidated"
+            element={
+              <Guard module="treasury">
+                <PrimaryReports
+                  types={['CONSOLIDATED', 'DEPOSIT']}
+                  title="Consolidated Collection Report"
+                />
+              </Guard>
+            }
+          />
           <Route
             path="/treasury/collections/primary"
-            element={<Guard module="treasury"><PrimaryReports /></Guard>}
+            element={<Navigate to="/treasury/collections/collectors" replace />}
           />
           <Route
             path="/treasury/collections/primary/:id/form"
@@ -448,6 +469,12 @@ export default function App() {
           <Route
             path="/reports/abstract-of-collections"
             element={<Guard module="reports"><AbstractOfCollections /></Guard>}
+          />
+          {/* The same abstract over the electronic receipts only - a cut of
+              the general one, not a second report. See AbstractOfCollections. */}
+          <Route
+            path="/reports/abstract-of-e-collections"
+            element={<Guard module="reports"><AbstractOfCollections scope="ELECTRONIC" /></Guard>}
           />
           <Route
             path="/reports/summary-of-collections"

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +24,7 @@ import {
   type PrimaryReportType,
 } from '@/types/primaryReports';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 
 /**
  * Primary reports - the Liquidating Officer's and the Treasurer's layer.
@@ -40,12 +40,36 @@ import { COLLECTION_TABS, COLLECTION_CRUMBS } from './sections';
  * by the server against every other report for the fund, so both hold even if
  * two officers are working at the same moment on different machines.
  */
-export default function PrimaryReports() {
+export default function PrimaryReports({
+  types,
+  title,
+}: {
+  /**
+   * Which kinds of report this tab shows.
+   *
+   * The screen used to be one tab called "Primary Reports", a name out of the
+   * manual that said nothing about which of two quite different documents you
+   * were about to open. It is two tabs now - the Collector's Report and the
+   * Consolidated Collection Report - over ONE screen, because a second
+   * implementation would be a second set of the rules about closing and
+   * re-opening them, and the second set is always the one missing a check.
+   *
+   * A DEPOSIT primary rides with the consolidated ones. It is the Treasurer's
+   * own consolidation for banking, it is raised rarely, and a tab of its own
+   * for a document the office may never use would be a tab nobody reads.
+   */
+  types?: PrimaryReportType[];
+  title?: string;
+} = {}) {
   const { fiscalYear, fundCode } = useFilters();
   const { can, hasRole } = useAuth();
   const toast = useToast();
 
-  const { data: primaries, loading, error } = usePrimaryReports(fiscalYear, fundCode);
+  const { data: allPrimaries, loading, error } = usePrimaryReports(fiscalYear, fundCode);
+  const primaries = useMemo(
+    () => (types ? allPrimaries.filter((p) => types.includes(p.reportType)) : allPrimaries),
+    [allPrimaries, types],
+  );
   const { data: rcds } = useRcds(fiscalYear, fundCode);
 
   const [editing, setEditing] = useState<PrimaryReport | 'new' | null>(null);
@@ -159,9 +183,9 @@ export default function PrimaryReports() {
   return (
     <div>
       <PageHeader
-        title="Primary Reports"
+        title={title ?? 'Primary Reports'}
         subtitle={`${fundLabel(fundCode)} — fiscal year ${fiscalYear}`}
-        breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Primary Reports' }]}
+        breadcrumbs={[...COLLECTION_CRUMBS, { label: title ?? 'Primary Reports' }]}
         actions={
           canCreate ? (
             <Button variant="primary" onClick={() => setEditing('new')}>
@@ -171,7 +195,7 @@ export default function PrimaryReports() {
         }
       />
 
-      <SectionTabs tabs={COLLECTION_TABS} />
+      <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
 
       {reopenedTotal > 0 && (
         <Alert tone="warning" title="Closed reports have been reopened" className="mb-4">

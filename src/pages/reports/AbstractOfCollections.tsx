@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -11,7 +11,7 @@ import { formatShortDate } from '@/lib/dates';
 import { analyzeContinuity, toNumber } from '@/lib/serials';
 import type { Collection } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TABS, COLLECTION_CRUMBS } from '../treasury/sections';
+import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from '../treasury/sections';
 
 /**
  * Abstract of General Collection.
@@ -57,9 +57,29 @@ interface Row {
   flag: 'gap' | 'duplicate' | null;
 }
 
-export default function AbstractOfCollections() {
+export default function AbstractOfCollections({
+  scope = 'ALL',
+}: {
+  /**
+   * Which receipts the abstract covers.
+   *
+   * ALL is the General abstract - every receipt, cash and electronic, because
+   * an e-collection IS a collection and the general abstract that left it out
+   * would not agree with the Cashbook.
+   *
+   * ELECTRONIC is the same abstract over the electronic receipts only. It is a
+   * CUT of the general one, not a different report, which is why it is this
+   * screen with a filter rather than a second implementation - two of them
+   * would be two answers to "what did we collect" the day one was changed.
+   */
+  scope?: 'ALL' | 'ELECTRONIC';
+} = {}) {
   const { fiscalYear, fundCode } = useFilters();
-  const { data: collections, loading } = useCollections(fiscalYear, fundCode);
+  const { data: all, loading } = useCollections(fiscalYear, fundCode);
+  const collections = useMemo(
+    () => (scope === 'ELECTRONIC' ? all.filter((c) => !!c.eCollectionKind) : all),
+    [all, scope],
+  );
   const { data: formTypes } = useAccountableFormTypes();
 
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
@@ -178,14 +198,18 @@ export default function AbstractOfCollections() {
   return (
     <ReportShell
       meta={{
-        title: 'Abstract of General Collection',
+        title:
+          scope === 'ELECTRONIC' ? 'Abstract of e-Collections' : 'Abstract of General Collection',
         fundLabel: fundLabel(fundCode),
         periodLabel: `For the period ${formatShortDate(from)} to ${formatShortDate(to)}`,
         preparedBy: 'Municipal Treasurer’s Office',
         certifiedBy: 'Municipal Treasurer',
       }}
-      breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Abstract of Collections' }]}
-      tabs={<SectionTabs tabs={COLLECTION_TABS} />}
+      breadcrumbs={[
+        ...COLLECTION_CRUMBS,
+        { label: scope === 'ELECTRONIC' ? 'Abstract of e-Collections' : 'Abstract of Collections' },
+      ]}
+      tabs={<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />}
       filters={
         <>
           <Field label="From" className="w-40">
