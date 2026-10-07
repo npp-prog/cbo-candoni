@@ -13,8 +13,8 @@ import type { ExportColumn } from '@/lib/export';
 import type { LedgerEntry } from '@/types/accounting';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { REPORT_TABS } from '@/layout/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 interface GlRow extends LedgerEntry {
   runningBalance: Centavos;
@@ -69,7 +69,7 @@ export default function GeneralLedger() {
 
   return (
     <ReportShell
-      tabs={<SectionTabs tabs={REPORT_TABS} />}
+      tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: 'General Ledger',
         fundLabel: fundLabel(fundCode),

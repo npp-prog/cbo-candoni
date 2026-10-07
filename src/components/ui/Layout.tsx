@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
+import { TOP_TAB, TOP_TAB_ON, TOP_TAB_OFF } from './SectionTabs';
 
 /**
  * Small structural pieces shared by every screen: page headers, cards,
@@ -221,11 +222,11 @@ export function Tabs({
             key={tab.id}
             onClick={() => onChange(tab.id)}
             className={clsx(
-              'inline-flex items-center justify-center whitespace-nowrap border-b-2',
-              'min-w-[7rem] px-3 py-2.5 text-sm font-medium transition-colors',
-              active === tab.id
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800',
+              // The one tab style, from SectionTabs. These are the tabs
+              // INSIDE a screen - a voucher's, a report's - and there is no
+              // reason for them to look different from the ones above them.
+              TOP_TAB,
+              active === tab.id ? TOP_TAB_ON : TOP_TAB_OFF,
             )}
             aria-current={active === tab.id ? 'page' : undefined}
           >

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { PageHeader, Card, Alert, EmptyState } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -20,7 +20,7 @@ import {
   type TreasuryImportRow,
 } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { PAYMENT_TABS } from './sections';
+import { PAYMENT_TAB_GROUPS } from './sections';
 import { parsePaymentFile, type ParsedRow } from './parsePayments';
 
 /**
@@ -153,7 +153,7 @@ export default function PaymentUploads({ importType }: { importType: 'RCI' | 'RA
         breadcrumbs={[{ label: 'Treasury' }, { label: isRci ? 'Checks' : 'ADA' }, { label: 'Upload' }]}
       />
 
-      <SectionTabs tabs={PAYMENT_TABS} />
+      <GroupedSectionTabs groups={PAYMENT_TAB_GROUPS} />
 
       {held.length > 0 && (
         <Alert tone="warning" title="Rows waiting to be dealt with" className="mb-4">

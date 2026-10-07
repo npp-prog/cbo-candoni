@@ -29,8 +29,8 @@ import {
   type UnmappedBalance,
 } from './condensedFs';
 import { fundLabel } from '../budget/Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { REPORT_TABS } from '@/layout/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 /**
  * The financial statements.
@@ -155,7 +155,7 @@ export default function FinancialStatements() {
 
   return (
     <ReportShell
-      tabs={<SectionTabs tabs={REPORT_TABS} />}
+      tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: statementTitle,
         fundLabel: fundLabel(fundCode),

@@ -41,7 +41,7 @@ import {
 } from '@/types/enums';
 import type { TreasuryReport, TreasuryReportLine } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
-import { COLLECTION_TAB_GROUPS, SECTION_TABS, usesCollectionGroups } from './sections';
+import { SECTION_TABS, sectionGroupsFor } from './sections';
 import { kindForReport } from './eCollectionKinds';
 
 /**
@@ -120,6 +120,9 @@ export default function TreasuryReports({
   const short = TREASURY_REPORT_SHORT[reportType];
 
   const { data, loading, error } = useTreasuryReports(reportType, fiscalYear, fundCode);
+
+  /* Which strip this report's section draws. See sectionGroupsFor. */
+  const sectionGroups = sectionGroupsFor(reportType);
 
   const rows = useMemo(
     () => newestFirst(data, (r) => ({ ref: r.reportNo, date: r.reportDate })),
@@ -256,8 +259,8 @@ export default function TreasuryReports({
         screen in the section showed four groups. A build check now refuses
         the flat strip for this section.
       */}
-      {usesCollectionGroups(reportType) ? (
-        <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
+      {sectionGroups ? (
+        <GroupedSectionTabs groups={sectionGroups} />
       ) : (
         <SectionTabs tabs={SECTION_TABS[reportType]} />
       )}

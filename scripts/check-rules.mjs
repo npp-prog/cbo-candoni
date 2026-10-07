@@ -1879,7 +1879,7 @@ if (existsSync(functionsSrc)) {
 }
 
 
-// --- 34. The collections strip is drawn in groups, everywhere ---------------
+// --- 34. A grouped strip is never drawn flat --------------------------------
 
 /*
  * ---------------------------------------------------------------------------
@@ -1901,6 +1901,14 @@ if (existsSync(functionsSrc)) {
  * is how the shared screen asks which section it is in.
  */
 {
+  /* Every strip that has a grouped form, and the name of that form. */
+  const GROUPED_STRIPS = [
+    ['COLLECTION_TABS', 'COLLECTION_TAB_GROUPS'],
+    ['PAYMENT_TABS', 'PAYMENT_TAB_GROUPS'],
+    ['REPORT_TABS', 'REPORT_TAB_GROUPS'],
+    ['MASTER_DATA_TABS', 'MASTER_DATA_TAB_GROUPS'],
+  ];
+
   const files = [];
   const walk = (dir) => {
     if (!existsSync(dir)) return;
@@ -1921,18 +1929,19 @@ if (existsSync(functionsSrc)) {
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
       .replace(/\/\/[^\n]*/g, '');
 
-    if (/<SectionTabs\s+tabs=\{COLLECTION_TABS\}/.test(source)) {
+    for (const [flat, grouped] of GROUPED_STRIPS) {
+      if (!new RegExp(`<SectionTabs\\s+tabs=\\{${flat}\\}`).test(source)) continue;
       offenders += 1;
       failures.push(
-        `${name}: renders the collections strip FLAT. That section is drawn in groups - ` +
-          'twelve tabs in a row is three wrapped rows and stops being a map. Use ' +
-          '<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />.',
+        `${name}: renders ${flat} FLAT. That section is drawn in GROUPS - a strip long enough ` +
+          'to wrap onto two or three rows stops being a map, because every tab in it looks ' +
+          `equally likely. Use <GroupedSectionTabs groups={${grouped}} />.`,
       );
     }
   }
 
   if (offenders === 0) {
-    console.log('tabs: the collections section is drawn in groups everywhere');
+    console.log('tabs: every grouped section is drawn in groups everywhere');
   }
 }
 

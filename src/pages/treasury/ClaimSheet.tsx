@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
@@ -10,7 +10,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { toNumber } from '@/lib/serials';
 import { fundLabel } from '../budget/Obligations';
-import { PAYMENT_TABS, PAYMENT_CRUMBS } from './sections';
+import { PAYMENT_TAB_GROUPS, PAYMENT_CRUMBS } from './sections';
 
 /**
  * Check Release / Claim Sheet.
@@ -81,7 +81,7 @@ export default function ClaimSheet() {
         periodLabel: `Checks dated ${formatShortDate(from)} to ${formatShortDate(to)}`,
       }}
       breadcrumbs={[...PAYMENT_CRUMBS, { label: 'Claim Sheet' }]}
-      tabs={<SectionTabs tabs={PAYMENT_TABS} />}
+      tabs={<GroupedSectionTabs groups={PAYMENT_TAB_GROUPS} />}
       filters={
         <>
           <Field label="Bank account" className="w-64">

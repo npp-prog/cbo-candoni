@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useBankAccounts, useChecks, useDisbursementVouchers } from '@/data/queries';
@@ -9,7 +9,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildUnreleasedChecks, totalUnreleased, type SucRow } from './unreleasedChecksReport';
-import { PAYMENT_TABS } from './sections';
+import { PAYMENT_TAB_GROUPS } from './sections';
 import { fundLabel } from '@/pages/budget/Obligations';
 
 /**
@@ -84,7 +84,7 @@ export default function UnreleasedChecks() {
         preparedBy: '',
       }}
       breadcrumbs={[{ label: 'Treasury' }, { label: 'Checks', to: '/treasury/checks' }]}
-      tabs={<SectionTabs tabs={PAYMENT_TABS} />}
+      tabs={<GroupedSectionTabs groups={PAYMENT_TAB_GROUPS} />}
       rows={exportRows}
       exportColumns={exportColumns}
       filters={

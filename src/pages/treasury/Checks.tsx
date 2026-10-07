@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -23,7 +23,7 @@ import { CHECK_STATUSES, STATUS_LABELS } from '@/types/enums';
 import { canReleaseCheck, canUndoOutright } from '@/lib/releaseControl';
 import type { Check } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
-import { PAYMENT_TABS } from './sections';
+import { PAYMENT_TAB_GROUPS } from './sections';
 import { InstrumentDetail } from './InstrumentDetail';
 
 /**
@@ -226,7 +226,7 @@ export default function Checks() {
         breadcrumbs={[{ label: 'Treasury' }, { label: 'Checks' }]}
       />
 
-      <SectionTabs tabs={PAYMENT_TABS} />
+      <GroupedSectionTabs groups={PAYMENT_TAB_GROUPS} />
 
       {nearStale.length > 0 && (
         <Alert tone="warning" title="Stale checks" className="mb-4">

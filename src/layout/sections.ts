@@ -149,16 +149,45 @@ export const PRINTING_TABS: SectionTab[] = [
  * the ledgers and books they are built from. It runs from the summary a mayor
  * reads to the detail an auditor traces.
  */
-export const REPORT_TABS: SectionTab[] = [
-  { label: 'SAOB', to: '/reports/saob' },
-  { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
-  { label: 'Trial Balance', to: '/reports/trial-balance' },
-  { label: 'Financial Statements', to: '/reports/financial-statements' },
-  { label: 'General Ledger', to: '/reports/general-ledger' },
-  { label: 'Subsidiary Ledger', to: '/reports/subsidiary-ledger' },
-  { label: 'Journals', to: '/reports/journals' },
-  { label: 'Registers', to: '/reports/registers' },
+export const REPORT_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }> = [
+  {
+    /* The budget beside what actually happened. */
+    group: 'Budget and actual',
+    tabs: [
+      { label: 'SAOB', to: '/reports/saob' },
+      { label: 'Budget and Actual (SCBAA)', to: '/reports/budget-vs-actual' },
+    ],
+  },
+  {
+    /* What the books add up to. */
+    group: 'Statements',
+    tabs: [
+      { label: 'Trial Balance', to: '/reports/trial-balance' },
+      { label: 'Financial Statements', to: '/reports/financial-statements' },
+    ],
+  },
+  {
+    /* And the books themselves, which the statements are built from. */
+    group: 'Books',
+    tabs: [
+      { label: 'General Ledger', to: '/reports/general-ledger' },
+      { label: 'Subsidiary Ledger', to: '/reports/subsidiary-ledger' },
+      { label: 'Journals', to: '/reports/journals' },
+      { label: 'Registers', to: '/reports/registers' },
+    ],
+  },
 ];
+
+/**
+ * The statements drawn off the General Ledger, flattened.
+ *
+ * Order unchanged from the menu: the two that read the budget against the
+ * actual first, then the trial balance and the statements built on it, then
+ * the ledgers and books they are built from. It runs from the summary a mayor
+ * reads to the detail an auditor traces.
+ */
+export const REPORT_TABS: SectionTab[] = REPORT_TAB_GROUPS.flatMap((g) => g.tabs);
+
 
 /**
  * Every strip above, for the sidebar's benefit.

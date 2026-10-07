@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { orderBy } from 'firebase/firestore';
 import { PageHeader, Alert } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -547,30 +547,62 @@ const CONFIGS: Record<string, EntityConfig> = {
  * strip, not vanish off it - a screen nothing links to is a screen the office
  * stops knowing about.
  */
-const TAB_ORDER = [
-  'accounts',
-  'payees',
-  'employees',
-  'offices',
-  // A barangay is not an office. It is a separate local government unit the
-  // municipality collects real property tax for and remits a share to.
-  'barangays',
-  'banks',
-  // GCash, Maya, a bank's online portal. Beside the banks, because that is
+/**
+ * The eleven, in four groups.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY GROUPED, AND WHY THIS ORDER
+ * ---------------------------------------------------------------------------
+ * Eleven tabs in a row is two wrapped rows, and at that length a strip stops
+ * being a map - eleven things all look equally likely, so finding one means
+ * reading the lot.
+ *
+ * The order inside the groups is the one the SIDEBAR had before patch 93 took
+ * the menu away: the records consulted constantly first, then the people and
+ * places, then the banking, then the codes. The chip strip before that ran in
+ * whatever order the eleven happened to be declared in, which put two screens
+ * opened a few times a year ahead of the two opened daily.
+ */
+const TAB_GROUPS: Array<{ group: string; slugs: string[] }> = [
+  { group: 'Ledger', slugs: ['accounts', 'funds'] },
+  { group: 'People and places', slugs: ['payees', 'employees', 'offices', 'barangays'] },
+  // GCash, Maya, a bank's online portal - beside the banks, because that is
   // what an officer is thinking of when they go looking for one.
-  'intermediaries',
-  'tax-codes',
-  'revenue-codes',
-  'accountable-forms',
-  'funds',
+  { group: 'Banking', slugs: ['banks', 'intermediaries'] },
+  { group: 'Codes and forms', slugs: ['tax-codes', 'revenue-codes', 'accountable-forms'] },
 ];
 
-export const MASTER_DATA_TABS = [
-  ...TAB_ORDER.map((slug) => Object.values(CONFIGS).find((c) => c.slug === slug)).filter(
-    (c): c is EntityConfig => !!c,
-  ),
-  ...Object.values(CONFIGS).filter((c) => !TAB_ORDER.includes(c.slug)),
-].map((c) => ({ label: c.title, to: `/master-data/${c.slug}` }));
+const bySlug = (slug: string) => Object.values(CONFIGS).find((c) => c.slug === slug);
+
+export const MASTER_DATA_TAB_GROUPS = [
+  ...TAB_GROUPS.map((g) => ({
+    group: g.group,
+    tabs: g.slugs
+      .map(bySlug)
+      .filter((c): c is EntityConfig => !!c)
+      .map((c) => ({ label: c.title, to: `/master-data/${c.slug}` })),
+  })),
+  /*
+   * Anything not placed above is appended under its own heading rather than
+   * dropped. A new entity added without a thought for where it belongs should
+   * appear at the end of the strip, not vanish off it - a screen nothing links
+   * to is a screen the office stops knowing about.
+   */
+  ...(() => {
+    const placed = new Set(TAB_GROUPS.flatMap((g) => g.slugs));
+    const rest = Object.values(CONFIGS).filter((c) => !placed.has(c.slug));
+    return rest.length
+      ? [
+          {
+            group: 'Other',
+            tabs: rest.map((c) => ({ label: c.title, to: `/master-data/${c.slug}` })),
+          },
+        ]
+      : [];
+  })(),
+];
+
+export const MASTER_DATA_TABS = MASTER_DATA_TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function MasterData() {
   const { entity } = useParams<{ entity: string }>();
@@ -691,7 +723,7 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
         }
       />
 
-      <SectionTabs tabs={MASTER_DATA_TABS} />
+      <GroupedSectionTabs groups={MASTER_DATA_TAB_GROUPS} />
 
       <DataTable
         rows={rows}

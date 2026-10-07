@@ -1,5 +1,39 @@
 import { Link, useLocation } from 'react-router-dom';
 
+/*
+ * ---------------------------------------------------------------------------
+ * ONE TAB STYLE, AND ONE SUB-TAB STYLE
+ * ---------------------------------------------------------------------------
+ * There were three, close enough to look like mistakes rather than choices: a
+ * section strip, the top row of a grouped strip, and the in-page tabs on a
+ * voucher all drew a tab slightly differently - a different weight here, four
+ * more pixels of padding there. Moving between two screens, an officer saw the
+ * same control change shape for no reason.
+ *
+ * TOP_TAB is what a tab looks like, everywhere. SUB_TAB is what a tab looks
+ * like when it sits UNDER one - lighter, and a filled pill rather than an
+ * underline, so the two rows of a grouped strip cannot be read as one row.
+ *
+ * The minimum width stays. A tab sized only by its own label leaves "Schedule"
+ * half the width of "Sources of Financing" beside it, and the two stop reading
+ * as one choice with two answers.
+ */
+export const TOP_TAB =
+  'inline-flex items-center justify-center whitespace-nowrap border-b-2 -mb-px ' +
+  'min-w-[7rem] px-4 py-2.5 text-sm font-semibold transition-colors';
+
+export const TOP_TAB_ON = 'border-brand-600 text-brand-700';
+export const TOP_TAB_OFF =
+  'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800';
+
+export const SUB_TAB =
+  'inline-flex items-center justify-center whitespace-nowrap rounded ' +
+  'min-w-[7rem] px-3 py-1.5 text-sm transition-colors';
+
+export const SUB_TAB_ON = 'bg-brand-50 font-medium text-brand-700';
+export const SUB_TAB_OFF = 'text-slate-500 hover:bg-slate-50 hover:text-navy-800';
+
+
 /**
  * Tabs within one area of work.
  *
@@ -64,11 +98,7 @@ export function SectionTabs({
               to={tab.to}
               aria-current={active ? 'page' : undefined}
               /* The same minimum as Tabs - see the note there. */
-              className={`inline-flex items-center justify-center whitespace-nowrap border-b-2 min-w-[7rem] px-3 py-2.5 text-sm font-medium transition-colors ${
-                active
-                  ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800'
-              }`}
+              className={`${TOP_TAB} ${active ? TOP_TAB_ON : TOP_TAB_OFF}`}
             >
               {tab.label}
             </Link>
@@ -136,11 +166,7 @@ export function GroupedSectionTabs({
               key={g.group}
               to={g.tabs[0]?.to ?? '#'}
               aria-current={active ? 'true' : undefined}
-              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
-                active
-                  ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800'
-              }`}
+              className={`${TOP_TAB} ${active ? TOP_TAB_ON : TOP_TAB_OFF}`}
             >
               {g.group}
             </Link>
@@ -158,11 +184,7 @@ export function GroupedSectionTabs({
               key={tab.to}
               to={tab.to}
               aria-current={active ? 'page' : undefined}
-              className={`whitespace-nowrap rounded px-3 py-1.5 text-sm transition-colors ${
-                active
-                  ? 'bg-brand-50 font-medium text-brand-700'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-navy-800'
-              }`}
+              className={`${SUB_TAB} ${active ? SUB_TAB_ON : SUB_TAB_OFF}`}
             >
               {tab.label}
             </Link>

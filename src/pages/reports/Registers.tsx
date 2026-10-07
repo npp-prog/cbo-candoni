@@ -19,8 +19,8 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate, agingBucket, AGING_LABELS, todayPh } from '@/lib/dates';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { REPORT_TABS } from '@/layout/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 type RegisterId =
   | 'dv'
@@ -68,7 +68,7 @@ export default function Registers() {
 
   return (
     <ReportShell
-      tabs={<SectionTabs tabs={REPORT_TABS} />}
+      tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title,
         fundLabel: fundLabel(fundCode),

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { ReportShell } from '@/components/ReportShell';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs, SectionTabs } from '@/components/ui/SectionTabs';
 import { Alert, Card, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, Select } from '@/components/ui/Field';
@@ -32,7 +32,7 @@ import {
 import { COMPARISON_TABS } from './comparisonTabs';
 import { fundLabel } from '../budget/Obligations';
 import { COLLECTED } from '../budget/reairrReport';
-import { REPORT_TABS } from '@/layout/sections';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 /**
  * Statement of Comparison of Budget and Actual Amounts - GAM Annex 8.
@@ -170,7 +170,7 @@ export default function Scbaa() {
       breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Budget and Actual' }]}
       tabs={
         <>
-          <SectionTabs tabs={REPORT_TABS} />
+          <GroupedSectionTabs groups={REPORT_TAB_GROUPS} />
           <SectionTabs tabs={COMPARISON_TABS} />
         </>
       }

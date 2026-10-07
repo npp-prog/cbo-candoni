@@ -12,8 +12,8 @@ import { formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { REPORT_TABS } from '@/layout/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 interface SlRow {
   id: string;
@@ -116,7 +116,7 @@ export default function SubsidiaryLedger() {
 
   return (
     <ReportShell
-      tabs={<SectionTabs tabs={REPORT_TABS} />}
+      tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: 'Subsidiary Ledger',
         fundLabel: fundLabel(fundCode),

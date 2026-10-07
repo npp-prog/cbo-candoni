@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs, SectionTabs } from '@/components/ui/SectionTabs';
 import { COMPARISON_TABS } from './comparisonTabs';
 import { Spinner, Alert } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
@@ -15,7 +15,7 @@ import type { ExportColumn } from '@/lib/export';
 import type { PeriodNo } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
 import { INCOME_CLASS_LABELS, type IncomeClass } from '@/lib/estimatedReceipts';
-import { REPORT_TABS } from '@/layout/sections';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 import {
   buildComparison,
   buildReceiptComparison,
@@ -191,7 +191,7 @@ export default function BudgetVsActual() {
       breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Budget and Actual' }]}
       tabs={
         <>
-          <SectionTabs tabs={REPORT_TABS} />
+          <GroupedSectionTabs groups={REPORT_TAB_GROUPS} />
           <SectionTabs tabs={COMPARISON_TABS} />
         </>
       }

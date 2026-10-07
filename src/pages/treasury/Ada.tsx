@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Tabs } from '@/components/ui/Layout';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -23,7 +23,7 @@ import { ADA_STATUSES, STATUS_LABELS } from '@/types/enums';
 import { canSubmitAda, canUndoOutright } from '@/lib/releaseControl';
 import type { Ada as AdaRecord } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
-import { PAYMENT_TABS } from './sections';
+import { PAYMENT_TAB_GROUPS } from './sections';
 import { AdaNumberSeries } from './AdaNumbers';
 import { InstrumentDetail } from './InstrumentDetail';
 
@@ -196,7 +196,7 @@ export default function Ada() {
         breadcrumbs={[{ label: 'Treasury' }, { label: 'ADA' }]}
       />
 
-      <SectionTabs tabs={PAYMENT_TABS} />
+      <GroupedSectionTabs groups={PAYMENT_TAB_GROUPS} />
 
       {/*
         The register and the number series are one book read two ways, so they

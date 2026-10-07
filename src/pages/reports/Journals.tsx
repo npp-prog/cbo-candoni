@@ -12,8 +12,8 @@ import { JOURNAL_BOOKS, type JournalBook } from '@/types/enums';
 import type { ExportColumn } from '@/lib/export';
 import type { LedgerEntry } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { REPORT_TABS } from '@/layout/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 const BOOK_LABELS: Record<JournalBook, string> = {
   GENERAL_JOURNAL: 'General Journal',
@@ -73,7 +73,7 @@ export default function Journals() {
 
   return (
     <ReportShell
-      tabs={<SectionTabs tabs={REPORT_TABS} />}
+      tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: BOOK_LABELS[book],
         fundLabel: fundLabel(fundCode),

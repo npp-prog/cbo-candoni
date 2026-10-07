@@ -11,8 +11,8 @@ import { checkTrialBalance } from '@/lib/accounting-rules';
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { REPORT_TABS } from '@/layout/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 interface TbRow {
   accountCode: string;
@@ -85,7 +85,7 @@ export default function TrialBalance() {
 
   return (
     <ReportShell
-      tabs={<SectionTabs tabs={REPORT_TABS} />}
+      tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: variant === 'MONTHLY' ? 'Trial Balance' : 'Trial Balance (Cumulative)',
         fundLabel: fundLabel(fundCode),

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { PAYMENT_TABS, PAYMENT_CRUMBS } from '../treasury/sections';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { PAYMENT_TAB_GROUPS, PAYMENT_CRUMBS } from '../treasury/sections';
 import { Field, DateInput } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { BankAccountPicker } from '@/components/pickers';
@@ -71,7 +71,7 @@ export default function CancelledChecks() {
         certifiedBy: 'Municipal Treasurer',
       }}
       breadcrumbs={[...PAYMENT_CRUMBS, { label: 'Cancelled Checks' }]}
-      tabs={<SectionTabs tabs={PAYMENT_TABS} />}
+      tabs={<GroupedSectionTabs groups={PAYMENT_TAB_GROUPS} />}
       rows={rows}
       exportColumns={[
         { key: 'checkNo', header: 'Check Serial No.', value: (c) => c.checkNo },

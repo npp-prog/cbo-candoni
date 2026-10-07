@@ -127,31 +127,55 @@ export const COLLECTION_TABS: SectionTab[] = COLLECTION_TAB_GROUPS.flatMap((g) =
  * what is owed, what was drawn, what the series looks like, who is being paid,
  * and then the reports that go to Accounting.
  */
-export const PAYMENT_TABS = [
-  { label: 'Disbursements for Payment', to: '/treasury/disbursements' },
-  { label: 'Checks', to: '/treasury/checks' },
-  // The ADA number series is INSIDE this one, as a tab on the page. It used
-  // to be a tab of its own here, which asked the officer to know whether the
-  // answer to "what happened to 0221" was in the register or in the series
-  // before they could go and look for it. They are one book.
-  { label: 'ADA', to: '/treasury/ada' },
-  // Then the two reports that go to Accounting, in the order the work runs:
-  // what was drawn, then what is reported.
-  { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
-  { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
-  // The claim sheet is the list of who is being paid out of the checks drawn.
-  { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
-  // Both drawn out of the same check register and submitted to Accounting, so
-  // they belong on the check book's own strip.
-  //
-  // The Report of Cancelled Checks joined in patch 87, when the Treasury
-  // Reports group came out of the sidebar. It was the one report in that group
-  // that was on no strip at all, so removing the group would have left it
-  // reachable only by typing its address - and a screen nothing links to is a
-  // screen the office stops knowing about.
-  { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
-  { label: 'Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+export const PAYMENT_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }> = [
+  {
+    /*
+     * What the office does. A check and an advice to debit are two ways of
+     * doing the identical thing - paying an approved voucher out of a bank
+     * account - and which is used is decided per payment, on the day. So the
+     * group opens on the vouchers waiting, not on a choice of instrument.
+     */
+    group: 'Transactions',
+    tabs: [
+      { label: 'Disbursements for Payment', to: '/treasury/disbursements' },
+      { label: 'Checks', to: '/treasury/checks' },
+      /*
+       * The ADA number series is a tab INSIDE this one. It used to be a tab
+       * beside it, which asked the officer to know whether the answer to "what
+       * happened to 0221" was in the register or in the series before they
+       * could go and look. They are one book.
+       */
+      { label: 'ADA', to: '/treasury/ada' },
+    ],
+  },
+  {
+    /* What is drawn off those registers and sent to Accounting. */
+    group: 'Reports',
+    tabs: [
+      { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
+      { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
+      { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
+      { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
+      /*
+       * Joined in patch 87, when the Treasury Reports group came out of the
+       * sidebar. It was the one report in that group on no strip at all, so
+       * removing the group without putting it here would have left it
+       * reachable only by typing the address.
+       */
+      { label: 'Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+    ],
+  },
 ];
+
+/**
+ * Checks and ADA, flattened.
+ *
+ * The register at the head of the strip is still the first tab of the first
+ * group - `registerForPath` and the sidebar depend on that, and it is true
+ * whether or not the strip is drawn in groups.
+ */
+export const PAYMENT_TABS: SectionTab[] = PAYMENT_TAB_GROUPS.flatMap((g) => g.tabs);
+
 
 /**
  * The stock book and the report drawn from it.
@@ -228,15 +252,15 @@ export function registerForPath(pathname: string): string | null {
 }
 
 /**
- * Whether a treasury report's screen draws the COLLECTIONS strip, which is in
- * groups rather than flat.
+ * The groups a treasury report's screen should draw, or null for a flat strip.
  *
  * ---------------------------------------------------------------------------
  * WHY THIS IS A FUNCTION AND NOT A GLANCE AT SECTION_TABS
  * ---------------------------------------------------------------------------
- * One screen serves all seven treasury reports. Five of them sit in sections
- * whose strip is a flat row; the RCD and the two eRCDs sit in Collections and
- * Deposits, which is long enough to be drawn in four groups.
+ * One screen serves all seven treasury reports, and they sit in three
+ * different sections. Two of those sections are long enough to be drawn in
+ * groups - Collections and Deposits, and Checks and ADA - and the third, the
+ * payroll, is two tabs and stays flat.
  *
  * The screen rendered the flat strip unconditionally, so patch 97 reached the
  * office with the RCD and the eRCD showing twelve tabs on three wrapped rows
@@ -247,6 +271,14 @@ export function registerForPath(pathname: string): string | null {
  * COLLECTION_TABS at the call site, because the comparison would be true by
  * accident the day another section happened to share a strip.
  */
-export function usesCollectionGroups(reportType: TreasuryReportType): boolean {
-  return reportType === 'RCD' || reportType === 'ERCD_AR' || reportType === 'ERCD_EOR';
+export function sectionGroupsFor(
+  reportType: TreasuryReportType,
+): Array<{ group: string; tabs: SectionTab[] }> | null {
+  if (reportType === 'RCD' || reportType === 'ERCD_AR' || reportType === 'ERCD_EOR') {
+    return COLLECTION_TAB_GROUPS;
+  }
+  if (reportType === 'RCI' || reportType === 'RADAI') return PAYMENT_TAB_GROUPS;
+  /* The payroll strip is two tabs. A group row over two tabs would be a
+     heading with nothing to choose under it. */
+  return null;
 }
