@@ -51,6 +51,8 @@ export const COL = {
    * and the Statement of Comparison have no budget column for receipts.
    */
   estimatedReceipts: 'estimatedReceipts',
+  /** One marker per fiscal year and fund; see recordEstimatedReceipts. */
+  estimatedReceiptLocks: 'estimatedReceiptLocks',
   /**
    * The Trust Fund's own funding control. A programme is money received for a
    * stated purpose, with a programmed ceiling that a Funding Utilization

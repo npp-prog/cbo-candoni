@@ -29,10 +29,19 @@ import {
  * the size cap and the content-type allow-list, so a direct SDK call cannot
  * put a 200 MB executable in the municipality's document store.
  *
- * Attachments are never overwritten. Replacing a file uploads a new version
- * and marks the previous metadata record superseded; the bytes of the old one
- * stay. A supporting document behind a disbursement is evidence, and evidence
- * that can be silently swapped is not evidence.
+ * ONE DOCUMENT IS ON THE RECORD AT A TIME. Replacing uploads a new version and
+ * marks the previous metadata record superseded, so the list shows the current
+ * one; the bytes of the old one stay in Storage. A cross takes a document off
+ * without attaching a replacement.
+ *
+ * Nothing is ever overwritten and nothing is destroyed. A supporting document
+ * behind a disbursement is evidence, and evidence that can be silently swapped
+ * is not evidence - so "remove" means off the record, not gone.
+ *
+ * Both are refused once the papers are CLOSED, and refused by the security
+ * rules rather than only by the buttons here. Closing happens when an
+ * obligation is certified, a voucher approved, a treasury report certified, or
+ * an officer closes them by hand.
  */
 
 export function AttachmentsPanel({
@@ -144,6 +153,30 @@ export function AttachmentsPanel({
 
       await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
 
+      /*
+       * ---- THE PREVIOUS ONE COMES OFF THE RECORD -------------------------
+       *
+       * One document per record, which is what the office asked for and what
+       * it always meant to be: the panel's own help text has said "the old
+       * version is superseded" since it was written, and nothing ever set the
+       * flag. So both versions stayed active, the list showed two, and the
+       * clerk who had just corrected a bad scan was looking at the bad scan
+       * and the good one side by side with no way to tell which was current.
+       *
+       * SUPERSEDED, NOT DELETED. The metadata record stays and the bytes stay
+       * in Storage; what changes is that it is no longer ON the record. The
+       * evidence behind a payment is not something CFMS destroys because
+       * somebody uploaded a better copy - but it is not something that should
+       * be presented twice either.
+       *
+       * Done before the new record is created, so a failure here stops the
+       * upload rather than leaving two actives behind.
+       */
+      const superseded = data.filter((prev) => prev.active !== false);
+      for (const prev of superseded) {
+        await updateDoc(doc(db, COL.documents, prev.id), { active: false });
+      }
+
       await addDoc(collection(db, COL.documents), {
         storagePath: path,
         fileName: file.name,
@@ -168,11 +201,23 @@ export function AttachmentsPanel({
 
       // The attachment count on the parent gates submission, so it is kept in
       // step here rather than being recounted on every read.
-      await updateDoc(doc(db, entityType, entityId), { attachmentCount: increment(1) }).catch(() => {
-        // Not every entity carries the counter; not worth failing the upload.
-      });
+      // The counter gates submission, so it counts what is ON the record -
+      // one in, however many were superseded out.
+      const delta = 1 - superseded.length;
+      if (delta !== 0) {
+        await updateDoc(doc(db, entityType, entityId), {
+          attachmentCount: increment(delta),
+        }).catch(() => {
+          // Not every entity carries the counter; not worth failing the upload.
+        });
+      }
 
-      toast.success('Attached', `${file.name} was filed against ${entityRef}.`);
+      toast.success(
+        superseded.length > 0 ? 'Replaced' : 'Attached',
+        superseded.length > 0
+          ? `${file.name} is now the document on ${entityRef}. The earlier one has been superseded.`
+          : `${file.name} was filed against ${entityRef}.`,
+      );
     } catch (err) {
       toast.error(
         'Upload failed',
@@ -181,6 +226,53 @@ export function AttachmentsPanel({
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const [removing, setRemoving] = useState<{ id: string; fileName: string } | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+
+  /**
+   * Take a document off the record.
+   *
+   * ---------------------------------------------------------------------------
+   * OFF THE RECORD, NOT DESTROYED
+   * ---------------------------------------------------------------------------
+   * The metadata record is marked inactive and the bytes stay in Storage. A
+   * municipality's accounting system does not delete the paper behind a
+   * payment because somebody pressed a cross - what it does is stop presenting
+   * it, which is the whole of what "remove the wrong file" means in practice.
+   *
+   * REFUSED ONCE THE PAPERS ARE CLOSED, and refused by the SECURITY RULES
+   * rather than only by this button. Closing happens when an obligation is
+   * certified, a voucher approved, a treasury report certified, or an officer
+   * closes them by hand, and it is the office saying THESE are the documents
+   * and they have not changed since. A cross that still worked afterwards
+   * would make that statement worthless.
+   */
+  const remove = async () => {
+    if (!removing || !entityId) return;
+    setRemoveBusy(true);
+    try {
+      await updateDoc(doc(db, COL.documents, removing.id), { active: false });
+      await updateDoc(doc(db, entityType, entityId), {
+        attachmentCount: increment(-1),
+      }).catch(() => {
+        // Not every entity carries the counter.
+      });
+      toast.success('Removed', `${removing.fileName} is no longer on ${entityRef}.`);
+      setRemoving(null);
+    } catch (err) {
+      toast.error(
+        'Could not remove it',
+        err instanceof Error && /permission/i.test(err.message)
+          ? 'These supporting documents are closed. Once a record is certified or approved, what was attached to it stays attached.'
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      );
+    } finally {
+      setRemoveBusy(false);
     }
   };
 
@@ -275,9 +367,9 @@ export function AttachmentsPanel({
           could be changed at all.
         */
         <p className="mb-4 text-xs text-slate-500">
-          To replace a document, attach the corrected one. The earlier version is kept and marked
-          superseded rather than overwritten - the evidence behind a payment cannot be quietly
-          swapped, so both stay on the record with the newest shown first.
+          One document stays on the record. To replace it, attach the corrected one - the earlier
+          version is superseded and comes off, though the file itself is kept rather than
+          destroyed. The cross beside a document takes it off without attaching anything.
           {mayLock &&
             ' When the right document is on the record, CLOSE THESE DOCUMENTS fixes it there for good.'}
         </p>
@@ -313,10 +405,43 @@ export function AttachmentsPanel({
                   v{att.version}
                 </span>
               )}
+              {!readOnly && !closed && (
+                <button
+                  onClick={() => setRemoving({ id: att.id, fileName: att.fileName })}
+                  className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                  aria-label={`Remove ${att.fileName}`}
+                  title="Remove this document"
+                >
+                  &times;
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={Boolean(removing)}
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => void remove()}
+        loading={removeBusy}
+        title="Remove this document"
+        confirmLabel="Remove it"
+        variant="danger"
+        message={
+          <>
+            <p>
+              <span className="font-medium">{removing?.fileName}</span> will come off{' '}
+              {entityRef}. The file itself is kept - what changes is that it is no longer the
+              document attached to this record.
+            </p>
+            <p className="mt-2">
+              If you are replacing it with a corrected copy, you do not need this: attach the
+              corrected one and it supersedes this automatically.
+            </p>
+          </>
+        }
+      />
 
       <ConfirmDialog
         open={confirmLock}

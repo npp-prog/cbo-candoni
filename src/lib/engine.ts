@@ -215,6 +215,19 @@ export const engine = {
     >('recordEstimatedReceipts', p),
 
   /**
+   * Re-open a closed receipts schedule, so it can be recorded over.
+   *
+   * Budget Officer only, and the reason is required: two statutory limits and
+   * the SRE are worked out from the total this re-opens, so a change to it has
+   * to be answerable a year later. Recorded CRITICAL in the audit trail.
+   */
+  unlockEstimatedReceipts: (p: { fiscalYear: number; fundCode: string; reason: string }) =>
+    call<typeof p, { fiscalYear: number; fundCode: string; reopened: boolean }>(
+      'unlockEstimatedReceipts',
+      p,
+    ),
+
+  /**
    * Create or amend a Trust Fund programme.
    *
    * Omit `programId` to create. The worked figures - utilised and disbursed -

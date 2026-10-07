@@ -63,7 +63,8 @@ export function SectionTabs({
               key={tab.to}
               to={tab.to}
               aria-current={active ? 'page' : undefined}
-              className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+              /* The same minimum as Tabs - see the note there. */
+              className={`inline-flex items-center justify-center whitespace-nowrap border-b-2 min-w-[7rem] px-3 py-2.5 text-sm font-medium transition-colors ${
                 active
                   ? 'border-brand-600 text-brand-700'
                   : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800'

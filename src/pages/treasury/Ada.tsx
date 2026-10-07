@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Tabs } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
@@ -25,6 +25,7 @@ import type { Ada as AdaRecord } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
 import { PAYMENT_TABS } from './sections';
 import { AdaNumberSeries } from './AdaNumbers';
+import { InstrumentDetail } from './InstrumentDetail';
 
 /**
  * Advice to Debit Account.
@@ -37,6 +38,12 @@ import { AdaNumberSeries } from './AdaNumbers';
  */
 export default function Ada() {
   const { fiscalYear, fundCode } = useFilters();
+  const navigate = useNavigate();
+  /*
+   * The row that is open, taken from the address rather than from state, so a
+   * ada can be linked to. See InstrumentDetail.
+   */
+  const { id: openId } = useParams<{ id: string }>();
   const { hasRole, can } = useAuth();
   const toast = useToast();
 
@@ -62,6 +69,17 @@ export default function Ada() {
     .reduce((s, a) => s + a.amount, 0);
 
   const canManage = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT');
+
+  /*
+   * Taken from the loaded records rather than fetched again: the register is a
+   * live subscription, so this is the same record the row shows and the two
+   * cannot disagree.
+   *
+   * From `data` and not `rows`, deliberately. `rows` is what the filters have
+   * left on screen, so a link opened with a different bank account or status
+   * selected would find nothing and show an empty page with no explanation.
+   */
+  const openAda = openId ? (data.find((r) => r.id === openId) ?? null) : null;
 
   const columns: Column<AdaRecord>[] = [
     {
@@ -200,6 +218,7 @@ export default function Ada() {
       <DataTable
         rows={rows}
         columns={columns}
+        onRowClick={(r) => navigate(`/treasury/ada/${r.id}`)}
         rowKey={(a) => a.id}
         loading={loading}
         error={error}
@@ -301,6 +320,13 @@ export default function Ada() {
           </>
         }
       />
+      {openAda && (
+        <InstrumentDetail
+          instrument={{ kind: 'ADA', ...openAda }}
+          onClose={() => navigate('/treasury/ada')}
+        />
+      )}
+
     </div>
   );
 }

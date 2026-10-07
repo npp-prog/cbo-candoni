@@ -567,16 +567,47 @@ export const useDeposits = (bankAccountId?: string, status?: string) => {
 
 // --- Reconciliation ----------------------------------------------------------
 
+/**
+ * The imported statement lines for one bank account.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE NULL IS HANDLED BY THE PATH AND NOT BY AN EARLY RETURN
+ * ---------------------------------------------------------------------------
+ * This used to read:
+ *
+ *     if (!bankAccountId) return { data: [], loading: false, error: null };
+ *     ...
+ *     return useCollection(...)
+ *
+ * which looks harmless and is not. It is a HOOK called conditionally: with no
+ * bank account chosen the function returns having called nothing, and with one
+ * chosen it calls useCollection, which calls several hooks of its own. React
+ * matches hooks between renders by position, so the render where the account
+ * arrives has more hooks than the render before it - and React's answer to
+ * that is to throw and unmount the whole tree.
+ *
+ * WHAT IT LOOKED LIKE. Bank Reconciliation auto-selects the bank account when
+ * the fund has exactly one, which Candoni's General Fund does. So the page
+ * rendered with no account, the effect chose the only one, the next render
+ * called more hooks, and the screen went WHITE - no error, no message, nothing
+ * in the interface to report. It was unopenable.
+ *
+ * `useCollection` has always accepted a null path and returned an empty,
+ * settled result for it - `useWorkflowHistory` has used it that way since it
+ * was written. Passing null is the same answer with the hook called every
+ * time.
+ */
 export const useBankTransactions = (bankAccountId: string | null, matchStatus?: string) => {
-  if (!bankAccountId) return { data: [] as BankTransaction[], loading: false, error: null };
-  const constraints: QueryConstraint[] = [where('bankAccountId', '==', bankAccountId)];
+  const constraints: QueryConstraint[] = [where('bankAccountId', '==', bankAccountId ?? '')];
   if (matchStatus) constraints.push(where('matchStatus', '==', matchStatus));
   constraints.push(orderBy('transactionDate'));
-  return useCollection<BankTransaction>(COL.bankTransactions, constraints, [
-    'bankTx',
-    bankAccountId,
-    matchStatus,
-  ]);
+  // Null path, not an early return: nothing is read until an account is
+  // chosen, and the hook is called either way.
+  return useCollection<BankTransaction>(
+    bankAccountId ? COL.bankTransactions : null,
+    constraints,
+    ['bankTx', bankAccountId, matchStatus],
+  );
 };
 
 export const useReconciliations = (fiscalYear: number, fundCode: string) =>

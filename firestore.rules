@@ -255,6 +255,19 @@ service cloud.firestore {
     }
 
     /*
+     * Whether the year's receipts schedule is closed to further change.
+     *
+     * Written only by recordEstimatedReceipts, which sets it, and
+     * unlockEstimatedReceipts, which clears it and records who did. A client
+     * able to write this could re-open the schedule without the unlock being
+     * recorded anywhere, which is the whole of what the lock is for.
+     */
+    match /estimatedReceiptLocks/{lockId} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
+    /*
      * Trust Fund programmes - the Trust Fund's funding ceiling.
      *
      * Written only by the recordTrustProgram callable and by the functions
@@ -1016,10 +1029,30 @@ service cloud.firestore {
         && request.resource.data.active == true
         && attachmentsOpen(request.resource.data.entityType, request.resource.data.entityId);
 
-      // Attachments are superseded, not edited. Only the supersession pointer
-      // and the active flag may change, so a document's provenance is stable.
+      /*
+       * Attachments are superseded, not edited. Only the supersession pointer
+       * and the active flag may change, so a document's provenance is stable.
+       *
+       * ---- AND NOT AFTER THE PAPERS ARE CLOSED --------------------------
+       *
+       * `attachmentsOpen` was on the CREATE only, which left the lock half
+       * built: nothing further could be ATTACHED to a certified record, but a
+       * browser could still set active:false on what was already there - and
+       * an attachment with active:false is off the record as far as every
+       * screen and every report is concerned.
+       *
+       * So the papers behind a certified obligation, an approved voucher or a
+       * certified treasury report could be made to disappear by a signed-in
+       * user, and the closing - whose entire purpose is to say THESE are the
+       * documents and they have not changed - would have said nothing.
+       *
+       * Checked against `resource`, the record as it stands, not
+       * `request.resource`: the parent a client claims the attachment belongs
+       * to is not the question.
+       */
       allow update: if signedIn()
-        && onlyChanged(['active', 'supersededByDocumentId', 'description', 'documentType', 'documentDate']);
+        && onlyChanged(['active', 'supersededByDocumentId', 'description', 'documentType', 'documentDate'])
+        && attachmentsOpen(resource.data.entityType, resource.data.entityId);
 
       allow delete: if signedIn() && isAdmin();
     }

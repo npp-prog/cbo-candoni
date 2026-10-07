@@ -515,6 +515,23 @@ export const certifyTreasuryReport = onCall(
         ...(type === 'RCDISB'
           ? { totalGross: verifiedGross, totalDeductions: verifiedDeductions }
           : {}),
+        /*
+         * THE SIGNED FORM IS FIXED HERE.
+         *
+         * Certifying forwards the report to Accounting and locks every
+         * document it covers to it. The certificate is a statement ABOUT the
+         * attached paper, so paper that can still be taken off the record
+         * afterwards would make the certificate a statement about nothing.
+         *
+         * The same field certifyObligation and the manual closing write.
+         */
+        attachmentsLockedAt: now,
+        attachmentsLockedBy: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+        },
         certifiedAt: now,
         certifiedBy: {
           uid: caller.uid,

@@ -23,10 +23,22 @@ const VARIANTS: Record<Variant, string> = {
   success: 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 shadow-sm disabled:bg-emerald-300',
 };
 
+/*
+ * A MINIMUM WIDTH PER SIZE, SO A ROW OF BUTTONS IS A ROW.
+ *
+ * Padding alone sizes a button to its own label, so "Add a line" came out
+ * visibly narrower than "Upload a schedule" sitting beside it and the pair
+ * read as two unrelated controls rather than one set of choices. The minimum
+ * holds the short ones out to the width of a normal label; a longer label
+ * still grows past it rather than being clipped.
+ *
+ * `justify-center` is what makes the extra width look deliberate - without it
+ * the label sits left in a wide box.
+ */
 const SIZES: Record<Size, string> = {
-  sm: 'text-xs px-2.5 py-1.5 gap-1.5',
-  md: 'text-sm px-3.5 py-2 gap-2',
-  lg: 'text-sm px-5 py-2.5 gap-2',
+  sm: 'text-xs px-2.5 py-1.5 gap-1.5 min-w-[6rem]',
+  md: 'text-sm px-3.5 py-2 gap-2 min-w-[8rem]',
+  lg: 'text-sm px-5 py-2.5 gap-2 min-w-[9rem]',
 };
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(

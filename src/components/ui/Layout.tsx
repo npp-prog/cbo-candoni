@@ -189,6 +189,21 @@ export function Alert({
   );
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * EVERY TAB IS AT LEAST AS WIDE AS EVERY OTHER
+ * ---------------------------------------------------------------------------
+ * A tab sized only by its padding is as wide as its own label, so "Schedule"
+ * came out half the width of "Sources of Financing" beside it and the two read
+ * as unrelated controls rather than one choice with two answers.
+ *
+ * A MINIMUM rather than a fixed width, deliberately. Fixing every tab to the
+ * same width works on a strip of two and falls apart on the strip of eleven
+ * under Master Data: eleven equal columns either run off the screen or squeeze
+ * the labels until "Collection Intermediaries" is unreadable. The minimum
+ * evens up the short ones, which is where the unevenness shows, and lets a
+ * long label grow past it.
+ */
 export function Tabs({
   tabs,
   active,
@@ -206,7 +221,8 @@ export function Tabs({
             key={tab.id}
             onClick={() => onChange(tab.id)}
             className={clsx(
-              'whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
+              'inline-flex items-center justify-center whitespace-nowrap border-b-2',
+              'min-w-[7rem] px-3 py-2.5 text-sm font-medium transition-colors',
               active === tab.id
                 ? 'border-brand-600 text-brand-700'
                 : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-navy-800',

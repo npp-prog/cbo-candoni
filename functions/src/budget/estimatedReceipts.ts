@@ -47,6 +47,48 @@ import {
 
 const RECEIPT_RECORDERS: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER', 'MUNICIPAL_TREASURER'];
 
+/**
+ * Only the Budget Officer re-opens a closed schedule.
+ *
+ * Narrower than RECEIPT_RECORDERS on purpose. The Treasurer may RECORD the
+ * year's estimate - they are the officer who knows what the municipality will
+ * collect - but re-opening one the office has already closed is a budget
+ * decision, and the Budget Officer owns it.
+ */
+const RECEIPT_UNLOCKERS: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER'];
+
+/**
+ * The lock marker for one fund's schedule in one year.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE SCHEDULE CLOSES WHEN IT IS SAVED
+ * ---------------------------------------------------------------------------
+ * The estimated receipts are not a working note. Two statutory limits rest on
+ * their total - the LDRRMF and the Personal Services cap - and the SRE reports
+ * actual collections against them. A figure that quietly changes after the
+ * appropriation has been drawn against it changes the ceiling the Sanggunian
+ * appropriated under, with nothing on the record saying it moved.
+ *
+ * The commonest way that happens is not a decision. It is a second upload: the
+ * same schedule, corrected in the spreadsheet, loaded again in REPLACE mode by
+ * somebody who does not know the first one is already in use.
+ *
+ * So saving closes it, and re-opening is a deliberate act by the Budget
+ * Officer with a reason attached and a CRITICAL line in the audit trail. The
+ * lock does not stop the Budget Officer doing anything; it stops it happening
+ * by accident, and it leaves a record when it happens on purpose.
+ */
+const lockId = (fiscalYear: number, fundCode: string) => `${fiscalYear}__${fundCode}`;
+
+interface ReceiptLock {
+  fiscalYear: number;
+  fundCode: string;
+  lockedAt: string;
+  lockedBy: { uid: string; name: string; position?: string | null };
+  lineCount: number;
+  total: number;
+}
+
 /** Firestore's own ceiling is 500 writes to a transaction; this stays inside it. */
 const MAX_LINES = 400;
 
@@ -190,8 +232,28 @@ export const recordEstimatedReceipts = onCall(
     const stamp = { uid: caller.uid, name: caller.name };
     const fileName = String(data.fileName ?? '').trim();
 
+    const lockRef = db.collection(COL.estimatedReceiptLocks).doc(lockId(fiscalYear, fundCode));
+
     const written = await db.runTransaction(async (tx) => {
+      /*
+       * READ BEFORE ANY WRITE, as every transaction in this engine does.
+       * Reading the lock inside the transaction is what makes it a lock: two
+       * uploads arriving together cannot both find it open.
+       */
+      const lockSnap = await tx.get(lockRef);
       await assertFiscalYearOpen(fiscalYear, tx);
+
+      if (lockSnap.exists) {
+        const lock = lockSnap.data() as ReceiptLock;
+        throw new HttpsError(
+          'failed-precondition',
+          `The ${fundCode} receipts schedule for ${fiscalYear} was closed by ` +
+            `${lock.lockedBy?.name ?? 'an officer'} on ${String(lock.lockedAt).slice(0, 10)} ` +
+            `and cannot be changed. Two statutory limits and the SRE are worked out from its ` +
+            `total, so it is not re-opened by uploading over it. The Budget Officer can re-open ` +
+            `it from Budget, Estimated Receipts - the reason is recorded. Nothing was recorded.`,
+        );
+      }
 
       const keep = new Set(
         lines.map((l) =>
@@ -253,6 +315,20 @@ export const recordEstimatedReceipts = onCall(
           `${peso(total)}${fileName ? ` · ${fileName}` : ''}.`,
       });
 
+      /*
+       * Closed in the SAME transaction that wrote the lines. Closing it
+       * afterwards would leave a window in which a second upload could land on
+       * an open schedule that already has figures in it.
+       */
+      tx.set(lockRef, {
+        fiscalYear,
+        fundCode,
+        lockedAt: now,
+        lockedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null },
+        lineCount: lines.length,
+        total,
+      });
+
       return { lineCount: lines.length, removed, total };
     });
 
@@ -262,5 +338,90 @@ export const recordEstimatedReceipts = onCall(
       mode,
       ...written,
     };
+  },
+);
+
+/**
+ * unlockEstimatedReceipts - the Budget Officer re-opens a closed schedule.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THIS IS AND IS NOT
+ * ---------------------------------------------------------------------------
+ * It is not a control against the Budget Officer. They can re-open any
+ * schedule, which is right: they own the budget, and an estimate that turned
+ * out wrong has to be correctable.
+ *
+ * What it is: a stop on the schedule changing BY ACCIDENT - a second upload of
+ * a corrected spreadsheet landing on figures the appropriation has already
+ * been drawn against - and a record when it changes on purpose. The reason is
+ * required for the same reason a cancellation reason is: in a year's time the
+ * question will be why the year's estimated income moved, and "somebody
+ * re-uploaded it" is not an answer anybody can act on.
+ *
+ * Recorded CRITICAL. Two statutory limits rest on the total this re-opens.
+ */
+export const unlockEstimatedReceipts = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, RECEIPT_UNLOCKERS);
+    const { fiscalYear: yearIn, fundCode: fundIn, reason } = (request.data ?? {}) as {
+      fiscalYear?: number;
+      fundCode?: string;
+      reason?: string;
+    };
+
+    const fiscalYear = Number(yearIn);
+    if (!Number.isInteger(fiscalYear)) throw invalid('A fiscal year is required.');
+
+    const fundCode = String(fundIn ?? '').trim();
+    if (!fundCode) throw invalid('A fund is required.');
+
+    const why = String(reason ?? '').trim();
+    if (!why) {
+      throw invalid(
+        'A reason for re-opening the schedule is required. The LDRRMF and Personal Services ' +
+          'limits are worked out from its total, so a change to it has to be answerable.',
+      );
+    }
+
+    assertFundInScope(caller, fundCode);
+
+    const ref = db.collection(COL.estimatedReceiptLocks).doc(lockId(fiscalYear, fundCode));
+
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      await assertFiscalYearOpen(fiscalYear, tx);
+
+      if (!snap.exists) {
+        throw new HttpsError(
+          'failed-precondition',
+          `The ${fundCode} receipts schedule for ${fiscalYear} is already open.`,
+        );
+      }
+
+      const lock = snap.data() as ReceiptLock;
+      tx.delete(ref);
+
+      recordTransition(tx, {
+        caller,
+        event: 'SETTINGS_CHANGE',
+        entityType: COL.estimatedReceipts,
+        entityId: lockId(fiscalYear, fundCode),
+        entityRef: `Estimated receipts ${fundCode} ${fiscalYear}`,
+        fiscalYear,
+        fundCode,
+        // REOPEN, which already means exactly this elsewhere in the engine.
+        action: 'REOPEN',
+        previousStatus: 'APPROVED',
+        newStatus: 'DRAFT',
+        severity: 'CRITICAL',
+        remarks:
+          `Re-opened for editing. Closed by ${lock.lockedBy?.name ?? 'an officer'} on ` +
+          `${String(lock.lockedAt).slice(0, 10)} at ${peso(lock.total ?? 0)} over ` +
+          `${lock.lineCount ?? 0} line${lock.lineCount === 1 ? '' : 's'}. Reason: ${why}`,
+      });
+
+      return { fiscalYear, fundCode, reopened: true };
+    });
   },
 );

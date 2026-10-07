@@ -779,6 +779,28 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       dvNo,
       status: 'APPROVED',
       /*
+       * THE SUPPORTING PAPERS ARE FIXED HERE.
+       *
+       * Approving posts the entry to the General Ledger and says the officer
+       * saw these documents and committed the municipality's money on them. A
+       * scan that can be swapped or taken off the record afterwards is not
+       * evidence of anything, and the approval would be attached to a file
+       * nobody can prove was there.
+       *
+       * The same field the manual closing and certifyObligation write, so the
+       * rule on /documents has one thing to consult. Not cleared by
+       * unapproveDv: taking an approval back lets the FIGURES be corrected; it
+       * does not unsee the papers.
+       */
+      attachmentsLockedAt: now,
+      attachmentsLockedBy: {
+        uid: caller.uid,
+        name: caller.name,
+        position: caller.position ?? null,
+        at: now,
+      },
+
+      /*
        * It stays with Accounting. The voucher is approved and in the books,
        * and the one thing left is a decision somebody in this office makes:
        * whether to send it over to be paid.

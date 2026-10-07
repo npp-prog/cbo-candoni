@@ -117,7 +117,52 @@ export default function EstimatedReceipts() {
   const [uploadName, setUploadName] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const canEdit = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'MUNICIPAL_TREASURER');
+  /*
+   * Whether this year's schedule is closed.
+   *
+   * Two statutory limits and the SRE are worked out from its total, so once it
+   * has been saved it is not changed by uploading over it. The engine refuses
+   * regardless of what this screen offers; reading it here is so the officer
+   * is told why rather than finding out by pressing Save.
+   */
+  const lock = useDocument<{
+    lockedAt?: string;
+    lockedBy?: { name?: string };
+    lineCount?: number;
+    total?: number;
+  }>(COL.estimatedReceiptLocks, `${fiscalYear}__${fundCode}`);
+  const locked = Boolean(lock.data?.lockedAt);
+
+  const mayRecord = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'MUNICIPAL_TREASURER');
+  /* Only the Budget Officer re-opens one. The engine checks again. */
+  const mayUnlock = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER');
+  const canEdit = mayRecord && !locked;
+
+  const [reopening, setReopening] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopenBusy, setReopenBusy] = useState(false);
+
+  const reopen = async () => {
+    if (!reopenReason.trim()) return;
+    setReopenBusy(true);
+    try {
+      await engine.unlockEstimatedReceipts({
+        fiscalYear,
+        fundCode,
+        reason: reopenReason.trim(),
+      });
+      toast.success(
+        'Schedule re-opened',
+        'It can be recorded over now. Saving closes it again, and this re-opening is in the audit trail.',
+      );
+      setReopening(false);
+      setReopenReason('');
+    } catch (err) {
+      toast.error('Could not re-open it', err instanceof Error ? err.message : String(err));
+    } finally {
+      setReopenBusy(false);
+    }
+  };
 
   // The stored rows seed the table once. After that the table is the truth, or
   // an edit in progress would be overwritten by the next snapshot.
@@ -343,10 +388,67 @@ export default function EstimatedReceipts() {
         }
       />
 
+      {locked && (
+        <Alert tone="warning" className="mb-4" title="This schedule is closed">
+          <p>
+            Closed by {lock.data?.lockedBy?.name ?? 'an officer'} on{' '}
+            {String(lock.data?.lockedAt ?? '').slice(0, 10)} at{' '}
+            {formatPeso(lock.data?.total ?? 0)} over {lock.data?.lineCount ?? 0} line
+            {lock.data?.lineCount === 1 ? '' : 's'}.
+          </p>
+          <p className="mt-2">
+            The LDRRMF and Personal Services limits are worked out from this total, and the
+            appropriation may already have been drawn against it - so it is not changed by
+            uploading over it.
+            {mayUnlock
+              ? ' Re-open it to record a correction; the reason is recorded in the audit trail.'
+              : ' The Budget Officer can re-open it.'}
+          </p>
+          {mayUnlock && !reopening && (
+            <Button size="sm" className="mt-3" onClick={() => setReopening(true)}>
+              Re-open for editing
+            </Button>
+          )}
+          {mayUnlock && reopening && (
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <div className="min-w-[20rem] flex-1">
+                <label className="cbo-label" htmlFor="reopen-reason">
+                  Why is it being re-opened?
+                </label>
+                <TextInput
+                  id="reopen-reason"
+                  value={reopenReason}
+                  onChange={(e) => setReopenReason(e.target.value)}
+                  placeholder="The reason a year from now, not today"
+                />
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={reopenBusy}
+                disabled={!reopenReason.trim()}
+                onClick={() => void reopen()}
+              >
+                Re-open it
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setReopening(false);
+                  setReopenReason('');
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+        </Alert>
+      )}
+
       <Tabs
         tabs={[
           { id: 'schedule', label: 'Schedule', count: filled.length },
-          { id: 'form', label: 'LBP Form No. 1 · Receipts' },
+          { id: 'form', label: 'Sources of Financing' },
         ]}
         active={tab}
         onChange={(id) => setTab(id as 'schedule' | 'form')}

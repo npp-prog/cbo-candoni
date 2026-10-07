@@ -1802,6 +1802,82 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+
+// --- 33. A data hook is never called conditionally --------------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE SCREEN THAT WENT WHITE
+ * ---------------------------------------------------------------------------
+ * `useBankTransactions` read, for a long time:
+ *
+ *     if (!bankAccountId) return { data: [], loading: false, error: null };
+ *     ...
+ *     return useCollection(...)
+ *
+ * which looks like an ordinary guard clause and is not. It is a HOOK called
+ * conditionally. With no account chosen the function returns having called
+ * nothing; with one chosen it calls useCollection, which calls several hooks
+ * of its own. React matches hooks between renders BY POSITION, so the render
+ * where the account arrives has more hooks than the one before it, and React
+ * responds by throwing and unmounting the tree.
+ *
+ * Bank Reconciliation auto-selects the bank account when the fund has exactly
+ * one, which Candoni's General Fund does. So the page rendered, chose the only
+ * account, and went WHITE on the next render. No error on screen, nothing in
+ * the interface to report, and no test caught it because the components are
+ * not rendered in the test suite at all.
+ *
+ * The honest form is the one useWorkflowHistory has always used: pass a null
+ * PATH to useCollection, which returns an empty settled result, and call the
+ * hook every time.
+ *
+ * This refuses the shape. It is deliberately narrow - an early return that
+ * sits before the first use* call inside an exported hook - because that is
+ * the shape that reached the office.
+ */
+{
+  const file = resolve(root, 'src/data/queries.ts');
+  const source = existsSync(file)
+    ? readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '')
+    : '';
+
+  if (!source) {
+    failures.push('src/data/queries.ts: not found. Every screen reads its data through it.');
+  } else {
+    let offenders = 0;
+    let checked = 0;
+
+    /* Exported arrow hooks with a BLOCK body - the only ones that can return early. */
+    for (const m of source.matchAll(
+      /export const (use\w+)\s*=\s*\([^)]*\)\s*(?::[^=]*?)?=>\s*\{([\s\S]*?)\n\};/g,
+    )) {
+      const [, name, body] = m;
+      checked += 1;
+
+      const early = /\n\s*if\s*\([^)]*\)\s*(?:\{\s*)?return\b/.exec(body);
+      const firstHook = /\buse[A-Z]\w*\s*[<(]/.exec(body);
+      if (!early || !firstHook) continue;
+      if (early.index > firstHook.index) continue;
+
+      offenders += 1;
+      failures.push(
+        `src/data/queries.ts: ${name} returns before it calls a hook. React matches hooks ` +
+          'between renders by position, so the render where the argument arrives calls more ' +
+          'hooks than the one before it and React unmounts the whole tree - the screen goes ' +
+          'white with nothing to report. Pass a null PATH to useCollection instead, as ' +
+          'useWorkflowHistory does, and call the hook every time.',
+      );
+    }
+
+    if (offenders === 0) {
+      console.log(`hooks: ${checked} data hooks call their hooks unconditionally`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

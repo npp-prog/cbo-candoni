@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
@@ -23,6 +24,7 @@ import { canReleaseCheck, canUndoOutright } from '@/lib/releaseControl';
 import type { Check } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
 import { PAYMENT_TABS } from './sections';
+import { InstrumentDetail } from './InstrumentDetail';
 
 /**
  * The check register.
@@ -36,6 +38,12 @@ import { PAYMENT_TABS } from './sections';
  */
 export default function Checks() {
   const { fiscalYear, fundCode } = useFilters();
+  const navigate = useNavigate();
+  /*
+   * The row that is open, taken from the address rather than from state, so a
+   * check can be linked to. See InstrumentDetail.
+   */
+  const { id: openId } = useParams<{ id: string }>();
   const { hasRole, can } = useAuth();
   const toast = useToast();
 
@@ -81,6 +89,17 @@ export default function Checks() {
       setBusy(false);
     }
   };
+
+  /*
+   * Taken from the loaded records rather than fetched again: the register is a
+   * live subscription, so this is the same record the row shows and the two
+   * cannot disagree.
+   *
+   * From `data` and not `rows`, deliberately. `rows` is what the filters have
+   * left on screen, so a link opened with a different bank account or status
+   * selected would find nothing and show an empty page with no explanation.
+   */
+  const openCheck = openId ? (data.find((r) => r.id === openId) ?? null) : null;
 
   const columns: Column<Check>[] = [
     {
@@ -221,6 +240,7 @@ export default function Checks() {
       <DataTable
         rows={rows}
         columns={columns}
+        onRowClick={(r) => navigate(`/treasury/checks/${r.id}`)}
         rowKey={(c) => c.id}
         loading={loading}
         error={error}
@@ -312,6 +332,13 @@ export default function Checks() {
           </>
         }
       />
+      {openCheck && (
+        <InstrumentDetail
+          instrument={{ kind: 'CHECK', ...openCheck }}
+          onClose={() => navigate('/treasury/checks')}
+        />
+      )}
+
     </div>
   );
 }
