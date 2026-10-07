@@ -72,7 +72,7 @@ describe('groupForPath', () => {
     // two tabs - so the surviving headings are the ones to ask about.
     expect(groupForPath('/treasury/collections')).toEqual({
       sectionTo: '/treasury',
-      group: 'Registers',
+      group: 'Treasury transactions',
     });
   });
 
@@ -81,7 +81,7 @@ describe('groupForPath', () => {
    * does not open a different heading because a shorter address also matched.
    */
   it('prefers the longest matching item when two both match', () => {
-    expect(groupForPath('/treasury/disbursements')?.group).toBe('Registers');
+    expect(groupForPath('/treasury/disbursements')?.group).toBe('Treasury transactions');
     expect(groupForPath('/master-data/accounts')?.group).toBeUndefined();
   });
 
@@ -107,7 +107,7 @@ describe('groupForPath', () => {
       '/treasury/collections/rcd',
       '/treasury/raaf',
     ]) {
-      expect(groupForPath(path)?.group, path).toBe('Registers');
+      expect(groupForPath(path)?.group, path).toBe('Treasury transactions');
     }
   });
 
@@ -218,24 +218,43 @@ describe('the menu itself', () => {
 
   /**
    * The register is read after the fact, so it comes after the four screens
-   * that raise entries rather than before them - and it is in that group at
-   * all because an accountant looking for an entry looks where entries are
-   * made.
+   * that raise entries rather than before them.
+   *
+   * It used to be the fifth item INSIDE the heading, on the argument that an
+   * accountant looking for an entry looks where entries are made. Patch 101
+   * took it out: the heading says "transactions", and a read-only book is not
+   * one. It still sits in the same place in the list - between the screens
+   * that write entries and the screens that watch them - which is what this
+   * checks.
    */
   it('puts the Journal Entries Register straight after General Transactions', () => {
     const accounting = NAVIGATION.find((i) => i.to === '/accounting');
     const children = accounting?.children ?? [];
     const others = children.findIndex((c) => c.to === '/accounting/general-transactions');
     const register = children.findIndex((c) => c.to === '/accounting/journal-entries');
+    const monitoring = children.findIndex((c) => c.to === ACCOUNTING_MONITORING_TABS[0].to);
 
     expect(others, 'General Transactions is not in the Accounting menu').toBeGreaterThan(-1);
     expect(register, 'the Journal Entries Register is not in the Accounting menu').toBe(others + 1);
-    expect(children[register].group).toBe('Accounting transactions');
+
+    /*
+     * AND IT IS NO LONGER UNDER THE HEADING. General Transactions is the last
+     * of the four acts; the register is the book they land in. Under a heading
+     * that says "transactions" it was the one item that is not one, which is
+     * how a heading stops describing what is under it.
+     *
+     * The position is still checked, because loose does not mean anywhere: it
+     * sits after the transactions that write entries and before the screens
+     * that watch them, and either way round would read as belonging to the
+     * wrong neighbour.
+     */
+    expect(children[register].group, 'the register is back inside a heading').toBeUndefined();
+    expect(monitoring, 'Monitoring is not in the Accounting menu').toBe(register + 1);
   });
 
   it('keeps the Treasury registers to the books the office writes in', () => {
     const treasury = NAVIGATION.find((i) => i.to === '/treasury');
-    const registers = (treasury?.children ?? []).filter((c) => c.group === 'Registers');
+    const registers = (treasury?.children ?? []).filter((c) => c.group === 'Treasury transactions');
     expect(registers.map((r) => r.label)).toEqual([
       'Checks and ADA',
       'Collections and Deposits',
@@ -634,7 +653,7 @@ describe('the reports that left the Treasury menu', () => {
    */
   it('starts every strip with the register it belongs to', () => {
     const registers = (NAVIGATION.find((i) => i.to === '/treasury')?.children ?? [])
-      .filter((c) => c.group === 'Registers')
+      .filter((c) => c.group === 'Treasury transactions')
       .map((c) => c.to);
 
     for (const strip of [COLLECTION_TABS, PAYMENT_TABS, PAYROLL_TABS, ACCOUNTABLE_FORM_TABS]) {

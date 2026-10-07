@@ -165,7 +165,28 @@ export const NAVIGATION: NavItem[] = [
        * entries were made in March" used to have to open each of the four and
        * add them up.
        */
-      { group: 'Accounting transactions', label: 'Journal Entries Register', to: '/accounting/journal-entries' },
+      /*
+       * ---------------------------------------------------------------------
+       * OUT OF THE GROUP, AND THE REASON IS WHAT THE HEADING PROMISES
+       * ---------------------------------------------------------------------
+       * It was the fifth item under Accounting transactions, on the argument
+       * that an accountant looking for an entry looks where entries are made.
+       * That argument held while the heading was called "Journal Entry
+       * Transactions": the register is a journal entry thing, so it belonged
+       * among them.
+       *
+       * Under a heading that says TRANSACTIONS it no longer does. The four
+       * above are acts - a voucher raised, an advance liquidated, a report
+       * received, an entry made. The register is none of them. It is the book
+       * they all land in, read after the fact and never worked in, and a
+       * heading that promises transactions and delivers a read-only book on
+       * its last line is a heading that has stopped being true.
+       *
+       * So it stands on its own, between the transactions and what the office
+       * monitors - after the four screens that write entries, before the four
+       * screens that watch them. Its address is unchanged.
+       */
+      { label: 'Journal Entries Register', to: '/accounting/journal-entries' },
 
       // Everything below is looked at or set up, never posted. The heading is
       // not decoration: without it these would sit directly under the group
@@ -222,9 +243,9 @@ export const NAVIGATION: NavItem[] = [
     to: '/treasury',
     module: 'treasury',
     icon: 'treasury',
-    // Four groups, in the order the office works: the registers where the day's
-    // transactions are kept, the cash books those registers foot into, the
-    // reports drawn off them, and the printing that is always last.
+    // Four groups, in the order the office works: the books where the day's
+    // transactions are recorded, the cash books those foot into, the reports
+    // drawn off them, and the printing that is always last.
     //
     // The treasury reports used to live under Reports, beside the Budget and
     // Accounting ones. That grouped them by FORMAT - "things that are reports" -
@@ -233,7 +254,18 @@ export const NAVIGATION: NavItem[] = [
     // the office that prepares it.
     children: [
       // ----------------------------------------------------------------
-      // Registers: the four books the office keeps, and nothing else.
+      // Treasury transactions: the four books the office keeps, and nothing
+      // else.
+      //
+      // Called "Registers" until patch 101. The four under it are where the
+      // Treasurer's day is RECORDED - money received, money paid, a payroll
+      // settled, a form issued - which is the same kind of thing "Budget
+      // transactions" and "Accounting transactions" name in the two menus
+      // above. "Registers" named the shape of the screen instead of the work,
+      // and it was the one heading of the three that did.
+      //
+      // The books are still registers and the rule below is unchanged: these
+      // four, and nothing else.
       //
       // Four, not eight. ADA Numbers, Primary Reports and the Claim Sheet were
       // listed here beside them, which made the menu answer a question nobody
@@ -262,16 +294,16 @@ export const NAVIGATION: NavItem[] = [
       // So the item opens on Disbursements for Payment: the vouchers waiting.
       // The instrument is chosen there, on the row, and both registers and
       // both reports are tabs behind it.
-      { group: 'Registers', label: 'Checks and ADA', to: '/treasury/disbursements' },
+      { group: 'Treasury transactions', label: 'Checks and ADA', to: '/treasury/disbursements' },
       // Collections and deposits are one item: the receipt and the deposit slip
       // are two halves of the same movement of money, and the RCD reports the
       // pair. The deposits register is a tab inside it.
-      { group: 'Registers', label: 'Collections and Deposits', to: '/treasury/collections' },
-      { group: 'Registers', label: 'Payroll', to: '/treasury/payroll' },
+      { group: 'Treasury transactions', label: 'Collections and Deposits', to: '/treasury/collections' },
+      { group: 'Treasury transactions', label: 'Payroll', to: '/treasury/payroll' },
       // The stock book: which booklets of which form each accountable officer
       // holds. It is a register the office writes in, not a report it draws -
       // the report drawn from it is the RAAF, below.
-      { group: 'Registers', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
+      { group: 'Treasury transactions', label: 'Accountable Forms', to: '/treasury/accountable-forms' },
 
       // ----------------------------------------------------------------
       // Cash books: the running balances the registers foot into. Cash in
