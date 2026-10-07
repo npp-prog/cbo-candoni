@@ -1,13 +1,14 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, invalid, type Role } from '../lib/context';
+import { requireCaller, invalid, assertFundInScope, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
 import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
-import { assertFiscalYearOpen } from '../lib/period';
+import { assertFiscalYearOpen, assertPeriodOpen } from '../lib/period';
 import {
   createJevInTransaction,
   postJevInTransaction,
+  buildReversalLines,
   type JevData,
   type JevLineData,
 } from '../lib/ledger';
@@ -306,6 +307,242 @@ export const postOpeningBalances = onCall(
       });
 
       return { jevId, jevNo, lineCount: lines.length, total: totalDebit };
+    });
+  },
+);
+
+/** Just enough of the posted opening entry to reverse it. */
+interface OpeningJevForReversal {
+  jevNo: string;
+  book: string;
+  status: string;
+  period?: number;
+  reversedByJevId?: string;
+  lines: JevLineData[];
+}
+
+/**
+ * ---------------------------------------------------------------------------
+ * reopenOpeningBalances - the Accountant takes the opening position back.
+ * ---------------------------------------------------------------------------
+ *
+ * Posting opening balances was deliberately a one-way door, and the reason it
+ * was stands: an opening balance that can be re-entered is one that can be
+ * quietly changed after the fact, and every figure in the books rests on it.
+ *
+ * But a one-way door with nothing behind it is not a control, it is a trap.
+ * The realistic case is not fraud, it is the first week: a fund is converted,
+ * a whole column turns out to have been read from the wrong trial balance, and
+ * the office is told its only remedy is to adjust forty accounts one entry at
+ * a time. Faced with that, offices do the other thing - they start keeping the
+ * real opening position in a spreadsheet beside the system. A control that
+ * pushes the books out of the books is worse than no control.
+ *
+ * So the door opens, under conditions that keep it honest:
+ *
+ *   THE ENTRY IS REVERSED, NEVER DELETED. The opening JEV stays posted and
+ *   gains a reversing entry. Both are in the General Ledger afterwards, which
+ *   is what actually happened. Nothing this function does removes a line an
+ *   auditor has already seen.
+ *
+ *   THE REVERSAL IS DATED AS THE ORIGINAL, not today. This is the one place
+ *   where the engine's usual rule - reverse into the current month, never
+ *   backdate - gives the wrong answer, and it is worth saying why. An opening
+ *   balance is not an event that happened on a date; it is the STATE OF THE
+ *   BOOKS at conversion. Reversed into October, the original would still sit
+ *   in period 1 and every trial balance from January to September would keep
+ *   showing the figures now known to be wrong, while October carried a
+ *   correction belonging to none of them. Reversed where it was raised, the
+ *   two cancel exactly, and every month reads correctly once the corrected
+ *   balances are posted.
+ *
+ *   WHICH MEANS THE MONTH MUST BE OPEN. Backdating into a closed period is
+ *   the thing CFMS refuses everywhere else, and it is refused here too. If
+ *   period 1 has been closed and reported on, the opening position has been
+ *   relied upon by somebody outside this office, and the remedy is an
+ *   adjusting entry in an open month - not a rewrite of a month that has been
+ *   filed. The message says so rather than failing obscurely.
+ *
+ *   AND THE REASON IS KEPT. Recorded CRITICAL, with the figures that were
+ *   taken back, because in a year's time the question will be why the books
+ *   opened at one number and then another.
+ *
+ * Afterwards the marker is gone, so Opening Balances accepts a fresh set - the
+ * same screen, the same validation, the same once-only rule from there on.
+ */
+export const reopenOpeningBalances = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, ACCOUNTANT);
+    const { fiscalYear: yearIn, fundCode: fundIn, reason } = (request.data ?? {}) as {
+      fiscalYear?: number;
+      fundCode?: string;
+      reason?: string;
+    };
+
+    const fiscalYear = Number(yearIn);
+    if (!Number.isInteger(fiscalYear)) throw invalid('A fiscal year is required.');
+
+    const fundCode = String(fundIn ?? '').trim();
+    if (!fundCode) throw invalid('A fund is required.');
+
+    const why = String(reason ?? '').trim();
+    if (!why) {
+      throw invalid(
+        'A reason for re-opening the opening balances is required. Every balance in this ' +
+          'fund is carried from them, so a change to them has to be answerable.',
+      );
+    }
+
+    assertFundInScope(caller, fundCode);
+
+    const jevConfig = await loadNumberingConfig('JEV');
+    const bookCode = await bookCodeForFund(fundCode);
+
+    return db.runTransaction(async (tx) => {
+      // ---- READ PHASE ------------------------------------------------------
+      const markerRef = db
+        .collection(COL.openingBalances)
+        .doc(`${fiscalYear}__${fundCode}`);
+      const markerSnap = await tx.get(markerRef);
+
+      if (!markerSnap.exists) {
+        throw new HttpsError(
+          'failed-precondition',
+          `No opening balances have been posted for ${fundCode} ${fiscalYear}, so there is nothing to re-open. The screen is already accepting them.`,
+        );
+      }
+
+      const marker = markerSnap.data() as {
+        jevId?: string;
+        jevNo?: string;
+        asOfDate?: string;
+        lineCount?: number;
+        totalDebit?: number;
+        postedBy?: { name?: string };
+        postedAt?: string;
+      };
+
+      await assertFiscalYearOpen(fiscalYear, tx);
+
+      /*
+       * The period the original was raised in. It is written on the entry; the
+       * 1 is the fallback for the marker whose entry has gone missing, and
+       * matches what postOpeningBalances writes.
+       */
+      let posted: OpeningJevForReversal | null = null;
+      if (marker.jevId) {
+        const jevSnap = await tx.get(db.collection(COL.jevs).doc(marker.jevId));
+        if (jevSnap.exists) {
+          const jev = jevSnap.data() as OpeningJevForReversal;
+          if (jev.status === 'POSTED' && !jev.reversedByJevId) posted = jev;
+
+          if (jev.status === 'POSTED' && jev.reversedByJevId) {
+            /*
+             * Already reversed, marker still standing. Nothing to reverse a
+             * second time, and refusing would leave the office unable to post
+             * a corrected set at all - stuck between a reversed entry and a
+             * door that will not open. The marker is cleared and the audit
+             * line says that is what happened.
+             */
+            posted = null;
+          }
+        }
+      }
+
+      const period = posted?.period ?? 1;
+
+      let reversingNo: string | null = null;
+      if (posted) {
+        await assertPeriodOpen(
+          fiscalYear,
+          period,
+          fundCode,
+          `Reversal of the opening balances of ${fundCode} ${fiscalYear}`,
+          tx,
+        );
+        reversingNo = await issueNumber(tx, jevConfig, {
+          bookCode,
+          fundCode,
+          fiscalYear,
+          month: period,
+        });
+      }
+
+      // ---- WRITE PHASE -----------------------------------------------------
+      let reversingJevId: string | null = null;
+      let reversingJevNo: string | null = null;
+
+      if (posted && reversingNo) {
+        const reversingLines = buildReversalLines(posted.lines);
+        const reversingData = {
+          jevNo: reversingNo,
+          jevDate: marker.asOfDate ?? `${fiscalYear}-01-01`,
+          fiscalYear,
+          period,
+          fundCode,
+          book: posted.book,
+          sourceType: 'REVERSING' as const,
+          sourceId: marker.jevId!,
+          referenceNo: posted.jevNo,
+          particulars:
+            `Reversal of JEV ${posted.jevNo} - the opening balances of the ${fundCode} fund ` +
+            `for ${fiscalYear} were re-opened. ${why}`,
+          lines: reversingLines,
+        };
+
+        const created = createJevInTransaction(tx, caller, reversingData);
+        reversingJevId = created.jevId;
+        reversingJevNo = reversingNo;
+
+        postJevInTransaction(tx, caller, created.jevId, {
+          ...reversingData,
+          totalDebit: created.totalDebit,
+          totalCredit: created.totalCredit,
+          status: 'DRAFT',
+        });
+
+        // The original stays POSTED and points at what undid it. A reversed
+        // entry is not a cancelled one: both are in the books.
+        tx.update(db.collection(COL.jevs).doc(marker.jevId!), {
+          reversedByJevId: created.jevId,
+        });
+      }
+
+      // The door. Everything above it is what makes opening it safe.
+      tx.delete(markerRef);
+
+      recordTransition(tx, {
+        caller,
+        event: 'POST',
+        entityType: COL.openingBalances,
+        entityId: markerRef.id,
+        entityRef: `Opening balances ${fundCode} ${fiscalYear}`,
+        fiscalYear,
+        fundCode,
+        action: 'REOPEN',
+        previousStatus: 'POSTED',
+        newStatus: 'DRAFT',
+        severity: 'CRITICAL',
+        remarks:
+          `Re-opened for re-encoding. Posted by ${marker.postedBy?.name ?? 'an officer'} on ` +
+          `${String(marker.postedAt ?? '').slice(0, 10)} as JEV ${marker.jevNo ?? '(none)'}, ` +
+          `${marker.lineCount ?? 0} account${marker.lineCount === 1 ? '' : 's'}, ` +
+          `${((marker.totalDebit ?? 0) / 100).toFixed(2)}. ` +
+          (reversingJevNo
+            ? `Reversed by JEV ${reversingJevNo} in period ${period}.`
+            : 'The entry was already reversed; nothing further was posted.') +
+          ` Reason: ${why}`,
+      });
+
+      return {
+        fiscalYear,
+        fundCode,
+        reopened: true,
+        reversedJevNo: marker.jevNo ?? null,
+        reversingJevNo,
+        reversingJevId,
+      };
     });
   },
 );

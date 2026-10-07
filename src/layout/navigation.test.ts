@@ -113,7 +113,7 @@ describe('groupForPath', () => {
 
   it('matches a detail screen below a menu item', () => {
     expect(groupForPath('/accounting/disbursements/abc123')?.group).toBe(
-      'Journal Entry Transactions',
+      'Accounting transactions',
     );
   });
 
@@ -230,7 +230,7 @@ describe('the menu itself', () => {
 
     expect(others, 'General Transactions is not in the Accounting menu').toBeGreaterThan(-1);
     expect(register, 'the Journal Entries Register is not in the Accounting menu').toBe(others + 1);
-    expect(children[register].group).toBe('Journal Entry Transactions');
+    expect(children[register].group).toBe('Accounting transactions');
   });
 
   it('keeps the Treasury registers to the books the office writes in', () => {

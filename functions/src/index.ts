@@ -66,7 +66,7 @@ export { postLiquidation } from './accounting/liquidation';
 
 // --- Treasury ----------------------------------------------------------------
 export { postRcd, recordDeposit } from './treasury/collections';
-export { postOpeningBalances } from './accounting/opening';
+export { postOpeningBalances, reopenOpeningBalances } from './accounting/opening';
 export {
   certifyTreasuryReport,
   journalizeTreasuryReport,

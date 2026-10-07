@@ -645,12 +645,46 @@ export const engine = {
       debit?: number;
       credit?: number;
       particulars?: string;
+      /*
+        The subsidiary the balance belongs to - the payee owed, the officer
+        holding the advance, the debtor. Written out here because patch 97
+        made it a picker over the same records the journal entry uses, and a
+        field the engine's own type does not know about is a field a typo
+        drops on the floor without a word.
+      */
+      subsidiaryType?: string | null;
+      subsidiaryId?: Id | null;
+      subsidiaryName?: string | null;
+      referenceNo?: string | null;
+      agingDate?: IsoDate | null;
     }>;
   }) =>
     call<typeof p, { jevId: Id; jevNo: string; lineCount: number; total: number }>(
       'postOpeningBalances',
       p,
     ),
+
+  /**
+   * And the way back out.
+   *
+   * The opening entry is REVERSED, not deleted, and the reversal is dated
+   * where the original was raised so that every month in between still reads
+   * correctly. The month has to be open for that, which is the whole of the
+   * control: a period that has been closed and reported on is corrected by an
+   * adjusting entry, not by rewriting what was filed.
+   */
+  reopenOpeningBalances: (p: { fiscalYear: number; fundCode: string; reason: string }) =>
+    call<
+      typeof p,
+      {
+        fiscalYear: number;
+        fundCode: string;
+        reopened: boolean;
+        reversedJevNo: string | null;
+        reversingJevNo: string | null;
+        reversingJevId: Id | null;
+      }
+    >('reopenOpeningBalances', p),
 
   // -------------------------------------------------------------------------
   // Reconciliation

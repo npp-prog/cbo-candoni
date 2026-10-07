@@ -145,16 +145,16 @@ export const NAVIGATION: NavItem[] = [
     // Treasurer, and General Transactions carries what begins in Accounting
     // itself and has no source document at all.
     children: [
-      { group: 'Journal Entry Transactions', label: 'Disbursement Voucher', to: '/accounting/disbursements' },
-      { group: 'Journal Entry Transactions', label: 'Liquidation Report', to: '/accounting/liquidation' },
-      { group: 'Journal Entry Transactions', label: 'Treasury Reports', to: '/accounting/treasury-reports' },
+      { group: 'Accounting transactions', label: 'Disbursement Voucher', to: '/accounting/disbursements' },
+      { group: 'Accounting transactions', label: 'Liquidation Report', to: '/accounting/liquidation' },
+      { group: 'Accounting transactions', label: 'Treasury Reports', to: '/accounting/treasury-reports' },
       // Deliberately not called "Journal Entry Voucher". Every item in this
       // group produces a JEV - the voucher does, each treasury report does -
       // so a menu item by that name would read as though it were the only
       // place JEVs are made. This screen is for the entries that have no
       // source document of their own: manual, adjusting, closing and
       // prior-period adjustments.
-      { group: 'Journal Entry Transactions', label: 'General Transactions', to: '/accounting/general-transactions' },
+      { group: 'Accounting transactions', label: 'General Transactions', to: '/accounting/general-transactions' },
 
       /*
        * The book of every entry, after the four screens that make them.
@@ -165,7 +165,7 @@ export const NAVIGATION: NavItem[] = [
        * entries were made in March" used to have to open each of the four and
        * add them up.
        */
-      { group: 'Journal Entry Transactions', label: 'Journal Entries Register', to: '/accounting/journal-entries' },
+      { group: 'Accounting transactions', label: 'Journal Entries Register', to: '/accounting/journal-entries' },
 
       // Everything below is looked at or set up, never posted. The heading is
       // not decoration: without it these would sit directly under the group

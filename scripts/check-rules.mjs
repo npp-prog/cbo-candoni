@@ -2006,6 +2006,119 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 36. A heading is never smaller than what it holds ----------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE SMALLEST TYPE ON THE MENU WAS THE HEADING
+ * ---------------------------------------------------------------------------
+ * The sidebar has three depths - a module, a heading inside it, a screen under
+ * that heading - and nothing but type size tells them apart. The heading was
+ * set at 11px against 12px items, so it was smaller than the five screens it
+ * held: a label that looked subordinate to its own contents.
+ *
+ * It got that way quietly. The item size was raised once and the heading was
+ * not, because the two sizes were written into class strings a hundred lines
+ * apart with nothing connecting them. Sidebar.tsx names all three now, and
+ * this reads those names and insists the ladder still descends.
+ *
+ * It checks ORDER, not particular numbers. Making the whole menu bigger or
+ * smaller is a free decision; making a heading smaller than its items is the
+ * mistake, and it is the only thing refused here.
+ */
+{
+  const file = resolve(root, 'src/layout/Sidebar.tsx');
+
+  if (!existsSync(file)) {
+    failures.push('src/layout/Sidebar.tsx is missing. The menu is the whole navigation.');
+  } else {
+    const source = readFileSync(file, 'utf8');
+
+    /* Tailwind's named sizes, in pixels, plus the arbitrary text-[Npx] form. */
+    const NAMED = { 'text-2xs': 10, 'text-xs': 12, 'text-sm': 14, 'text-base': 16, 'text-lg': 18 };
+
+    const sizeOf = (cls) => {
+      const arbitrary = /^text-\[(\d+(?:\.\d+)?)px\]$/.exec(cls);
+      if (arbitrary) return Number(arbitrary[1]);
+      return Object.prototype.hasOwnProperty.call(NAMED, cls) ? NAMED[cls] : null;
+    };
+
+    const read = (name) => {
+      const m = new RegExp(`const ${name} = '([^']+)'`).exec(source);
+      return m ? m[1] : null;
+    };
+
+    const LADDER = ['SECTION_TEXT', 'GROUP_TEXT', 'ITEM_TEXT'];
+    const found = {};
+    let usable = true;
+
+    for (const name of LADDER) {
+      const cls = read(name);
+      if (cls === null) {
+        failures.push(
+          `src/layout/Sidebar.tsx no longer declares ${name}. The menu's three type sizes are ` +
+            'named in one place so the ladder between them can be checked. Writing a size back ' +
+            'into a class string hides it again, which is how a heading ended up smaller than ' +
+            'its own items.',
+        );
+        usable = false;
+        continue;
+      }
+      const px = sizeOf(cls);
+      if (px === null) {
+        failures.push(
+          `src/layout/Sidebar.tsx: ${name} is "${cls}", which this check cannot measure. Use a ` +
+            'Tailwind named size or the text-[Npx] form, so the ladder stays checkable.',
+        );
+        usable = false;
+        continue;
+      }
+      found[name] = { cls, px };
+    }
+
+    /* Every named size must actually be used, or naming it proves nothing. */
+    if (usable) {
+      for (const name of LADDER) {
+        const uses = source.split(name).length - 1;
+        if (uses < 2) {
+          failures.push(
+            `src/layout/Sidebar.tsx declares ${name} but never uses it. A size that is declared ` +
+              'and not applied is a check passing over a menu it is not describing.',
+          );
+          usable = false;
+        }
+      }
+    }
+
+    if (usable) {
+      const section = found.SECTION_TEXT;
+      const group = found.GROUP_TEXT;
+      const item = found.ITEM_TEXT;
+
+      if (!(group.px > item.px)) {
+        failures.push(
+          `src/layout/Sidebar.tsx: a group heading is ${group.cls} (${group.px}px) and the items ` +
+            `under it are ${item.cls} (${item.px}px). A heading must be LARGER than what it ` +
+            'holds - set smaller, it reads as the least important thing in its own group, which ' +
+            'is what "Budget transactions" did until patch 100.',
+        );
+      }
+
+      if (!(section.px > group.px)) {
+        failures.push(
+          `src/layout/Sidebar.tsx: a module is ${section.cls} (${section.px}px) and a heading ` +
+            `inside it is ${group.cls} (${group.px}px). The module must be the larger of the ` +
+            'two, or the menu stops saying which contains which.',
+        );
+      }
+    }
+
+    if (!failures.some((f) => f.includes('Sidebar.tsx'))) {
+      console.log('menu: a heading is larger than the items under it');
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

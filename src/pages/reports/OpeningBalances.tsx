@@ -15,6 +15,7 @@ import { formatPeso, parsePeso } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
 import type { Centavos } from '@/types/common';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ACCOUNTING_SETUP_TABS } from '@/layout/sections';
 
@@ -155,6 +156,8 @@ export default function OpeningBalances() {
   const [remarks, setRemarks] = useState('');
   const [rows, setRows] = useState<Row[]>(() => [blankRow(), blankRow(), blankRow()]);
   const [posting, setPosting] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenBusy, setReopenBusy] = useState(false);
 
   const byCode = useMemo(
     () => new Map(accounts.data.map((a) => [a.code, a])),
@@ -330,6 +333,37 @@ export default function OpeningBalances() {
     }
   };
 
+  /*
+    Re-opening. The engine reverses the posted entry and clears the marker; the
+    screen then goes back to an empty grid of its own accord, because the
+    marker is what it reads to know the fund has been opened.
+
+    The confirmation is not ceremony. Somebody arriving at this screen to LOOK
+    at what was posted is one click from undoing it, and the reversal is a real
+    entry in the General Ledger either way - so the dialog says what will
+    happen to the books before it happens, and takes the reason that goes with
+    it into the audit trail.
+  */
+  const reopen = async (reason?: string) => {
+    const why = (reason ?? '').trim();
+    if (!why) return;
+    setReopenBusy(true);
+    try {
+      const res = await engine.reopenOpeningBalances({ fiscalYear, fundCode, reason: why });
+      toast.success(
+        'Opening balances re-opened',
+        res.reversingJevNo
+          ? `JEV ${res.reversedJevNo} has been reversed by JEV ${res.reversingJevNo}. Both are in the books. Encode the corrected balances below and post them again.`
+          : 'The entry had already been reversed. Encode the corrected balances below and post them again.',
+      );
+      setReopening(false);
+    } catch (err) {
+      toast.error('Could not re-open them', err instanceof Error ? err.message : String(err));
+    } finally {
+      setReopenBusy(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -361,14 +395,62 @@ export default function OpeningBalances() {
         menu, and on its own.
       */}
 
+      <ConfirmDialog
+        open={reopening}
+        onCancel={() => setReopening(false)}
+        onConfirm={reopen}
+        loading={reopenBusy}
+        variant="danger"
+        title="Re-open the opening balances"
+        confirmLabel="Reverse and re-open"
+        requireReason
+        reasonLabel="Why the opening position is being replaced"
+        reasonHint="Written to the audit trail and read by COA. Say what was wrong with the figures, not that they were wrong."
+        message={
+          <>
+            <p>
+              JEV {existing?.jevNo} will be <strong>reversed</strong>, not deleted. A reversing
+              entry is posted in the same month it was raised, so the two cancel exactly and every
+              trial balance from that month onwards reads correctly once the corrected balances are
+              posted.
+            </p>
+            <p className="mt-2">
+              Both entries stay in the General Ledger afterwards, and so does this reason.
+            </p>
+            <p className="mt-2">
+              If that month has been closed, this will be refused. A month that has been reported
+              on is corrected by an adjusting entry, not by rewriting what was filed.
+            </p>
+          </>
+        }
+      />
+
       {checking ? null : existing ? (
         <Alert tone="info">
           Opening balances for {fundLabel(fundCode)} {fiscalYear} were posted as{' '}
           <strong>JEV {existing.jevNo}</strong> — {existing.lineCount} accounts,{' '}
           {formatPeso(existing.totalDebit)}, as at {formatLongDate(existing.asOfDate)}
-          {existing.postedBy?.name ? `, by ${existing.postedBy.name}` : ''}. They are entered once.
-          To correct a figure, record an adjusting entry under <strong>Accounting → Others</strong>,
-          so the correction is visible rather than the original being changed.
+          {existing.postedBy?.name ? `, by ${existing.postedBy.name}` : ''}.
+          <p className="mt-2">
+            To correct ONE figure, record an adjusting entry under{' '}
+            <strong>Accounting → Others</strong>. That is the right remedy almost always: the
+            correction is visible, and nothing already reported on moves.
+          </p>
+          {canPost && (
+            <>
+              <p className="mt-2">
+                To replace the WHOLE set - a column read from the wrong trial balance, a fund
+                converted before its figures were final - re-open them. JEV {existing.jevNo} is
+                reversed rather than deleted, so the books carry the entry, its reversal and
+                whatever is posted next.
+              </p>
+              <div className="mt-3">
+                <Button variant="secondary" onClick={() => setReopening(true)}>
+                  Re-open these balances
+                </Button>
+              </div>
+            </>
+          )}
         </Alert>
       ) : !canPost ? (
         <Alert tone="info">

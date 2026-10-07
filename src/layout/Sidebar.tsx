@@ -42,6 +42,30 @@ import { useAuth } from '@/auth/AuthProvider';
  * ---------------------------------------------------------------------------
  */
 
+/**
+ * ---------------------------------------------------------------------------
+ * THE MENU'S THREE SIZES
+ * ---------------------------------------------------------------------------
+ * The rail has three depths - a module, a heading inside it, a screen under
+ * that heading - and type size is what says which is which. Smaller means
+ * further in.
+ *
+ * It was wrong. The heading was set at 11px against 12px items, so "Budget
+ * transactions" was the SMALLEST type on the menu and the five screens it
+ * holds looked more important than the heading they belong to. Nobody reports
+ * a thing like that as a fault; it just makes a menu harder to read than it
+ * needs to be, every day, for everyone.
+ *
+ * They are named here rather than written into three class strings a hundred
+ * lines apart, because that is how the ladder came apart in the first place:
+ * the item size was raised once and the heading was not, and nothing connected
+ * the two. `npm run verify` section 36 now reads these three and refuses a
+ * build where a heading is not larger than what sits under it.
+ */
+const SECTION_TEXT = 'text-sm'; /* 14px - a module: Budget, Accounting, Treasury */
+const GROUP_TEXT = 'text-[13px]'; /* 13px - a heading inside one */
+const ITEM_TEXT = 'text-xs'; /* 12px - a screen under that heading */
+
 const GROUPS_KEY = 'cbo.nav.openGroups';
 
 /** A group's identity has to include its section: two sections may both have "Reports". */
@@ -147,7 +171,8 @@ export function Sidebar({
         onClick={onMobileClose}
         className={({ isActive: active }) =>
           clsx(
-            'block rounded px-2.5 py-1.5 text-xs transition-colors',
+            'block rounded px-2.5 py-1.5 transition-colors',
+            ITEM_TEXT,
             /*
               `active` alone is NavLink's own address match, which goes dark the
               moment the officer moves to a tab whose address sits elsewhere -
@@ -218,7 +243,8 @@ export function Sidebar({
                           });
                         }}
                         className={clsx(
-                          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors',
+                          SECTION_TEXT,
                           isActive ? 'bg-navy-800 text-white' : 'hover:bg-navy-800/60 hover:text-white',
                           collapsed && 'justify-center px-2',
                         )}
@@ -273,7 +299,22 @@ export function Sidebar({
                                     // menu harder to skim, not easier, and they
                                     // take the shape off a word - "ADA Numbers"
                                     // and "Ada numbers" stop looking different.
-                                    'flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[11px]',
+                                    /*
+                                      A HEADING IS NEVER SMALLER THAN WHAT IT
+                                      HOLDS. This read text-[11px] against
+                                      text-xs items beneath it, so "Budget
+                                      transactions" was literally the smallest
+                                      type in the menu and the items it holds
+                                      looked more important than the heading
+                                      they belong to.
+
+                                      The ladder now runs section 14px, heading
+                                      13px, item 12px - each step down one size,
+                                      which is what says "inside". Checked by
+                                      `npm run verify`, section 36.
+                                    */
+                                    'flex w-full items-center gap-1 rounded px-1.5 py-1 text-left',
+                                    GROUP_TEXT,
                                     'font-semibold tracking-normal transition-colors',
                                     groupOpen
                                       ? 'text-slate-400 hover:text-slate-200'
@@ -283,7 +324,7 @@ export function Sidebar({
                                 >
                                   <svg
                                     className={clsx(
-                                      'h-3 w-3 shrink-0 transition-transform',
+                                      'h-3.5 w-3.5 shrink-0 transition-transform',
                                       groupOpen && 'rotate-90',
                                     )}
                                     viewBox="0 0 20 20"
@@ -300,14 +341,26 @@ export function Sidebar({
                                   {/* The count is the only sign that a folded
                                       heading is a door rather than a label. */}
                                   {!groupOpen && (
-                                    <span className="shrink-0 rounded bg-navy-800 px-1.5 py-px text-[9px] font-medium tabular-nums text-slate-400">
+                                    <span className="shrink-0 rounded bg-navy-800 px-1.5 py-px text-[10px] font-medium tabular-nums text-slate-400">
                                       {block.items.length}
                                     </span>
                                   )}
                                 </button>
 
+                                {/*
+                                  INDENTED, and tied to its heading by a rule.
+                                  These sat at exactly the indent of the
+                                  heading above them, so a heading and the five
+                                  items under it read as six things in a list
+                                  rather than one thing containing five. The
+                                  left margin puts the item text under the
+                                  heading text - past its arrow, which is what
+                                  makes the containment visible at a glance.
+                                */}
                                 {groupOpen && (
-                                  <ul className="mt-0.5 space-y-0.5">{block.items.map(renderChild)}</ul>
+                                  <ul className="mt-0.5 ml-2 space-y-0.5 border-l border-navy-800 pl-1.5">
+                                    {block.items.map(renderChild)}
+                                  </ul>
                                 )}
                               </li>
                             );
@@ -322,7 +375,8 @@ export function Sidebar({
                       onClick={onMobileClose}
                       className={({ isActive: active }) =>
                         clsx(
-                          'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                          'flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors',
+                          SECTION_TEXT,
                           active ? 'bg-brand-600 text-white' : 'hover:bg-navy-800/60 hover:text-white',
                           collapsed && 'justify-center px-2',
                         )
