@@ -586,13 +586,53 @@ service cloud.firestore {
         && createdByCaller()
         && request.resource.data.status == 'ISSUED'
         && fundAllowed(request.resource.data.fundCode);
-      // An official receipt already issued to a citizen is not editable; it is
-      // cancelled and reissued. Only pre-RCD corrections of non-monetary
-      // details are permitted.
+      /*
+       * ---- EDITABLE UNTIL IT IS REPORTED ---------------------------------
+       *
+       * This rule used to allow only the payor's name, TIN and remarks to
+       * change, on the principle that an official receipt issued to a citizen
+       * is not editable - it is cancelled and reissued. That is the right
+       * principle for the PAPER. It was the wrong rule for the ENCODING of it,
+       * and the office said so: an OR number or an amount mistyped at the
+       * counter could not be put right at all, and the only route left was to
+       * cancel a receipt the taxpayer is holding.
+       *
+       * So what is protected is not the receipt. It is everything downstream
+       * of it:
+       *
+       *   ONCE A CERTIFIED REPORT HAS CLAIMED IT, nothing changes. The
+       *   Treasurer has sworn to a list and a total, Accounting has raised an
+       *   entry from it, and the figure is in the General Ledger. A receipt
+       *   that could be edited afterwards would move a posted entry's total
+       *   with nothing anywhere saying it had moved.
+       *
+       *   A CANCELLED RECEIPT STAYS CANCELLED, so a cancellation cannot be
+       *   quietly undone by editing the record back.
+       *
+       *   THE FUND AND THE YEAR NEVER CHANGE, because they decide which books
+       *   and which period the money belongs to; moving a receipt between them
+       *   by editing it would take it out of one set of reports and into
+       *   another with no trace.
+       *
+       * Checked with get(...) rather than `in`, because withdrawing a report
+       * sets the field to null - and a receipt released by a withdrawn report
+       * has to be editable again, or withdrawing would be a one-way door.
+       */
       allow update: if signedIn()
         && hasAny(treasuryRoles())
-        && resource.data.status == 'ISSUED'
-        && onlyChanged(['payorName', 'payorTin', 'remarks', 'updatedBy']);
+        && fundAllowed(resource.data.fundCode)
+        && resource.data.get('treasuryReportId', null) == null
+        && resource.data.status != 'CANCELLED'
+        && request.resource.data.status in ['ISSUED', 'IN_RCD', 'DEPOSITED', 'CANCELLED']
+        && didNotChange([
+          'createdBy',
+          'fiscalYear',
+          'fundCode',
+          // The engine's to write, at certification.
+          'treasuryReportId',
+          'treasuryReportNo',
+          'treasuryReportType',
+        ]);
       allow delete: if false;
     }
 

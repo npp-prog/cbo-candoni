@@ -17,12 +17,13 @@ import {
   useOffices,
   useTrustPrograms,
 } from '@/data/queries';
-import { createDraft, actorStamp } from '@/data/mutations';
+import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
 import { isRptAccount, sharesWithBarangay } from '@/pages/reports/rptAbstractReport';
 import { receiptDetailProblems, describeProblems } from '@/lib/receiptDetail';
+import { collectionEditable } from '@/lib/collectionEditable';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
@@ -59,6 +60,7 @@ export default function ECollections() {
   const { data, loading, error } = useCollections(fiscalYear, fundCode);
 
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Collection | null>(null);
   const [kindFilter, setKindFilter] = useState('');
 
   const rows = useMemo(
@@ -146,6 +148,18 @@ export default function ECollections() {
         ) : (
           <span className="text-xs text-slate-400">Not yet reported</span>
         ),
+    },
+    {
+      key: 'edit',
+      header: '',
+      width: '5rem',
+      value: () => '',
+      cell: (c) =>
+        can('treasury', 'create') && collectionEditable(c) ? (
+          <Button size="sm" variant="ghost" onClick={() => setEditing(c)}>
+            Edit
+          </Button>
+        ) : null,
     },
     {
       key: 'status',
@@ -236,6 +250,20 @@ export default function ECollections() {
         }
       />
 
+      {editing && (
+        <ECollectionForm
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          existing={data}
+          editingRecord={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(no) => {
+            setEditing(null);
+            toast.success('e-Collection corrected', `${no} has been updated.`);
+          }}
+        />
+      )}
+
       {showForm && (
         <ECollectionForm
           fiscalYear={fiscalYear}
@@ -256,6 +284,7 @@ function ECollectionForm({
   fiscalYear,
   fundCode,
   existing,
+  editingRecord,
   onClose,
   onSaved,
 }: {
@@ -263,6 +292,8 @@ function ECollectionForm({
   fundCode: string;
   /** Every collection of the year, for the duplicate-number check. */
   existing: Collection[];
+  /** The record being corrected, where one is. */
+  editingRecord?: Collection | null;
   onClose: () => void;
   onSaved: (receiptNo: string) => void;
 }) {
@@ -275,21 +306,33 @@ function ECollectionForm({
   const intermediaries = useIntermediaries();
   const offices = useOffices();
 
-  const [kind, setKind] = useState<ECollectionKind>('EOR');
+  const [kind, setKind] = useState<ECollectionKind>(
+    (editingRecord?.eCollectionKind as ECollectionKind) ?? 'EOR',
+  );
   const spec = eCollectionKind(kind)!;
 
-  const [receiptNo, setReceiptNo] = useState('');
-  const [receiptDate, setReceiptDate] = useState(todayPh());
-  const [officerId, setOfficerId] = useState<string | null>(null);
-  const [officerName, setOfficerName] = useState('');
-  const [intermediaryId, setIntermediaryId] = useState('');
-  const [responsibilityCenterCode, setResponsibilityCenterCode] = useState('');
-  const [prexcPap, setPrexcPap] = useState('');
-  const [payorName, setPayorName] = useState('');
-  const [payorTin, setPayorTin] = useState('');
-  const [revenueSource, setRevenueSource] = useState<RevenueSource>('FEES_AND_CHARGES');
-  const [particulars, setParticulars] = useState('');
-  const [lines, setLines] = useState<Array<Partial<CollectionLine>>>([{ lineNo: 1 }]);
+  const [receiptNo, setReceiptNo] = useState(editingRecord?.orNumber ?? '');
+  const [receiptDate, setReceiptDate] = useState(editingRecord?.orDate ?? todayPh());
+  const [officerId, setOfficerId] = useState<string | null>(
+    editingRecord?.collectingOfficerId ?? null,
+  );
+  const [officerName, setOfficerName] = useState(editingRecord?.collectingOfficerName ?? '');
+  const [intermediaryId, setIntermediaryId] = useState(editingRecord?.intermediaryId ?? '');
+  const [responsibilityCenterCode, setResponsibilityCenterCode] = useState(
+    editingRecord?.responsibilityCenterCode ?? '',
+  );
+  const [prexcPap, setPrexcPap] = useState(editingRecord?.prexcPap ?? '');
+  const [payorName, setPayorName] = useState(editingRecord?.payorName ?? '');
+  const [payorTin, setPayorTin] = useState(editingRecord?.payorTin ?? '');
+  const [revenueSource, setRevenueSource] = useState<RevenueSource>(
+    editingRecord?.revenueSource ?? 'FEES_AND_CHARGES',
+  );
+  const [particulars, setParticulars] = useState(
+    editingRecord?.remarks ?? editingRecord?.lines?.[0]?.particulars ?? '',
+  );
+  const [lines, setLines] = useState<Array<Partial<CollectionLine>>>(
+    editingRecord?.lines?.length ? editingRecord.lines.map((l) => ({ ...l })) : [{ lineNo: 1 }],
+  );
   const [saving, setSaving] = useState(false);
 
   const total = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
@@ -314,9 +357,14 @@ function ECollectionForm({
     const wanted = normalise(receiptNo);
     if (!wanted) return null;
     return (
-      existing.find((c) => c.status !== 'CANCELLED' && normalise(c.orNumber ?? '') === wanted) ?? null
+      existing.find(
+        (c) =>
+          c.id !== editingRecord?.id &&
+          c.status !== 'CANCELLED' &&
+          normalise(c.orNumber ?? '') === wanted,
+      ) ?? null
     );
-  }, [existing, receiptNo]);
+  }, [existing, receiptNo, editingRecord?.id]);
 
   const save = async () => {
     if (!receiptNo.trim() || !officerId || !payorName.trim() || total <= 0 || !user) {
@@ -354,9 +402,7 @@ function ECollectionForm({
 
     setSaving(true);
     try {
-      await createDraft(
-        COL.collections,
-        {
+      const payload = {
           fiscalYear,
           period: Number(receiptDate.slice(5, 7)),
           fundCode,
@@ -403,15 +449,22 @@ function ECollectionForm({
            * numbers that were never issued to anybody.
            */
           accountableFormId: null,
-          status: 'ISSUED',
           remarks: particulars.trim() || null,
-        },
-        actorStamp({
-          uid: user.uid,
-          name: profile?.displayName ?? user.email ?? user.uid,
-          position: profile?.position,
-        }),
-      );
+      };
+
+      const stamp = actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      });
+
+      if (editingRecord) {
+        // The status stays as it is - see the note on the cash collection
+        // form. Writing ISSUED back over a banked receipt would un-bank it.
+        await updateDraft(COL.collections, editingRecord.id, payload, stamp);
+      } else {
+        await createDraft(COL.collections, { ...payload, status: 'ISSUED' }, stamp);
+      }
       onSaved(normalise(receiptNo));
     } catch (err) {
       toast.error('Could not record the e-collection', err instanceof Error ? err.message : String(err));
@@ -424,14 +477,18 @@ function ECollectionForm({
     <Modal
       open
       onClose={onClose}
-      title="Record an e-collection"
-      description="One electronic receipt, with its revenue account distribution."
+      title={editingRecord ? `Correct ${editingRecord.orNumber}` : 'Record an e-collection'}
+      description={
+        editingRecord
+          ? 'Correcting the encoding. Editable until a certified report has claimed it.'
+          : 'One electronic receipt, with its revenue account distribution.'
+      }
       size="lg"
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={saving} onClick={() => void save()}>
-            Record
+            {editingRecord ? 'Save the correction' : 'Record'}
           </Button>
         </>
       }

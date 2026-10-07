@@ -32,16 +32,44 @@
  * of being vendorable.
  */
 
-/** The kind recorded on a collection. Absent means it came over the counter. */
+/**
+ * The kind recorded on a collection. Absent means it came over the counter.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO KINDS, NOT THREE
+ * ---------------------------------------------------------------------------
+ * Patch 91 built all three of COA Circular 2021-014's reports, including Annex
+ * G - a payor paying straight into the municipality's bank account with no
+ * receipt issued first. The office has since been clear that Candoni does not
+ * work that way: when somebody pays the account directly, a collecting officer
+ * issues an electronic Official Receipt for it. So it is an eOR collection,
+ * and Annex G has nothing to report.
+ *
+ * DIRECT survives as a kind for one reason: collections were recorded under it
+ * before this was settled. They are real receipts of real money and they
+ * belong on the eOR report, which is where `collectionBelongsOnReport` puts
+ * them. It is not offered when recording a new one.
+ */
 export type ECollectionKindCode = 'AR' | 'EOR' | 'DIRECT';
 
-/** The report types that gather electronic money. */
-export type ECollectionReportKey = 'ERCD_AR' | 'ERCD_EOR' | 'ERCD_DIRECT';
+/** The report types that gather electronic money. Two. */
+export type ECollectionReportKey = 'ERCD_AR' | 'ERCD_EOR';
 
 const KIND_BY_REPORT: Record<ECollectionReportKey, ECollectionKindCode> = {
   ERCD_AR: 'AR',
   ERCD_EOR: 'EOR',
-  ERCD_DIRECT: 'DIRECT',
+};
+
+/**
+ * Kinds that are reported on a given report but are not its own kind.
+ *
+ * Only one entry, and it is the legacy DIRECT. Written as a map rather than
+ * folded into KIND_BY_REPORT because the two say different things: that map is
+ * what a report GATHERS, this is what it also ACCEPTS from before the rules
+ * changed. A reader should be able to see which is which.
+ */
+const ALSO_ACCEPTED: Partial<Record<ECollectionReportKey, ECollectionKindCode[]>> = {
+  ERCD_EOR: ['DIRECT'],
 };
 
 export function isECollectionReportType(reportType: string): reportType is ECollectionReportKey {
@@ -74,6 +102,11 @@ export function collectionBelongsOnReport(
 ): boolean {
   const wanted = kindForReportType(reportType);
   if (wanted === undefined) return false;
+
   const actual = collectionKind ? String(collectionKind) : null;
-  return wanted === actual;
+  if (wanted === actual) return true;
+
+  // A kind recorded before the office settled on two. See ALSO_ACCEPTED.
+  if (!isECollectionReportType(reportType) || actual === null) return false;
+  return (ALSO_ACCEPTED[reportType] ?? []).includes(actual as ECollectionKindCode);
 }

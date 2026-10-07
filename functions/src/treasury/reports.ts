@@ -72,16 +72,17 @@ type ReportType =
   | 'RCD'
   | 'RCDISB'
   /*
-   * COA Circular 2021-014's three reports of electronic money, added in patch
-   * 91. They reuse this whole file rather than getting an engine of their own,
+   * COA Circular 2021-014's reports of electronic money, added in patch 91.
+   * Two of the three: Annex G is for an agency that issues no receipt when a
+   * payor pays its bank account directly, and Candoni issues an eOR, so that
+   * money is an eOR collection. See lib/eCollections. They reuse this whole file rather than getting an engine of their own,
    * and that is the point: certify -> journalize, the attachment lock, the
    * document claim, the numbering and the handover to Accounting are the same
    * controls. A second implementation would be a second set of them, and the
    * second set is always the one that is missing a check.
    */
   | 'ERCD_AR'
-  | 'ERCD_EOR'
-  | 'ERCD_DIRECT';
+  | 'ERCD_EOR';
 
 const REPORT_TYPES: ReportType[] = [
   'RCI',
@@ -90,7 +91,6 @@ const REPORT_TYPES: ReportType[] = [
   'RCDISB',
   'ERCD_AR',
   'ERCD_EOR',
-  'ERCD_DIRECT',
 ];
 
 interface ReportLine {
@@ -152,7 +152,6 @@ const SOURCE_COLLECTION: Record<ReportType, string> = {
   // the kind check below, not a separate store.
   ERCD_AR: COL.collections,
   ERCD_EOR: COL.collections,
-  ERCD_DIRECT: COL.collections,
 };
 
 /** The field on the source document that records which report claimed it. */
@@ -168,7 +167,6 @@ const JOURNAL_BOOK: Record<ReportType, string> = {
   // the municipality's receipts across two books for no reason the GAM gives.
   ERCD_AR: 'CASH_RECEIPTS_JOURNAL',
   ERCD_EOR: 'CASH_RECEIPTS_JOURNAL',
-  ERCD_DIRECT: 'CASH_RECEIPTS_JOURNAL',
 };
 
 const REPORT_LABEL: Record<ReportType, string> = {
@@ -178,7 +176,6 @@ const REPORT_LABEL: Record<ReportType, string> = {
   RCDISB: 'Report of Cash Disbursement',
   ERCD_AR: 'Report of e-Collections and Deposits (by Intermediary)',
   ERCD_EOR: 'Report of e-Collections and Deposits',
-  ERCD_DIRECT: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
 };
 
 function assertReportType(value: unknown): ReportType {

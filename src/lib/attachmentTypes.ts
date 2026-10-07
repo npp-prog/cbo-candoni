@@ -69,7 +69,7 @@ export function attachmentTypesFor(
         case 'RCDISB':
           return ['RCDISB'];
         /*
-         * All three COA Circular 2021-014 reports take the same pair, and the
+         * Both COA Circular 2021-014 reports take the same pair, and the
          * circular asks for both by name.
          *
          * Annex E is certified on the strength of a list and a Certification
@@ -85,7 +85,6 @@ export function attachmentTypesFor(
          */
         case 'ERCD_AR':
         case 'ERCD_EOR':
-        case 'ERCD_DIRECT':
           return ['ERCD', 'PROOF_OF_DEPOSIT'];
         default:
           return ['OTHER'];

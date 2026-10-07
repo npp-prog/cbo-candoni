@@ -14,15 +14,15 @@ import type { Collection, TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 
 /**
- * Annexes E, F and G of COA Circular 2021-014, as the circular prints them.
+ * Annexes E and F of COA Circular 2021-014, as the circular prints them.
  *
  * ---------------------------------------------------------------------------
- * WHY THESE THREE ARE NOT ON THE APPENDIX 37/38/39 PAGE
+ * WHY THESE TWO ARE NOT ON THE APPENDIX 37/38/39 PAGE
  * ---------------------------------------------------------------------------
  * That page carries three forms that differ by a column and a sentence, and
  * keeping them together is what stops the certification wording drifting apart.
  *
- * These three do not fit it. They have a different header block (Entity Name,
+ * These two do not fit it. They have a different header block (Entity Name,
  * Fund Cluster and an intermediary or a bank account, against Report No.,
  * Sheet No. and Date), an Amount column that is a GROUP rather than a column,
  * a summary of undeposited collections that the Treasurer's reports have no
@@ -31,13 +31,18 @@ import { fundLabel } from '../budget/Obligations';
  * have meant a column list with three different shapes in it.
  *
  * So they share a page with each other, for the same reason the other three
- * share one: what differs between E, F and G is a column, a sentence and a
+ * share one: what differs between E and F is a column, a sentence and a
  * signature block.
+ *
+ * Annex G was built here too and has been removed. It is for an agency that
+ * issues no receipt when a payor pays its bank account directly; Candoni
+ * issues an electronic Official Receipt, so that is an eOR collection and
+ * Annex G had nothing to report.
  *
  * ---------------------------------------------------------------------------
  * THE BREAKDOWN COLUMNS ARE THE REVENUE ACCOUNTS
  * ---------------------------------------------------------------------------
- * All three forms print "Breakdown of Collections" with specimen columns
+ * Both forms print "Breakdown of Collections" with specimen columns
  * headed Taxes, Fees and a blank, each with "(account code)" beneath, and the
  * instructions say the unit "may insert additional columns for each nature of
  * collections". So the columns are not a fixed three - they are whatever the
@@ -99,19 +104,6 @@ const ANNEXES: Record<ECollectionReportType, AnnexSpec> = {
     seriesLabel: 'eOR',
     certification: 'F',
     signerLabel: 'Name and Signature of the Designated Officer',
-  },
-  ERCD_DIRECT: {
-    annex: 'Annex G',
-    title: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
-    receiptGroup: 'Deposit',
-    receiptNumberLabel: 'eOR / transaction confirmation number',
-    withResponsibilityCentre: false,
-    headerThirdLine: 'BANK',
-    totalColumn: 'Total',
-    withSummary: false,
-    seriesLabel: 'eOR',
-    certification: 'G',
-    signerLabel: 'Name and Signature',
   },
 };
 
@@ -300,11 +292,7 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
           title={spec.title}
           lines={entity.headingLines}
           subtitle={
-            spec.subtitle
-              ? spec.subtitle({ intermediary: intermediaryName })
-              : report.reportType === 'ERCD_DIRECT'
-                ? `Date: ${formatShortDate(report.reportDate)}`
-                : undefined
+            spec.subtitle ? spec.subtitle({ intermediary: intermediaryName }) : undefined
           }
         />
 

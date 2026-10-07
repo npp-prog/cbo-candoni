@@ -120,7 +120,6 @@ export const SECTION_TABS: Record<TreasuryReportType, Array<{ label: string; to:
   // The e-collection reports belong with the collections they report on.
   ERCD_AR: COLLECTION_TABS,
   ERCD_EOR: COLLECTION_TABS,
-  ERCD_DIRECT: COLLECTION_TABS,
 };
 
 /** The breadcrumb trail shared by every page in the collections section. */

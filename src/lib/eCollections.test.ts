@@ -16,7 +16,16 @@ describe('which report a collection belongs on', () => {
   it('sends each electronic kind to its own COA annex', () => {
     expect(kindForReportType('ERCD_AR')).toBe('AR');
     expect(kindForReportType('ERCD_EOR')).toBe('EOR');
-    expect(kindForReportType('ERCD_DIRECT')).toBe('DIRECT');
+  });
+
+  /*
+   * Annex G was built in patch 91 and removed in patch 96. Candoni issues an
+   * electronic Official Receipt when a payor pays the bank account directly,
+   * so that money is an eOR collection and Annex G had nothing to report.
+   */
+  it('no longer knows a third report', () => {
+    expect(kindForReportType('ERCD_DIRECT')).toBeUndefined();
+    expect(isECollectionReportType('ERCD_DIRECT')).toBe(false);
   });
 
   it('answers null for the RCD, because that is an answer', () => {
@@ -34,10 +43,9 @@ describe('which report a collection belongs on', () => {
     expect(kindForReportType('SOMETHING_ELSE')).toBeUndefined();
   });
 
-  it('recognises the three e-collection report types and nothing else', () => {
+  it('recognises the two e-collection report types and nothing else', () => {
     expect(isECollectionReportType('ERCD_AR')).toBe(true);
     expect(isECollectionReportType('ERCD_EOR')).toBe(true);
-    expect(isECollectionReportType('ERCD_DIRECT')).toBe(true);
     expect(isECollectionReportType('RCD')).toBe(false);
     expect(isECollectionReportType('ERCD')).toBe(false);
   });
@@ -76,18 +84,30 @@ describe('collectionBelongsOnReport', () => {
     expect(collectionBelongsOnReport('ERCD_DIRECT', null)).toBe(false);
   });
 
-  it('matches each annex to its own kind and refuses the other two', () => {
+  it('matches each annex to its own kind and refuses the other', () => {
     expect(collectionBelongsOnReport('ERCD_AR', 'AR')).toBe(true);
     expect(collectionBelongsOnReport('ERCD_AR', 'EOR')).toBe(false);
-    expect(collectionBelongsOnReport('ERCD_AR', 'DIRECT')).toBe(false);
 
     expect(collectionBelongsOnReport('ERCD_EOR', 'EOR')).toBe(true);
     expect(collectionBelongsOnReport('ERCD_EOR', 'AR')).toBe(false);
-    expect(collectionBelongsOnReport('ERCD_EOR', 'DIRECT')).toBe(false);
+  });
 
-    expect(collectionBelongsOnReport('ERCD_DIRECT', 'DIRECT')).toBe(true);
-    expect(collectionBelongsOnReport('ERCD_DIRECT', 'AR')).toBe(false);
-    expect(collectionBelongsOnReport('ERCD_DIRECT', 'EOR')).toBe(false);
+  /**
+   * A collection recorded under the kind that no longer exists is still real
+   * money, and it belongs on the eOR report.
+   *
+   * Without this it would be reportable nowhere: the register would list it
+   * and no report would accept it, so it would never reach the ledger and
+   * nothing would say why. The alternative was a data migration over the
+   * office's live records, which is a worse answer to a handful of rows.
+   */
+  it('reports a collection recorded as DIRECT on the eOR report', () => {
+    expect(collectionBelongsOnReport('ERCD_EOR', 'DIRECT')).toBe(true);
+    // And only there. It is not an intermediary's acknowledgement receipt and
+    // it is certainly not a counter receipt.
+    expect(collectionBelongsOnReport('ERCD_AR', 'DIRECT')).toBe(false);
+    expect(collectionBelongsOnReport('RCD', 'DIRECT')).toBe(false);
+    expect(collectionBelongsOnReport('ERCD_DIRECT', 'DIRECT')).toBe(false);
   });
 
   it('refuses a report type that gathers no collections, whatever the kind', () => {

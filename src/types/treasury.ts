@@ -273,6 +273,22 @@ export interface Deposit extends Partial<AuditStamps> {
   referenceNo?: string;
   amount: Centavos;
 
+  /**
+   * The receipts this slip banked.
+   *
+   * A deposit used to point at an RCD, and from the day the Report of
+   * Collections and Deposits became a treasury report that list was empty - so
+   * every deposit was recorded linked to nothing and no deposit could be
+   * traced to the money it banked.
+   *
+   * It points at the RECEIPTS now, which is what "deposited intact" means and
+   * what the officer has in front of them. The RCD claims the same receipts
+   * separately, through `treasuryReportId`; the two facts are independent and
+   * both true.
+   */
+  collectionIds?: Id[];
+
+  /** Kept for deposits recorded before the link moved to the receipts. */
   rcdId?: Id;
   rcdNo?: string;
   collectingOfficerId?: Id;
@@ -425,9 +441,18 @@ export interface TreasuryReportLine {
    * report loaded from a bank file, which has names and no ids; the entry
    * then leaves those lines without a subsidiary rather than guessing.
    */
-  payeeId?: Id;
-  payeeName?: string;
-  particulars?: string;
+  /*
+   * Null, not absent, where there is none.
+   *
+   * A collection has no payee id and no particulars of its own, so for an RCD
+   * and for the e-collection reports these are legitimately empty - and
+   * Firestore rejects a document containing `undefined`, taking the whole
+   * report with it. Null says "this line has no payee id"; undefined said
+   * nothing and lost the Treasurer the form.
+   */
+  payeeId?: Id | null;
+  payeeName?: string | null;
+  particulars?: string | null;
   /**
    * What the report reports. For a check, ADA or receipt that is the face
    * amount; for a payroll on an RCDisb it is the **net** - the cash that

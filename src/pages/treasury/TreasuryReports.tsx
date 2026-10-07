@@ -237,10 +237,8 @@ export default function TreasuryReports({
                 : reportType === 'ERCD_AR'
                   ? "Collections an intermediary made on the municipality's behalf against its own Acknowledgement Receipts, certified by the designated officer. COA Circular 2021-014, Annex E."
                   : reportType === 'ERCD_EOR'
-                    ? 'Collections receipted by electronic Official Receipt, the money held by an intermediary until it reaches the bank. Certified by the collecting officer. COA Circular 2021-014, Annex F.'
-                    : reportType === 'ERCD_DIRECT'
-                      ? "Money a payor paid straight into the municipality's bank account, reported once the proof of deposit is in hand. COA Circular 2021-014, Annex G."
-                      : 'Cash paid out in the period - a cash payroll, for instance - certified by the disbursing officer and forwarded to Accounting.'
+                    ? 'Collections receipted by electronic Official Receipt, including money a payor paid straight into the bank account. Certified by the collecting officer. COA Circular 2021-014, Annex F.'
+                    : 'Cash paid out in the period - a cash payroll, for instance - certified by the disbursing officer and forwarded to Accounting.'
         }
         actions={
           canPrepare ? <Button onClick={() => setShowForm(true)}>Prepare {short}</Button> : undefined
@@ -586,26 +584,12 @@ function PrepareReport({
           });
       }
     }
-    const debitLine =
-      reportType === 'ERCD_DIRECT'
-        ? // Named from the ACCOUNT CODE, not the bank record's own name - see
-          // cashInBankLine. Without a bank account chosen there is no honest
-          // debit, so the entry is left empty and the screen says so rather
-          // than proposing a guess.
-          bankAccount
-          ? { ...cashInBankLine(bankAccount, accountTitle), debit: total, credit: 0 }
-          : null
-        : {
-            accountCode: ACCOUNTS.cashLocalTreasury.code,
-            accountName: ACCOUNTS.cashLocalTreasury.name,
-            debit: total,
-            credit: 0,
-          };
-    if (!debitLine || !debitLine.accountCode) return [];
-
     return [
       {
-        ...debitLine,
+        accountCode: ACCOUNTS.cashLocalTreasury.code,
+        accountName: ACCOUNTS.cashLocalTreasury.name,
+        debit: total,
+        credit: 0,
         particulars: `Collections per ${short}`,
       },
       ...[...byAccount.values()].map((a) => ({
@@ -624,16 +608,10 @@ function PrepareReport({
     entry.reduce((s, l) => s + l.debit, 0) === total;
 
   const isPayroll = reportType === 'RCDISB';
-  /*
-   * Annex G names the bank account on the face of the report, and its entry
-   * debits that account, so it needs one exactly as the RCI and RADAI do.
-   */
-  const needsBank = reportType === 'RCI' || reportType === 'RADAI' || reportType === 'ERCD_DIRECT';
+  const needsBank = reportType === 'RCI' || reportType === 'RADAI';
   /*
    * Annex E is certified by the DESIGNATED OFFICER and Annex F by the
-   * COLLECTING OFFICER. Annex G is certified by the Cash/Treasury Unit and
-   * names no officer on the form - but the report still records who prepared
-   * it, so it is asked for there too.
+   * COLLECTING OFFICER.
    */
   const needsOfficer =
     reportType === 'RCD' || reportType === 'RCDISB' || isECollectionReport(reportType);
@@ -680,13 +658,27 @@ function PrepareReport({
 
     setSaving(true);
     try {
+      /*
+       * ---- EVERY OPTIONAL FIELD IS WRITTEN AS NULL, NEVER LEFT UNDEFINED ----
+       *
+       * A collection has no payee id and no particulars of its own, so for an
+       * RCD and for the three e-collection reports both came through as
+       * `undefined` - and Firestore refuses a document containing one. It does
+       * not drop the field: it rejects the WHOLE write, with
+       * "Unsupported field value: undefined", which is what the Treasurer saw
+       * instead of a saved report.
+       *
+       * Null is the honest value anyway. It says the report line has no payee
+       * id, which is true of every receipt; undefined said nothing and cost
+       * the office the form it had just filled in.
+       */
       const lines: TreasuryReportLine[] = chosen.map((d) => ({
         sourceId: d.id,
         sourceNo: d.sourceNo,
         date: d.date,
-        payeeId: d.payeeId,
-        payeeName: d.payeeName,
-        particulars: d.particulars,
+        payeeId: d.payeeId ?? null,
+        payeeName: d.payeeName ?? null,
+        particulars: d.particulars ?? null,
         amount: d.amount,
         ...(reportType === 'RCDISB'
           ? { gross: d.gross ?? 0, deductions: d.deductions ?? 0 }
@@ -795,7 +787,7 @@ function PrepareReport({
             label={
               reportType === 'ERCD_AR'
                 ? 'Designated officer'
-                : reportType === 'RCD' || reportType === 'ERCD_EOR' || reportType === 'ERCD_DIRECT'
+                : reportType === 'RCD' || reportType === 'ERCD_EOR'
                   ? 'Collecting officer'
                   : 'Disbursing officer'
             }

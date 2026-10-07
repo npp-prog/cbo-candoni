@@ -177,7 +177,6 @@ export const JEV_SOURCE_TYPES = [
   // type is the report type, as it is for the other four.
   'ERCD_AR',
   'ERCD_EOR',
-  'ERCD_DIRECT',
   'PAYROLL',
   'LIQUIDATION',
   // Written in Accounting itself.
@@ -201,7 +200,6 @@ export const JEV_SOURCE_LABELS: Record<JevSourceType, string> = {
   RCDISB: 'Report of Cash Disbursement',
   ERCD_AR: 'Report of e-Collections and Deposits (by Intermediary)',
   ERCD_EOR: 'Report of e-Collections and Deposits',
-  ERCD_DIRECT: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
   PAYROLL: 'Payroll',
   LIQUIDATION: 'Liquidation Report',
   BANK_ADJUSTMENT: 'Bank Adjustment',
@@ -270,7 +268,10 @@ export type AdaStatus = (typeof ADA_STATUSES)[number];
  *               electronic Official Receipt, with the money held by an
  *               intermediary and deposited to the agency's bank account.
  *
- *   ERCD_DIRECT Annex G. A payor paid STRAIGHT into the bank account and
+ *   (Annex G, a payor paying STRAIGHT into the bank account with no receipt
+ *   issued, is not raised: Candoni issues an eOR for that, so it is an eOR
+ *   collection. The line below is kept for the record of what was removed.)
+ *   --          Annex G. A payor paid STRAIGHT into the bank account and
  *               showed proof of deposit. Nobody issued a receipt first, so
  *               there is no intermediary on the form and the reference is the
  *               bank's own transaction confirmation.
@@ -286,7 +287,6 @@ export const TREASURY_REPORT_TYPES = [
   'RCDISB',
   'ERCD_AR',
   'ERCD_EOR',
-  'ERCD_DIRECT',
 ] as const;
 export type TreasuryReportType = (typeof TREASURY_REPORT_TYPES)[number];
 
@@ -297,7 +297,6 @@ export const TREASURY_REPORT_LABELS: Record<TreasuryReportType, string> = {
   RCDISB: 'Report of Cash Disbursement',
   ERCD_AR: 'Report of e-Collections and Deposits (by Intermediary)',
   ERCD_EOR: 'Report of e-Collections and Deposits',
-  ERCD_DIRECT: "Report of Daily Collection Directly Deposited to the Agency's Bank Account",
 };
 
 export const TREASURY_REPORT_SHORT: Record<TreasuryReportType, string> = {
@@ -307,11 +306,17 @@ export const TREASURY_REPORT_SHORT: Record<TreasuryReportType, string> = {
   RCDISB: 'RCDisb',
   ERCD_AR: 'eRCD (AR)',
   ERCD_EOR: 'eRCD',
-  ERCD_DIRECT: 'Direct deposits',
 };
 
-/** The three that report money which arrived electronically. */
-export const E_COLLECTION_REPORT_TYPES = ['ERCD_AR', 'ERCD_EOR', 'ERCD_DIRECT'] as const;
+/**
+ * The two that report money which arrived electronically.
+ *
+ * Annex G - a payor paying the bank account directly with no receipt issued -
+ * was built in patch 91 and removed here. Candoni issues an electronic
+ * Official Receipt for a direct payment, so it is an eOR collection and Annex
+ * G had nothing to report. See src/lib/eCollections.ts.
+ */
+export const E_COLLECTION_REPORT_TYPES = ['ERCD_AR', 'ERCD_EOR'] as const;
 export type ECollectionReportType = (typeof E_COLLECTION_REPORT_TYPES)[number];
 
 export function isECollectionReport(t: string): t is ECollectionReportType {

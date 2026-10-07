@@ -191,7 +191,7 @@ export default function QuarterlyReceipts() {
         fundLabel: fundLabel(fundCode),
         periodLabel: periodHeading(period, fiscalYear),
       }}
-      breadcrumbs={[{ label: 'Budget' }, { label: 'Reports' }, { label: 'LBAc Form No. 1' }]}
+      breadcrumbs={[{ label: 'Budget' }, { label: 'Reports' }, { label: 'Report of Receipts' }]}
       rows={report.rows}
       exportColumns={exportColumns}
       actions={

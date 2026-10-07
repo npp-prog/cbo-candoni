@@ -11,12 +11,13 @@ import { AccountPicker, EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useBarangays, useCollections, useTrustPrograms } from '@/data/queries';
-import { createDraft, actorStamp } from '@/data/mutations';
+import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { TRUST_FUND_CODE } from '@/lib/trustPrograms';
 import { isRptAccount, sharesWithBarangay } from '@/pages/reports/rptAbstractReport';
 import { receiptDetailProblems, describeProblems, receiptIsIncomplete } from '@/lib/receiptDetail';
+import { collectionEditable } from '@/lib/collectionEditable';
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
@@ -39,6 +40,8 @@ export default function Collections() {
   const { data, loading, error } = useCollections(fiscalYear, fundCode);
 
   const [showForm, setShowForm] = useState(false);
+  /* The receipt being corrected, if any. See collectionEditable. */
+  const [editing, setEditing] = useState<Collection | null>(null);
   const [source, setSource] = useState('');
 
   /*
@@ -110,6 +113,20 @@ export default function Collections() {
       ),
     },
     {
+      key: 'particulars',
+      header: 'Particulars',
+      value: (c) => c.remarks ?? c.lines?.[0]?.particulars ?? '',
+      cell: (c) => {
+        const text = c.remarks ?? c.lines?.[0]?.particulars ?? '';
+        return text ? (
+          <span className="text-xs text-slate-600">{text}</span>
+        ) : (
+          <span className="text-xs text-slate-400">&mdash;</span>
+        );
+      },
+      optional: true,
+    },
+    {
       key: 'officer',
       header: 'Collecting officer',
       value: (c) => c.collectingOfficerName,
@@ -137,6 +154,18 @@ export default function Collections() {
       width: '9rem',
       value: (c) => c.rcdNo ?? '',
       cell: (c) => <span className="font-mono text-xs text-slate-500">{c.rcdNo ?? '-'}</span>,
+    },
+    {
+      key: 'edit',
+      header: '',
+      width: '5rem',
+      value: () => '',
+      cell: (c) =>
+        can('treasury', 'create') && collectionEditable(c) ? (
+          <Button size="sm" variant="ghost" onClick={() => setEditing(c)}>
+            Edit
+          </Button>
+        ) : null,
     },
     {
       key: 'status',
@@ -239,6 +268,19 @@ export default function Collections() {
         }
       />
 
+      {editing && (
+        <CollectionForm
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(orNumber) => {
+            setEditing(null);
+            toast.success('Receipt corrected', `${orNumber} has been updated.`);
+          }}
+        />
+      )}
+
       {showForm && (
         <CollectionForm
           fiscalYear={fiscalYear}
@@ -257,11 +299,22 @@ export default function Collections() {
 function CollectionForm({
   fiscalYear,
   fundCode,
+  existing,
   onClose,
   onSaved,
 }: {
   fiscalYear: number;
   fundCode: string;
+  /**
+   * The receipt being corrected, where one is.
+   *
+   * The same form records and corrects, deliberately. A separate edit screen
+   * is a second place for the rules about what a receipt needs - the tax year,
+   * the barangay, the trust programme - and the one that gets forgotten is the
+   * edit screen, so corrections quietly become the way to save a receipt that
+   * the recording screen would have refused.
+   */
+  existing?: Collection | null;
   onClose: () => void;
   onSaved: (orNumber: string) => void;
 }) {
@@ -281,16 +334,34 @@ function CollectionForm({
   /* The barangays, for the share that follows the property. */
   const barangays = useBarangays();
 
-  const [orNumber, setOrNumber] = useState('');
-  const [orDate, setOrDate] = useState(todayPh());
-  const [officerId, setOfficerId] = useState<string | null>(null);
-  const [officerName, setOfficerName] = useState('');
-  const [payorName, setPayorName] = useState('');
-  const [payorTin, setPayorTin] = useState('');
-  const [revenueSource, setRevenueSource] = useState<RevenueSource>('FEES_AND_CHARGES');
-  const [paymentForm, setPaymentForm] = useState<'CASH' | 'CHECK' | 'ONLINE' | 'CARD'>('CASH');
-  const [checkNo, setCheckNo] = useState('');
-  const [lines, setLines] = useState<Array<Partial<CollectionLine>>>([{ lineNo: 1 }]);
+  const [orNumber, setOrNumber] = useState(existing?.orNumber ?? '');
+  const [orDate, setOrDate] = useState(existing?.orDate ?? todayPh());
+  const [officerId, setOfficerId] = useState<string | null>(existing?.collectingOfficerId ?? null);
+  const [officerName, setOfficerName] = useState(existing?.collectingOfficerName ?? '');
+  const [payorName, setPayorName] = useState(existing?.payorName ?? '');
+  const [payorTin, setPayorTin] = useState(existing?.payorTin ?? '');
+  const [revenueSource, setRevenueSource] = useState<RevenueSource>(
+    existing?.revenueSource ?? 'FEES_AND_CHARGES',
+  );
+  const [paymentForm, setPaymentForm] = useState<'CASH' | 'CHECK' | 'ONLINE' | 'CARD'>(
+    existing?.paymentForm ?? 'CASH',
+  );
+  /*
+   * What the money was for, in the collecting officer's words.
+   *
+   * The receipt already carries the revenue ACCOUNT, which says how it is
+   * classified - and that is not the same as what it was for. "Business Taxes"
+   * does not distinguish a mayor's permit from a renewal, and the Abstract of
+   * General Collection and the Cashbook both print a particulars column that
+   * was coming out blank on every cash receipt.
+   */
+  const [particulars, setParticulars] = useState(
+    existing?.remarks ?? existing?.lines?.[0]?.particulars ?? '',
+  );
+  const [checkNo, setCheckNo] = useState(existing?.checkNo ?? '');
+  const [lines, setLines] = useState<Array<Partial<CollectionLine>>>(
+    existing?.lines?.length ? existing.lines.map((l) => ({ ...l })) : [{ lineNo: 1 }],
+  );
   const [saving, setSaving] = useState(false);
 
   const total = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
@@ -326,9 +397,7 @@ function CollectionForm({
     }
     setSaving(true);
     try {
-      await createDraft(
-        COL.collections,
-        {
+      const payload = {
           fiscalYear,
           period: Number(orDate.slice(5, 7)),
           fundCode,
@@ -344,7 +413,9 @@ function CollectionForm({
             accountCode: l.accountCode ?? '',
             accountName: l.accountName ?? '',
             amount: l.amount ?? 0,
-            particulars: l.particulars ?? null,
+            // The line's own wording where it has one, the receipt's
+            // otherwise - so a one-account receipt need not be typed twice.
+            particulars: l.particulars ?? (particulars.trim() || null),
             // Trust Fund only. A programme on a General Fund receipt would be
             // a mistake, and the server ignores it rather than acting on it.
             trustProgramId: isTrust ? (l.trustProgramId ?? null) : null,
@@ -358,14 +429,28 @@ function CollectionForm({
           totalAmount: total,
           paymentForm,
           checkNo: paymentForm === 'CHECK' ? checkNo.trim() || null : null,
-          status: 'ISSUED',
-        },
-        actorStamp({
-          uid: user.uid,
-          name: profile?.displayName ?? user.email ?? user.uid,
-          position: profile?.position,
-        }),
-      );
+          remarks: particulars.trim() || null,
+      };
+
+      const stamp = actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      });
+
+      if (existing) {
+        /*
+         * The STATUS is not in the payload when correcting.
+         *
+         * A receipt that has been banked is DEPOSITED, and writing 'ISSUED'
+         * back over it while fixing a payor's name would un-bank it - the
+         * money would reappear in "awaiting deposit" and the deposit would
+         * point at a receipt that no longer agreed it had been deposited.
+         */
+        await updateDraft(COL.collections, existing.id, payload, stamp);
+      } else {
+        await createDraft(COL.collections, { ...payload, status: 'ISSUED' }, stamp);
+      }
       onSaved(orNumber.trim().toUpperCase());
     } catch (err) {
       toast.error('Could not record the collection', err instanceof Error ? err.message : String(err));
@@ -378,14 +463,18 @@ function CollectionForm({
     <Modal
       open
       onClose={onClose}
-      title="Record a collection"
-      description="One official receipt, with its revenue account distribution."
+      title={existing ? `Correct receipt ${existing.orNumber}` : 'Record a collection'}
+      description={
+        existing
+          ? 'Correcting the ENCODING of a receipt, not the receipt itself. The paper is with the taxpayer; if the paper is wrong it is cancelled and reissued.'
+          : 'One official receipt, with its revenue account distribution.'
+      }
       size="lg"
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={saving} onClick={() => void save()}>
-            Record
+            {existing ? 'Save the correction' : 'Record'}
           </Button>
         </>
       }
@@ -447,6 +536,15 @@ function CollectionForm({
             <TextInput id="ckNo" value={checkNo} onChange={(e) => setCheckNo(e.target.value)} className="font-mono" />
           </Field>
         )}
+
+        <Field label="Particulars" htmlFor="particulars" className="sm:col-span-3">
+          <TextInput
+            id="particulars"
+            value={particulars}
+            onChange={(e) => setParticulars(e.target.value)}
+            placeholder="What the payment was for, as it should read on the reports"
+          />
+        </Field>
       </div>
 
       <div className="mt-5">

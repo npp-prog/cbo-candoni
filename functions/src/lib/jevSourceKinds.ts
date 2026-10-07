@@ -43,7 +43,6 @@ export const DOCUMENT_SOURCED_KINDS: readonly string[] = [
    */
   'ERCD_AR',
   'ERCD_EOR',
-  'ERCD_DIRECT',
   'PAYROLL',
   'LIQUIDATION',
 ];

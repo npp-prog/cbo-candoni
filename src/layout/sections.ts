@@ -56,14 +56,19 @@ export const BUDGET_MONITORING_TABS: SectionTab[] = [
 /**
  * Budget accountability, as against statements drawn off the books.
  *
+ * Named as the office names them, not by their form numbers. The forms still
+ * print "LBAc Form No. 1" in the corner, which is what COA reads; the tab is
+ * what the clerk reads, and a tab that quizzes somebody on a form number to
+ * find a report they know by name is a tab doing the wrong job.
+ *
  * These three are prepared BY the Budget Officer, the Treasurer and the
  * Accountant AGAINST the budget, which is why they are here and not under
  * Reports. The note in navigation.ts has said so since they were built; this
  * keeps them together now that the heading they sat under is gone.
  */
 export const BUDGET_REPORT_TABS: SectionTab[] = [
-  { label: 'Report of Receipts (LBAc 1)', to: '/budget/reports/receipts' },
-  { label: 'Financial Report of Operations (LBAc 2)', to: '/budget/reports/quarterly-financial' },
+  { label: 'Report of Receipts', to: '/budget/reports/receipts' },
+  { label: 'Financial Report of Operations', to: '/budget/reports/quarterly-financial' },
   { label: 'Receipts and Expenditures (SRE)', to: '/budget/reports/sre' },
 ];
 

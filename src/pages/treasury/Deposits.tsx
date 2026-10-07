@@ -10,8 +10,8 @@ import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker, EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useDeposits, useRcds, useUndepositedCollections } from '@/data/queries';
-import { createDraft, actorStamp } from '@/data/mutations';
+import { useDeposits, useUndepositedCollections } from '@/data/queries';
+import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
@@ -80,11 +80,29 @@ export default function Deposits() {
       ),
     },
     {
-      key: 'rcd',
-      header: 'RCD',
-      width: '9rem',
-      value: (d) => d.rcdNo ?? '',
-      cell: (d) => <span className="font-mono text-xs text-slate-500">{d.rcdNo ?? '-'}</span>,
+      key: 'receipts',
+      header: 'Receipts banked',
+      width: '11rem',
+      value: (d) => String(d.collectionIds?.length ?? 0),
+      cell: (d) => {
+        const n = d.collectionIds?.length ?? 0;
+        if (n > 0) {
+          return (
+            <span className="text-xs text-slate-600">
+              {n} receipt{n === 1 ? '' : 's'}
+            </span>
+          );
+        }
+        /*
+         * A deposit recorded before the link moved from the RCD to the
+         * receipts still shows what it had. Printing a dash over an older
+         * record would say "nothing" where the answer is "an RCD".
+         */
+        if (d.rcdNo) {
+          return <span className="font-mono text-xs text-slate-500">{d.rcdNo}</span>;
+        }
+        return <span className="text-xs text-slate-400">None attached</span>;
+      },
     },
     {
       key: 'officer',
@@ -247,28 +265,75 @@ function DepositForm({
 }) {
   const toast = useToast();
   const { user, profile } = useAuth();
-  const rcds = useRcds(fiscalYear, fundCode);
+  const undeposited = useUndepositedCollections(fundCode);
 
   const [depositDate, setDepositDate] = useState(todayPh());
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [depositSlipNo, setDepositSlipNo] = useState('');
   const [referenceNo, setReferenceNo] = useState('');
   const [amount, setAmount] = useState<number | null>(null);
-  const [rcdId, setRcdId] = useState('');
+  /*
+   * WHICH RECEIPTS THIS DEPOSIT BANKS.
+   *
+   * The form used to offer a list of RCDs from the old `rcds` collection,
+   * which has been empty since the Report of Collections and Deposits became a
+   * treasury report - so every deposit was recorded "Not linked to an RCD" and
+   * nothing ever connected a deposit to the money it banked.
+   *
+   * It asks for the RECEIPTS now, which is what "deposited intact" means and
+   * what the office actually has in front of it: the morning's collections and
+   * a deposit slip. The Annex E and F summaries already work the undeposited
+   * balance out from exactly this link.
+   */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [officerId, setOfficerId] = useState<string | null>(null);
   const [officerName, setOfficerName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const rcd = rcds.data.find((r) => r.id === rcdId);
+  const banked = useMemo(
+    () => undeposited.data.filter((c) => picked.has(c.id)),
+    [undeposited.data, picked],
+  );
+  const bankedTotal = banked.reduce((sum, c) => sum + c.totalAmount, 0);
+
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const save = async () => {
     if (!bankAccountId || !depositSlipNo.trim() || !amount || !user) {
       toast.error('Incomplete', 'Bank account, deposit slip number and amount are required.');
       return;
     }
+    /*
+     * The slip must equal the receipts it banks.
+     *
+     * Not a warning. Collections are deposited INTACT - the whole of what was
+     * receipted, nothing held back - so a slip that does not equal the
+     * receipts attached to it is either the wrong receipts or a short deposit,
+     * and both are things to settle before the record is written rather than
+     * at reconciliation three weeks later.
+     *
+     * A deposit that banks no particular receipt is still allowed; what is
+     * refused is claiming receipts and then recording a different figure.
+     */
+    if (banked.length > 0 && amount !== bankedTotal) {
+      toast.error(
+        'The slip does not equal the receipts',
+        `${banked.length} receipt${banked.length === 1 ? '' : 's'} totalling ${formatPeso(bankedTotal)} ` +
+          `${banked.length === 1 ? 'is' : 'are'} selected, but the slip says ${formatPeso(amount)}. ` +
+          'Collections are deposited intact, so the two have to agree.',
+      );
+      return;
+    }
+
     setSaving(true);
     try {
-      await createDraft(
+      const depositId = await createDraft(
         COL.deposits,
         {
           fiscalYear,
@@ -281,10 +346,10 @@ function DepositForm({
           depositSlipNo: depositSlipNo.trim(),
           referenceNo: referenceNo.trim() || null,
           amount,
-          rcdId: rcdId || null,
-          rcdNo: rcd?.rcdNo ?? null,
-          collectingOfficerId: officerId ?? rcd?.collectingOfficerId ?? null,
-          collectingOfficerName: officerName || rcd?.collectingOfficerName || null,
+          /* The receipts this slip banks. */
+          collectionIds: banked.map((c) => c.id),
+          collectingOfficerId: officerId ?? banked[0]?.collectingOfficerId ?? null,
+          collectingOfficerName: officerName || banked[0]?.collectingOfficerName || null,
           status: 'RECORDED',
         },
         actorStamp({
@@ -292,6 +357,31 @@ function DepositForm({
           name: profile?.displayName ?? user.email ?? user.uid,
           position: profile?.position,
         }),
+      );
+
+      /*
+       * Then stamp the receipts, so each one knows it has been banked.
+       *
+       * After the deposit exists, not before: a receipt pointing at a deposit
+       * that was never written would read as banked money that is nowhere.
+       * The other way round - a deposit written and a stamp that failed -
+       * shows as a receipt still awaiting deposit, which is visible on the
+       * screen and can be put right by recording it again.
+       */
+      const stamp = actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      });
+      for (const c of banked) {
+        await updateDraft(COL.collections, c.id, { depositId, status: 'DEPOSITED' }, stamp);
+      }
+
+      toast.success(
+        'Deposit recorded',
+        banked.length > 0
+          ? `${formatPeso(amount)} against ${banked.length} receipt${banked.length === 1 ? '' : 's'}.`
+          : `${formatPeso(amount)} recorded. No receipts were attached to it.`,
       );
       onSaved();
     } catch (err) {
@@ -346,28 +436,7 @@ function DepositForm({
           <AmountInput id="depAmount" value={amount} onChange={setAmount} />
         </Field>
 
-        <Field label="Report of collections" htmlFor="rcd" hint="Optional, but it links the deposit to its receipts.">
-          <Select
-            id="rcd"
-            value={rcdId}
-            onChange={(e) => {
-              setRcdId(e.target.value);
-              const chosen = rcds.data.find((r) => r.id === e.target.value);
-              if (chosen && !amount) setAmount(chosen.undepositedAmount);
-            }}
-          >
-            <option value="">Not linked to an RCD</option>
-            {rcds.data
-              .filter((r) => r.undepositedAmount > 0)
-              .map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.rcdNo} - {r.collectingOfficerName} - {formatPeso(r.undepositedAmount)} undeposited
-                </option>
-              ))}
-          </Select>
-        </Field>
-
-        {!rcdId && (
+        {banked.length === 0 && (
           <Field label="Collecting officer" htmlFor="depOfficer" className="sm:col-span-2">
             <EmployeePicker
               id="depOfficer"
@@ -378,6 +447,68 @@ function DepositForm({
               }}
             />
           </Field>
+        )}
+      </div>
+
+      {/* ---- the receipts this slip banks ------------------------------- */}
+      <div className="mt-5">
+        <div className="mb-2 flex items-end justify-between">
+          <p className="cbo-label">Receipts banked by this slip</p>
+          <p className="text-xs text-slate-600">
+            {banked.length} selected,{' '}
+            <span className="cbo-amount font-semibold text-navy-900">
+              {formatPeso(bankedTotal)}
+            </span>
+          </p>
+        </div>
+
+        {undeposited.data.length === 0 ? (
+          <p className="rounded border border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
+            Nothing is awaiting deposit in this fund. A deposit can still be recorded on its own -
+            a refund returned, say - and no receipt will be marked banked.
+          </p>
+        ) : (
+          <ul className="max-h-56 divide-y divide-slate-100 overflow-y-auto rounded border border-slate-200">
+            {undeposited.data.map((c) => (
+              <li key={c.id}>
+                <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(c.id)}
+                    onChange={() => {
+                      toggle(c.id);
+                      /*
+                       * The slip follows the receipts unless somebody has
+                       * typed over it. Nine times in ten the deposit IS the
+                       * selected receipts, and typing the total again is a
+                       * chance to mistype it.
+                       */
+                      setAmount((current) => {
+                        const next = picked.has(c.id)
+                          ? bankedTotal - c.totalAmount
+                          : bankedTotal + c.totalAmount;
+                        return current === null || current === bankedTotal ? next : current;
+                      });
+                    }}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span className="w-24 shrink-0 font-mono text-xs text-navy-900">{c.orNumber}</span>
+                  <span className="w-20 shrink-0 text-xs text-slate-500">
+                    {formatShortDate(c.orDate)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs">{c.payorName}</span>
+                  {c.eCollectionKind && (
+                    <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-2xs text-slate-600">
+                      {c.eCollectionKind}
+                    </span>
+                  )}
+                  <span className="cbo-amount shrink-0 text-xs">
+                    {formatPeso(c.totalAmount, { symbol: false })}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </Modal>

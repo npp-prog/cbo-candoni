@@ -246,7 +246,7 @@ export default function QuarterlyFinancialReport() {
         fundLabel: fundLabel(fundCode),
         periodLabel: periodHeading(period, fiscalYear),
       }}
-      breadcrumbs={[{ label: 'Budget' }, { label: 'Reports' }, { label: 'LBAc Form No. 2' }]}
+      breadcrumbs={[{ label: 'Budget' }, { label: 'Reports' }, { label: 'Financial Report of Operations' }]}
       rows={rows}
       exportColumns={exportColumns}
       filters={

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { ActorStamp } from '@/types/common';
+import { withoutUndefined } from '@/lib/firestoreValues';
 
 /**
  * Direct client writes.
@@ -52,7 +53,7 @@ export async function createDraft<T extends Record<string, unknown>>(
   actor: ActorStamp,
 ): Promise<string> {
   const ref = await addDoc(collection(db, collectionName), {
-    ...data,
+    ...withoutUndefined(data),
     createdBy: actor,
     createdAt: serverTimestamp(),
   });
@@ -67,7 +68,7 @@ export async function updateDraft<T extends Record<string, unknown>>(
   actor: ActorStamp,
 ): Promise<void> {
   await updateDoc(doc(db, collectionName, id), {
-    ...data,
+    ...withoutUndefined(data),
     updatedBy: actor,
     updatedAt: serverTimestamp(),
   });

@@ -2,13 +2,13 @@ import type { ECollectionReportType } from '@/types/enums';
 import { kindForReportType, type ECollectionKindCode } from '@/lib/eCollections';
 
 /**
- * The three ways money arrives without anybody handing cash over a counter.
+ * The two ways money arrives without anybody handing cash over a counter.
  *
  * ---------------------------------------------------------------------------
  * WHY THREE AND NOT ONE WITH A FILTER
  * ---------------------------------------------------------------------------
- * COA Circular 2021-014 prescribes three reports, and they are three because
- * the money arrives three different ways and three different people are
+ * COA Circular 2021-014 prescribes the reports, and Candoni raises two of
+ * them, because the money arrives two ways and two different people are
  * answerable for it:
  *
  *   AR      An INTERMEDIARY collected on the municipality's behalf and issued
@@ -21,13 +21,13 @@ import { kindForReportType, type ECollectionKindCode } from '@/lib/eCollections'
  *           they are accountable for a paper receipt - except that the number
  *           came out of a system rather than a booklet.
  *
- *   DIRECT  A payor paid straight into the bank account and showed proof.
- *           Nobody issued a receipt first and no intermediary held the money,
- *           so the reference is the bank's own transaction confirmation and
- *           the report is certified by whoever keeps the cash records.
+ * A payor who pays the municipality's bank account directly is an eOR: a
+ * collecting officer issues an electronic Official Receipt for it. COA's third
+ * form, Annex G, is for an agency that receipts nothing in that case, which is
+ * not how Candoni works - so it is not offered. See src/lib/eCollections.ts.
  *
- * Reporting them on one form would be certifying three different statements
- * with one sentence.
+ * Reporting them on one form would be certifying two different statements with
+ * one sentence.
  */
 
 /**
@@ -74,17 +74,6 @@ export const E_COLLECTION_KINDS: ECollectionKindSpec[] = [
     withIntermediary: true,
     withResponsibilityCentre: true,
     when: 'The intermediary collected and receipted it. Nobody here saw the money until it was remitted.',
-  },
-  {
-    kind: 'DIRECT',
-    label: "Paid directly into the municipality's account",
-    reportType: 'ERCD_DIRECT',
-    numberLabel: 'Transaction confirmation number',
-    numberHint:
-      "The bank's own reference, from the deposit slip, the fund transfer advice or the payor's proof of payment.",
-    withIntermediary: false,
-    withResponsibilityCentre: false,
-    when: 'The payor paid the bank account itself and showed proof. No receipt was issued first.',
   },
 ];
 
