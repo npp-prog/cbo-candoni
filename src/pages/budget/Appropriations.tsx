@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Alert, Card } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -44,6 +44,9 @@ import type {
 import { AppropriationTabs } from './appropriationTabs';
 import { uploadedDrafts, type UploadGroup } from './uploadedDrafts';
 import { fundLabel } from './Obligations';
+import { useEntity } from '@/data/useEntity';
+import { buildAugmentationSheet, type AugmentationSheet } from './augmentationForm';
+import { AugmentationFormSheet, usePrintAugmentation } from './AugmentationFormSheet';
 
 /**
  * Appropriations.
@@ -187,6 +190,54 @@ export default function Appropriations() {
   const [discardingDraft, setDiscardingDraft] = useState<AugmentationDraft | null>(null);
   /* And the line whose detail is open, from clicking a row. */
   const [viewing, setViewing] = useState<Appropriation | null>(null);
+
+  /*
+    ---------------------------------------------------------------------------
+    THE AUGMENTATION FORM, LBE FORM NO. 2 (patch 116)
+    ---------------------------------------------------------------------------
+    An augmentation is recorded here, printed on the manual's form for the
+    Budget Officer, the Accountant and the Local Chief Executive to sign, and
+    then approved and posted. The form prints from the prepared set - with a
+    band saying it is not yet posted - and, once posted, from the ledger lines
+    that share its authority, so a signed copy can always be reprinted.
+  */
+  const entity = useEntity();
+  const [formSheet, setFormSheet] = useState<AugmentationSheet | null>(null);
+  const clearFormSheet = useCallback(() => setFormSheet(null), []);
+  usePrintAugmentation(formSheet, clearFormSheet);
+  const lgu = entity.headingLines[1] ?? '';
+
+  const printPrepared = (d: AugmentationDraft) =>
+    setFormSheet(
+      buildAugmentationSheet({
+        fiscalYear: d.fiscalYear,
+        lgu,
+        ordinanceNo: d.authorityReference ?? '',
+        authorityDate: d.authorityDate,
+        lines: d.lines ?? [],
+        prepared: true,
+        preparedBy: d.createdBy?.name ?? null,
+      }),
+    );
+
+  /** Every posted line of the augmentation this line belongs to. */
+  const printPosted = (a: Appropriation) =>
+    setFormSheet(
+      buildAugmentationSheet({
+        fiscalYear: a.fiscalYear,
+        lgu,
+        ordinanceNo: a.authorityReference ?? '',
+        authorityDate: a.authorityDate,
+        lines: data.filter(
+          (x) =>
+            x.status === 'APPROVED' &&
+            x.kind === 'REALIGNMENT' &&
+            x.instrument === 'AUGMENTATION' &&
+            (x.authorityReference ?? '') === (a.authorityReference ?? ''),
+        ),
+        prepared: false,
+      }),
+    );
 
   /*
     ---------------------------------------------------------------------------
@@ -449,7 +500,9 @@ export default function Appropriations() {
   ];
 
   return (
-    <div>
+    <>
+    {/* The screen steps aside while the form prints, so the form comes out alone. */}
+    <div className={formSheet ? 'no-print' : undefined}>
       <PageHeader
         title="Appropriations"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
@@ -629,6 +682,16 @@ export default function Appropriations() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/*
+                      The augmentation on LBE Form No. 2, to be signed before
+                      it is approved and posted. Patch 116. A realignment is
+                      enacted by ordinance and has no such form.
+                    */}
+                    {d.instrument === 'AUGMENTATION' && (
+                      <Button size="sm" variant="ghost" onClick={() => printPrepared(d)}>
+                        Print form
+                      </Button>
+                    )}
                     {can('budget', 'create') && augmentationDraftEditable(d) && (
                       <Button size="sm" variant="secondary" onClick={() => setEditingDraft(d)}>
                         Edit
@@ -678,6 +741,10 @@ export default function Appropriations() {
       <AppropriationDetail
         appropriation={viewing}
         onClose={() => setViewing(null)}
+        onPrintForm={(a) => {
+          setViewing(null);
+          printPosted(a);
+        }}
         onEdit={
           can('budget', 'create')
             ? (a) => {
@@ -851,6 +918,8 @@ export default function Appropriations() {
         }
       />
     </div>
+    {formSheet && <AugmentationFormSheet sheet={formSheet} />}
+    </>
   );
 }
 
@@ -878,10 +947,13 @@ function AppropriationDetail({
   appropriation,
   onClose,
   onEdit,
+  onPrintForm,
 }: {
   appropriation: Appropriation | null;
   onClose: () => void;
   onEdit?: (a: Appropriation) => void;
+  /** Reprint the Augmentation Form of a posted augmentation. Patch 116. */
+  onPrintForm?: (a: Appropriation) => void;
 }) {
   if (!appropriation) return null;
   const a = appropriation;
@@ -923,6 +995,14 @@ function AppropriationDetail({
       footer={
         <>
           <Button onClick={onClose}>Close</Button>
+          {onPrintForm &&
+            a.status === 'APPROVED' &&
+            a.kind === 'REALIGNMENT' &&
+            a.instrument === 'AUGMENTATION' && (
+              <Button variant="secondary" onClick={() => onPrintForm(a)}>
+                Print the Augmentation Form
+              </Button>
+            )}
           {onEdit && appropriationEditable(a) && (
             <Button variant="primary" onClick={() => onEdit(a)}>
               Edit
