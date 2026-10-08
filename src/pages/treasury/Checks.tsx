@@ -179,12 +179,18 @@ export default function Checks() {
             }
           />
           {canManage && c.status === 'PREPARED' && (
-            <Button size="sm" onClick={() => void advance(c, 'FOR_SIGNATURE')}>
+            <Button size="sm" onClick={(e) => {
+                e.stopPropagation();
+                void advance(c, 'FOR_SIGNATURE');
+              }}>
               For signature
             </Button>
           )}
           {canManage && c.status === 'FOR_SIGNATURE' && (
-            <Button size="sm" onClick={() => void advance(c, 'SIGNED')}>
+            <Button size="sm" onClick={(e) => {
+                e.stopPropagation();
+                void advance(c, 'SIGNED');
+              }}>
               Signed
             </Button>
           )}
@@ -198,7 +204,10 @@ export default function Checks() {
             (() => {
               const gate = releasable(c);
               return gate.ok ? (
-                <Button size="sm" variant="primary" onClick={() => setReleasing(c)}>
+                <Button size="sm" variant="primary" onClick={(e) => {
+                e.stopPropagation();
+                setReleasing(c);
+              }}>
                   Release
                 </Button>
               ) : (
@@ -209,7 +218,10 @@ export default function Checks() {
             })()
           )}
           {canManage && can('accounting', 'cancel') && !['CLEARED', 'CANCELLED'].includes(c.status) && (
-            <Button size="sm" variant="ghost" onClick={() => setCancelling(c)}>
+            <Button size="sm" variant="ghost" onClick={(e) => {
+                e.stopPropagation();
+                setCancelling(c);
+              }}>
               {canUndoOutright(c) ? 'Undo' : 'Cancel'}
             </Button>
           )}

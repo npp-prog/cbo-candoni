@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { CoveringCell } from '@/pages/treasury/CoveringCell';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -162,17 +163,8 @@ export default function TreasuryReportJev() {
       key: 'coverage',
       header: 'Covering',
       value: (r) => r.lines.length,
-      cell: (r) => (
-        <span className="text-sm">
-          {r.lines.length} document{r.lines.length === 1 ? '' : 's'}
-          {r.serialFrom ? (
-            <span className="ml-2 font-mono text-xs text-slate-500">
-              {r.serialFrom}
-              {r.serialTo && r.serialTo !== r.serialFrom ? ` - ${r.serialTo}` : ''}
-            </span>
-          ) : null}
-        </span>
-      ),
+      /* The serial opens the document it names. See CoveringCell. */
+      cell: (r) => <CoveringCell report={r} />,
     },
     {
       key: 'totalAmount',
@@ -202,7 +194,10 @@ export default function TreasuryReportJev() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => navigate(`/treasury/reports/${r.id}/form`)}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/treasury/reports/${r.id}/form`);
+            }}
           >
             View report
           </Button>
@@ -215,7 +210,10 @@ export default function TreasuryReportJev() {
           <Button
             size="sm"
             variant={r.status === 'CERTIFIED' ? 'primary' : 'ghost'}
-            onClick={() => navigate(`/treasury/reports/${r.id}`)}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/treasury/reports/${r.id}`);
+            }}
           >
             {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'Open'}
           </Button>
@@ -249,6 +247,14 @@ export default function TreasuryReportJev() {
           loading={loading}
           error={error}
           searchPlaceholder="Report number or serial"
+          /*
+            THE WHOLE ROW OPENS THE REPORT. It lights under the pointer, which
+            is what says it can be clicked - a list whose rows look like
+            print is a list whose rows nobody tries. The serial in Covering
+            opens the document instead, and the buttons do what they say;
+            each stops its own click so the row does not open as well.
+          */
+          onRowClick={(r) => navigate(`/treasury/reports/${r.id}`)}
           filters={
             <Select
               value={status}

@@ -144,7 +144,10 @@ export default function Raaf() {
           {r.hasDiscrepancy && r.status === 'DRAFT' && <Badge tone="rose">Does not foot</Badge>}
           <StatusBadge status={r.status} />
           {r.status === 'DRAFT' && canCertify && !r.hasDiscrepancy && (
-            <Button size="sm" variant="secondary" onClick={() => setCertifying(r)}>
+            <Button size="sm" variant="secondary" onClick={(e) => {
+                e.stopPropagation();
+                setCertifying(r);
+              }}>
               Certify
             </Button>
           )}

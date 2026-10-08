@@ -161,7 +161,10 @@ export default function Ada() {
             (() => {
               const gate = canSubmitAda(a);
               return gate.ok ? (
-                <Button size="sm" variant="primary" onClick={() => setSubmitting(a)}>
+                <Button size="sm" variant="primary" onClick={(e) => {
+                e.stopPropagation();
+                setSubmitting(a);
+              }}>
                   Submit to bank
                 </Button>
               ) : (
@@ -175,11 +178,18 @@ export default function Ada() {
             an Open button, because unlike a report there is no page to open:
             an advice is one line in this register and one sheet for the bank.
           */}
-          <Link to={`/treasury/ada/${a.id}/form`} className="text-2xs font-medium underline">
+          <Link
+            to={`/treasury/ada/${a.id}/form`}
+            className="text-2xs font-medium underline"
+            onClick={(e) => e.stopPropagation()}
+          >
             ADA Form
           </Link>
           {canManage && can('accounting', 'cancel') && !['DEBITED', 'CANCELLED'].includes(a.status) && (
-            <Button size="sm" variant="ghost" onClick={() => setCancelling(a)}>
+            <Button size="sm" variant="ghost" onClick={(e) => {
+                e.stopPropagation();
+                setCancelling(a);
+              }}>
               {canUndoOutright(a) ? 'Undo' : 'Cancel'}
             </Button>
           )}

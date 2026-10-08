@@ -2497,6 +2497,131 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 40. A button inside a clickable row does not also click the row ------
+
+/*
+ * ---------------------------------------------------------------------------
+ * ONE CLICK, ONE THING
+ * ---------------------------------------------------------------------------
+ * A table whose rows open something is the common case in CFMS now - fourteen
+ * screens - and a row like that usually carries buttons of its own as well:
+ * Cancel, Release, Certify, View report.
+ *
+ * A click on a button inside a row is ALSO a click on the row. Unless the
+ * button says otherwise, both fire. What that looks like on the screen:
+ *
+ *   CHECKS - pressing Cancel opened the cancel dialog AND the check's detail
+ *   panel, one on top of the other.
+ *
+ *   ADA - the "ADA Form" link went to the form and then immediately to the
+ *   advice's detail page, because the row navigated second and the last
+ *   navigation wins. The link simply did not work, and nobody had said so.
+ *
+ *   DEPOSITS, RAAF - the same two-dialogs-at-once on Record Bank Credit and
+ *   Certify.
+ *
+ * And when patch 108 made the treasury-report rows clickable, the same thing
+ * would have broken VIEW REPORT from patch 105 - it would have landed on the
+ * report instead of the form. That was caught before it shipped by driving the
+ * clicks in a browser, which is how all of the above were found as well.
+ *
+ * So: on a screen whose DataTable has onRowClick, every click handler and every
+ * link inside the columns must stop its click at itself.
+ *
+ * WHAT THIS DOES NOT SEE, said plainly. It reads the columns as written on the
+ * screen. A cell that renders a component of its own - CoveringCell, say - is
+ * opaque to it, and the buttons inside that component are that component's
+ * responsibility. CoveringCell stops its own clicks and was checked by driving
+ * them in a browser; a new one would need the same.
+ */
+{
+  const files = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx$/.test(entry.name)) files.push(full);
+    }
+  };
+  walk(resolve(root, 'src/pages'));
+
+  let screens = 0;
+  let offenders = 0;
+
+  for (const full of files) {
+    const raw = readFileSync(full, 'utf8');
+    if (!/onRowClick=/.test(raw)) continue;
+    screens += 1;
+
+    const name = full.slice(root.length + 1).split('\\').join('/');
+    const source = raw.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+    /* The columns array: from its declaration to the bracket that closes it. */
+    const start = /const columns[^=]*=\s*\[/.exec(source);
+    if (!start) continue;
+    let i = start.index + start[0].length;
+    let depth = 1;
+    while (depth > 0 && i < source.length) {
+      if (source[i] === '[') depth += 1;
+      else if (source[i] === ']') depth -= 1;
+      i += 1;
+    }
+    const region = source.slice(start.index, i);
+
+    /* Every onClick={...} handler, read to its matching brace. */
+    for (const m of region.matchAll(/onClick=\{/g)) {
+      let j = m.index + m[0].length;
+      let d = 1;
+      while (d > 0 && j < region.length) {
+        if (region[j] === '{') d += 1;
+        else if (region[j] === '}') d -= 1;
+        j += 1;
+      }
+      const body = region.slice(m.index + m[0].length, j - 1);
+      if (!/stopPropagation/.test(body)) {
+        offenders += 1;
+        failures.push(
+          `${name}: a button in a clickable row does not stop its click - ` +
+            `onClick={${body.trim().slice(0, 60)}}. The row opens as well, so the press does ` +
+            'two things. Write (e) => { e.stopPropagation(); ... }.',
+        );
+      }
+    }
+
+    /*
+     * And every link, which navigates on its own and then the row navigates
+     * over it. The opening tag is read to the first `>` OUTSIDE braces: an
+     * arrow function's `=>` inside a prop is not the end of the tag, and a
+     * plain [^>]* stopped there and reported the fixed link as broken.
+     */
+    for (const m of region.matchAll(/<Link\b/g)) {
+      let k = m.index + m[0].length;
+      let braces = 0;
+      while (k < region.length) {
+        const c = region[k];
+        if (c === '{') braces += 1;
+        else if (c === '}') braces -= 1;
+        else if (c === '>' && braces === 0) break;
+        k += 1;
+      }
+      const tag = region.slice(m.index, k + 1);
+      if (!/stopPropagation/.test(tag)) {
+        offenders += 1;
+        failures.push(
+          `${name}: a link in a clickable row does not stop its click. The link navigates and ` +
+            'then the row navigates over it, and the last one wins - the link appears not to ' +
+            'work. Add onClick={(e) => e.stopPropagation()}.',
+        );
+      }
+    }
+  }
+
+  if (offenders === 0) {
+    console.log(`rows: ${screens} clickable tables, and no button in one also clicks its row`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

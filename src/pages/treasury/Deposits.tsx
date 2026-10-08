@@ -149,7 +149,10 @@ export default function Deposits() {
         <div className="flex items-center gap-1.5">
           <StatusBadge status={d.status} />
           {canPost && d.status === 'RECORDED' && !d.jevId && (
-            <Button size="sm" variant="primary" onClick={() => setRecording(d)}>
+            <Button size="sm" variant="primary" onClick={(e) => {
+                e.stopPropagation();
+                setRecording(d);
+              }}>
               Post
             </Button>
           )}

@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { CoveringCell } from './CoveringCell';
 import { useNavigate } from 'react-router-dom';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { newestFirst } from '@/lib/registerOrder';
@@ -166,17 +167,8 @@ export default function TreasuryReports({
       key: 'coverage',
       header: 'Covering',
       value: (r) => r.serialFrom ?? '',
-      cell: (r) => (
-        <span className="text-sm">
-          {r.lines.length} document{r.lines.length === 1 ? '' : 's'}
-          {r.serialFrom ? (
-            <span className="ml-2 font-mono text-xs text-slate-500">
-              {r.serialFrom}
-              {r.serialTo && r.serialTo !== r.serialFrom ? ` - ${r.serialTo}` : ''}
-            </span>
-          ) : null}
-        </span>
-      ),
+      /* The serial opens the document it names. See CoveringCell. */
+      cell: (r) => <CoveringCell report={r} />,
     },
     {
       key: 'totalAmount',
@@ -225,11 +217,21 @@ export default function TreasuryReports({
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => navigate(`/treasury/reports/${r.id}/form`)}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/treasury/reports/${r.id}/form`);
+            }}
           >
             View report
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => navigate(`/treasury/reports/${r.id}`)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/treasury/reports/${r.id}`);
+            }}
+          >
             Open
           </Button>
         </div>
@@ -289,6 +291,14 @@ export default function TreasuryReports({
           loading={loading}
           error={error}
           searchPlaceholder={`${short} number or serial`}
+          /*
+            THE WHOLE ROW OPENS THE REPORT. It lights under the pointer, which
+            is what says it can be clicked - a list whose rows look like
+            print is a list whose rows nobody tries. The serial in Covering
+            opens the document instead, and the buttons do what they say;
+            each stops its own click so the row does not open as well.
+          */
+          onRowClick={(r) => navigate(`/treasury/reports/${r.id}`)}
           emptyMessage={`No ${short} for ${fundLabel(fundCode)}, fiscal year ${fiscalYear}.`}
         />
       </Card>
