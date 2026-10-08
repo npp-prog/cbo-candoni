@@ -3,7 +3,7 @@ import { awaitingPosting } from '@/lib/postingQueue';
 import { directEntries } from '@/lib/jevSources';
 import { hasJevNumber } from '@/lib/jevNumbers';
 import { newestFirst } from '@/lib/registerOrder';
-import { useNavigate } from 'react-router-dom';
+import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -49,7 +49,8 @@ const BOOK_LABELS: Record<string, string> = {
 export default function Jevs() {
   const { fiscalYear, fundCode, period } = useFilters();
   const { can } = useAuth();
-  const navigate = useNavigate();
+  /* Opens a document remembering this table, so its Back button returns here. */
+  const open = useOpenWithReturn();
   const [status, setStatus] = useState('');
 
   const { data, loading, error } = useJevs(fiscalYear, fundCode, status || undefined);
@@ -149,7 +150,7 @@ export default function Jevs() {
         breadcrumbs={[{ label: 'Accounting' }, { label: 'General Transactions' }]}
         actions={
           can('accounting', 'create') && (
-            <Button variant="primary" size="sm" onClick={() => navigate('/accounting/general-transactions/new')}>
+            <Button variant="primary" size="sm" onClick={() => open('/accounting/general-transactions/new')}>
               New journal entry
             </Button>
           )
@@ -162,7 +163,7 @@ export default function Jevs() {
         rowKey={(j) => j.id}
         loading={loading}
         error={error}
-        onRowClick={(j) => navigate(`/accounting/general-transactions/${j.id}`)}
+        onRowClick={(j) => open(`/accounting/general-transactions/${j.id}`)}
         searchPlaceholder="JEV number, reference or particulars"
         emptyTitle="No entries written here"
         emptyMessage="This screen holds the entries Accounting writes itself - adjusting, closing, reversing and prior-period entries, and bank adjustments. Entries raised by a voucher or a treasury report are on the document's own screen, and all of them together are in the Journal Entries Register."

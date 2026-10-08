@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
@@ -123,9 +123,9 @@ export default function AuditTrail() {
         if (!l.entityRef) return <span className="text-slate-400">-</span>;
         const to = linkFor(l);
         return to ? (
-          <Link to={to} className="font-mono text-xs text-brand-700 hover:underline">
+          <ReturnLink to={to} className="font-mono text-xs text-brand-700 hover:underline">
             {l.entityRef}
-          </Link>
+          </ReturnLink>
         ) : (
           <span className="font-mono text-xs text-slate-600">{l.entityRef}</span>
         );

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { ref as storageRef, getDownloadURL } from 'firebase/storage';
 import { PageHeader } from '@/components/ui/Layout';
@@ -102,9 +102,9 @@ export default function Documents() {
       cell: (d) => {
         const to = linkFor(d);
         return to ? (
-          <Link to={to} className="font-mono text-xs text-brand-700 hover:underline">
+          <ReturnLink to={to} className="font-mono text-xs text-brand-700 hover:underline">
             {d.entityRef}
-          </Link>
+          </ReturnLink>
         ) : (
           <span className="font-mono text-xs text-slate-600">{d.entityRef}</span>
         );

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { newestFirst } from '@/lib/registerOrder';
-import { useNavigate } from 'react-router-dom';
+import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
@@ -24,7 +24,8 @@ import { fundLabel } from '../budget/Obligations';
 export default function Disbursements() {
   const { fiscalYear, fundCode, period } = useFilters();
   const { can, roles } = useAuth();
-  const navigate = useNavigate();
+  /* Opens a document remembering this table, so its Back button returns here. */
+  const open = useOpenWithReturn();
   const [status, setStatus] = useState('');
   const [queue, setQueue] = useState<'all' | 'mine'>('all');
   const [category, setCategory] = useState('');
@@ -233,7 +234,7 @@ export default function Disbursements() {
         breadcrumbs={[{ label: 'Accounting' }, { label: 'Disbursement' }]}
         actions={
           can('accounting', 'create') && (
-            <Button variant="primary" size="sm" onClick={() => navigate('/accounting/disbursements/new')}>
+            <Button variant="primary" size="sm" onClick={() => open('/accounting/disbursements/new')}>
               New voucher
             </Button>
           )
@@ -246,7 +247,7 @@ export default function Disbursements() {
         rowKey={(d) => d.id}
         loading={loading}
         error={error}
-        onRowClick={(d) => navigate(`/accounting/disbursements/${d.id}`)}
+        onRowClick={(d) => open(`/accounting/disbursements/${d.id}`)}
         searchPlaceholder="DV number, payee, OBR or particulars"
         emptyTitle="No disbursement vouchers"
         emptyMessage={`Nothing has been disbursed from the ${fundLabel(fundCode)} for fiscal year ${fiscalYear}.`}

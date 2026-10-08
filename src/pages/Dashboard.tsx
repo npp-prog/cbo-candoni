@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { hasJevNumber } from '@/lib/jevNumbers';
 import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import clsx from 'clsx';
 import { PageHeader, Card, Alert, Spinner } from '@/components/ui/Layout';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -451,7 +452,7 @@ function RecentList({
     <ul className="divide-y divide-slate-100">
       {rows.map((row) => (
         <li key={row.id}>
-          <Link to={row.to} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/40">
+          <ReturnLink to={row.to} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/40">
             <div className="min-w-0 flex-1">
               <p className="truncate font-mono text-xs text-navy-900">{row.primary}</p>
               <p className="truncate text-xs text-slate-500">{row.secondary}</p>
@@ -460,7 +461,7 @@ function RecentList({
               <span className="cbo-amount text-navy-800">{formatPeso(row.amount)}</span>
             )}
             <StatusBadge status={row.status} />
-          </Link>
+          </ReturnLink>
         </li>
       ))}
     </ul>

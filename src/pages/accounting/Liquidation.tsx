@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { newestFirst } from '@/lib/registerOrder';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -26,7 +26,8 @@ import { fundLabel } from '../budget/Obligations';
 export default function Liquidation() {
   const { fiscalYear, fundCode } = useFilters();
   const { can } = useAuth();
-  const navigate = useNavigate();
+  /* Opens a document remembering this table, so its Back button returns here. */
+  const open = useOpenWithReturn();
 
   const { data, loading, error } = useLiquidations(fiscalYear);
 
@@ -131,7 +132,7 @@ export default function Liquidation() {
         */
         <div className="flex items-center gap-1.5">
           <StatusBadge status={l.status} />
-          <Button size="sm" variant="ghost" onClick={() => navigate(`/accounting/liquidation/${l.id}`)}>
+          <Button size="sm" variant="ghost" onClick={() => open(`/accounting/liquidation/${l.id}`)}>
             Open
           </Button>
         </div>
@@ -150,7 +151,7 @@ export default function Liquidation() {
             <Button
               variant="primary"
               size="sm"
-              onClick={() => navigate('/accounting/liquidation/new')}
+              onClick={() => open('/accounting/liquidation/new')}
             >
               New liquidation report
             </Button>

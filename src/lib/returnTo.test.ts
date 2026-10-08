@@ -6,6 +6,8 @@ import {
   withReturn,
   hereAsReturn,
   originPathname,
+  backTarget,
+  placeName,
 } from './returnTo';
 
 describe('withReturn and returnPathFrom', () => {
@@ -108,5 +110,52 @@ describe('originPathname', () => {
 
   it('is null when nothing was carried', () => {
     expect(originPathname('')).toBeNull();
+  });
+});
+
+describe('backTarget - patch 114', () => {
+  const fallback = { to: '/budget/obligations', label: 'Obligations' };
+
+  it('goes to the document list when nothing says where it was opened from', () => {
+    expect(backTarget('', fallback)).toEqual(fallback);
+  });
+
+  it('goes back to the very table it was opened from, with its tab', () => {
+    const search = `?from=${encodeURIComponent('/accounting/index-of-payments?tab=PAID')}`;
+    expect(backTarget(search, { to: '/accounting/disbursements', label: 'Disbursement Vouchers' })).toEqual({
+      to: '/accounting/index-of-payments?tab=PAID',
+      label: 'Index of Payment',
+    });
+  });
+
+  it('goes back to the voucher a link was followed from', () => {
+    const search = `?from=${encodeURIComponent('/accounting/disbursements/abc')}`;
+    expect(backTarget(search, fallback)).toEqual({
+      to: '/accounting/disbursements/abc',
+      label: 'the voucher',
+    });
+  });
+
+  it('names the own list by its proper name, keeping its query', () => {
+    const search = `?from=${encodeURIComponent('/budget/obligations?status=PAID')}`;
+    expect(backTarget(search, fallback)).toEqual({
+      to: '/budget/obligations?status=PAID',
+      label: 'Obligations',
+    });
+  });
+
+  it('ignores a return path that is not inside CFMS', () => {
+    expect(backTarget('?from=%2F%2Fevil.example', fallback)).toEqual(fallback);
+  });
+});
+
+describe('placeName', () => {
+  it('names the lists and documents a document is opened from', () => {
+    expect(placeName('/accounting/journal-entries')).toBe('Journal Entries Register');
+    expect(placeName('/accounting/general-transactions/x1')).toBe('the journal entry');
+    expect(placeName('/accounting/jev/x1')).toBe('the journal entry');
+    expect(placeName('/budget/obligations/x1?from=%2Fbudget%2Fobligations')).toBe('the obligation');
+    expect(placeName('/')).toBe('Dashboard');
+    expect(placeName('/somewhere/new')).toBe('where you were');
   });
 });

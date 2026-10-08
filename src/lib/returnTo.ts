@@ -120,3 +120,68 @@ export function originPathname(search: string, depth = 4): string | null {
   }
   return path.split('?')[0].split('#')[0];
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * BACK TO THE TABLE, FROM EVERY DOCUMENT (patch 114)
+ * ---------------------------------------------------------------------------
+ * Patch 109 gave the treasury report a way back. The Obligation, the
+ * Disbursement Voucher, the journal entry and the liquidation report had none:
+ * opened from their list, from the Index of Payment, from a voucher's link to
+ * its OBR, the officer could leave only by the menu or the browser's Back
+ * button. So every one of them now has a button that says where it goes.
+ *
+ * The button goes to `from` when the address carries one - the very table the
+ * officer clicked, with its tab - and otherwise to the document's own list.
+ * It says which, by name, because "Back" on its own does not answer the
+ * question that made it necessary.
+ */
+
+/** The lists and documents a document can be opened from, by the name the button uses. */
+const PLACES: Array<[RegExp, string]> = [
+  [/^\/$/, 'Dashboard'],
+  [/^\/budget\/obligations$/, 'Obligations'],
+  [/^\/budget\/obligations\/[^/]+$/, 'the obligation'],
+  [/^\/accounting\/disbursements$/, 'Disbursement Vouchers'],
+  [/^\/accounting\/disbursements\/[^/]+$/, 'the voucher'],
+  [/^\/accounting\/index-of-payments$/, 'Index of Payment'],
+  [/^\/accounting\/general-transactions$/, 'General Transactions'],
+  [/^\/accounting\/journal-entries$/, 'Journal Entries Register'],
+  [/^\/accounting\/(general-transactions|journal-entries|jev)\/[^/]+$/, 'the journal entry'],
+  [/^\/accounting\/liquidation$/, 'Liquidation Reports'],
+  [/^\/accounting\/liquidation\/[^/]+$/, 'the liquidation report'],
+  [/^\/treasury\/disbursements$/, 'Disbursements'],
+  [/^\/treasury\/checks(\/[^/]+)?$/, 'Checks'],
+  [/^\/treasury\/ada(\/[^/]+)?$/, 'ADA'],
+  [/^\/reports\/registers$/, 'Registers'],
+  [/^\/reports\/general-ledger$/, 'General Ledger'],
+  [/^\/reports\/subsidiary-ledger$/, 'Subsidiary Ledger'],
+  [/^\/reports\/journals$/, 'Journals'],
+  [/^\/documents$/, 'Documents'],
+  [/^\/audit-trail$/, 'Audit Trail'],
+];
+
+/** What a back button names a path by. */
+export function placeName(path: string): string {
+  const bare = path.split('?')[0].split('#')[0];
+  return PLACES.find(([pattern]) => pattern.test(bare))?.[1] ?? 'where you were';
+}
+
+/**
+ * Where a document's back button goes, and what it says.
+ *
+ * `fallback` is the document's own list, used when the address does not say
+ * where it was opened from - a bookmark, a link typed or pasted.
+ */
+export function backTarget(
+  search: string,
+  fallback: { to: string; label: string },
+): { to: string; label: string } {
+  const from = returnPathFrom(search);
+  if (!from) return fallback;
+  const bare = from.split('?')[0].split('#')[0];
+  // Back to the document's own list by its proper name, even when that list
+  // is not in the table above (it always should be).
+  if (bare === fallback.to.split('?')[0]) return { to: from, label: fallback.label };
+  return { to: from, label: placeName(from) };
+}

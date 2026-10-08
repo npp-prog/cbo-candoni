@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { UnpostedEntriesNote } from '@/components/UnpostedEntriesNote';
-import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { ReportShell } from '@/components/ReportShell';
 import { Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
@@ -139,9 +139,9 @@ export default function Journals() {
                 <tr key={r.id}>
                   <td className="cbo-td text-xs">{formatShortDate(r.entryDate)}</td>
                   <td className="cbo-td">
-                    <Link to={`/accounting/general-transactions/${r.jevId}`} className="font-mono text-xs text-brand-700 hover:underline">
+                    <ReturnLink to={`/accounting/general-transactions/${r.jevId}`} className="font-mono text-xs text-brand-700 hover:underline">
                       {r.jevNo}
-                    </Link>
+                    </ReturnLink>
                   </td>
                   <td className="cbo-td">
                     <span className="block text-2xs uppercase tracking-wide text-slate-400">

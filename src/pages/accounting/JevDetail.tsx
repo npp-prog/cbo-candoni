@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { isDirectEntry } from '@/lib/jevSources';
 import { UNNUMBERED_JEV, hasJevNumber } from '@/lib/jevNumbers';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
@@ -48,6 +49,7 @@ export default function JevDetail() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
   // The budget lines this entry may be charged to, and which accounts are
@@ -229,7 +231,7 @@ export default function JevDetail() {
         // true. The placeholder is the agreed word for "none yet".
         const newId = await createDraft(COL.jevs, { ...payload, jevNo: UNNUMBERED_JEV }, actor);
         toast.success('Journal entry saved as a draft');
-        navigate(`/accounting/general-transactions/${newId}`, { replace: true });
+        navigate(keepReturn(`/accounting/general-transactions/${newId}`, location.search), { replace: true });
       } else {
         await updateDraft(COL.jevs, id!, payload, actor);
         toast.success('Draft saved');
@@ -272,6 +274,18 @@ export default function JevDetail() {
         ]}
         actions={
           <>
+            {/*
+              Back to the table it was opened from. Patch 114. Its own list is
+              the one the breadcrumb names: the register for an entry raised
+              by a voucher or a report, General Transactions for one typed.
+            */}
+            <BackButton
+              list={
+                existing && !isDirectEntry(existing.sourceType)
+                  ? { to: '/accounting/journal-entries', label: 'Journal Entries Register' }
+                  : { to: '/accounting/general-transactions', label: 'General Transactions' }
+              }
+            />
             <StatusBadge status={status} className="mr-1" />
             {canEdit && (
               <Button loading={saving} onClick={() => void save()}>
@@ -451,9 +465,9 @@ export default function JevDetail() {
       {existing?.reversesJevId && (
         <Alert tone="info" className="mb-4">
           This is a reversing entry. It mirrors{' '}
-          <Link to={`/accounting/general-transactions/${existing.reversesJevId}`} className="font-medium underline">
+          <ReturnLink to={`/accounting/general-transactions/${existing.reversesJevId}`} className="font-medium underline">
             the original journal entry
-          </Link>
+          </ReturnLink>
           .
         </Alert>
       )}
@@ -461,9 +475,9 @@ export default function JevDetail() {
       {existing?.sourceType === 'DV' && existing.sourceId && (
         <Alert tone="info" className="mb-4">
           Generated from{' '}
-          <Link to={`/accounting/disbursements/${existing.sourceId}`} className="font-medium underline">
+          <ReturnLink to={`/accounting/disbursements/${existing.sourceId}`} className="font-medium underline">
             DV {existing.referenceNo}
-          </Link>
+          </ReturnLink>
           . Its lines follow the voucher and are not edited here.
         </Alert>
       )}
@@ -782,7 +796,7 @@ export default function JevDetail() {
               `Reversed by JEV ${result.reversingJevNo}`,
               'A copy has been opened for correcting. Post it when the figures are right.',
             );
-            navigate(`/accounting/journal-entries/${result.correctedJevId}`);
+            navigate(keepReturn(`/accounting/journal-entries/${result.correctedJevId}`, location.search));
           }, 'The entry was not corrected')
         }
         loading={busy}

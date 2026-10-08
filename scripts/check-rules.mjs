@@ -2797,6 +2797,74 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 44. Every document has a way back to the table it came from ---------
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE OBR, THE DV, THE JOURNAL ENTRY AND THE LIQUIDATION REPORT (patch 114)
+ * ---------------------------------------------------------------------------
+ * Opened from a table, each of these had no way back except the menu or the
+ * browser's own Back button - patch 109 had fixed it for the treasury report
+ * alone. Now each has a Back button that reads where it was opened from, and
+ * the tables that open them write that into the address.
+ *
+ * This refuses a build in which one of the four loses its Back button, or in
+ * which a screen opens one of them with a bare navigate() - which is how the
+ * next list would quietly lose the way back again.
+ */
+{
+  const before = failures.length;
+  const DOCUMENTS = [
+    'src/pages/budget/ObligationDetail.tsx',
+    'src/pages/accounting/DisbursementDetail.tsx',
+    'src/pages/accounting/JevDetail.tsx',
+    'src/pages/accounting/LiquidationDetail.tsx',
+  ];
+  for (const rel of DOCUMENTS) {
+    const full = resolve(root, rel);
+    if (!existsSync(full)) continue;
+    const src = readFileSync(full, 'utf8');
+    if (!/<BackButton\b/.test(src)) {
+      failures.push(
+        `${rel} has no BackButton. Opened from a table, the officer must be able to return to ` +
+          'that table - not only through the menu.',
+      );
+    }
+  }
+
+  const bare =
+    /navigate\(\s*`\/(budget\/obligations|accounting\/(disbursements|general-transactions|journal-entries|liquidation))\/\$\{/;
+  const files = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx$/.test(entry.name)) files.push(full);
+    }
+  };
+  walk(resolve(root, 'src/pages'));
+  for (const full of files) {
+    const name = full.slice(root.length + 1).split('\\').join('/');
+    const src = readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    for (const line of src.split('\n')) {
+      if (bare.test(line)) {
+        failures.push(
+          `${name} opens a document with a bare navigate(): ${line.trim().slice(0, 90)}. Use ` +
+            'useOpenWithReturn (from a list) or keepReturn (from the document itself), so its Back ' +
+            'button returns here.',
+        );
+      }
+    }
+  }
+
+  if (failures.length === before) {
+    console.log('navigation: every document has a way back to the table it came from');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

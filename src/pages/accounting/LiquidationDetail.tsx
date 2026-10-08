@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card, Alert, DetailField, Spinner, Tabs } from '@/components/ui/Layout';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -46,6 +47,7 @@ import { fundLabel } from '../budget/Obligations';
 export default function LiquidationDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   /** The report being raised, rather than one being read. */
   const isNew = !id || id === 'new';
   const { can, hasRole } = useAuth();
@@ -137,6 +139,7 @@ export default function LiquidationDetail() {
             { label: 'Liquidation Report', to: '/accounting/liquidation' },
             { label: 'New' },
           ]}
+          actions={<BackButton list={{ to: '/accounting/liquidation', label: 'Liquidation Reports' }} />}
         />
 
         {/*
@@ -164,7 +167,11 @@ export default function LiquidationDetail() {
               fundCode={fundCode}
               advances={advances.data.filter((a) => a.fundCode === fundCode)}
               onCancel={() => navigate('/accounting/liquidation')}
-              onSaved={(newId) => navigate(`/accounting/liquidation/${newId}`, { replace: true })}
+              onSaved={(newId) =>
+                navigate(keepReturn(`/accounting/liquidation/${newId}`, location.search), {
+                  replace: true,
+                })
+              }
             />
           )}
 
@@ -229,6 +236,8 @@ export default function LiquidationDetail() {
         ]}
         actions={
           <>
+            {/* Back to the table it was opened from. Patch 114. */}
+            <BackButton list={{ to: '/accounting/liquidation', label: 'Liquidation Reports' }} />
             <StatusBadge status={liq.status} className="mr-1" />
             {!posted && canPost && (
               <Button variant="primary" onClick={() => setConfirm(true)}>
@@ -254,12 +263,12 @@ export default function LiquidationDetail() {
           {liq.jevId ? (
             <>
               {' '}as{' '}
-              <Link
+              <ReturnLink
                 to={`/accounting/journal-entries/${liq.jevId}`}
                 className="font-medium underline"
               >
                 JEV {liq.jevNo ?? 'the entry raised from it'}
-              </Link>
+              </ReturnLink>
             </>
           ) : null}
           . A posted entry is never edited - while the month is open it can be corrected on the
@@ -414,12 +423,12 @@ export default function LiquidationDetail() {
             </table>
             {posted && liq.jevId && (
               <p className="mt-3 text-sm">
-                <Link
+                <ReturnLink
                   to={`/accounting/journal-entries/${liq.jevId}`}
                   className="font-medium text-brand-700 underline"
                 >
                   Open the journal entry as it was posted
-                </Link>
+                </ReturnLink>
               </p>
             )}
           </Card>

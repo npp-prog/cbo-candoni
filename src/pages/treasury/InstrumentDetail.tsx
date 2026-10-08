@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { DetailField } from '@/components/ui/Layout';
@@ -99,12 +100,12 @@ export function InstrumentDetail({
         <div className="grid gap-4 sm:grid-cols-2">
           <DetailField label="Disbursement voucher">
             {instrument.dvId ? (
-              <Link
+              <ReturnLink
                 to={`/accounting/disbursements/${instrument.dvId}`}
                 className="font-mono text-brand-700 underline"
               >
                 {instrument.dvNo}
-              </Link>
+              </ReturnLink>
             ) : (
               <span className="text-slate-400">Not recorded</span>
             )}

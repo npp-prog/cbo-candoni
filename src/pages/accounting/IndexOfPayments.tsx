@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -25,7 +26,8 @@ import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
  */
 export default function IndexOfPayments() {
   const { fiscalYear, fundCode } = useFilters();
-  const navigate = useNavigate();
+  /* Opens a document remembering this table, so its Back button returns here. */
+  const open = useOpenWithReturn();
   const [params, setParams] = useSearchParams();
 
   const { data, loading, error } = useDisbursementVouchers(fiscalYear, fundCode);
@@ -195,7 +197,7 @@ export default function IndexOfPayments() {
         rowKey={(d) => d.id}
         loading={loading}
         error={error}
-        onRowClick={(d) => navigate(`/accounting/disbursements/${d.id}`)}
+        onRowClick={(d) => open(`/accounting/disbursements/${d.id}`)}
         searchPlaceholder="Payee, DV number, check number or particulars"
         emptyTitle="No payments match"
         emptyMessage="Adjust the filters, or select a different fiscal year and fund in the header."

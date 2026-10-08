@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { newestFirst } from '@/lib/registerOrder';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
@@ -26,7 +27,8 @@ export default function Obligations() {
   const { fiscalYear, fundCode, period } = useFilters();
   const form = obligationForm(fundCode);
   const { can } = useAuth();
-  const navigate = useNavigate();
+  /* Opens a document remembering this table, so its Back button returns here. */
+  const open = useOpenWithReturn();
   const [status, setStatus] = useState<string>('');
 
   const { data, loading, error } = useObligations(fiscalYear, fundCode, status || undefined);
@@ -148,7 +150,7 @@ export default function Obligations() {
               <Button size="sm">Registry (RAAO)</Button>
             </Link>
             {can('budget', 'create') && (
-              <Button variant="primary" size="sm" onClick={() => navigate('/budget/obligations/new')}>
+              <Button variant="primary" size="sm" onClick={() => open('/budget/obligations/new')}>
                 New obligation
               </Button>
             )}
@@ -162,13 +164,13 @@ export default function Obligations() {
         rowKey={(o) => o.id}
         loading={loading}
         error={error}
-        onRowClick={(o) => navigate(`/budget/obligations/${o.id}`)}
+        onRowClick={(o) => open(`/budget/obligations/${o.id}`)}
         searchPlaceholder={`${form.short} number, payee or particulars`}
         emptyTitle="No obligations recorded"
         emptyMessage={`Nothing has been obligated against the ${fundCode} fund for fiscal year ${fiscalYear} yet.`}
         emptyAction={
           can('budget', 'create') ? (
-            <Button variant="primary" onClick={() => navigate('/budget/obligations/new')}>
+            <Button variant="primary" onClick={() => open('/budget/obligations/new')}>
               Record the first obligation
             </Button>
           ) : undefined

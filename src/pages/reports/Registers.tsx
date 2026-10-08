@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { ReportShell } from '@/components/ReportShell';
 import { Spinner } from '@/components/ui/Layout';
 import { Field, Select } from '@/components/ui/Field';
@@ -252,9 +252,9 @@ function SimpleRegister({
           {rows.map((r) => (
             <tr key={r.id}>
               <td className="cbo-td">
-                <Link to={r.to} className="font-mono text-xs text-brand-700 hover:underline no-print">
+                <ReturnLink to={r.to} className="font-mono text-xs text-brand-700 hover:underline no-print">
                   {r.ref}
-                </Link>
+                </ReturnLink>
                 <span className="hidden font-mono text-xs print:inline">{r.ref}</span>
               </td>
               <td className="cbo-td text-xs">{formatShortDate(r.date)}</td>

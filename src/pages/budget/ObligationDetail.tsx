@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { BackButton, keepReturn } from '@/components/ui/BackButton';
 import clsx from 'clsx';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
@@ -54,6 +55,7 @@ export default function ObligationDetail() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
   // OBR in the General and Special Education Funds; FURS in the Trust Fund,
@@ -360,7 +362,7 @@ export default function ObligationDetail() {
       if (isNew) {
         const newId = await createDraft(COL.obligations, buildPayload(), actor);
         toast.success('Obligation saved as a draft', `It has no ${form.short} number until it is certified.`);
-        navigate(`/budget/obligations/${newId}`, { replace: true });
+        navigate(keepReturn(`/budget/obligations/${newId}`, location.search), { replace: true });
       } else {
         await updateDraft(COL.obligations, id!, buildPayload(), actor);
         toast.success('Draft saved');
@@ -469,6 +471,8 @@ export default function ObligationDetail() {
         ]}
         actions={
           <>
+            {/* Back to the table it was opened from. Patch 114. */}
+            <BackButton list={{ to: '/budget/obligations', label: 'Obligations' }} />
             <StatusBadge status={status} className="mr-1" />
             {canEdit && (
               <Button variant="secondary" loading={saving} onClick={() => void save()}>

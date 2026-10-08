@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { UnpostedEntriesNote } from '@/components/UnpostedEntriesNote';
-import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { Field } from '@/components/ui/Field';
@@ -129,12 +129,12 @@ export default function GeneralLedger() {
                 <tr key={r.id} className={r.isReversal ? 'bg-violet-50/40' : undefined}>
                   <td className="cbo-td text-xs">{formatShortDate(r.entryDate)}</td>
                   <td className="cbo-td">
-                    <Link
+                    <ReturnLink
                       to={`/accounting/general-transactions/${r.jevId}`}
                       className="font-mono text-xs text-brand-700 hover:underline no-print"
                     >
                       {r.jevNo}
-                    </Link>
+                    </ReturnLink>
                     <span className="hidden font-mono text-xs print:inline">{r.jevNo}</span>
                   </td>
                   <td className="cbo-td font-mono text-xs text-slate-500">{r.referenceNo ?? '-'}</td>

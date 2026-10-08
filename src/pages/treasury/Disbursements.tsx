@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ReturnLink } from '@/components/ui/BackButton';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -64,12 +64,12 @@ export default function TreasuryDisbursements() {
       width: '11rem',
       value: (dv) => dv.dvNo,
       cell: (dv) => (
-        <Link
+        <ReturnLink
           to={`/accounting/disbursements/${dv.id}`}
           className="font-mono text-xs font-medium underline"
         >
           {dv.dvNo}
-        </Link>
+        </ReturnLink>
       ),
     },
     {

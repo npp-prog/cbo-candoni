@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, TextInput, TextArea, DateInput, AmountInput, Select } from '@/components/ui/Field';
@@ -70,6 +71,7 @@ export default function DisbursementDetail() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
   // The budget lines this entry may be charged to, and which accounts are
@@ -457,7 +459,7 @@ export default function DisbursementDetail() {
       if (isNew) {
         const newId = await createDraft(COL.disbursementVouchers, buildPayload(), actor);
         toast.success('Voucher saved as a draft', 'Attach the supporting documents before submitting it.');
-        navigate(`/accounting/disbursements/${newId}`, { replace: true });
+        navigate(keepReturn(`/accounting/disbursements/${newId}`, location.search), { replace: true });
       } else {
         await updateDraft(COL.disbursementVouchers, id!, buildPayload(), actor);
         toast.success('Draft saved');
@@ -495,6 +497,8 @@ export default function DisbursementDetail() {
         ]}
         actions={
           <>
+            {/* Back to the table it was opened from. Patch 114. */}
+            <BackButton list={{ to: '/accounting/disbursements', label: 'Disbursement Vouchers' }} />
             <StatusBadge status={status} className="mr-1" />
             {canEdit && (
               <Button loading={saving} onClick={() => void save()}>
@@ -587,12 +591,12 @@ export default function DisbursementDetail() {
       {existing?.jevId && existing.jevNo && (
         <Alert tone="success" className="mb-4">
           In the General Ledger as{' '}
-          <Link
+          <ReturnLink
             to={`/accounting/journal-entries/${existing.jevId}`}
             className="font-medium underline"
           >
             JEV {existing.jevNo}
-          </Link>
+          </ReturnLink>
           . A posted entry is never edited - a correction is a reversing entry.
         </Alert>
       )}
@@ -735,12 +739,12 @@ export default function DisbursementDetail() {
                       <div className="flex items-baseline gap-2 py-1.5">
                         <span className="font-mono text-sm text-navy-900">{existing.obrNo}</span>
                         {existing.obligationId && (
-                          <Link
+                          <ReturnLink
                             to={`/budget/obligations/${existing.obligationId}`}
                             className="text-xs font-medium underline"
                           >
                             Open it
-                          </Link>
+                          </ReturnLink>
                         )}
                       </div>
                     ) : (

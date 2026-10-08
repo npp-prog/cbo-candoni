@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -64,7 +64,8 @@ const ORIGINS = [
  */
 export default function JournalEntriesRegister() {
   const { fiscalYear, fundCode, period } = useFilters();
-  const navigate = useNavigate();
+  /* Opens a document remembering this table, so its Back button returns here. */
+  const open = useOpenWithReturn();
   const [status, setStatus] = useState('');
   const [origin, setOrigin] = useState('');
 
@@ -187,7 +188,7 @@ export default function JournalEntriesRegister() {
         rowKey={(j) => j.id}
         loading={loading}
         error={error}
-        onRowClick={(j) => navigate(`/accounting/journal-entries/${j.id}`)}
+        onRowClick={(j) => open(`/accounting/journal-entries/${j.id}`)}
         searchPlaceholder="JEV number, reference or particulars"
         emptyTitle="No journal entries"
         emptyMessage="No journal entry has been raised for this fund and year yet. An entry appears here as soon as it is prepared - from a voucher, from a treasury report, or written in General Transactions - and carries its number once it is posted."
