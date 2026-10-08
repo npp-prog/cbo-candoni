@@ -662,7 +662,9 @@ export default function Appropriations() {
                 ? 'It has no lines on it yet.'
                 : set && !set.ok
                   ? set.violations[0]?.message ?? 'The set does not come to zero.'
-                  : null;
+                  : !(d.authorityReference ?? '').trim()
+                    ? 'Add the authority it was signed under (Edit) before it can be approved.'
+                    : null;
 
               return (
                 <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
@@ -1272,13 +1274,18 @@ function AppropriationForm({
    */
   const savePreparedSet = async () => {
     if (!actor) return;
-    if (!authorityReference.trim()) {
-      toast.error(
-        'The authority is required',
-        'It is what the Local Chief Executive signed, and it is also the key that stops the same augmentation being posted twice.',
-      );
-      return;
-    }
+    /*
+      THE AUTHORITY IS NOT NEEDED TO SAVE. Patch 118.
+
+      It used to be refused here, and Neil met it as "why can it not be
+      saved?" - the field shows a grey example, "Office Order No. 2026-__",
+      which reads as filled in when it is empty. Worse, the order was wrong:
+      since patch 116 the augmentation is PRINTED on LBE Form No. 2 and signed
+      before it is approved, and the office order number may only exist once
+      the Mayor has signed. So it is asked for where it matters - at approval,
+      where the prepared list says it is missing and the engine refuses
+      without it (`postingFromPreparedSet`).
+    */
     setSaving(true);
     try {
       const record = {
@@ -1448,7 +1455,7 @@ function AppropriationForm({
             ? 'It is still a draft, so it may be corrected in place. It stays a draft on save - approving it is a separate act.'
             : 'Saved as a draft. Approving it makes the authority available for allotment.'
       }
-      size={isRealignment ? 'xl' : 'lg'}
+      size={isRealignment ? 'full' : 'lg'}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -1515,7 +1522,7 @@ function AppropriationForm({
               kind === 'AUGMENTATION' ? 'Authority of the Local Chief Executive' : 'Authority reference'
             }
             htmlFor="authority"
-            required={isRealignment}
+            required={false}
             hint={
               kind === 'AUGMENTATION'
                 ? 'The office order or memorandum the Mayor signed it under'
@@ -1719,19 +1726,19 @@ function AppropriationForm({
             <table className="w-full text-xs">
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
-                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '12rem' }}>
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '16rem' }}>
                     Office
                   </th>
-                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '18rem' }}>
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '26rem' }}>
                     Budget line (FPP)
                   </th>
-                  <th className="px-2 py-1.5 font-medium" style={{ width: '6rem' }}>
+                  <th className="px-2 py-1.5 font-medium" style={{ width: '5rem' }}>
                     Class
                   </th>
-                  <th className="px-2 py-1.5 text-right font-medium" style={{ minWidth: '9rem' }}>
+                  <th className="px-2 py-1.5 text-right font-medium" style={{ minWidth: '10rem' }}>
                     Amount
                   </th>
-                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '10rem' }}>
+                  <th className="px-2 py-1.5 font-medium" style={{ minWidth: '14rem' }}>
                     Particulars
                   </th>
                   <th className="w-8 px-2 py-1.5" />
@@ -1776,19 +1783,19 @@ function AppropriationForm({
                         }
                       />
                     </td>
-                    <td className="px-2 py-1.5">
-                      <Select
-                        value={line.expenseClass}
-                        onChange={(e) =>
-                          patchLine(line.id, { expenseClass: e.target.value as ExpenseClass })
-                        }
+                    {/*
+                      The class is the budget line's own, shown rather than
+                      chosen. It was a dropdown too narrow to show its value -
+                      a blank box beside each line - and a class picked apart
+                      from the line could only ever disagree with it.
+                    */}
+                    <td className="px-2 py-1.5 align-middle">
+                      <span
+                        className="text-sm font-medium text-navy-900"
+                        title={EXPENSE_CLASS_LABELS[line.expenseClass as ExpenseClass]}
                       >
-                        {(Object.keys(EXPENSE_CLASS_LABELS) as ExpenseClass[]).map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </Select>
+                        {line.lineId ? line.expenseClass : '-'}
+                      </span>
                     </td>
                     <td className="px-2 py-1.5">
                       <AmountInput
@@ -1855,20 +1862,21 @@ function AppropriationForm({
           )}
 
           {!authorityReference.trim() && (
-            <Alert tone="warning" className="mt-2">
+            <Alert tone="info" className="mt-2">
               {kind === 'AUGMENTATION'
-                ? 'The authority the Local Chief Executive signed this under is required. It is what stops the same augmentation being posted twice, and it is what a reviewer asks for first.'
-                : 'The ordinance of the Sanggunian is required. It is what stops the same ordinance being posted twice, and a realignment made without one is not a realignment.'}
+                ? 'No authority entered yet. It can be saved without one, and added after the Mayor signs. It must be filled in before the augmentation can be approved - it is what stops the same augmentation being posted twice.'
+                : 'No ordinance number entered yet. It can be saved without one, but it must be filled in before the realignment can be approved - it is what stops the same ordinance being posted twice.'}
             </Alert>
           )}
         </div>
       )}
 
-      {allowsNegative && (
+      {/* Only for an adjustment now. On an augmentation or a realignment the
+          same thing is said once already, above the lines - and saying it
+          twice made Neil ask what the second one was. Patch 118. */}
+      {allowsNegative && !isRealignment && (
         <Alert tone="info" className="mt-4">
-          A realignment or transfer is recorded as two entries of equal size and opposite sign: a
-          negative one against the line the authority comes from, and a positive one against the
-          line it goes to. Record both, so the fund total is unchanged.
+          An adjustment may be negative. Enter a minus amount to reduce the line.
         </Alert>
       )}
     </Modal>
