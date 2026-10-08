@@ -2725,6 +2725,78 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 43. Appropriation becomes authority only by approval ------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * PREPARED FIRST, POSTED ON APPROVAL - FOR EVERY APPROPRIATION (patch 112)
+ * ---------------------------------------------------------------------------
+ * Three doors used to post appropriation the moment they were used: the
+ * ordinance upload, the realignment form, and the realignment upload. And the
+ * one that did wait - the prepared augmentation - posted whatever LINES the
+ * browser sent at approval, not necessarily what had been prepared.
+ *
+ * Now importBudgetLines posts only a prepared set named by its id, with the
+ * lines read from the stored set; everything else it receives lands as drafts.
+ * This refuses a build in which any of that comes undone.
+ */
+{
+  const importFile = resolve(root, 'functions/src/budget/import.ts');
+  const before = failures.length;
+  if (!existsSync(importFile)) {
+    failures.push('functions/src/budget/import.ts is missing, so appropriation posting cannot be checked.');
+  } else {
+    const src = readFileSync(importFile, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    if (!/const preparing = kind === 'APPROPRIATION' && !fromDraft;/.test(src) || !/const asDrafts = preparing;/.test(src)) {
+      failures.push(
+        "functions/src/budget/import.ts: an appropriation call that is not the approval of a prepared set " +
+          'no longer lands as drafts. Uploading an ordinance or a realignment must PREPARE it; only the ' +
+          "Budget Officer's approval posts.",
+      );
+    }
+    if (!/asDrafts\s*\?\s*\{\s*status:\s*'DRAFT'/.test(src)) {
+      failures.push(
+        'functions/src/budget/import.ts: the lines of an uploaded ordinance are no longer written as ' +
+          'DRAFT. They would be authority the moment the file was read.',
+      );
+    }
+    if (!/postingFromPreparedSet\(/.test(src) || !/data\.rows = posting\.rows/.test(src)) {
+      failures.push(
+        'functions/src/budget/import.ts: approving a prepared augmentation or realignment no longer ' +
+          'takes its lines from the stored set. What is posted must be what was prepared, not what ' +
+          'the browser sends.',
+      );
+    }
+    if (!/tx\.get\(fromDraft\.ref\)/.test(src)) {
+      failures.push(
+        'functions/src/budget/import.ts: a prepared set is not read again inside the transaction that ' +
+          'posts it, so one edited during approval would post as edited.',
+      );
+    }
+  }
+
+  const screen = resolve(root, 'src/pages/budget/Appropriations.tsx');
+  if (existsSync(screen)) {
+    const src = readFileSync(screen, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    if (/engine\.importBudgetLines\(/.test(src)) {
+      failures.push(
+        'src/pages/budget/Appropriations.tsx calls importBudgetLines with lines of its own. A ' +
+          'realignment or augmentation is prepared and then approved by its id ' +
+          '(engine.approvePreparedSet); the screen does not send what is to be posted.',
+      );
+    }
+  }
+
+  if (failures.length === before) {
+    console.log('budget: appropriation becomes authority only by approval');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

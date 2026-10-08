@@ -140,12 +140,14 @@ export interface AugmentationDraft extends Partial<AuditStamps> {
   fiscalYear: number;
   fundCode: string;
   /**
-   * Always AUGMENTATION today. A realignment is still posted whole from the
-   * form, by the office's own choice - it is enacted by ordinance, so the
-   * figures are settled before anyone sits down at the screen. The field is
-   * here so that decision can be revisited without a migration.
+   * Which of the two acts. Since patch 112 a REALIGNMENT is prepared here as
+   * well, before it is posted - the office asked for it. The collection keeps
+   * its older name; it holds both.
    */
-  instrument: 'AUGMENTATION';
+  instrument: 'AUGMENTATION' | 'REALIGNMENT';
+  /** UPLOAD when the engine wrote it from a file, rather than the form. */
+  source?: 'UPLOAD';
+  importFileName?: string | null;
   /** The authority of the Local Chief Executive, and its date. */
   authorityReference: string;
   authorityDate: IsoDate;
@@ -314,6 +316,18 @@ export interface Allotment extends BudgetKey, Partial<AuditStamps> {
   particulars?: string;
   status: 'DRAFT' | 'APPROVED' | 'CANCELLED';
   postedAt?: string;
+  /**
+   * Present on the release of an amount an order held back, written by
+   * `releaseHeldAllotment`. Such a line carries the ORDER's number so it can
+   * be traced to it, but it is not a line OF the order: the register shows it
+   * on its own row, dated when it was released. See allotmentRegister.ts.
+   */
+  releasedFromHeld?: {
+    allotmentId: Id;
+    collections?: Centavos;
+    estimate?: Centavos;
+    reason?: string;
+  };
 }
 
 // ---------------------------------------------------------------------------

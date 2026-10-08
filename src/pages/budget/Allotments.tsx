@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -28,6 +28,13 @@ import { type Allotment } from '@/types/budget';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import { fundLabel } from './Obligations';
 import AllotmentReleaseOrders from './AllotmentReleaseOrders';
+import { AroPrintSheet, usePrintSheet, formOf, type AroSheet } from './AroPrint';
+import {
+  buildAllotmentRegister,
+  budgetLineText,
+  type RegisterKind,
+  type RegisterRow,
+} from './allotmentRegister';
 
 /**
  * The Allotment Register, and the withdrawal of allotment.
@@ -76,6 +83,10 @@ export default function Allotments() {
   const [releasing, setReleasing] = useState<Allotment | null>(null);
   const [approving, setApproving] = useState<Allotment | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The order being printed - issued, or prepared and waiting. */
+  const [sheet, setSheet] = useState<AroSheet | null>(null);
+  const clearSheet = useCallback(() => setSheet(null), []);
+  usePrintSheet(sheet, clearSheet);
 
   const totalReleased = useMemo(
     () => data.filter((a) => a.status === 'APPROVED').reduce((s, a) => s + a.amount, 0),
@@ -98,126 +109,209 @@ export default function Allotments() {
     }
   };
 
-  const columns: Column<Allotment>[] = [
+  /*
+    ONE REGISTER, patch 112. The release orders and the lines they released
+    were two tables saying the same thing twice; a row is now a document - an
+    order with its lines inside it, a later release, a withdrawal. See
+    allotmentRegister.ts, including the order that used to change its date.
+  */
+  const register = useMemo(() => buildAllotmentRegister(data), [data]);
+
+  /** The order as issued, for the printed form. */
+  const issuedSheet = (r: RegisterRow): AroSheet => ({
+    aroNo: r.reference,
+    date: r.date,
+    expenseClass: r.expenseClass,
+    purpose: r.purpose,
+    fundCode,
+    fiscalYear,
+    prepared: false,
+    lines: r.lines.map(({ line, heldAtIssue }) => ({
+      key: line.id,
+      officeName: line.officeName,
+      fppCode: line.fppCode,
+      fppName: line.fppName ?? '',
+      accountCode: line.accountCode ?? '',
+      accountName: line.accountName ?? '',
+      released: line.amount,
+      // As the order was issued - not what is left after a later release.
+      held: heldAtIssue,
+    })),
+  });
+
+  const KIND_NOTE: Record<RegisterKind, string> = {
+    ORDER: 'Release order',
+    LATER_RELEASE: 'Release of amount held',
+    WITHDRAWAL: 'Withdrawal',
+    NO_ORDER: 'No order',
+  };
+
+  const columns: Column<RegisterRow>[] = [
     {
-      key: 'allotmentNo',
+      key: 'reference',
       header: 'Reference',
       width: '11rem',
-      value: (a) => `${a.aroNo ?? ''} ${a.allotmentNo ?? ''}`.trim(),
-      cell: (a) =>
-        a.allotmentNo ? (
-          <div>
-            <span className="font-mono text-xs">{a.allotmentNo}</span>
-            {/*
-              Which order released this line. A line with no order number came
-              from a bulk upload rather than from an Allotment Release Order,
-              and saying so is the point: it is the one thing on this register
-              an auditor cannot trace to a form.
-            */}
-            <span className="block text-2xs text-slate-500">
-              {a.aroNo ? `Order ${a.aroNo}` : a.amount < 0 ? 'Withdrawal' : 'No order'}
-            </span>
-          </div>
-        ) : (
-          <span className="text-xs italic text-slate-400">Draft</span>
-        ),
+      value: (r) => `${r.reference} ${KIND_NOTE[r.kind]}`,
+      cell: (r) => (
+        <div>
+          {r.reference ? (
+            <span className="font-mono text-xs">{r.reference}</span>
+          ) : (
+            <span className="text-xs italic text-slate-400">Draft</span>
+          )}
+          {/*
+            What kind of document this is. A line with no order came from a
+            bulk upload before orders existed, and saying so is the point: it
+            is the one thing on this register an auditor cannot trace to a form.
+          */}
+          <span className="block text-2xs text-slate-500">{KIND_NOTE[r.kind]}</span>
+        </div>
+      ),
     },
     {
-      key: 'allotmentDate',
+      key: 'date',
       header: 'Date',
       kind: 'date',
       width: '7rem',
-      value: (a) => a.allotmentDate,
-      cell: (a) => <span className="text-xs">{formatShortDate(a.allotmentDate)}</span>,
+      value: (r) => r.date,
+      cell: (r) => <span className="text-xs">{formatShortDate(r.date)}</span>,
     },
     {
-      key: 'office',
-      header: 'Office',
-      value: (a) => a.officeName,
-      cell: (a) => <span className="text-xs text-slate-600">{a.officeName}</span>,
-    },
-    {
-      key: 'account',
-      header: 'Account',
-      value: (a) => `${a.accountCode ?? ''} ${a.accountName ?? ''} ${a.fppCode ?? ''} ${a.fppName ?? ''}`,
-      cell: (a) => (
+      key: 'form',
+      header: 'Form',
+      width: '10rem',
+      value: (r) => (r.kind === 'ORDER' ? formOf(r.expenseClass) : r.expenseClass),
+      cell: (r) => (
         <div>
-          <span className="font-mono text-xs text-slate-500">{a.accountCode}</span>{' '}
-          <span className="text-sm">{a.accountName}</span>
+          {r.kind === 'ORDER' && <span className="text-xs">{formOf(r.expenseClass)}</span>}
+          <span className={r.kind === 'ORDER' ? 'block text-2xs text-slate-500' : 'text-xs'}>
+            {EXPENSE_CLASS_LABELS[r.expenseClass as ExpenseClass] ?? r.expenseClass}
+          </span>
         </div>
       ),
     },
     {
-      key: 'expenseClass',
-      header: 'Class',
-      width: '5rem',
-      value: (a) => a.expenseClass,
-      cell: (a) => <span className="text-xs">{a.expenseClass}</span>,
-      optional: true,
+      key: 'purpose',
+      header: 'Purpose',
+      value: (r) => r.purpose,
+      cell: (r) => <span className="text-xs">{r.purpose}</span>,
     },
     {
-      key: 'amount',
+      key: 'lines',
+      header: 'Office and budget line',
+      value: (r) =>
+        r.lines
+          .map(({ line }) => {
+            const b = budgetLineText(line);
+            return `${line.officeName} ${b.code} ${b.name} ${line.fppCode}`;
+          })
+          .join('; '),
+      cell: (r) => (
+        <ul className="space-y-1">
+          {r.lines.map(({ line, stillHeld }) => {
+            const b = budgetLineText(line);
+            return (
+              <li key={line.id} className="text-xs">
+                <span className="text-slate-600">{line.officeName}</span>
+                <span className="block">
+                  {b.code && <span className="font-mono text-2xs text-slate-500">{b.code} </span>}
+                  {b.name}
+                  {!b.code && <span className="text-2xs text-slate-500"> (programme)</span>}
+                  {r.lines.length > 1 && (
+                    <span className="ml-2 font-mono text-2xs text-slate-500">
+                      {formatPeso(line.amount, { symbol: false })}
+                    </span>
+                  )}
+                </span>
+                {/*
+                  Column 5 of the Allotment Release Order, released. Offered
+                  on the line that still holds something; the window it opens
+                  shows what has been collected against the year's Estimated
+                  Receipts, which is the figure the decision rests on.
+                */}
+                {stillHeld > 0 && line.status === 'APPROVED' && can('budget', 'approve') && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="mt-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReleasing(line);
+                    }}
+                  >
+                    Release {formatPeso(stillHeld, { symbol: false })} held
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ),
+    },
+    {
+      key: 'released',
       header: 'Released',
       kind: 'amount',
-      value: (a) => a.amount,
-      cell: (a) => (
-        <div>
-          <span className={a.amount < 0 ? 'text-rose-700' : undefined}>
-            {formatPeso(a.amount, { symbol: false, parens: true })}
-          </span>
-          {/*
-            A line of an Allotment Release Order that released nothing and only
-            held an amount back is stored here as a zero release, because the
-            hold needs a source document the nightly rebuild can sum. Say so,
-            rather than leaving a clerk staring at a 0.00 release.
-          */}
-          {(a.forLaterRelease ?? 0) > 0 && (
-            <span className="block text-2xs font-normal text-amber-700">
-              {formatPeso(a.forLaterRelease ?? 0, { symbol: false })} for later release
-            </span>
-          )}
-        </div>
+      width: '9rem',
+      value: (r) => r.released,
+      cell: (r) => (
+        <span className={r.released < 0 ? 'text-rose-700' : undefined}>
+          {formatPeso(r.released, { symbol: false, parens: true })}
+        </span>
       ),
+    },
+    {
+      key: 'held',
+      header: 'For later release',
+      kind: 'amount',
+      width: '9rem',
+      value: (r) => r.heldAtIssue,
+      cell: (r) =>
+        r.heldAtIssue > 0 ? (
+          <div>
+            <span>{formatPeso(r.heldAtIssue, { symbol: false })}</span>
+            {r.stillHeld !== r.heldAtIssue && (
+              <span className="block text-2xs font-normal text-slate-500">
+                {r.stillHeld > 0
+                  ? `${formatPeso(r.stillHeld, { symbol: false })} still held`
+                  : 'all released since'}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-slate-400">-</span>
+        ),
     },
     {
       key: 'status',
       header: 'Status',
-      width: '10rem',
-      value: (a) => a.status,
-      cell: (a) => (
-        <div className="flex items-center gap-2">
-          <StatusBadge status={a.status} />
-          {a.status === 'DRAFT' && can('budget', 'approve') && (
+      width: '11rem',
+      value: (r) => r.status,
+      cell: (r) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={r.status} />
+          {r.kind === 'WITHDRAWAL' && r.status === 'DRAFT' && can('budget', 'approve') && (
             <Button
               size="sm"
               variant="primary"
               onClick={(e) => {
                 e.stopPropagation();
-                setApproving(a);
+                setApproving(r.lines[0].line);
               }}
             >
               Approve
             </Button>
           )}
-          {/*
-            Column 5 of the Allotment Release Order, released.
-
-            The hold exists "to provide safeguards for shortfalls in the
-            collection of revenues", so the button is offered wherever
-            something is still held - and the window it opens shows what has
-            actually been collected against the year's Estimated Receipts,
-            which is the figure the decision rests on.
-          */}
-          {(a.forLaterRelease ?? 0) > 0 && a.status === 'APPROVED' && can('budget', 'approve') && (
+          {r.kind === 'ORDER' && (
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               onClick={(e) => {
                 e.stopPropagation();
-                setReleasing(a);
+                setSheet(issuedSheet(r));
               }}
             >
-              Release
+              Print
             </Button>
           )}
         </div>
@@ -228,7 +322,10 @@ export default function Allotments() {
   ];
 
   return (
-    <div>
+    <>
+    {/* Everything on screen steps aside while an order prints, so the order
+        comes out alone - it used to print with the register under it. */}
+    <div className={sheet ? 'no-print' : undefined}>
       <PageHeader
         title="Allotments"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear} - ${formatPeso(totalReleased)} released`}
@@ -260,26 +357,26 @@ export default function Allotments() {
       />
 
       {/*
-        The release orders, on the same page as the register they fill.
-
-        They were a separate screen, then a tab beside this one, and the
-        Budget Officer has now asked twice for them to be one thing. The
-        builder opens here when the header button is pressed, and the orders
-        already issued sit above the lines they released - so the question
-        "what put this line in the register" is answered by looking up rather
-        than by navigating.
+        Preparing an order, and the orders prepared and waiting for the Budget
+        Officer, sit above the register. Once approved, an order is a row of
+        the register below - with its lines inside it. There used to be a
+        table of orders here AND a table of their lines under it, each order
+        appearing in both; patch 112 made them one.
       */}
-      <AllotmentReleaseOrders embedded building={building} onBuildingChange={setBuilding} />
-
-      <div className="my-4" />
+      <AllotmentReleaseOrders
+        embedded
+        building={building}
+        onBuildingChange={setBuilding}
+        onPrint={setSheet}
+      />
 
       <DataTable
-        rows={data}
+        rows={register}
         columns={columns}
-        rowKey={(a) => a.id}
+        rowKey={(r) => r.key}
         loading={loading}
         error={error}
-        searchPlaceholder="Reference, office or account"
+        searchPlaceholder="ARO number, purpose, office or budget line"
         emptyTitle="No allotments released"
         emptyMessage="Offices cannot obligate until allotments are released against the approved appropriations."
         exportMeta={{
@@ -335,6 +432,8 @@ export default function Allotments() {
         }
       />
     </div>
+    {sheet && <AroPrintSheet sheet={sheet} />}
+    </>
   );
 }
 

@@ -369,7 +369,17 @@ service cloud.firestore {
         && didNotChange(['createdBy', 'approvedBy', 'postedAt',
                          'fiscalYear', 'fundCode', 'kind']);
 
-      allow delete: if signedIn() && isAdmin() && isDraft();
+      // A draft line from an UPLOADED ordinance may also be discarded by the
+      // Budget Office - since patch 112 an ordinance file lands as drafts, and
+      // a wrong file is thrown away whole from the Appropriations screen. It
+      // moves nothing: a draft is in no balance and no total. A line typed on
+      // the screen stays the administrator's to delete, as before.
+      allow delete: if signedIn() && isDraft() && (
+        isAdmin()
+        || (hasAny(budgetRoles())
+            && resource.data.get('importReference', null) != null
+            && fundAllowed(resource.data.fundCode))
+      );
     }
 
     // --- Budget: augmentations being prepared --------------------------------
@@ -395,7 +405,8 @@ service cloud.firestore {
         && hasAny(budgetRoles())
         && createdByCaller()
         && request.resource.data.status == 'DRAFT'
-        && request.resource.data.instrument == 'AUGMENTATION'
+        // Patch 112: a realignment is prepared here too, before it is posted.
+        && request.resource.data.instrument in ['AUGMENTATION', 'REALIGNMENT']
         && fundAllowed(request.resource.data.fundCode);
 
       // Corrected in place while it is still a draft, which is the whole point

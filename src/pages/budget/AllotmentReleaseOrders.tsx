@@ -1,25 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, Select, TextInput, DateInput, AmountInput } from '@/components/ui/Field';
-import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
-import { Letterhead, SignatureLine } from '@/components/print/formParts';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAllotments, useAroDrafts, useBudgetBalances } from '@/data/queries';
+import { useAroDrafts, useBudgetBalances } from '@/data/queries';
 import { createDraft, updateDraft, deleteDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { aroDraftWaiting } from '@/lib/budgetEditable';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { engine } from '@/lib/engine';
-import { formatPeso, formatAmount, amountInWords } from '@/lib/money';
-import { formatShortDate, formatLongDate, todayPh } from '@/lib/dates';
+import { formatPeso, amountInWords } from '@/lib/money';
+import { formatShortDate, todayPh } from '@/lib/dates';
 import { checkAllotmentAgainstAppropriation } from '@/lib/accounting-rules';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
-import type { Allotment, AroDraft, BudgetBalance } from '@/types/budget';
+import type { AroDraft, BudgetBalance } from '@/types/budget';
 import type { Centavos } from '@/types/common';
-import { useEntity } from '@/data/useEntity';
+import { FORM_OF, formOf, type AroSheet } from './AroPrint';
 import { fundLabel } from './Obligations';
 
 /**
@@ -73,25 +71,6 @@ const blank = (): DraftLine => ({
   forLaterRelease: null,
 });
 
-const FORM_OF: Record<ExpenseClass, string> = {
-  PS: 'LBE Form No. 1',
-  MOOE: 'LBE Form No. 1A',
-  FE: 'LBE Form No. 1B',
-  CO: 'LBE Form No. 1C',
-};
-
-const formOf = (expenseClass: string): string =>
-  FORM_OF[expenseClass as ExpenseClass] ?? 'Allotment Release Order';
-
-interface IssuedOrder {
-  aroNo: string;
-  date: string;
-  expenseClass: string;
-  purpose: string;
-  released: Centavos;
-  held: Centavos;
-  lineCount: number;
-}
 
 /**
  * Issuing allotment by order, and the orders already issued.
@@ -112,20 +91,25 @@ export default function AllotmentReleaseOrders({
   embedded,
   building: buildingIn,
   onBuildingChange,
+  onPrint,
 }: {
   /** Rendered inside the register's page: no heading of its own. */
   embedded?: boolean;
   /** The register owns the button, so it owns the state behind it. */
   building?: boolean;
   onBuildingChange?: (next: boolean) => void;
-} = {}) {
-  const entity = useEntity();
+  /**
+   * Print a prepared order. The register's page owns the printed sheet, so
+   * that it can hide everything else on the page while it prints - the order
+   * used to come out with the whole register printed under it.
+   */
+  onPrint: (sheet: AroSheet) => void;
+}) {
   const { fiscalYear, fundCode } = useFilters();
   const { hasRole, user, profile } = useAuth();
   const toast = useToast();
 
   const balances = useBudgetBalances(fiscalYear, fundCode);
-  const allotments = useAllotments(fiscalYear, fundCode);
 
   const [buildingOwn, setBuildingOwn] = useState(false);
   const building = buildingIn ?? buildingOwn;
@@ -138,7 +122,6 @@ export default function AllotmentReleaseOrders({
   const [date, setDate] = useState(todayPh());
   const [lines, setLines] = useState<DraftLine[]>(() => [blank()]);
   const [saving, setSaving] = useState(false);
-  const [printing, setPrinting] = useState<IssuedOrder | null>(null);
 
   /*
     ---------------------------------------------------------------------------
@@ -354,129 +337,9 @@ export default function AllotmentReleaseOrders({
     }
   };
 
-  /** Issued orders, assembled from the allotment lines that share a number. */
-  const issued = useMemo(() => {
-    const map = new Map<string, IssuedOrder>();
-    for (const a of allotments.data) {
-      if (!a.aroNo) continue;
-      const entry = map.get(a.aroNo) ?? {
-        aroNo: a.aroNo,
-        date: a.allotmentDate,
-        expenseClass: a.expenseClass as string,
-        purpose: a.aroPurpose ?? '',
-        released: 0,
-        held: 0,
-        lineCount: 0,
-      };
-      entry.released += a.amount;
-      entry.held += a.forLaterRelease ?? 0;
-      entry.lineCount += 1;
-      map.set(a.aroNo, entry);
-    }
-    return [...map.values()].sort((a, b) => b.aroNo.localeCompare(a.aroNo));
-  }, [allotments.data]);
-
-  const printLines: Allotment[] = useMemo(
-    () =>
-      printing
-        ? allotments.data
-            .filter((a) => a.aroNo === printing.aroNo)
-            .sort(
-              (a, b) =>
-                a.officeName.localeCompare(b.officeName) || a.fppCode.localeCompare(b.fppCode),
-            )
-        : [],
-    [printing, allotments.data],
-  );
-
-  // The browser's own print dialogue, once the sheet below has rendered.
-  useEffect(() => {
-    if (!printing) return;
-    const done = () => setPrinting(null);
-    window.addEventListener('afterprint', done);
-    const timer = window.setTimeout(() => window.print(), 80);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener('afterprint', done);
-    };
-  }, [printing]);
-
-  const columns: Column<IssuedOrder>[] = [
-    {
-      key: 'aroNo',
-      header: 'ARO No.',
-      width: '11rem',
-      value: (r) => r.aroNo,
-      cell: (r) => <span className="font-mono text-xs">{r.aroNo}</span>,
-    },
-    {
-      key: 'date',
-      header: 'Date',
-      kind: 'date',
-      width: '7rem',
-      value: (r) => r.date,
-      cell: (r) => <span className="text-xs">{formatShortDate(r.date)}</span>,
-    },
-    {
-      key: 'form',
-      header: 'Form',
-      width: '11rem',
-      value: (r) => formOf(r.expenseClass),
-      cell: (r) => (
-        <div>
-          <span className="text-xs">{formOf(r.expenseClass)}</span>
-          <span className="block text-2xs text-slate-500">
-            {EXPENSE_CLASS_LABELS[r.expenseClass as ExpenseClass] ?? r.expenseClass}
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: 'purpose',
-      header: 'Purpose',
-      value: (r) => r.purpose,
-      cell: (r) => <span className="text-xs">{r.purpose}</span>,
-    },
-    {
-      key: 'lineCount',
-      header: 'Lines',
-      kind: 'number',
-      width: '5rem',
-      value: (r) => r.lineCount,
-      cell: (r) => <span className="text-xs">{r.lineCount}</span>,
-    },
-    {
-      key: 'released',
-      header: 'Released',
-      kind: 'amount',
-      width: '9rem',
-      value: (r) => r.released,
-      cell: (r) => <span>{formatAmount(r.released)}</span>,
-    },
-    {
-      key: 'held',
-      header: 'For later release',
-      kind: 'amount',
-      width: '9rem',
-      value: (r) => r.held,
-      cell: (r) => <span>{formatAmount(r.held)}</span>,
-    },
-    {
-      key: 'actions',
-      header: '',
-      width: '5rem',
-      fixed: true,
-      cell: (r) => (
-        <Button size="sm" variant="ghost" onClick={() => setPrinting(r)}>
-          Print
-        </Button>
-      ),
-    },
-  ];
-
   return (
     <>
-      <div className={printing ? 'no-print' : undefined}>
+      <div>
         {!embedded && (
           <PageHeader
             title="Allotment Release Orders"
@@ -741,6 +604,14 @@ export default function AllotmentReleaseOrders({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/*
+                        Printed for signature before it is released - the
+                        Budget Officer recommends and the Mayor approves on
+                        paper, and the paper comes first. Patch 112.
+                      */}
+                      <Button size="sm" variant="ghost" onClick={() => onPrint(preparedSheet(d))}>
+                        Print
+                      </Button>
                       {canPrepare && (
                         <Button size="sm" variant="secondary" onClick={() => editDraft(d)}>
                           Edit
@@ -823,129 +694,33 @@ export default function AllotmentReleaseOrders({
           }
         />
 
-        {/*
-          Inside the register the orders are context, not the subject: the
-          register below is the list being read, and this says what put the
-          lines in it. So no search box of its own - searching happens on the
-          register, where the lines are.
-        */}
-        {(!embedded || issued.length > 0) && (
-          <Card title="Release orders issued" bodyClassName="p-0">
-            <DataTable
-              rows={issued}
-              columns={columns}
-              rowKey={(r) => r.aroNo}
-              loading={allotments.loading}
-              error={allotments.error}
-              searchPlaceholder={embedded ? undefined : 'ARO number or purpose'}
-              emptyTitle="No Allotment Release Order has been issued"
-              emptyMessage={`Nothing has been released by order in ${fiscalYear} for this fund.`}
-            />
-          </Card>
-        )}
       </div>
-
-      {printing && (
-        <div className="print-only">
-          <Letterhead
-            appendix={formOf(printing.expenseClass)}
-            lines={entity.headingLines}
-            title="Allotment Release Order"
-          />
-
-          <div className="mb-3 grid grid-cols-2 gap-x-6 gap-y-1 text-2xs">
-            <p>
-              <span className="text-slate-500">ARO No.:</span>{' '}
-              <span className="font-mono font-semibold">{printing.aroNo}</span>
-            </p>
-            <p className="text-right">
-              <span className="text-slate-500">Date:</span> {formatLongDate(printing.date)}
-            </p>
-            <p>
-              <span className="text-slate-500">Fund:</span> {fundLabel(fundCode)}
-            </p>
-            <p className="text-right">
-              <span className="text-slate-500">Fiscal Year:</span> {fiscalYear}
-            </p>
-            <p className="col-span-2">
-              <span className="text-slate-500">Expense Class:</span>{' '}
-              {EXPENSE_CLASS_LABELS[printing.expenseClass as ExpenseClass] ?? printing.expenseClass}
-            </p>
-            <p className="col-span-2">
-              <span className="text-slate-500">Purpose:</span> {printing.purpose}
-            </p>
-          </div>
-
-          <table className="w-full border-collapse text-2xs">
-            <thead>
-              <tr>
-                <th className="border border-slate-400 px-1.5 py-1 text-left">Office / Function</th>
-                <th className="border border-slate-400 px-1.5 py-1 text-left">FPP</th>
-                <th className="border border-slate-400 px-1.5 py-1 text-left">Object</th>
-                <th
-                  className="border border-slate-400 px-1.5 py-1 text-right"
-                  style={{ width: '6.5rem' }}
-                >
-                  Amount Released
-                </th>
-                <th
-                  className="border border-slate-400 px-1.5 py-1 text-right"
-                  style={{ width: '6.5rem' }}
-                >
-                  For Later Release
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {printLines.map((l) => (
-                <tr key={l.id}>
-                  <td className="border border-slate-400 px-1.5 py-1">{l.officeName}</td>
-                  <td className="border border-slate-400 px-1.5 py-1">
-                    {l.fppCode} {l.fppName}
-                  </td>
-                  <td className="border border-slate-400 px-1.5 py-1">
-                    {l.accountCode ? `${l.accountCode} ${l.accountName}` : '—'}
-                  </td>
-                  <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                    {formatAmount(l.amount, false)}
-                  </td>
-                  <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                    {formatAmount(l.forLaterRelease ?? 0, false)}
-                  </td>
-                </tr>
-              ))}
-              <tr className="font-bold">
-                <td className="border border-slate-400 px-1.5 py-1" colSpan={3}>
-                  Total
-                </td>
-                <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                  {formatAmount(printing.released, false)}
-                </td>
-                <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                  {formatAmount(printing.held, false)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <p className="mt-2 text-2xs">
-            Amount released: <strong>{amountInWords(printing.released)}</strong>
-          </p>
-
-          <p className="mt-3 text-2xs leading-relaxed">
-            The allotment released hereunder is chargeable against the appropriation authorised
-            under the Annual Budget for Fiscal Year {fiscalYear} and may be obligated solely for
-            the purpose stated above. The amount shown in the &ldquo;For Later Release&rdquo;
-            column is withheld and shall not be obligated until it is covered by a subsequent
-            Allotment Release Order.
-          </p>
-
-          <div className="mt-8 grid grid-cols-2 gap-10">
-            <SignatureLine label="Recommended by" role="Municipal Budget Officer" />
-            <SignatureLine label="Approved by" role="Municipal Mayor" />
-          </div>
-        </div>
-      )}
     </>
   );
+}
+
+/** A prepared order as it goes on paper: no ARO number yet, the lines as prepared. */
+export function preparedSheet(d: AroDraft): AroSheet {
+  return {
+    aroNo: null,
+    date: d.date,
+    expenseClass: d.expenseClass,
+    purpose: d.purpose ?? '',
+    fundCode: d.fundCode,
+    fiscalYear: d.fiscalYear,
+    prepared: true,
+    preparedBy: d.createdBy?.name ?? null,
+    lines: [...(d.lines ?? [])]
+      .sort((a, b) => a.officeName.localeCompare(b.officeName) || a.fppCode.localeCompare(b.fppCode))
+      .map((l, i) => ({
+        key: `${l.balanceId}-${i}`,
+        officeName: l.officeName,
+        fppCode: l.fppCode,
+        fppName: l.fppName ?? '',
+        accountCode: l.accountCode ?? '',
+        accountName: l.accountName ?? '',
+        released: l.amount ?? 0,
+        held: l.forLaterRelease ?? 0,
+      })),
+  };
 }

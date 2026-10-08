@@ -50,6 +50,24 @@ async function call<Req, Res>(name: string, payload: Req): Promise<Res> {
 export const engine = {
   approveAppropriation: (p: { appropriationId: Id }) =>
     call<typeof p, { appropriationId: Id; budgetBalanceId: Id }>('approveAppropriation', p),
+  /**
+   * Approve every draft line of one uploaded ordinance, whole or not at all.
+   * Patch 112: an ordinance file lands as drafts.
+   */
+  approveOrdinanceUpload: (p: { fiscalYear: number; fundCode: string; reference: string }) =>
+    call<{ upload: typeof p }, { approved: number; total: Centavos; reference: string }>(
+      'approveAppropriation',
+      { upload: p },
+    ),
+  /**
+   * Post a prepared augmentation or realignment. Only its id is sent: the
+   * engine reads the set itself, so what is posted is what was prepared.
+   */
+  approvePreparedSet: (p: { draftId: Id }) =>
+    call<
+      { kind: 'APPROPRIATION'; draftId: Id },
+      { posted: number; allotmentMoved: Centavos; reference: string }
+    >('importBudgetLines', { kind: 'APPROPRIATION', draftId: p.draftId }),
 
   releaseAllotment: (p: { allotmentId: Id }) =>
     call<typeof p, { allotmentId: Id; allotmentNo: string; availableAppropriation: Centavos }>(
@@ -129,6 +147,10 @@ export const engine = {
         reference: string;
         /** How much allotment a realignment carried across with it. */
         allotmentMoved: Centavos;
+        /** An ordinance file lands as drafts since patch 112: how many lines. */
+        drafted?: number;
+        /** A realignment or augmentation file lands as one prepared set: its id. */
+        preparedSet?: string;
         /**
          * An allotment upload no longer releases anything. It fills prepared
          * release orders - one per expense class - for the Budget Officer to

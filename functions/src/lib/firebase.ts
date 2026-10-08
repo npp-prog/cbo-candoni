@@ -64,6 +64,12 @@ export const COL = {
   allotments: 'allotments',
   /** Allotment Release Orders prepared and awaiting the Budget Officer's approval. */
   aroDrafts: 'aroDrafts',
+  /**
+   * Augmentations AND realignments prepared and awaiting approval - the name
+   * is older than patch 112, which put realignments here too. Approved by
+   * importBudgetLines with the set's id; the engine reads the set itself.
+   */
+  augmentationDrafts: 'augmentationDrafts',
   obligations: 'obligations',
   budgetBalances: 'budgetBalances',
   budgetSummaries: 'budgetSummaries',

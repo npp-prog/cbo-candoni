@@ -20,6 +20,8 @@ import {
   planAugmentationAllotment,
 } from '../lib/rules';
 import { findSector } from '../lib/sectors';
+import { postingFromPreparedSet, preparedSetId, type PreparedSet } from './preparedSets';
+import type { DocumentReference, Timestamp } from 'firebase-admin/firestore';
 
 /**
  * Uploading the appropriation ordinance and allotment releases.
@@ -148,6 +150,12 @@ export const importBudgetLines = onCall(
       /** For a realignment: which instrument it was made under. */
       instrument?: string;
       rows?: unknown;
+      /**
+       * Approving a PREPARED augmentation or realignment: the set's id, and
+       * nothing else. Every other field is read from the stored set and
+       * whatever the request carries is overwritten. Patch 112.
+       */
+      draftId?: string;
     };
 
     const kind = data.kind as ImportKind;
@@ -156,16 +164,54 @@ export const importBudgetLines = onCall(
     }
 
     /*
-     * An appropriation upload POSTS - it is enacted authority, and the
-     * approval of a prepared augmentation comes through here too. That stays
-     * the Budget Officer's. Only preparing allotment is open to Budget Staff.
+     * ---------------------------------------------------------------------
+     * WHAT THIS CALL MAY POST, SINCE PATCH 112
+     * ---------------------------------------------------------------------
+     * Exactly one thing: a PREPARED augmentation or realignment, named by its
+     * id, approved by the Budget Officer. Everything else that comes through
+     * here only PREPARES, and so is open to Budget Staff:
+     *
+     *   an ordinance file           lands its lines as DRAFT appropriations,
+     *                               approved on the Appropriations screen
+     *   a realignment or            lands as one prepared set, approved on
+     *   augmentation file           the same screen as one typed by hand
+     *   an allotment file           lands as prepared release orders (p110)
+     *
+     * The approval reads the set from the database - the request's own rows,
+     * reference and date are replaced by the stored set's - so what is posted
+     * is what was prepared.
      */
-    if (kind === 'APPROPRIATION' && !hasRole(caller, ...BUDGET_APPROVERS)) {
-      throw new HttpsError(
-        'permission-denied',
-        'Posting appropriations is the Budget Officer\'s. Budget Staff may prepare allotment ' +
-          'releases from a file; the Budget Officer approves them.',
-      );
+    const draftId = String(data.draftId ?? '').trim() || null;
+    let fromDraft: { ref: DocumentReference; updateTime: Timestamp | undefined } | null = null;
+    if (draftId) {
+      if (kind !== 'APPROPRIATION') {
+        throw invalid('Only a prepared augmentation or realignment is approved by its id here.');
+      }
+      if (!hasRole(caller, ...BUDGET_APPROVERS)) {
+        throw new HttpsError(
+          'permission-denied',
+          "Approving an augmentation or a realignment is the Budget Officer's. Budget Staff may " +
+            'prepare one; the Budget Officer approves it.',
+        );
+      }
+      const snap = await db.collection(COL.augmentationDrafts).doc(draftId).get();
+      if (!snap.exists) {
+        throw new HttpsError(
+          'not-found',
+          'That prepared set is no longer there - it has already been posted, or it was ' +
+            'discarded. Nothing was posted.',
+        );
+      }
+      const posting = postingFromPreparedSet(snap.data() as PreparedSet);
+      data.fiscalYear = posting.fiscalYear;
+      data.fundCode = posting.fundCode;
+      data.appropriationKind = posting.appropriationKind;
+      data.instrument = posting.instrument;
+      data.reference = posting.reference;
+      data.date = posting.date;
+      data.fileName = posting.fileName;
+      data.rows = posting.rows;
+      fromDraft = { ref: snap.ref, updateTime: snap.updateTime };
     }
 
     const fiscalYear = Number(data.fiscalYear);
@@ -209,6 +255,8 @@ export const importBudgetLines = onCall(
     }
     const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
     const isRealignment = kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT';
+    /** An appropriation call that is not the approval of a prepared set: it prepares. */
+    const preparing = kind === 'APPROPRIATION' && !fromDraft;
 
     /**
      * Which of the two acts this is.
@@ -578,13 +626,60 @@ export const importBudgetLines = onCall(
       if (alreadyPosted.length) {
         throw new HttpsError(
           'already-exists',
-          `${kind === 'APPROPRIATION' ? 'Ordinance' : 'Release'} ${reference} has already been posted - ` +
-            `${alreadyPosted.length} of these rows ${alreadyPosted.length === 1 ? 'is' : 'are'} already in the books ` +
+          `${kind === 'APPROPRIATION' ? 'Ordinance' : 'Release'} ${reference} has already been uploaded - ` +
+            `${alreadyPosted.length} of these rows ${alreadyPosted.length === 1 ? 'is' : 'are'} already there, ` +
+            `waiting for approval or approved ` +
             `(row${alreadyPosted.length === 1 ? '' : 's'} ${alreadyPosted.slice(0, 8).map((r) => r.lineNo).join(', ')}` +
             `${alreadyPosted.length > 8 ? ', …' : ''}). ` +
             `Nothing was posted a second time. If this is a different ordinance, give it its own reference; ` +
             `if it is a correction, record it as a supplemental appropriation or an adjustment.`,
         );
+      }
+
+      /*
+       * A realignment or augmentation FILE becomes one prepared set, under an
+       * id made from its reference - so the same file uploaded twice finds the
+       * first one waiting and is refused.
+       */
+      const uploadedSetRef =
+        isRealignment && preparing
+          ? db
+              .collection(COL.augmentationDrafts)
+              .doc(preparedSetId(fiscalYear, fundCode, instrument, refSlug))
+          : null;
+      if (uploadedSetRef && (await tx.get(uploadedSetRef)).exists) {
+        throw new HttpsError(
+          'already-exists',
+          `${reference} has already been uploaded and is waiting for approval on the ` +
+            'Appropriations screen. Nothing was prepared a second time. Correct that one, or ' +
+            'discard it first if this file is meant to replace it.',
+        );
+      }
+
+      /*
+       * Approving a prepared set: read it AGAIN, here, where it is posted. If
+       * it was edited or discarded after the approval began, what would be
+       * posted is no longer what the Budget Officer was looking at.
+       */
+      if (fromDraft) {
+        const now = await tx.get(fromDraft.ref);
+        if (!now.exists) {
+          throw new HttpsError(
+            'not-found',
+            'That prepared set was posted or discarded a moment ago. Nothing was posted again.',
+          );
+        }
+        if (
+          fromDraft.updateTime &&
+          now.updateTime &&
+          !now.updateTime.isEqual(fromDraft.updateTime)
+        ) {
+          throw new HttpsError(
+            'aborted',
+            'That prepared set was changed while it was being approved. Nothing was posted. ' +
+              'Read it again and approve it again.',
+          );
+        }
       }
 
       /*
@@ -816,7 +911,89 @@ export const importBudgetLines = onCall(
 
       let total = 0;
 
-      for (let i = 0; i < lines.length; i++) {
+      /*
+       * A REALIGNMENT OR AUGMENTATION FILE: one prepared set, and nothing in
+       * the books moves. Every check above has already run, so a file that
+       * could not post is refused now rather than at approval; approval runs
+       * them all again against the books as they then stand.
+       */
+      if (uploadedSetRef) {
+        tx.create(uploadedSetRef, {
+          fiscalYear,
+          fundCode,
+          instrument: instrument === 'AUGMENTATION' ? 'AUGMENTATION' : 'REALIGNMENT',
+          authorityReference: reference,
+          authorityDate: date,
+          importFileName: data.fileName ?? null,
+          source: 'UPLOAD',
+          lines: resolved.map((r, i) => ({
+            lineNo: i + 1,
+            officeId: r.officeId,
+            officeName: r.officeName,
+            lineId: budgetKeyId({
+              fiscalYear,
+              fundCode,
+              officeId: r.officeId,
+              responsibilityCenterId: null,
+              programId: null,
+              projectId: null,
+              activityId: null,
+              fppCode: r.fppCode,
+              accountCode: r.accountCode,
+            }),
+            fppCode: r.fppCode,
+            fppName: r.fppName,
+            sector: r.sector,
+            serviceSector: r.serviceSector ?? '',
+            accountCode: r.accountCode,
+            accountName: r.accountName,
+            expenseClass: r.expenseClass,
+            amount: r.amount,
+            particulars: r.particulars ?? '',
+          })),
+          status: 'DRAFT',
+          createdBy: stamp,
+          createdAt: now,
+        });
+
+        recordTransition(tx, {
+          caller,
+          event: 'UPLOAD',
+          entityType: COL.augmentationDrafts,
+          entityId: uploadedSetRef.id,
+          entityRef: `${instrument === 'AUGMENTATION' ? 'Augmentation' : 'Realignment'} ${reference} - prepared`,
+          fiscalYear,
+          fundCode,
+          action: 'SUBMIT',
+          newStatus: 'DRAFT',
+          remarks:
+            `${resolved.length} lines${data.fileName ? `, from ${data.fileName}` : ''}. ` +
+            'Nothing posted until approved.',
+        });
+
+        return {
+          posted: 0,
+          drafted: 0,
+          preparedSet: uploadedSetRef.id,
+          budgetLines: lines.length,
+          total: 0,
+          allotmentNo: null,
+          reference,
+          allotmentMoved: 0,
+        };
+      }
+
+      /*
+       * AN ORDINANCE FILE lands its lines as DRAFTS, since patch 112. They
+       * appear in the Appropriation Ledger marked Draft, foot to nothing, and
+       * become authority only when the Budget Officer approves them - one at a
+       * time, or the whole upload at once - through approveAppropriation,
+       * which checks each again. The ids are the same as before, so the same
+       * ordinance uploaded twice is still refused.
+       */
+      const asDrafts = preparing;
+
+      for (let i = 0; i < lines.length && !asDrafts; i++) {
         const line = lines[i];
         const first = line.rows[0];
 
@@ -910,10 +1087,9 @@ export const importBudgetLines = onCall(
           expenseClass: r.expenseClass,
           amount: r.amount,
           particulars: r.particulars,
-          status: 'APPROVED',
-          postedAt: now,
-          createdBy: stamp,
-          approvedBy: stamp,
+          ...(asDrafts
+            ? { status: 'DRAFT', createdBy: stamp, createdAt: now }
+            : { status: 'APPROVED', postedAt: now, createdBy: stamp, approvedBy: stamp }),
           /** Which upload this line came from, for tracing it back. */
           importReference: reference,
           importLineNo: r.lineNo,
@@ -937,12 +1113,17 @@ export const importBudgetLines = onCall(
         );
       }
 
-      applySummaryDelta(
-        tx,
-        fiscalYear,
-        fundCode,
-        kind === 'APPROPRIATION' ? { appropriationRevised: total } : { allotmentReleased: total },
-      );
+      if (!asDrafts) {
+        applySummaryDelta(
+          tx,
+          fiscalYear,
+          fundCode,
+          kind === 'APPROPRIATION' ? { appropriationRevised: total } : { allotmentReleased: total },
+        );
+      }
+
+      /* The prepared set has become posted lines; it goes in the same act. */
+      if (fromDraft) tx.delete(fromDraft.ref);
 
       recordTransition(tx, {
         caller,
@@ -955,15 +1136,17 @@ export const importBudgetLines = onCall(
             : `Allotment release ${allotmentNo ?? reference}`,
         fiscalYear,
         fundCode,
-        action: 'APPROVE',
-        newStatus: 'APPROVED',
+        action: asDrafts ? 'SUBMIT' : 'APPROVE',
+        newStatus: asDrafts ? 'DRAFT' : 'APPROVED',
         remarks:
           `${resolved.length} lines on ${lines.length} budget line${lines.length === 1 ? '' : 's'}, ` +
-          `${peso(total)}${data.fileName ? `, from ${data.fileName}` : ''}.`,
+          `${peso(total)}${data.fileName ? `, from ${data.fileName}` : ''}.` +
+          (asDrafts ? ' Uploaded as drafts; nothing is authority until approved.' : ''),
       });
 
       return {
-        posted: resolved.length,
+        posted: asDrafts ? 0 : resolved.length,
+        drafted: asDrafts ? resolved.length : 0,
         budgetLines: lines.length,
         total,
         allotmentNo,

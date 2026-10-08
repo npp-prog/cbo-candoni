@@ -6,6 +6,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { ActorStamp } from '@/types/common';
@@ -125,4 +126,20 @@ export async function reactivateMaster(collectionName: string, id: string, actor
  */
 export async function deleteDraft(collectionName: string, id: string): Promise<void> {
   await deleteDoc(doc(db, collectionName, id));
+}
+
+/**
+ * Delete many drafts - an uploaded ordinance discarded whole. Patch 112.
+ *
+ * In batches of 400, the database's limit being 500 to a batch. Each batch is
+ * all-or-nothing; a failure part-way leaves the rest listed, to be discarded
+ * again. Nothing here is in a balance, so a half-discarded upload is untidy
+ * rather than wrong.
+ */
+export async function deleteDrafts(collectionName: string, ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 400)) batch.delete(doc(db, collectionName, id));
+    await batch.commit();
+  }
 }

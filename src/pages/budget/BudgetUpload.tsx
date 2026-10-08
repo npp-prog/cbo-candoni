@@ -228,7 +228,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
       for (let i = 0; i < checked.length; i += step) {
         const chunk = checked.slice(i, i + step);
         setProgress(
-          `${isAppropriation ? 'Posting' : 'Preparing'} ${i + 1} to ${i + chunk.length} of ${checked.length}`,
+          `${isAppropriation ? 'Uploading' : 'Preparing'} ${i + 1} to ${i + chunk.length} of ${checked.length}`,
         );
 
         const res = await engine.importBudgetLines({
@@ -253,15 +253,22 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
             particulars: r.particulars || undefined,
           })),
         });
-        posted += res.posted;
+        // Since patch 112 nothing here posts: an ordinance lands as drafts.
+        posted += res.posted + (res.drafted ?? 0);
         amount += res.total;
         prepared += res.preparedOrders ?? 0;
       }
 
-      if (isAppropriation) {
+      if (isRealignment) {
         toast.success(
-          'Appropriation posted',
-          `${posted} line${posted === 1 ? '' : 's'}, ${formatPeso(amount)}. It is in the budget ledger now and available for allotment.`,
+          `${instrument === 'AUGMENTATION' ? 'Augmentation' : 'Realignment'} prepared`,
+          'Nothing is posted yet. It is waiting on the Appropriations screen for the Budget Officer to approve.',
+        );
+      } else if (isAppropriation) {
+        toast.success(
+          'Ordinance uploaded as drafts',
+          `${posted} line${posted === 1 ? '' : 's'}, ${formatPeso(amount)}. None of it is authority yet - ` +
+            'read it in the Appropriation Ledger, then approve it there, whole or line by line.',
         );
       } else {
         toast.success(
@@ -276,7 +283,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
       if (fileInput.current) fileInput.current.value = '';
     } catch (err) {
       toast.error(
-        posted > 0 ? `Stopped after ${posted} lines` : 'Nothing was posted',
+        posted > 0 ? `Stopped after ${posted} lines` : 'Nothing was uploaded',
         err instanceof Error ? err.message : String(err),
       );
     } finally {
@@ -293,7 +300,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
         title={isAppropriation ? 'Upload appropriations' : 'Upload allotment releases'}
         subtitle={
           isAppropriation
-            ? 'The annex to the appropriation ordinance, read line by line into the budget ledger. One row per office per account.'
+            ? 'The annex to the appropriation ordinance, read line by line into the budget ledger as DRAFTS for the Budget Officer to approve. One row per office per account.'
             : 'A batch of allotment releases, read from the spreadsheet the Budget Office already keeps. It fills prepared release orders - one per expense class - and nothing is released until the Budget Officer approves them on the Allotments screen.'
         }
         breadcrumbs={[
@@ -530,9 +537,11 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
                     , totalling <strong className="cbo-amount">{formatPeso(total)}</strong>.
                   </>
                 )}{' '}
-                {isAppropriation
-                  ? 'Posting records this as enacted authority; it becomes available for allotment straight away.'
-                  : 'Each line is checked against its appropriation now, and again when the Budget Officer approves the order. Nothing is released by this upload.'}
+                {isRealignment
+                  ? 'This prepares the set. Nothing is posted until the Budget Officer approves it on the Appropriations screen, when every check runs again.'
+                  : isAppropriation
+                    ? 'The lines land as DRAFTS. None of it is authority until the Budget Officer approves it on the Appropriations screen.'
+                    : 'Each line is checked against its appropriation now, and again when the Budget Officer approves the order. Nothing is released by this upload.'}
               </Alert>
             )}
 
@@ -548,7 +557,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
                 disabled={busy || blocked}
                 onClick={() => void post()}
               >
-                {isAppropriation ? 'Post' : 'Prepare'} {checked.length} line
+                {isAppropriation && !isRealignment ? 'Upload' : 'Prepare'} {checked.length} line
                 {checked.length === 1 ? '' : 's'}
               </Button>
             </div>
