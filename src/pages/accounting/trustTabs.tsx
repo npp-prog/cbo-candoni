@@ -1,5 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Tabs } from '@/components/ui/Layout';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * The Trust Fund's three screens, on one menu item.
@@ -40,14 +42,26 @@ export function TrustTabs({ active }: { active: TrustTab }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
+  /*
+    THE MAIN TABS COME WITH THE SUB-TABS, ALWAYS.
+
+    Each screen used to draw the strip above it for itself, and only the first
+    one did - so the moment the officer moved to the second sub-tab the main
+    tabs vanished, and with them the only way across to the next main tab
+    without going back to the menu. Drawing both here means a screen cannot
+    show these sub-tabs without the strip they sit under. Patch 111.
+  */
   return (
-    <Tabs
-      tabs={TRUST_TABS.map((t) => ({ id: t.id, label: t.label }))}
-      active={active}
-      onChange={(id) => {
-        const tab = TRUST_TABS.find((t) => t.id === id);
-        if (tab && tab.to !== pathname) navigate(tab.to);
-      }}
-    />
+    <>
+      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
+      <Tabs
+        tabs={TRUST_TABS.map((t) => ({ id: t.id, label: t.label }))}
+        active={active}
+        onChange={(id) => {
+          const tab = TRUST_TABS.find((t) => t.id === id);
+          if (tab && tab.to !== pathname) navigate(tab.to);
+        }}
+      />
+    </>
   );
 }

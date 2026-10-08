@@ -18,8 +18,6 @@ import type { ExportColumn } from '@/lib/export';
 import type { BudgetBalance } from '@/types/budget';
 import { RegistryTabs } from './registryTabs';
 import { fundLabel } from './Obligations';
-import { SectionTabs } from '@/components/ui/SectionTabs';
-import { BUDGET_MONITORING_TABS } from '@/layout/sections';
 
 /**
  * The Registry of Appropriations, Allotments and Obligations.
@@ -173,12 +171,7 @@ export default function Registry() {
         periodLabel: `For the fiscal year ${fiscalYear}`,
       }}
       breadcrumbs={[{ label: 'Budget' }, { label: 'Registry' }]}
-      tabs={
-        <>
-          <SectionTabs tabs={BUDGET_MONITORING_TABS} />
-          <RegistryTabs active="summary" />
-        </>
-      }
+      tabs={<RegistryTabs active="summary" />}
 
       rows={rows}
       exportColumns={exportColumns}

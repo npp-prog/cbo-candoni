@@ -16,7 +16,9 @@ import {
   PRINTING_TABS,
   REPORT_TABS,
   sectionHeadForPath,
+  TRUST_SCREENS,
 } from './sections';
+import { REGISTRY_TABS } from '@/pages/budget/registryTabs';
 
 /**
  * The menu is data, and these are the properties of that data the sidebar
@@ -727,6 +729,32 @@ describe('the headings that left the menu in patch 94', () => {
   /** A screen below a tab still belongs to that tab's strip. */
   it('resolves a detail screen to the strip above it', () => {
     expect(sectionHeadForPath('/reports/budget-vs-actual/lines')).toBe(REPORT_TABS[0].to);
+  });
+
+  /**
+   * A sub-tab screen belongs to the main tab above it. Patch 111: the menu
+   * and the strip both light Monitoring on the PS, MOOE, CO and FE screens,
+   * and on the trust registry and utilization report - not only on the
+   * first sub-tab.
+   */
+  it('resolves every sub-tab screen to its Monitoring strip', () => {
+    for (const tab of REGISTRY_TABS) {
+      expect(sectionHeadForPath(tab.to), tab.label).toBe(BUDGET_MONITORING_TABS[0].to);
+    }
+    for (const tab of TRUST_TABS) {
+      expect(sectionHeadForPath(tab.to), tab.label).toBe(ACCOUNTING_MONITORING_TABS[0].to);
+    }
+  });
+
+  /**
+   * TRUST_SCREENS is written in the layout so the menu need not import a page.
+   * It must name exactly the screens the Trust Accounts sub-tabs reach, or a
+   * screen added to one would light nothing.
+   */
+  it('keeps TRUST_SCREENS equal to the trust sub-tabs', () => {
+    expect([...TRUST_SCREENS].sort()).toEqual(TRUST_TABS.map((t) => t.to).sort());
+    const trust = ACCOUNTING_MONITORING_TABS.find((t) => t.label === 'Trust Accounts');
+    expect(trust?.includes).toEqual(TRUST_SCREENS);
   });
 
   it('claims nothing it does not own', () => {

@@ -2725,6 +2725,70 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 42. A sub-tab strip never hides the strip above it --------------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE MAIN TABS COME WITH THE SUB-TABS
+ * ---------------------------------------------------------------------------
+ * Budget > Monitoring has two main tabs - the RAAO and the REAIRR - and the
+ * RAAO has five sub-tabs of its own: Summary, PS, MOOE, CO, FE. Until patch
+ * 111 the main strip was drawn by the Summary PAGE, so it was there on
+ * Summary and gone on the other four. Accounting > Monitoring did the same
+ * with Trust Accounts: there on the programmes, gone on the registry and the
+ * utilization report. An officer one click in had lost the way back out.
+ *
+ * The fix is that the sub-tab component draws the main strip itself, so every
+ * page that shows the sub-tabs shows both. This refuses a sub-tab component
+ * (a *Tabs.tsx under src/pages) whose addresses sit inside a main strip in
+ * layout/sections.ts and which does not draw a strip.
+ */
+{
+  const sectionsFile = resolve(root, 'src/layout/sections.ts');
+  if (existsSync(sectionsFile)) {
+    const sectionsSrc = readFileSync(sectionsFile, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const owned = [...new Set([...sectionsSrc.matchAll(/'(\/[a-z0-9/-]+)'/g)].map((m) => m[1]))];
+    const under = (path, to) => path === to || path.startsWith(`${to}/`);
+
+    const files = [];
+    const walk = (dir) => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/Tabs\.tsx$/i.test(entry.name)) files.push(full);
+      }
+    };
+    walk(resolve(root, 'src/pages'));
+
+    let offenders = 0;
+    for (const full of files) {
+      const name = full.slice(root.length + 1).split('\\').join('/');
+      const source = readFileSync(full, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+        .replace(/\/\/[^\n]*/g, '');
+      if (!/<Tabs\b/.test(source)) continue;
+      const addresses = [...source.matchAll(/\bto:\s*'(\/[^']*)'/g)].map((m) => m[1]);
+      const inside = addresses.filter((a) => owned.some((o) => under(a, o)));
+      if (inside.length === 0) continue;
+      if (/<(Grouped)?SectionTabs\b/.test(source)) continue;
+      offenders += 1;
+      failures.push(
+        `${name}: draws sub-tabs for ${inside[0]}, which sits inside a main strip in ` +
+          'layout/sections.ts, but does not draw that strip. On every sub-tab but the first the ' +
+          'main tabs disappear. Render <SectionTabs tabs={...} /> above the <Tabs> here.',
+      );
+    }
+
+    if (offenders === 0) {
+      console.log('tabs: every sub-tab strip keeps the main strip above it');
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

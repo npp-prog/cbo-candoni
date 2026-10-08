@@ -64,22 +64,55 @@ export const SUB_TAB_OFF = 'text-slate-500 hover:bg-slate-50 hover:text-navy-800
  * bar, drawn with links. Two things that do the same job now look the same,
  * and nothing on a Treasury page looks like a button unless it is one.
  */
-export function SectionTabs({
-  tabs,
-}: {
-  tabs: Array<{ label: string; to: string }>;
-}) {
-  const { pathname } = useLocation();
+/**
+ * A tab, and any further screens that belong to it.
+ *
+ * `includes` is for a tab whose own screens live at addresses that do not
+ * start with its address. Trust Accounts is at /accounting/trust-programs, and
+ * its Registry of Special Trust Fund at /accounting/trust-registry - one
+ * subject, three screens, three addresses that predate the strip. Without this
+ * the strip could not tell that the officer on the registry is still inside
+ * Trust Accounts, and lit nothing.
+ */
+export interface StripTab {
+  label: string;
+  to: string;
+  includes?: readonly string[];
+}
 
-  // Exactly one tab is highlighted: the one whose address is the longest match
-  // for where we are. A plain "starts with" test would light up Collections as
-  // well as Deposits, because /treasury/collections/deposits begins with
-  // /treasury/collections - and two lit tabs tell the reader nothing.
-  const current = tabs.reduce<string | null>((best, tab) => {
-    const matches = pathname === tab.to || pathname.startsWith(`${tab.to}/`);
-    if (!matches) return best;
-    return best === null || tab.to.length > best.length ? tab.to : best;
-  }, null);
+/** Whether an address is this one or a screen beneath it. */
+const under = (pathname: string, to: string) => pathname === to || pathname.startsWith(`${to}/`);
+
+/**
+ * The tab holding the current screen: its `to`, or null.
+ *
+ * Exactly one tab is highlighted: the one whose address is the LONGEST match
+ * for where we are. A plain "starts with" test would light up Collections as
+ * well as Deposits, because /treasury/collections/deposits begins with
+ * /treasury/collections - and two lit tabs tell the reader nothing.
+ *
+ * Shared with the sidebar (layout/sections.ts), which asks the same question
+ * one level up. Two copies of this were how the sidebar and the strip came to
+ * disagree about where the officer was standing.
+ */
+export function currentTab(tabs: readonly StripTab[], pathname: string): string | null {
+  let best: string | null = null;
+  let bestLength = -1;
+  for (const tab of tabs) {
+    for (const address of [tab.to, ...(tab.includes ?? [])]) {
+      if (!under(pathname, address)) continue;
+      if (address.length > bestLength) {
+        best = tab.to;
+        bestLength = address.length;
+      }
+    }
+  }
+  return best;
+}
+
+export function SectionTabs({ tabs }: { tabs: readonly StripTab[] }) {
+  const { pathname } = useLocation();
+  const current = currentTab(tabs, pathname);
 
   return (
     <div className="mb-4 border-b border-slate-200 no-print">

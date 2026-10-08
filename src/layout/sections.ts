@@ -34,7 +34,24 @@
 export interface SectionTab {
   label: string;
   to: string;
+  /**
+   * Further screens inside this tab whose addresses do not begin with its
+   * own. See StripTab in components/ui/SectionTabs.tsx.
+   */
+  includes?: readonly string[];
 }
+
+/*
+ * The Trust Fund's three screens, by address. Written here rather than
+ * imported from trustTabs.tsx so that this file - which the sidebar reads on
+ * every screen - does not pull a page's components into the menu. A test
+ * holds the two lists to each other.
+ */
+export const TRUST_SCREENS = [
+  '/accounting/trust-programs',
+  '/accounting/trust-registry',
+  '/accounting/fund-utilization',
+] as const;
 
 // ---------------------------------------------------------------------------
 // Budget
@@ -89,7 +106,14 @@ export const BUDGET_REPORT_TABS: SectionTab[] = [
  * and nothing is set up on these.
  */
 export const ACCOUNTING_MONITORING_TABS: SectionTab[] = [
-  { label: 'Trust Accounts', to: '/accounting/trust-programs' },
+  /*
+    Trust Accounts is three screens - the programmes, the registry, the
+    utilization report - at three addresses that do not share a beginning.
+    `includes` is what keeps this tab lit, and this strip on the screen, on
+    all three. Without it the strip vanished the moment the officer opened
+    the registry, which is the fault patch 111 fixed.
+  */
+  { label: 'Trust Accounts', to: '/accounting/trust-programs', includes: TRUST_SCREENS },
   { label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
   { label: 'Index of Payment', to: '/accounting/index-of-payments' },
   // Lives under /reports/ because it was built there. The address is kept so
@@ -216,9 +240,11 @@ const ALL_STRIPS: SectionTab[][] = [
 export function sectionHeadForPath(pathname: string): string | null {
   /*
    * Two things are tracked, and they are not the same string: `matched` is the
-   * tab whose address fitted, and `head` is the menu item that tab belongs to.
+   * ADDRESS that fitted, and `head` is the menu item its tab belongs to.
    * Comparing lengths on the head would compare the wrong thing - two strips
-   * can match, and the winner is decided by how specifically the TAB matched.
+   * can match, and the winner is decided by how specifically the address
+   * matched. A tab's `includes` count as its addresses, so the Trust Fund's
+   * registry lights Monitoring exactly as its programmes do.
    */
   let matched: string | null = null;
   let head: string | null = null;
@@ -227,10 +253,12 @@ export function sectionHeadForPath(pathname: string): string | null {
     const stripHead = strip[0]?.to;
     if (!stripHead) continue;
     for (const tab of strip) {
-      if (pathname !== tab.to && !pathname.startsWith(`${tab.to}/`)) continue;
-      if (matched === null || tab.to.length > matched.length) {
-        matched = tab.to;
-        head = stripHead;
+      for (const address of [tab.to, ...(tab.includes ?? [])]) {
+        if (pathname !== address && !pathname.startsWith(`${address}/`)) continue;
+        if (matched === null || address.length > matched.length) {
+          matched = address;
+          head = stripHead;
+        }
       }
     }
   }
