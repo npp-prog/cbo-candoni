@@ -2119,6 +2119,132 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 37. The Edit button and the rule agree about "not yet approved" --------
+
+/*
+ * ---------------------------------------------------------------------------
+ * A BUTTON THAT FAILS ON SAVE IS WORSE THAN NO BUTTON
+ * ---------------------------------------------------------------------------
+ * Patch 102 put an Edit button on a draft appropriation. The screen decides
+ * whether to OFFER it; `firestore.rules` decides whether to ACCEPT the write.
+ * When the two disagree the officer fills in sixteen fields, presses save, and
+ * is told "Missing or insufficient permissions" - and concludes the system is
+ * unreliable about editing, which is a worse place to be than never having
+ * offered it.
+ *
+ * So three things are checked, and none of them is "the rule says DRAFT",
+ * because the rule may reasonably be written several ways:
+ *
+ *   The screen's test comes from one file, not from an `=== 'DRAFT'` written
+ *   inline on whichever screen needed it.
+ *
+ *   The rule still turns on the STORED status rather than the submitted one.
+ *   `isDraft()` reads resource.data; a rule that checked only
+ *   request.resource.data would let a client submit status DRAFT over an
+ *   APPROVED line and edit approved authority.
+ *
+ *   The rule freezes the fields a correction must not touch, and checks the
+ *   fund. Both were absent while nobody edited.
+ */
+{
+  const helper = resolve(root, 'src/lib/budgetEditable.ts');
+
+  if (!existsSync(helper)) {
+    failures.push(
+      'src/lib/budgetEditable.ts is missing. The test for whether an appropriation may still be ' +
+        'corrected lives there so the screen and firestore.rules cannot drift apart.',
+    );
+  } else {
+    const source = readFileSync(helper, 'utf8');
+    if (!/export function appropriationEditable/.test(source)) {
+      failures.push(
+        'src/lib/budgetEditable.ts no longer exports appropriationEditable. The screens call it ' +
+          'to decide whether to offer the Edit button.',
+      );
+    }
+    if (!/EDITABLE_APPROPRIATION_STATUS\s*=\s*'DRAFT'/.test(source)) {
+      failures.push(
+        "src/lib/budgetEditable.ts no longer names DRAFT as the editable status, but " +
+          "firestore.rules still permits an update only while isDraft(). An appropriation the " +
+          'screen thinks is editable and the database refuses is a form that fails on save.',
+      );
+    }
+  }
+
+  /* No screen decides this for itself. */
+  const screens = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx$/.test(entry.name)) screens.push(full);
+    }
+  };
+  walk(resolve(root, 'src/pages/budget'));
+
+  for (const full of screens) {
+    const name = full.slice(root.length + 1).split('\\').join('/');
+    const source = readFileSync(full, 'utf8');
+    /* An Edit affordance decided by a raw status comparison. */
+    if (/>\s*Edit\s*</.test(source) && !/appropriationEditable/.test(source)) {
+      if (/status\s*===?\s*'DRAFT'/.test(source)) {
+        failures.push(
+          `${name} offers an Edit control and decides it with a raw status comparison. Use ` +
+            'appropriationEditable from src/lib/budgetEditable.ts, so the button and the ' +
+            'Firestore rule cannot drift apart.',
+        );
+      }
+    }
+  }
+
+  /* And the rule itself. */
+  const block = firestore.match(/match \/appropriations\/\{[^}]*\}\s*\{([\s\S]*?)\n    \}/);
+
+  if (!block) {
+    failures.push("firestore.rules: no rule block for 'appropriations'.");
+  } else {
+    const body = block[1].replace(/\/\/[^\n]*/g, '');
+    const update = body.match(/allow update:([\s\S]*?);/);
+
+    if (!update) {
+      failures.push("firestore.rules: the 'appropriations' block has no update rule to check.");
+    } else {
+      const clause = update[1];
+
+      if (!/isDraft\(\)/.test(clause)) {
+        failures.push(
+          "firestore.rules: the 'appropriations' update rule no longer checks isDraft(). It is " +
+            'the STORED status that decides - without it a client may submit status DRAFT over ' +
+            'an approved line and edit authority that allotments have already been released ' +
+            'against.',
+        );
+      }
+
+      if (!/fundAllowed\(resource\.data\.fundCode\)/.test(clause)) {
+        failures.push(
+          "firestore.rules: the 'appropriations' update rule does not check fundAllowed on the " +
+            'STORED fund, so an officer scoped to one fund could edit another fund\'s draft.',
+        );
+      }
+
+      for (const field of ['fiscalYear', 'fundCode', 'kind', 'createdBy', 'approvedBy']) {
+        if (!new RegExp(`'${field}'`).test(clause)) {
+          failures.push(
+            `firestore.rules: the 'appropriations' update rule leaves '${field}' writable. A ` +
+              'correction corrects THIS line - changing the year, the fund or the kind records ' +
+              'a different appropriation over one that may already have been read.',
+          );
+        }
+      }
+    }
+  }
+
+  if (!failures.some((f) => f.includes('appropriation') || f.includes('budgetEditable'))) {
+    console.log('budget: the Edit button and the appropriations rule agree');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

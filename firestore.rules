@@ -335,13 +335,39 @@ service cloud.firestore {
         && request.resource.data.status == 'DRAFT'
         && fundAllowed(request.resource.data.fundCode);
 
-      // A draft may be edited freely by budget staff; once approved it is
-      // frozen and may only be superseded by an adjustment entry.
+      // A draft may be corrected in place by budget staff; once approved it is
+      // frozen and may only be superseded by a supplemental or an adjustment.
+      //
+      // Patch 102 put a real Edit button on this, so what had been a
+      // theoretical permission became a used path - and three things that did
+      // not matter while nobody edited now do.
+      //
+      //   THE FUND IS CHECKED. `fundAllowed` was on create and not on update,
+      //   so an officer scoped to the Trust Fund could edit a draft's fundCode
+      //   and move a line into the General Fund. Both the stored fund and the
+      //   submitted one are checked: the first so the line was theirs to touch
+      //   at all, the second so it cannot be moved out of their scope.
+      //
+      //   THE YEAR AND THE FUND ARE FROZEN. A correction is a correction to
+      //   THIS line. Changing either is recording a different appropriation
+      //   over the top of one that may already have been read.
+      //
+      //   THE KIND IS FROZEN. Turning a draft Original into a Supplemental is
+      //   not a correction but a claim that a different ordinance enacted it,
+      //   and the two foot to different totals on the Appropriation Ledger.
+      //
+      // The status stays DRAFT. `isClientWritableStatus` also permits
+      // SUBMITTED, which an appropriation has no concept of - a line parked
+      // there would show neither the Edit button nor the Approve button and
+      // could not be reached again from any screen.
       allow update: if signedIn()
         && hasAny(budgetRoles())
         && isDraft()
-        && isClientWritableStatus(request.resource.data.status)
-        && didNotChange(['createdBy', 'approvedBy', 'postedAt']);
+        && request.resource.data.status == 'DRAFT'
+        && fundAllowed(resource.data.fundCode)
+        && fundAllowed(request.resource.data.fundCode)
+        && didNotChange(['createdBy', 'approvedBy', 'postedAt',
+                         'fiscalYear', 'fundCode', 'kind']);
 
       allow delete: if signedIn() && isAdmin() && isDraft();
     }

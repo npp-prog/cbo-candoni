@@ -13,7 +13,7 @@ import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAppropriations, useBudgetBalances, usePrograms } from '@/data/queries';
-import { createDraft, actorStamp } from '@/data/mutations';
+import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
@@ -23,6 +23,7 @@ import {
   type RealignmentInstrument,
 } from '@/lib/accounting-rules';
 import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
+import { appropriationEditable, appropriationNotEditableBecause } from '@/lib/budgetEditable';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Appropriation, AppropriationKind } from '@/types/budget';
@@ -158,6 +159,7 @@ export default function Appropriations() {
 
   const [showForm, setShowForm] = useState(false);
   const [approving, setApproving] = useState<Appropriation | null>(null);
+  const [editing, setEditing] = useState<Appropriation | null>(null);
   const [busy, setBusy] = useState(false);
 
   const totals = useMemo(() => {
@@ -284,6 +286,24 @@ export default function Appropriations() {
       cell: (a) => (
         <div className="flex items-center gap-2">
           <StatusBadge status={a.status} />
+          {/*
+            CORRECT, then APPROVE, in that order on the row because that is
+            the order of the acts. Both are offered only while the line is
+            still the office's own draft; `appropriationEditable` is the same
+            test `firestore.rules` enforces on the update.
+          */}
+          {appropriationEditable(a) && can('budget', 'create') && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(a);
+              }}
+            >
+              Edit
+            </Button>
+          )}
           {a.status === 'DRAFT' && can('budget', 'approve') && (
             <Button
               size="sm"
@@ -353,6 +373,32 @@ export default function Appropriations() {
         }}
       />
 
+      {editing && (
+        <AppropriationForm
+          key={editing.id}
+          existing={editing}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            toast.success(
+              'Appropriation corrected',
+              'It is still a draft. Approve it to make the authority available.',
+            );
+          }}
+          actor={
+            user
+              ? actorStamp({
+                  uid: user.uid,
+                  name: profile?.displayName ?? user.email ?? user.uid,
+                  position: profile?.position,
+                })
+              : null
+          }
+        />
+      )}
+
       {showForm && (
         <AppropriationForm
           fiscalYear={fiscalYear}
@@ -386,12 +432,21 @@ export default function Appropriations() {
         variant="primary"
         message={
           approving && (
-            <p>
-              This makes <strong>{formatPeso(approving.amount)}</strong> of spending authority
-              available against {approving.accountCode} {approving.accountName} for{' '}
-              {approving.officeName}. An approved appropriation cannot be edited; a change is made
-              by recording a supplemental appropriation or an adjustment.
-            </p>
+            <>
+              <p>
+                This makes <strong>{formatPeso(approving.amount)}</strong> of spending authority
+                available against {approving.accountCode} {approving.accountName} for{' '}
+                {approving.officeName}.
+              </p>
+              {/* The last moment the figure can be corrected cheaply, so the
+                  dialog says so rather than only naming the consequence. */}
+              <p className="mt-2">
+                <strong>This is the last point at which it can simply be edited.</strong> After
+                approving, a change is made by recording a supplemental appropriation or an
+                adjustment, so that the original stays visible and the movement is traceable to
+                its own ordinance.
+              </p>
+            </>
           )
         }
       />
@@ -424,21 +479,43 @@ function AppropriationForm({
   onClose,
   onSaved,
   actor,
+  existing,
 }: {
   fiscalYear: number;
   fundCode: string;
   onClose: () => void;
   onSaved: () => void;
   actor: ReturnType<typeof actorStamp> | null;
+  /**
+   * The draft being corrected, or nothing when recording a new one.
+   *
+   * One form for both, deliberately. A separate edit form would be the same
+   * sixteen fields and the same eight validations written a second time, and
+   * the second copy is the one that falls behind - the sector rule gets
+   * tightened on the record form and not on the edit form, and a line that
+   * could not be recorded can still be edited into existence.
+   */
+  existing?: Appropriation | null;
 }) {
   const toast = useToast();
-  const [kind, setKind] = useState<FormKind>('ORIGINAL');
-  const [authorityReference, setAuthorityReference] = useState('');
-  const [authorityDate, setAuthorityDate] = useState(todayPh());
-  const [officeId, setOfficeId] = useState<string | null>(null);
-  const [officeName, setOfficeName] = useState('');
-  const [accountCode, setAccountCode] = useState<string | null>(null);
-  const [accountName, setAccountName] = useState('');
+  const editing = Boolean(existing);
+  /*
+    A line can stop being editable while this form is open - another officer
+    approves it from the same list a moment later. The row's Edit button is
+    gone by then, but THIS form is not, and saving would fail at the database
+    with a permission error that explains nothing. So the reason is read again
+    here, shown in place of nothing, and the save is stopped.
+  */
+  const blockedReason = existing ? appropriationNotEditableBecause(existing) : null;
+  const [kind, setKind] = useState<FormKind>(
+    (existing?.kind as FormKind | undefined) ?? 'ORIGINAL',
+  );
+  const [authorityReference, setAuthorityReference] = useState(existing?.authorityReference ?? '');
+  const [authorityDate, setAuthorityDate] = useState(existing?.authorityDate ?? todayPh());
+  const [officeId, setOfficeId] = useState<string | null>(existing?.officeId ?? null);
+  const [officeName, setOfficeName] = useState(existing?.officeName ?? '');
+  const [accountCode, setAccountCode] = useState<string | null>(existing?.accountCode || null);
+  const [accountName, setAccountName] = useState(existing?.accountName ?? '');
   /*
    * ---- WHAT THE ORDINANCE APPROPRIATED TO -----------------------------
    *
@@ -460,19 +537,33 @@ function AppropriationForm({
    * them correctly. Only this form could not, so a project-level line had to
    * go through a spreadsheet or not at all.
    */
-  const [basis, setBasis] = useState<'OBJECT' | 'PROGRAMME'>('OBJECT');
-  const [programCode, setProgramCode] = useState<string | null>(null);
-  const [programName, setProgramName] = useState('');
+  /*
+    WHICH SHAPE A STORED LINE IS, read back the way it was written: a line
+    appropriated by programme has an EMPTY accountCode on purpose, and its
+    fppCode is the programme. Guessing from fppCode alone would misread an
+    object line, whose fppCode is its own object code.
+  */
+  const [basis, setBasis] = useState<'OBJECT' | 'PROGRAMME'>(
+    existing && !existing.accountCode ? 'PROGRAMME' : 'OBJECT',
+  );
+  const [programCode, setProgramCode] = useState<string | null>(
+    existing && !existing.accountCode ? existing.fppCode ?? null : null,
+  );
+  const [programName, setProgramName] = useState(
+    existing && !existing.accountCode ? existing.fppName ?? '' : '',
+  );
   const programs = usePrograms();
   const yearPrograms = useMemo(
     () => programs.data.filter((p) => p.fiscalYear === fiscalYear),
     [programs.data, fiscalYear],
   );
-  const [expenseClass, setExpenseClass] = useState<ExpenseClass>('MOOE');
-  const [sector, setSector] = useState('');
-  const [serviceSector, setServiceSector] = useState('');
-  const [amount, setAmount] = useState<number | null>(null);
-  const [particulars, setParticulars] = useState('');
+  const [expenseClass, setExpenseClass] = useState<ExpenseClass>(
+    (existing?.expenseClass as ExpenseClass | undefined) ?? 'MOOE',
+  );
+  const [sector, setSector] = useState(existing?.sector ?? '');
+  const [serviceSector, setServiceSector] = useState(existing?.serviceSector ?? '');
+  const [amount, setAmount] = useState<number | null>(existing?.amount ?? null);
+  const [particulars, setParticulars] = useState(existing?.particulars ?? '');
   const [saving, setSaving] = useState(false);
   const [realignLines, setRealignLines] = useState<RealignLine[]>(() => [blankLine(), blankLine()]);
   // The lines a realignment may move authority between: the ones that exist.
@@ -484,7 +575,18 @@ function AppropriationForm({
   const instrument: RealignmentInstrument =
     kind === 'AUGMENTATION' ? 'AUGMENTATION' : 'REALIGNMENT';
   const allowsNegative = kind === 'ADJUSTMENT' || isRealignment;
-  const selectedKind = KINDS.find((k) => k.value === kind)!;
+  /*
+    NOT a non-null assertion any more, and the reason is worth the three lines.
+
+    The form used to choose `kind` from this very list, so a match was certain.
+    It now SEEDS it from a stored line, and AppropriationKind has a member the
+    list does not offer - TRANSFER. One stored line of that kind and
+    `selectedKind.label` would throw while rendering, which React answers by
+    unmounting the tree: a white screen with nothing to report, exactly as the
+    Bank Reconciliation did in patch 95.
+  */
+  const selectedKind =
+    KINDS.find((k) => k.value === kind) ?? { value: kind, label: String(kind), hint: '' };
 
   const patchLine = (id: number, patch: Partial<RealignLine>) =>
     setRealignLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -596,7 +698,23 @@ function AppropriationForm({
   };
 
   const save = async () => {
-    if (isRealignment) return postRealignment();
+    /*
+      A realignment is posted whole and never exists as a draft, so this can
+      only be reached by someone switching the Type on an edit - which the
+      form does not allow. The guard is here because the consequence if it ever
+      were reached is a second set of lines posted from a form that was opened
+      to correct one.
+    */
+    if (isRealignment) {
+      if (editing) {
+        toast.error(
+          'A draft cannot become a realignment',
+          'Close this, then record the realignment from Record appropriation.',
+        );
+        return;
+      }
+      return postRealignment();
+    }
     const byProgramme = basis === 'PROGRAMME';
 
     if (!officeId || !amount || !actor) {
@@ -643,9 +761,17 @@ function AppropriationForm({
     }
     setSaving(true);
     try {
-      await createDraft(
-        COL.appropriations,
-        {
+      /*
+        The SAME payload either way, built once.
+
+        The fields a correction may not touch are not omitted here - they are
+        the ones this form never had: the status stays DRAFT, and createdBy,
+        approvedBy and postedAt are protected by `firestore.rules` on every
+        update. So an edit cannot quietly approve its own line, which is the
+        thing worth being careful about on a screen that writes directly to
+        the database rather than through the engine.
+      */
+      const record = {
           fiscalYear,
           fundCode,
           officeId,
@@ -671,9 +797,13 @@ function AppropriationForm({
           amount,
           particulars: particulars.trim() || null,
           status: 'DRAFT',
-        },
-        actor,
-      );
+      };
+
+      if (existing) {
+        await updateDraft(COL.appropriations, existing.id, record, actor);
+      } else {
+        await createDraft(COL.appropriations, record, actor);
+      }
       onSaved();
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : String(err));
@@ -686,11 +816,19 @@ function AppropriationForm({
     <Modal
       open
       onClose={onClose}
-      title={isRealignment ? 'Record a realignment' : 'Record an appropriation'}
+      title={
+        editing
+          ? 'Correct this appropriation'
+          : isRealignment
+            ? 'Record a realignment'
+            : 'Record an appropriation'
+      }
       description={
-        isRealignment
-          ? 'Posted whole, not saved as a draft. There is no half-way state for a realignment to sit in.'
-          : 'Saved as a draft. Approving it makes the authority available for allotment.'
+        editing
+          ? 'It is still a draft, so it may be corrected in place. It stays a draft on save - approving it is a separate act.'
+          : isRealignment
+            ? 'Posted whole, not saved as a draft. There is no half-way state for a realignment to sit in.'
+            : 'Saved as a draft. Approving it makes the authority available for allotment.'
       }
       size={isRealignment ? 'xl' : 'lg'}
       footer={
@@ -699,23 +837,48 @@ function AppropriationForm({
           <Button
             variant="primary"
             loading={saving}
-            disabled={isRealignment && !realignmentReady}
+            disabled={Boolean(blockedReason) || (isRealignment && !realignmentReady)}
             onClick={() => void save()}
           >
-            {isRealignment ? 'Post realignment' : 'Save draft'}
+            {editing ? 'Save changes' : isRealignment ? 'Post realignment' : 'Save draft'}
           </Button>
         </>
       }
     >
+      {blockedReason && (
+        <Alert tone="warning" className="mb-4">
+          This appropriation can no longer be corrected here. {blockedReason}
+        </Alert>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Type" required htmlFor="kind" hint={selectedKind.hint}>
-          <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as FormKind)}>
-            {KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
-              </option>
-            ))}
-          </Select>
+        {/*
+          THE TYPE IS FIXED ONCE THE LINE EXISTS.
+
+          Turning a draft Original into a Supplemental is not a correction, it
+          is a claim that a different ordinance enacted it - and the two are
+          reported separately and foot to different totals on the Appropriation
+          Ledger. Record the right kind and delete this one.
+        */}
+        <Field
+          label="Type"
+          required={!editing}
+          htmlFor="kind"
+          hint={editing ? 'Fixed once recorded. Delete and re-record to change it.' : selectedKind.hint}
+        >
+          {editing ? (
+            <div className="cbo-input flex items-center bg-slate-50 text-slate-600">
+              {selectedKind.label}
+            </div>
+          ) : (
+            <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as FormKind)}>
+              {KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
