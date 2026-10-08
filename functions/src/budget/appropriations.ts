@@ -5,6 +5,7 @@ import { requireCaller, assertFundInScope, notFound, invalid, type Role } from '
 import { recordTransition } from '../lib/audit';
 import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertFiscalYearOpen } from '../lib/period';
+import { appropriationApprovalProblems, appropriationLineLabel } from '../lib/budgetLines';
 import {
   readBudgetBalance,
   applyBudgetDelta,
@@ -62,21 +63,29 @@ export const approveAppropriation = onCall(
         );
       }
 
-      // A draft is written by the browser, and a draft written by an older
-      // build - or loaded from a spreadsheet - can be missing a field this
-      // function needs. Name what is missing. Silence here becomes an
-      // unreadable failure deeper in, and a budget line with no expense class
-      // disappears from the registry that is cut by class.
-      const missing = (
-        [
-          ['fund', a.fundCode],
-          ['office', a.officeId],
-          ['account code', a.accountCode],
-          ['expense classification', a.expenseClass],
-        ] as const
-      )
-        .filter(([, v]) => !v)
-        .map(([label]) => label);
+      /*
+       * A draft is written by the browser, and a draft written by an older
+       * build - or loaded from a spreadsheet - can be missing a field this
+       * function needs. Name what is missing, all of it: a draft that is wrong
+       * in two ways is corrected once if it is told both. Silence here becomes
+       * an unreadable failure deeper in, and a budget line with no expense
+       * class disappears from the registry that is cut by class.
+       *
+       * THIS USED TO DEMAND AN ACCOUNT CODE OUTRIGHT, which refused every line
+       * appropriated BY PROGRAMME - the shape where the ordinance named a
+       * project and no object, and the object code is empty on purpose. The
+       * ordinance upload had understood that shape since patch 86 and posted
+       * such lines happily; approval did not, so a by-programme line recorded
+       * on the screen could be saved and then never approved. The rule is in
+       * one file now, shared with the browser. See lib/budgetLines.
+       */
+      const missing = appropriationApprovalProblems({
+        fundCode: a.fundCode,
+        officeId: a.officeId,
+        fppCode: a.fppCode,
+        accountCode: a.accountCode,
+        expenseClass: a.expenseClass,
+      });
 
       if (missing.length > 0) {
         throw new HttpsError(
@@ -133,7 +142,7 @@ export const approveAppropriation = onCall(
       if (resultingRevised < 0) {
         throw new HttpsError(
           'failed-precondition',
-          `This adjustment would drive the appropriation for ${a.accountCode} ${a.accountName} to ${(resultingRevised / 100).toFixed(2)}. An appropriation cannot be negative.`,
+          `This adjustment would drive the appropriation for ${appropriationLineLabel(a)} to ${(resultingRevised / 100).toFixed(2)}. An appropriation cannot be negative.`,
         );
       }
 
@@ -141,7 +150,7 @@ export const approveAppropriation = onCall(
       if (resultingRevised < balance.allotmentReleased) {
         throw new HttpsError(
           'failed-precondition',
-          `This adjustment would reduce the appropriation for ${a.accountCode} ${a.accountName} to ${(resultingRevised / 100).toFixed(2)}, below the ${(balance.allotmentReleased / 100).toFixed(2)} already released as allotment. Withdraw the allotment first.`,
+          `This adjustment would reduce the appropriation for ${appropriationLineLabel(a)} to ${(resultingRevised / 100).toFixed(2)}, below the ${(balance.allotmentReleased / 100).toFixed(2)} already released as allotment. Withdraw the allotment first.`,
         );
       }
 

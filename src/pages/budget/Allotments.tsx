@@ -20,6 +20,7 @@ import {
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
+import { appropriationLineLabel } from '@/lib/budgetLines';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { checkAllotmentWithdrawal } from '@/lib/accounting-rules';
@@ -87,7 +88,7 @@ export default function Allotments() {
       const result = await engine.releaseAllotment({ allotmentId: allotment.id });
       toast.success(
         `Withdrawal ${result.allotmentNo} recorded`,
-        `${formatPeso(Math.abs(allotment.amount))} taken back from ${allotment.accountCode} ${allotment.accountName}.`,
+        `${formatPeso(Math.abs(allotment.amount))} taken back from ${appropriationLineLabel(allotment)}.`,
       );
       setApproving(null);
     } catch (err) {
@@ -138,7 +139,7 @@ export default function Allotments() {
     {
       key: 'account',
       header: 'Account',
-      value: (a) => `${a.accountCode} ${a.accountName}`,
+      value: (a) => `${a.accountCode ?? ''} ${a.accountName ?? ''} ${a.fppCode ?? ''} ${a.fppName ?? ''}`,
       cell: (a) => (
         <div>
           <span className="font-mono text-xs text-slate-500">{a.accountCode}</span>{' '}
@@ -326,7 +327,7 @@ export default function Allotments() {
           approving && (
             <p>
               This takes <strong>{formatPeso(Math.abs(approving.amount))}</strong> of allotment back
-              from {approving.accountCode} {approving.accountName} for {approving.officeName}. The
+              from {appropriationLineLabel(approving)} for {approving.officeName}. The
               server re-checks what has already been obligated against this line first: authority
               cannot be pulled out from under a commitment already made.
             </p>

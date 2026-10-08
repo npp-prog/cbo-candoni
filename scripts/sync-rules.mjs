@@ -93,6 +93,14 @@ const PAIRS = [
   // would simply read the wrong register and report the document "no longer in
   // CFMS", which is a sentence that means something serious and would be false.
   { source: 'src/lib/treasurySources.ts', target: 'functions/src/lib/treasurySources.ts' },
+  // `budgetLines` says what an appropriation must carry to become authority.
+  // It is here because the three places that had an opinion disagreed: the
+  // upload and the recording form both understood a line appropriated BY
+  // PROGRAMME, with no object code, and approval refused one outright - so a
+  // by-programme line could be saved and then never approved, and the refusal
+  // told the office to record it again, which produced another line it could
+  // not approve either.
+  { source: 'src/lib/budgetLines.ts', target: 'functions/src/lib/budgetLines.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

@@ -2413,6 +2413,90 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 39. An appropriation may be made to a programme, not only an object ----
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE DRAFT THAT COULD BE SAVED AND NEVER APPROVED
+ * ---------------------------------------------------------------------------
+ * The ordinance appropriates in two shapes. BY OBJECT - "Office Supplies
+ * Expenses, 150,000" - and BY PROGRAMME - "Construction of Barangay Health
+ * Station, Payauan, 2,000,000", where the ordinance named a PROJECT and no
+ * object at all, and the object code is empty on purpose because budget
+ * control operates at the level the appropriation was made at.
+ *
+ * Patch 86 taught the recording form and the ordinance upload both shapes.
+ * `approveAppropriation` was not touched, and went on demanding an account
+ * code outright. So a by-programme line could be recorded, saved, and then
+ * refused at approval with "This appropriation is missing its account code" -
+ * and the refusal advised recording it again, which produced another line that
+ * could not be approved either. The office found it by trying.
+ *
+ * Nothing failed in the build, because the two halves were in different files
+ * and neither mentioned the other. So the rule is in one shared file now and
+ * this checks that it stayed there: an approval path that tests `accountCode`
+ * by itself is the defect coming back.
+ */
+{
+  const shared = resolve(root, 'src/lib/budgetLines.ts');
+  const engine = resolve(root, 'functions/src/budget/appropriations.ts');
+
+  if (!existsSync(shared)) {
+    failures.push(
+      'src/lib/budgetLines.ts is missing. What an appropriation must carry to become authority ' +
+        'lives there, shared with the engine, because the screen and the engine disagreed about ' +
+        'it for three patches.',
+    );
+  } else {
+    const source = readFileSync(shared, 'utf8');
+    for (const name of ['appropriationApprovalProblems', 'appropriationLineLabel']) {
+      if (!new RegExp(`export function ${name}`).test(source)) {
+        failures.push(`src/lib/budgetLines.ts no longer exports ${name}.`);
+      }
+    }
+    if (!/account code or budget programme/.test(source)) {
+      failures.push(
+        'src/lib/budgetLines.ts no longer accepts a line appropriated to a programme instead of ' +
+          'an object. An ordinance that names a project and no object is the ordinary case for ' +
+          'capital outlay, and refusing it leaves a draft that can be saved and never approved.',
+      );
+    }
+  }
+
+  if (!existsSync(engine)) {
+    failures.push('functions/src/budget/appropriations.ts is missing.');
+  } else {
+    const source = readFileSync(engine, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    if (!/appropriationApprovalProblems\(/.test(source)) {
+      failures.push(
+        'functions/src/budget/appropriations.ts no longer asks budgetLines what is missing from ' +
+          'an appropriation. It decided that for itself until patch 107, and what it decided ' +
+          'refused every line the ordinance appropriated to a project.',
+      );
+    }
+
+    /*
+     * The shape of the original defect: a required-field list naming the
+     * account code on its own. The programme is the alternative, so a test of
+     * one without the other is the refusal coming back.
+     */
+    for (const m of source.matchAll(/\['account code'[^\]]*\]/g)) {
+      failures.push(
+        `functions/src/budget/appropriations.ts requires an account code on its own ` +
+          `(${m[0]}). A line appropriated by programme has none, on purpose. Use ` +
+          'appropriationApprovalProblems, which accepts either.',
+      );
+    }
+  }
+
+  if (!failures.some((f) => f.includes('budgetLines') || f.includes('budget/appropriations'))) {
+    console.log('budget: an appropriation may name a programme instead of an object');
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

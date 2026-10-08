@@ -33,6 +33,7 @@ import {
   appropriationNotEditableBecause,
   augmentationDraftEditable,
 } from '@/lib/budgetEditable';
+import { appropriationLineLabel } from '@/lib/budgetLines';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type {
@@ -201,7 +202,7 @@ export default function Appropriations() {
       await engine.approveAppropriation({ appropriationId: appropriation.id });
       toast.success(
         'Appropriation approved',
-        `${formatPeso(appropriation.amount)} of authority is now available for allotment against ${appropriation.accountCode}.`,
+        `${formatPeso(appropriation.amount)} of authority is now available for allotment against ${appropriationLineLabel(appropriation)}.`,
       );
       setApproving(null);
     } catch (err) {
@@ -729,8 +730,7 @@ export default function Appropriations() {
             <>
               <p>
                 This makes <strong>{formatPeso(approving.amount)}</strong> of spending authority
-                available against {approving.accountCode} {approving.accountName} for{' '}
-                {approving.officeName}.
+                available against {appropriationLineLabel(approving)} for {approving.officeName}.
               </p>
               {/* The last moment the figure can be corrected cheaply, so the
                   dialog says so rather than only naming the consequence. */}
