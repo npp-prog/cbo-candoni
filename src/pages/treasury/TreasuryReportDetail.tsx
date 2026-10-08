@@ -24,6 +24,7 @@ import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { SECTION_TABS } from './sections';
+import { CoveredDocument } from './CoveredDocument';
 
 /**
  * One treasury report, on a page of its own.
@@ -172,6 +173,8 @@ export default function TreasuryReportDetail() {
   /** Correcting the entry of a report that has already been journalized. */
   const [amendingEntry, setAmendingEntry] = useState(false);
   const [certifyNo, setCertifyNo] = useState('');
+  /* The covered document whose line was clicked, if any. */
+  const [opened, setOpened] = useState<{ sourceId: string; sourceNo?: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const canCertify = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER');
@@ -564,8 +567,26 @@ export default function TreasuryReportDetail() {
               </thead>
               <tbody>
                 {report.lines.map((line) => (
-                  <tr key={line.sourceId} className={line.excluded ? 'opacity-50' : undefined}>
-                    <td className="cbo-td font-mono text-xs">{line.sourceNo}</td>
+                  /*
+                    CLICK A LINE TO OPEN WHAT IT COVERS. The four columns are
+                    what the printed report shows and they are not enough to
+                    journalize against: a check's voucher, the obligation
+                    behind it and what was withheld from it are all in CFMS and
+                    were four screens away. See CoveredDocument.
+                  */
+                  <tr
+                    key={line.sourceId}
+                    onClick={() =>
+                      setOpened({ sourceId: line.sourceId, sourceNo: line.sourceNo })
+                    }
+                    className={`cursor-pointer hover:bg-slate-50 ${
+                      line.excluded ? 'opacity-50' : ''
+                    }`}
+                    title="Open this document"
+                  >
+                    <td className="cbo-td font-mono text-xs text-brand-700 underline decoration-dotted underline-offset-2">
+                      {line.sourceNo}
+                    </td>
                     <td className="cbo-td text-xs">{formatShortDate(line.date)}</td>
                     <td className="cbo-td">
                       {line.payeeName ?? ''}
@@ -597,6 +618,13 @@ export default function TreasuryReportDetail() {
             </table>
           </Card>
         )}
+
+        <CoveredDocument
+          reportType={report.reportType}
+          sourceId={opened?.sourceId ?? null}
+          sourceNo={opened?.sourceNo}
+          onClose={() => setOpened(null)}
+        />
 
         {tab === 'entry' && (
           <Card

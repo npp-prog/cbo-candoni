@@ -18,6 +18,10 @@ import {
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { collectionBelongsOnReport, isECollectionReportType } from '../lib/eCollections';
 import {
+  TREASURY_SOURCE_COLLECTION,
+  TREASURY_SOURCE_REPORT_FIELD,
+} from '../lib/treasurySources';
+import {
   createJevInTransaction,
   postJevInTransaction,
   type JevData,
@@ -141,21 +145,22 @@ interface ReportDoc {
   pendingRowCount?: number;
 }
 
-/** Which collection each report type draws its documents from. */
-const SOURCE_COLLECTION: Record<ReportType, string> = {
-  RCI: COL.checks,
-  RADAI: COL.ada,
-  RCD: COL.collections,
-  RCDISB: COL.payrolls,
-  // All three draw on the SAME collection as the RCD. An e-collection is an
-  // ordinary collections document carrying a kind; what divides the pile is
-  // the kind check below, not a separate store.
-  ERCD_AR: COL.collections,
-  ERCD_EOR: COL.collections,
-};
+/*
+ * Which collection each report type draws its documents from, and the field on
+ * that document which records the claim.
+ *
+ * BOTH NOW COME FROM THE SHARED FILE. They were written out here, and from
+ * patch 106 the browser needs the same mapping - a line of a report is
+ * clickable and opens the document it covers, which means knowing which
+ * register to look in. Two copies of this would not raise an error if they
+ * drifted: a report type added here with a new register would be claimed
+ * correctly and read from the wrong one by the screen, which would then
+ * report the document "no longer in CFMS". The build compares the two copies
+ * of the file and fails if they differ.
+ */
+const SOURCE_COLLECTION: Record<ReportType, string> = TREASURY_SOURCE_COLLECTION;
 
-/** The field on the source document that records which report claimed it. */
-const SOURCE_REPORT_FIELD = 'treasuryReportId';
+const SOURCE_REPORT_FIELD = TREASURY_SOURCE_REPORT_FIELD;
 
 const JOURNAL_BOOK: Record<ReportType, string> = {
   RCI: 'CHECK_DISBURSEMENTS_JOURNAL',

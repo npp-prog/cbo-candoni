@@ -86,6 +86,13 @@ const PAIRS = [
   // certified onto the Report of Collections and Deposits, and the report that
   // should have carried it would be short with nothing saying why.
   { source: 'src/lib/eCollections.ts', target: 'functions/src/lib/eCollections.ts' },
+  // `treasurySources` says which register each treasury report covers. The
+  // engine claims and releases those documents when a report is certified or
+  // withdrawn; the screen reads one when an officer clicks a line of the
+  // report. Two copies would not raise an error if they drifted - the screen
+  // would simply read the wrong register and report the document "no longer in
+  // CFMS", which is a sentence that means something serious and would be false.
+  { source: 'src/lib/treasurySources.ts', target: 'functions/src/lib/treasurySources.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

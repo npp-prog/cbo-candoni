@@ -32,7 +32,7 @@ import type { Ada, Check } from '@/types/accounting';
  * register.
  */
 
-type Instrument =
+export type Instrument =
   | ({ kind: 'CHECK' } & Check)
   | ({ kind: 'ADA' } & Ada);
 
