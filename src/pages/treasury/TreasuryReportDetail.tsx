@@ -391,15 +391,27 @@ export default function TreasuryReportDetail() {
               on a row of the register, for the same reason Certify is: the form
               is what the Treasurer SIGNS, and signing a report nobody has
               opened is the thing these pages exist to stop.
+
+              OFFERED ON EVERY TYPE, including the RCD, and on a DRAFT.
+
+              The RCD was excluded here and sent to a register that reads the
+              `rcds` collection - which stopped being written to when the RCD
+              became a treasury report. So the one report the Treasurer
+              certifies most often had no printable form at all, and nothing
+              failed to say so. It is Appendix 34 and it renders on this
+              address like the rest.
+
+              A draft prints too. Checking the figures on paper before signing
+              is how the work is done, and the printed copy carries a band on
+              every page saying it is not certified, so a checking copy cannot
+              become the filed one.
             */}
-            {report.reportType !== 'RCD' && (
-              <Button
-                variant="secondary"
-                onClick={() => navigate(`/treasury/reports/${report.id}/form`)}
-              >
-                Print the form
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              onClick={() => navigate(`/treasury/reports/${report.id}/form`)}
+            >
+              Print the form
+            </Button>
             {isRadai && bankRows.length > 0 && (
               <Button
                 variant="secondary"

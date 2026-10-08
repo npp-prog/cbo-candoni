@@ -8,6 +8,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
+import { FormPrintStyle, DraftBand } from '@/components/print/FormPrintStyle';
 import { TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { ECollectionReportType } from '@/types/enums';
 import type { Collection, TreasuryReport } from '@/types/treasury';
@@ -242,6 +243,8 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
 
   return (
     <div>
+      <FormPrintStyle />
+
       <div className="no-print">
         <PageHeader
           title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} (draft)`}
@@ -264,9 +267,11 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
         />
 
         {report.status === 'DRAFT' && (
-          <Alert tone="warning" title="This report has not been certified" className="mb-4">
-            It has no number yet, and the figures can still change. A printed copy of a draft is a
-            form that says an officer certified something they have not.
+          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
+            Print it and check the figures against the intermediary's remittance before anyone
+            signs - that is what it is for. It has no number yet and the figures can still change,
+            so every page carries a band saying it is not certified. A checking copy cannot be
+            signed by mistake or filed as the real one.
           </Alert>
         )}
 
@@ -276,17 +281,21 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
           </Alert>
         )}
 
-        {breakdown.length > 6 && (
+        {breakdown.length > 10 && (
           <Alert tone="warning" title="This report has a wide breakdown" className="mb-4">
             It collected {breakdown.length} different revenue accounts, so the Breakdown of
-            Collections has {breakdown.length} columns and will not fit A4 portrait. Print it
-            landscape, or prepare a report per nature of collection.
+            Collections has {breakdown.length} columns. It PRINTS - the form is laid out to the
+            width of the page and nothing runs off the sheet - but at this many columns each one
+            is narrow enough that an account title wraps over several lines. A report per nature
+            of collection reads better.
           </Alert>
         )}
       </div>
 
       {/* --- the form ------------------------------------------------------- */}
-      <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+      <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+        <DraftBand status={report.status} />
+
         <Letterhead
           appendix={spec.annex}
           title={spec.title}

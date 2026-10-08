@@ -25,6 +25,8 @@ import {
 } from '@/components/print/formParts';
 import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
 import { useEntity } from '@/data/useEntity';
+import { FormPrintStyle, DraftBand, isCertifiedCopy } from '@/components/print/FormPrintStyle';
+import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -56,7 +58,7 @@ const FORM_CODE = (c: { accountableForm?: string; accountableFormId?: string }) 
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
 
-export default function RcdAppendix34() {
+export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const entity = useEntity();
   const { id } = useParams<{ id: string }>();
   const { fiscalYear, fundCode } = useFilters();
@@ -67,12 +69,77 @@ export default function RcdAppendix34() {
   const { data: movements } = useFormMovements(fiscalYear);
   const { data: formTypes } = useAccountableFormTypes();
 
-  const rcd = rcds.find((r) => r.id === id);
+  /*
+   * ---------------------------------------------------------------------------
+   * TWO RECORDS, ONE FORM - AND THE REASON THIS SCREEN HAD GONE DARK
+   * ---------------------------------------------------------------------------
+   * Appendix 34 was built when an RCD was its own document in `rcds`, and it
+   * reads that collection. The RCD then became a TREASURY REPORT like the RCI
+   * and the RADAI - one shape for every report the Treasurer certifies - and
+   * `rcds` stopped being written to.
+   *
+   * Nothing failed, which is why it survived. This screen went on working
+   * perfectly against a collection that no longer receives anything, reachable
+   * only from a register that is now empty, while the RCD the office actually
+   * prepares had NO prescribed form at all: its own page deliberately hid the
+   * Print button and pointed here, and here had nothing to show.
+   *
+   * So the form now takes either. Given a treasury report it derives what the
+   * old record stored:
+   *
+   *   THE COLLECTIONS from the report's own lines, which is where the RCD
+   *   records what it covers.
+   *
+   *   THE DEPOSITS by joining through `depositId` on those collections, which
+   *   is stamped when a slip banks a receipt. The old record kept a
+   *   `depositIds` list; a treasury report does not, and the join answers the
+   *   same question from data that is already there rather than asking for a
+   *   migration.
+   *
+   * Everything below this point is unchanged. The five sections, the booklet
+   * ranges, the accountability from the movement ledger and the split by how
+   * each peso was tendered all read `covered`, and `covered` is now correct for
+   * both kinds of record.
+   */
+  const legacy = rcds.find((r) => r.id === id);
 
-  const covered = useMemo(
-    () => (rcd ? collections.filter((c) => rcd.collectionIds.includes(c.id)) : []),
-    [rcd, collections],
-  );
+  const covered = useMemo(() => {
+    if (report) {
+      const wanted = new Set(
+        (report.lines ?? [])
+          .filter((l: { excluded?: boolean }) => !l.excluded)
+          .map((l: { sourceId: string }) => l.sourceId),
+      );
+      return collections.filter((c) => wanted.has(c.id));
+    }
+    return legacy ? collections.filter((c) => legacy.collectionIds.includes(c.id)) : [];
+  }, [report, legacy, collections]);
+
+  /** The record this form is drawn from, in the shape the sections below read. */
+  const rcd = useMemo(() => {
+    if (!report) return legacy;
+    const totalCollections = covered.reduce((sum, c) => sum + c.totalAmount, 0);
+    const bankedIds = new Set(covered.map((c) => c.depositId).filter(Boolean) as string[]);
+    const banked = deposits.filter((d) => bankedIds.has(d.id));
+    const totalDeposits = banked.reduce((sum, d) => sum + d.amount, 0);
+    return {
+      id: report.id,
+      rcdNo: report.reportNo ?? '(not yet certified)',
+      rcdDate: report.reportDate,
+      fiscalYear: report.fiscalYear,
+      fundCode: report.fundCode,
+      collectingOfficerId: report.accountableOfficerId ?? '',
+      collectingOfficerName: report.accountableOfficerName ?? '',
+      orNumberFrom: report.serialFrom ?? '',
+      orNumberTo: report.serialTo ?? '',
+      collectionIds: covered.map((c) => c.id),
+      depositIds: banked.map((d) => d.id),
+      totalCollections,
+      totalDeposits,
+      undepositedAmount: totalCollections - totalDeposits,
+      status: report.status,
+    } as unknown as typeof legacy;
+  }, [report, legacy, covered, deposits]);
 
   /** Section A.1 - receipts collapsed into runs, then split at booklet edges. */
   const byForm = useMemo(() => {
@@ -205,24 +272,43 @@ export default function RcdAppendix34() {
   const totalDeposits = rcd.totalDeposits;
   const balance = totalCollections - totalDeposits;
 
+  const status = (rcd as { status?: string }).status;
+  const certified = isCertifiedCopy(status);
+
   return (
     <div>
-      <PageHeader
-        title={`RCD ${rcd.rcdNo}`}
-        subtitle="Appendix 34 — the form as COA prints it"
-        breadcrumbs={[
-          { label: 'Treasury', to: '/treasury' },
-          { label: 'RCD', to: '/treasury/collections/rcd' },
-          { label: rcd.rcdNo },
-        ]}
-        actions={
-          <Button variant="primary" onClick={() => window.print()}>
-            Print
-          </Button>
-        }
-      />
+      <FormPrintStyle />
 
-      <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+      {/* The chrome was printing with the form. It is a web page's furniture
+          and has no business on a document the Treasurer signs. */}
+      <div className="no-print">
+        <PageHeader
+          title={`RCD ${rcd.rcdNo}`}
+          subtitle="Appendix 34 - the form as COA prints it. A4 landscape."
+          breadcrumbs={[
+            { label: 'Treasury', to: '/treasury' },
+            { label: 'RCD', to: '/treasury/collections/rcd' },
+            { label: rcd.rcdNo },
+          ]}
+          actions={
+            <Button variant="primary" onClick={() => window.print()}>
+              Print
+            </Button>
+          }
+        />
+
+        {!certified && (
+          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
+            Print it and check the figures against the receipts before the Treasurer signs
+            anything - that is what it is for. Every page carries a band saying it is not
+            certified, so a checking copy cannot be signed by mistake or filed as the real one.
+          </Alert>
+        )}
+      </div>
+
+      <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+        <DraftBand status={status} />
+
         <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" lines={entity.headingLines} />
 
         <table className="mb-4 w-full text-2xs">

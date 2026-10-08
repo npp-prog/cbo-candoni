@@ -2293,6 +2293,126 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 38. Every treasury report has a form it can be printed on --------------
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE REPORT THAT COULD NOT BE PRINTED, AND SAID NOTHING
+ * ---------------------------------------------------------------------------
+ * Appendix 34 - the Report of Collections and Deposits - was written when an
+ * RCD was its own document in the `rcds` collection, and it read that
+ * collection. The RCD then became a TREASURY REPORT, like the RCI and the
+ * RADAI, and `rcds` stopped being written to.
+ *
+ * Nothing failed. The screen went on working perfectly against a collection
+ * that no longer receives anything, reachable only from a register that is now
+ * empty, while the report the Treasurer certifies most often had no printable
+ * form at all - its own page hid the Print button and pointed at the screen
+ * that had nothing to show. No test covered it because every test passed.
+ *
+ * The rule is simple and it lives in two files: the list of report types in
+ * src/types/enums.ts, and the dispatch in TreasuryReportForm.tsx that decides
+ * which form each one renders. A type in the first and not the second is a
+ * report the office cannot print, and the office finds out at the counter.
+ *
+ * A type is covered when the dispatch names it: as a key of the FORMS map, as
+ * an e-collection report in the shared mapping, or in a branch of its own.
+ */
+{
+  const enums = resolve(root, 'src/types/enums.ts');
+  const screen = resolve(root, 'src/pages/treasury/TreasuryReportForm.tsx');
+  const shared = resolve(root, 'src/lib/eCollections.ts');
+
+  if (!existsSync(enums) || !existsSync(screen)) {
+    failures.push(
+      'src/types/enums.ts or src/pages/treasury/TreasuryReportForm.tsx is missing; the ' +
+        'treasury-form check cannot run.',
+    );
+  } else {
+    const enumSource = readFileSync(enums, 'utf8');
+    const listed = /TREASURY_REPORT_TYPES\s*=\s*\[([\s\S]*?)\]/.exec(enumSource);
+
+    if (!listed) {
+      failures.push('src/types/enums.ts no longer declares TREASURY_REPORT_TYPES.');
+    } else {
+      const types = (listed[1].match(/'([A-Z_]+)'/g) ?? []).map((t) => t.slice(1, -1));
+
+      const screenSource = readFileSync(screen, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+
+      /* The e-collection types, from the one file that divides them. */
+      const eTypes = existsSync(shared)
+        ? (
+            /KIND_BY_REPORT[^=]*=\s*\{([\s\S]*?)\}/.exec(readFileSync(shared, 'utf8'))?.[1] ?? ''
+          ).match(/\b([A-Z_]+)\s*:/g) ?? []
+        : [];
+      const eCovered = new Set(eTypes.map((t) => t.replace(/\s*:$/, '')));
+
+      /* The FORMS map, and any branch that names a type outright. */
+      const formsBlock = /const FORMS[^=]*=\s*\{([\s\S]*?)\n\};/.exec(screenSource)?.[1] ?? '';
+      const formKeys = new Set(
+        (formsBlock.match(/^\s{2}([A-Z_]+)\s*:/gm) ?? []).map((k) => k.trim().replace(/:$/, '')),
+      );
+      const branchKeys = new Set(
+        (screenSource.match(/reportType === '([A-Z_]+)'/g) ?? []).map((m) =>
+          m.replace(/.*'([A-Z_]+)'.*/, '$1'),
+        ),
+      );
+
+      const uncovered = types.filter(
+        (t) => !formKeys.has(t) && !branchKeys.has(t) && !eCovered.has(t),
+      );
+
+      if (uncovered.length) {
+        failures.push(
+          `src/pages/treasury/TreasuryReportForm.tsx has no prescribed form for ` +
+            `${uncovered.join(', ')}. Every treasury report is certified on a COA form and ` +
+            'every one of them is printed. A type the dispatch does not name falls through to ' +
+            '"No prescribed form for this report" - or, as the RCD did until patch 104, to a ' +
+            'screen reading a collection nothing writes to any more. Add it to FORMS, or give ' +
+            'it a branch of its own.',
+        );
+      } else {
+        console.log(
+          `treasury: all ${types.length} report types have a form to print on`,
+        );
+      }
+
+      /*
+       * And the way in. The detail screen is the only place that offers the
+       * form, so a type excluded there cannot be printed however well the
+       * dispatch handles it - which is the exact shape the RCD was in.
+       */
+      const detail = resolve(root, 'src/pages/treasury/TreasuryReportDetail.tsx');
+      if (existsSync(detail)) {
+        const detailSource = readFileSync(detail, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/\/\/[^\n]*/g, '');
+
+        if (!/\/form`/.test(detailSource)) {
+          failures.push(
+            'src/pages/treasury/TreasuryReportDetail.tsx no longer offers the printed form. It ' +
+              'is the only way in to it.',
+          );
+        }
+
+        const excluded = (detailSource.match(/reportType !== '([A-Z_]+)'/g) ?? []).map((m) =>
+          m.replace(/.*'([A-Z_]+)'.*/, '$1'),
+        );
+        if (excluded.length) {
+          failures.push(
+            `src/pages/treasury/TreasuryReportDetail.tsx excludes ${excluded.join(', ')} by ` +
+              'report type. That is how the RCD lost its printed form: the exclusion outlived ' +
+              'the reason for it by three patches and nothing failed. If the exclusion is ' +
+              'right, say why here and teach this check about it.',
+          );
+        }
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

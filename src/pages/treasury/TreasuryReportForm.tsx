@@ -10,6 +10,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
+import { FormPrintStyle, DraftBand } from '@/components/print/FormPrintStyle';
 import {
   TREASURY_REPORT_LABELS,
   TREASURY_REPORT_SHORT,
@@ -19,6 +20,7 @@ import {
 import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 import ECollectionReportForm from './ECollectionReportForm';
+import RcdAppendix34 from './RcdAppendix34';
 
 /**
  * The Treasurer's reports as COA prints them - Appendices 37, 38 and 39.
@@ -196,22 +198,16 @@ export default function TreasuryReportForm() {
     return <ECollectionReportForm report={report} />;
   }
 
+  /*
+   * The RCD's form is Appendix 34, which is a screen of its own because it has
+   * five lettered sections nothing else has. It is rendered HERE rather than
+   * linked to, for the same reason the eRCD is: one print address reaches every
+   * report, so nothing that links to a printed report has to know which kind it
+   * is - which is exactly the knowledge that went stale and left the RCD with
+   * no printable form at all. See the note at the top of RcdAppendix34.
+   */
   if (report.reportType === 'RCD') {
-    return (
-      <Alert tone="info" title="The Report of Collections and Deposits has its own form">
-        <p>
-          Appendix 34 is built from the collections register, where the accountable forms and the
-          breakdown by how each peso was tendered live. A second version of it would be a second
-          answer to the same question.
-        </p>
-        <p className="mt-2">
-          <Link to="/treasury/rcd" className="font-medium underline">
-            Open it from Treasury &gt; Collections and Deposits &gt; RCD
-          </Link>
-          .
-        </p>
-      </Alert>
-    );
+    return <RcdAppendix34 report={report} />;
   }
 
   const form = FORMS[report.reportType];
@@ -230,6 +226,8 @@ export default function TreasuryReportForm() {
 
   return (
     <div>
+      <FormPrintStyle />
+
       <div className="no-print">
         <PageHeader
           title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} (draft)`}
@@ -252,9 +250,11 @@ export default function TreasuryReportForm() {
         />
 
         {report.status === 'DRAFT' && (
-          <Alert tone="warning" title="This report has not been certified" className="mb-4">
-            It has no number yet, and the figures can still change. A printed copy of a draft is a
-            form that says the Treasurer certified something they have not.
+          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
+            Print it and check the figures against the vouchers before the Treasurer signs
+            anything - that is what it is for. It has no number yet and the figures can still
+            change, so every page carries a band saying it is not certified. A checking copy
+            cannot be signed by mistake or filed as the real one.
           </Alert>
         )}
 
@@ -266,7 +266,9 @@ export default function TreasuryReportForm() {
       </div>
 
       {/* --- the form ------------------------------------------------------- */}
-      <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+      <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+        <DraftBand status={report.status} />
+
         <Letterhead appendix={form.appendix} title={form.title} lines={entity.headingLines} />
 
         <p className="mb-2 text-center text-2xs">
