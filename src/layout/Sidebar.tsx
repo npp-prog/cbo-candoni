@@ -5,6 +5,7 @@ import { NAVIGATION, ICONS, toBlocks, groupForPath, type NavChild } from './navi
 import { sectionHeadForPath } from './sections';
 import { originPathname } from '@/lib/returnTo';
 import { useAuth } from '@/auth/AuthProvider';
+import { Seal } from '@/components/ui/Seal';
 
 /**
  * The navy rail.
@@ -220,15 +221,15 @@ export function Sidebar({
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {/* Wordmark */}
-        <div className={clsx('flex items-center gap-2.5 border-b border-navy-800 px-4 py-4', collapsed && 'justify-center px-2')}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-brand-600 text-sm font-bold text-white">
-            CFMS
-          </div>
+        {/* Wordmark. The municipal seal, a little larger than the square it
+            replaced, and the two names in full - they wrap rather than being
+            cut short with an ellipsis. Patch 115. */}
+        <div className={clsx('flex items-center gap-3 border-b border-navy-800 px-4 py-4', collapsed && 'justify-center px-2')}>
+          <Seal className={clsx('shrink-0', collapsed ? 'h-10 w-10' : 'h-11 w-11')} />
           {!collapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">Candoni Financial Management System</p>
-              <p className="truncate text-2xs text-slate-400">Municipal Government of Candoni</p>
+              <p className="text-sm font-semibold leading-snug text-white">Candoni Financial Management System</p>
+              <p className="mt-0.5 text-2xs leading-snug text-slate-400">Municipal Government of Candoni</p>
             </div>
           )}
         </div>

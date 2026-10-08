@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Field, TextInput } from '@/components/ui/Field';
 import { Alert } from '@/components/ui/Layout';
 import { ENVIRONMENT, IS_PRODUCTION } from '@/lib/firebase';
+import { Seal } from '@/components/ui/Seal';
 
 export function SignIn() {
   const { signIn, sendPasswordReset, error } = useAuth();
@@ -61,11 +62,15 @@ export function SignIn() {
       {/* Institutional panel. Plain, deliberately: this is a government
           finance system, not a consumer product. */}
       <div className="hidden w-1/2 flex-col justify-between bg-navy-900 p-12 text-white lg:flex">
-        <div>
-          <div className="flex h-11 w-11 items-center justify-center rounded bg-brand-600 text-base font-bold">
-            CFMS
-          </div>
-          <h1 className="mt-8 text-3xl font-semibold leading-tight">Candoni Financial Management System</h1>
+        {/* The municipal seal, centred, with the names under it. Patch 115. */}
+        <div className="flex flex-col items-center text-center">
+          <Seal className="h-32 w-32" />
+          {/* White said outright: index.css colours every heading navy, which
+              overrides the panel's own white - so this title was navy on a
+              navy panel, and had been invisible on wide screens. */}
+          <h1 className="mt-8 text-3xl font-semibold leading-tight text-white">
+            Candoni Financial Management System
+          </h1>
           <p className="mt-2 text-base text-slate-300">
             Integrated Municipal Financial Management System
           </p>
@@ -78,7 +83,7 @@ export function SignIn() {
           </p>
         </div>
 
-        <div className="text-xs text-slate-400">
+        <div className="text-center text-xs text-slate-400">
           <p className="font-medium text-slate-300">Municipal Government of Candoni</p>
           <p>Province of Negros Occidental</p>
           <p className="mt-4">
@@ -90,10 +95,8 @@ export function SignIn() {
 
       <div className="flex w-full items-center justify-center bg-white px-6 py-12 lg:w-1/2">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded bg-brand-600 text-sm font-bold text-white">
-              CFMS
-            </div>
+          <div className="mb-8 flex flex-col items-center text-center lg:hidden">
+            <Seal className="h-24 w-24" />
             <h1 className="mt-4 text-xl font-semibold text-navy-900">Candoni Financial Management System</h1>
             <p className="text-sm text-slate-500">Municipal Government of Candoni</p>
           </div>
