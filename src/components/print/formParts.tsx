@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Seal } from '@/components/ui/Seal';
 import { formatAmount } from '@/lib/money';
 
 /**
@@ -35,17 +36,24 @@ export function Letterhead({
   lines,
   /** A sub-heading under the title, where the form has one. */
   subtitle,
+  /**
+   * The municipal seal, centred above "Republic of the Philippines". Patch
+   * 117: on the Allotment Release Order and the Augmentation Form.
+   */
+  seal,
 }: {
   appendix?: string;
   title: string;
   lines: string[];
   subtitle?: string;
+  seal?: boolean;
 }) {
   return (
     <div className="relative mb-4 text-center">
       {appendix && (
         <span className="absolute right-0 top-0 text-2xs italic text-slate-500">{appendix}</span>
       )}
+      {seal && <Seal className="mx-auto mb-1.5 h-16 w-16" />}
       {lines.map((line, i) => (
         <p
           key={i}

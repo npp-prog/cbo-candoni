@@ -66,6 +66,7 @@ export default function Reairr() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       tabs={<SectionTabs tabs={BUDGET_MONITORING_TABS} />}
       meta={{
         title: 'Registry of Estimated and Actual Income/Revenues and Receipts',

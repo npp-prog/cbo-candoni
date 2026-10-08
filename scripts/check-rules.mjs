@@ -2865,6 +2865,46 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 45. Budget reports print on A4, fitted, with the seal ----------------
+
+/*
+ * Patch 117: every Budget > Monitoring and Budget > Reports screen prints on
+ * A4 fitted to the width of the sheet, with the municipal seal at the left of
+ * its heading - and the two budget forms, the Allotment Release Order and the
+ * Augmentation Form, on A4 with the seal centred above the letterhead. This
+ * refuses a build in which one of them goes back to the ordinary page, which
+ * cuts a wide table off at the paper's edge without a word.
+ */
+{
+  const before = failures.length;
+  const REPORTS = [
+    'src/pages/budget/Registry.tsx',
+    'src/pages/budget/Raao.tsx',
+    'src/pages/budget/Reairr.tsx',
+    'src/pages/reports/QuarterlyReceipts.tsx',
+    'src/pages/reports/QuarterlyFinancialReport.tsx',
+    'src/pages/reports/Sre.tsx',
+  ];
+  for (const rel of REPORTS) {
+    const full = resolve(root, rel);
+    if (existsSync(full) && !/printLayout="(portrait|landscape)"/.test(readFileSync(full, 'utf8'))) {
+      failures.push(`${rel} no longer prints on A4 fitted to width with the seal (printLayout).`);
+    }
+  }
+  const FORMS = ['src/pages/budget/AroPrint.tsx', 'src/pages/budget/AugmentationFormSheet.tsx'];
+  for (const rel of FORMS) {
+    const full = resolve(root, rel);
+    if (!existsSync(full)) continue;
+    const src = readFileSync(full, 'utf8');
+    if (!/<FormPrintStyle orientation="portrait"/.test(src) || !/<Seal\b|\bseal\b/.test(src)) {
+      failures.push(`${rel} no longer prints on A4 fitted to width with the seal above the letterhead.`);
+    }
+  }
+  if (failures.length === before) {
+    console.log('print: budget reports and forms print on A4, fitted, with the seal');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

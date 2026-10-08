@@ -185,6 +185,7 @@ export default function QuarterlyReceipts() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       tabs={<SectionTabs tabs={BUDGET_REPORT_TABS} />}
       meta={{
         title: 'Report of Receipts',

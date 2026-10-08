@@ -165,6 +165,7 @@ export default function Registry() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       meta={{
         title: 'Registry of Appropriations, Allotments and Obligations - Summary',
         fundLabel: fundLabel(fundCode),

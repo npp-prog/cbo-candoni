@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Letterhead, SignatureLine } from '@/components/print/formParts';
+import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { useEntity } from '@/data/useEntity';
 import { formatAmount, amountInWords } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
@@ -89,7 +90,10 @@ export function AroPrintSheet({ sheet }: { sheet: AroSheet }) {
   const held = sheet.lines.reduce((t, l) => t + l.held, 0);
 
   return (
-    <div className="print-only" data-aro-sheet={sheet.prepared ? 'prepared' : 'issued'}>
+    <div className="print-only cbo-form-sheet" data-aro-sheet={sheet.prepared ? 'prepared' : 'issued'}>
+      {/* A4 portrait, laid out to the printable width so nothing runs off
+          the sheet whatever the print dialogue's scale. Patch 117. */}
+      <FormPrintStyle orientation="portrait" fontPt={9} />
       {sheet.prepared && (
         <div className="mb-2 border-2 border-dashed border-slate-700 px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-slate-700">
           Prepared - for signature - not yet released in CFMS
@@ -100,6 +104,7 @@ export function AroPrintSheet({ sheet }: { sheet: AroSheet }) {
         appendix={formOf(sheet.expenseClass)}
         lines={entity.headingLines}
         title="Allotment Release Order"
+        seal
       />
 
       <div className="mb-3 grid grid-cols-2 gap-x-6 gap-y-1 text-2xs">

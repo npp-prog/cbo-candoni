@@ -240,6 +240,7 @@ export default function QuarterlyFinancialReport() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       tabs={<SectionTabs tabs={BUDGET_REPORT_TABS} />}
       meta={{
         title: 'Financial Report of Operations',

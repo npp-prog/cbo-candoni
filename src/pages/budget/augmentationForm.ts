@@ -60,6 +60,11 @@ export interface AugmentationSheet {
   fiscalYear: number;
   /** The Local Government Unit line. */
   lgu: string;
+  /**
+   * The letterhead printed under the seal - Republic, the municipality, the
+   * address - from Settings, as on the other printed forms. Patch 117.
+   */
+  headingLines: string[];
   /** Office: Executive/Sanggunian - the form asks which. */
   office: 'Executive' | 'Sanggunian';
   /** The authority for the use of savings, as recorded. */
@@ -109,6 +114,7 @@ const byOfficeThenObject = (a: AugmentationRow, b: AugmentationRow) =>
 export function buildAugmentationSheet(input: {
   fiscalYear: number;
   lgu: string;
+  headingLines?: string[];
   ordinanceNo: string;
   authorityDate?: IsoDate;
   lines: AugmentationLine[];
@@ -132,6 +138,7 @@ export function buildAugmentationSheet(input: {
   return {
     fiscalYear: input.fiscalYear,
     lgu: input.lgu,
+    headingLines: input.headingLines ?? [],
     office: officeOf(input.lines),
     ordinanceNo: input.ordinanceNo.trim(),
     authorityDate: input.authorityDate,

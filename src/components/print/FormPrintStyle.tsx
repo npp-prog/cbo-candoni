@@ -49,14 +49,26 @@
  * the print dialog. The page asks for landscape itself; the browser obeys.
  */
 
-/** A4 landscape, and the box the form is laid out in. */
+/** A4, and the box the form is laid out in. */
 const MARGIN_MM = 8;
-const PRINTABLE_MM = 297 - MARGIN_MM * 2;
 
-export function FormPrintStyle() {
+/**
+ * Landscape for the wide treasury forms, as before. Since patch 117 the
+ * Allotment Release Order and the Augmentation Form use the same machinery in
+ * PORTRAIT - they are narrow forms, printed the way the manual prints them -
+ * and at their own type size rather than the treasury forms' 7.5pt.
+ */
+export function FormPrintStyle({
+  orientation = 'landscape',
+  fontPt = 7.5,
+}: {
+  orientation?: 'landscape' | 'portrait';
+  fontPt?: number;
+} = {}) {
+  const PRINTABLE_MM = (orientation === 'landscape' ? 297 : 210) - MARGIN_MM * 2;
   const css = `
 @media print {
-  @page { size: A4 landscape; margin: ${MARGIN_MM}mm; }
+  @page { size: A4 ${orientation}; margin: ${MARGIN_MM}mm; }
 
   html, body { background: #fff !important; }
 
@@ -66,7 +78,7 @@ export function FormPrintStyle() {
     max-width: ${PRINTABLE_MM}mm !important;
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 7.5pt !important;
+    font-size: ${fontPt}pt !important;
     line-height: 1.25 !important;
   }
 

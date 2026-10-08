@@ -241,6 +241,7 @@ export default function Sre() {
 
   return (
     <ReportShell
+      printLayout="portrait"
       tabs={<SectionTabs tabs={BUDGET_REPORT_TABS} />}
       meta={{
         title: 'Statement of Receipts and Expenditures',

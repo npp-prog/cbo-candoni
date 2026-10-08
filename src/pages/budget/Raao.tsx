@@ -104,6 +104,7 @@ export default function Raao() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       meta={{
         title: form.title,
         fundLabel: fundLabel(fundCode),

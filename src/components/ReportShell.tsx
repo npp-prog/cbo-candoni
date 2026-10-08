@@ -3,6 +3,8 @@ import { Button } from './ui/Button';
 import { PageHeader } from './ui/Layout';
 import { exportCsv, exportXlsx, printReport, type ExportColumn, type ReportMeta } from '@/lib/export';
 import { formatLongDate, todayPh } from '@/lib/dates';
+import { Seal } from './ui/Seal';
+import { ReportPrintStyle } from './print/ReportPrintStyle';
 
 /**
  * The frame every report is printed in.
@@ -33,6 +35,7 @@ export function ReportShell<T>({
   children,
   footnote,
   actions,
+  printLayout,
 }: {
   meta: ReportMeta;
   breadcrumbs?: Array<{ label: string; to?: string }>;
@@ -51,6 +54,12 @@ export function ReportShell<T>({
   children: ReactNode;
   footnote?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Print on A4 fitted to the width of the sheet, with the municipal seal at
+   * the left of the heading. Patch 117 - the budget registries and reports.
+   * Omitted, a report prints as it always has.
+   */
+  printLayout?: 'portrait' | 'landscape';
 }) {
   const canExport = Boolean(rows && exportColumns);
 
@@ -97,8 +106,13 @@ export function ReportShell<T>({
         </div>
       )}
 
-      <div className="cbo-card px-6 py-6 print:border-0 print:px-0 print:py-0">
-        <ReportHeading meta={meta} />
+      {printLayout && <ReportPrintStyle orientation={printLayout} />}
+      <div
+        className={`cbo-card px-6 py-6 print:border-0 print:px-0 print:py-0${
+          printLayout ? ' cbo-report-sheet' : ''
+        }`}
+      >
+        <ReportHeading meta={meta} seal={Boolean(printLayout)} />
         {children}
         {footnote && <div className="mt-4 text-xs text-slate-500">{footnote}</div>}
         <SignatureBlock meta={meta} />
@@ -107,9 +121,31 @@ export function ReportShell<T>({
   );
 }
 
-export function ReportHeading({ meta }: { meta: ReportMeta }) {
+export function ReportHeading({ meta, seal }: { meta: ReportMeta; seal?: boolean }) {
+  /*
+    With the seal: at the far left of the heading, the heading itself still
+    centred on the page - the seal's column is matched by an empty one on the
+    right, so the title does not drift off centre to make room for it.
+  */
+  if (seal) {
+    return (
+      <header className="report-header mb-5 grid grid-cols-[5rem_1fr_5rem] items-center gap-2">
+        <Seal className="h-16 w-16 justify-self-start" />
+        <HeadingText meta={meta} />
+        <span aria-hidden="true" />
+      </header>
+    );
+  }
   return (
     <header className="report-header mb-5 text-center">
+      <HeadingText meta={meta} />
+    </header>
+  );
+}
+
+function HeadingText({ meta }: { meta: ReportMeta }) {
+  return (
+    <div className="text-center">
       <p className="text-xs text-navy-700">Republic of the Philippines</p>
       <p className="text-xs text-navy-700">{meta.province ?? 'Province of Negros Occidental'}</p>
       <p className="text-sm font-semibold uppercase tracking-wide text-navy-900">
@@ -123,7 +159,7 @@ export function ReportHeading({ meta }: { meta: ReportMeta }) {
       <p className="mt-2 text-2xs text-slate-400">
         Generated from CFMS on {formatLongDate(todayPh())}
       </p>
-    </header>
+    </div>
   );
 }
 

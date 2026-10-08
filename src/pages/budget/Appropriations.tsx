@@ -212,6 +212,7 @@ export default function Appropriations() {
       buildAugmentationSheet({
         fiscalYear: d.fiscalYear,
         lgu,
+        headingLines: entity.headingLines,
         ordinanceNo: d.authorityReference ?? '',
         authorityDate: d.authorityDate,
         lines: d.lines ?? [],
@@ -226,6 +227,7 @@ export default function Appropriations() {
       buildAugmentationSheet({
         fiscalYear: a.fiscalYear,
         lgu,
+        headingLines: entity.headingLines,
         ordinanceNo: a.authorityReference ?? '',
         authorityDate: a.authorityDate,
         lines: data.filter(

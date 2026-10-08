@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { Seal } from '@/components/ui/Seal';
+import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { formatAmount } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
 import { LBE_FORM_2_NOTES, type AugmentationRow, type AugmentationSheet } from './augmentationForm';
@@ -38,14 +40,32 @@ export function AugmentationFormSheet({ sheet }: { sheet: AugmentationSheet }) {
   const rows = Math.max(sheet.from.length, sheet.to.length, 2);
 
   return (
-    <div className="print-only text-[10pt] text-black" data-augmentation-sheet={sheet.prepared ? 'prepared' : 'posted'}>
+    <div
+      className="print-only cbo-form-sheet text-[10pt] text-black"
+      data-augmentation-sheet={sheet.prepared ? 'prepared' : 'posted'}
+    >
+      {/* A4 portrait, laid out to the printable width. Patch 117. */}
+      <FormPrintStyle orientation="portrait" fontPt={10} />
       {sheet.prepared && (
         <div className="mb-3 border-2 border-dashed border-slate-700 px-3 py-1.5 text-center text-[9pt] font-bold uppercase tracking-widest text-slate-700">
           Prepared - for signature - not yet posted in CFMS
         </div>
       )}
 
-      <p className="font-bold">LBE Form No. 2</p>
+      {/*
+        The seal centred at the top, above "Republic of the Philippines", and
+        the letterhead under it - as on the Allotment Release Order. The form
+        number keeps the top-left corner the manual gives it. Patch 117.
+      */}
+      <div className="relative text-center">
+        <p className="absolute left-0 top-0 font-bold">LBE Form No. 2</p>
+        <Seal className="mx-auto mb-1.5 h-16 w-16" />
+        {sheet.headingLines.map((line, i) => (
+          <p key={i} className={i === 1 ? 'text-[10pt] font-bold uppercase tracking-wide' : 'text-[8pt]'}>
+            {line}
+          </p>
+        ))}
+      </div>
 
       <div className="mt-4 text-center">
         <p className="font-bold">AUGMENTATION FORM</p>
