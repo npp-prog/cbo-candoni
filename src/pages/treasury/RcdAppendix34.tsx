@@ -26,6 +26,7 @@ import {
 import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
 import { useEntity } from '@/data/useEntity';
 import { FormPrintStyle, DraftBand, isCertifiedCopy } from '@/components/print/FormPrintStyle';
+import { FormBackButton } from './FormBackButton';
 import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 
@@ -291,9 +292,14 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
             { label: rcd.rcdNo },
           ]}
           actions={
-            <Button variant="primary" onClick={() => window.print()}>
-              Print
-            </Button>
+            <>
+              {/* Only for a treasury report: a legacy RCD has no report page
+                  to go back to, and its register is where it was opened. */}
+              {report && <FormBackButton reportId={report.id} reportType={report.reportType} />}
+              <Button variant="primary" onClick={() => window.print()}>
+                Print
+              </Button>
+            </>
           }
         />
 

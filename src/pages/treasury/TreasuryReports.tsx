@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { CoveringCell } from './CoveringCell';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { hereAsReturn, withReturn } from '@/lib/returnTo';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { newestFirst } from '@/lib/registerOrder';
 import {
@@ -116,6 +117,15 @@ export default function TreasuryReports({
   const { fiscalYear, fundCode } = useFilters();
   const { can, user, profile } = useAuth();
   const navigate = useNavigate();
+  /*
+    A report opened from this register comes back to it - the same register,
+    the same section of the strip. The report page used to assume Treasury,
+    which happened to be right from here and wrong from Accounting; it now
+    goes where it was told. See src/lib/returnTo.ts.
+  */
+  const location = useLocation();
+  const openReport = (id: string, suffix = '') =>
+    navigate(withReturn(`/treasury/reports/${id}${suffix}`, hereAsReturn(location)));
 
   const label = TREASURY_REPORT_LABELS[reportType];
   const short = TREASURY_REPORT_SHORT[reportType];
@@ -219,7 +229,7 @@ export default function TreasuryReports({
             variant="secondary"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/treasury/reports/${r.id}/form`);
+              openReport(r.id, '/form');
             }}
           >
             View report
@@ -229,7 +239,7 @@ export default function TreasuryReports({
             variant="ghost"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/treasury/reports/${r.id}`);
+              openReport(r.id);
             }}
           >
             Open
@@ -298,7 +308,7 @@ export default function TreasuryReports({
             opens the document instead, and the buttons do what they say;
             each stops its own click so the row does not open as well.
           */
-          onRowClick={(r) => navigate(`/treasury/reports/${r.id}`)}
+          onRowClick={(r) => openReport(r.id)}
           emptyMessage={`No ${short} for ${fundLabel(fundCode)}, fiscal year ${fiscalYear}.`}
         />
       </Card>

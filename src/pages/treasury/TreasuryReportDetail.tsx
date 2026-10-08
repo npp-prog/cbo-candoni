@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { hereAsReturn, returnPathFrom, withReturn } from '@/lib/returnTo';
+import { reportOrigin } from './reportOrigin';
 import { PageHeader, Card, Alert, DetailField, Spinner, Tabs } from '@/components/ui/Layout';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -56,6 +58,14 @@ import { CoveredDocument } from './CoveredDocument';
 export default function TreasuryReportDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  /*
+    Where this report was opened from, if the screen that opened it said so.
+    Read up here with the other hooks - the page returns early while loading,
+    and a hook below that would be skipped on the first render and called on
+    the next, which is the fault that blanked Bank Reconciliation in patch 95.
+  */
+  const location = useLocation();
+  const returnPath = returnPathFrom(location.search);
   const { hasRole, can } = useAuth();
   const toast = useToast();
 
@@ -255,6 +265,12 @@ export default function TreasuryReportDetail() {
 
   const short = TREASURY_REPORT_SHORT[report.reportType];
   const label = TREASURY_REPORT_LABELS[report.reportType];
+  /* Where Back goes and what it is called. See reportOrigin.ts. */
+  const origin = reportOrigin(returnPath, {
+    section: 'Treasury',
+    label: short,
+    to: SECTION_TABS[report.reportType]?.[0]?.to ?? '/treasury',
+  });
   const isDraft = report.status === 'DRAFT';
   const hasSignedForm = attachments.data.length > 0;
   const finished = report.status === 'JOURNALIZED' || report.status === 'CANCELLED';
@@ -356,7 +372,13 @@ export default function TreasuryReportDetail() {
         'The documents it covered are released and can be reported again.',
       );
       setConfirm(null);
-      navigate(-1);
+      /*
+        To the origin, not "back one page". A report opened from a link or a
+        bookmark has no page behind it in this tab, and -1 then leaves CFMS
+        altogether - straight after withdrawing a report, which is the worst
+        moment to lose your place.
+      */
+      navigate(origin.to);
     } catch (err) {
       toast.error('Could not withdraw it', err instanceof Error ? err.message : String(err));
     } finally {
@@ -369,13 +391,28 @@ export default function TreasuryReportDetail() {
       <PageHeader
         title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} draft`}
         subtitle={label}
+        /*
+          THE BREADCRUMBS SAY WHERE THE OFFICER CAME FROM, not where the
+          report lives. They used to say Treasury > RCI always - right for the
+          Treasurer, and for the Accountant who opened it from Accounting a
+          trail leading somewhere they had never been.
+        */
         breadcrumbs={[
-          { label: 'Treasury' },
-          { label: short, to: SECTION_TABS[report.reportType]?.[0]?.to },
+          { label: origin.section },
+          { label: origin.label, to: origin.to },
           { label: report.reportNo ?? 'Draft' },
         ]}
         actions={
           <>
+            {/*
+              BACK, NAMED. To exactly where the report was opened - the same
+              list, on the same tab, with the same filter - and the button
+              says which, because "Back" alone does not answer the question
+              that made it necessary.
+            */}
+            <Button variant="ghost" onClick={() => navigate(origin.to)}>
+              &larr; Back to {origin.label}
+            </Button>
             <StatusBadge status={report.status} className="mr-1" />
             {isDraft && canCertify && (
               <Button
@@ -411,7 +448,14 @@ export default function TreasuryReportDetail() {
             */}
             <Button
               variant="secondary"
-              onClick={() => navigate(`/treasury/reports/${report.id}/form`)}
+              onClick={() =>
+                /*
+                  The form remembers THIS page, which still remembers the list.
+                  Closing the form comes back here; Back from here goes to the
+                  list. Nobody is dropped into a screen they did not choose.
+                */
+                navigate(withReturn(`/treasury/reports/${report.id}/form`, hereAsReturn(location)))
+              }
             >
               Print the form
             </Button>

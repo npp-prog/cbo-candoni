@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { NAVIGATION, ICONS, toBlocks, groupForPath, type NavChild } from './navigation';
 import { sectionHeadForPath } from './sections';
+import { originPathname } from '@/lib/returnTo';
 import { useAuth } from '@/auth/AuthProvider';
 
 /**
@@ -116,19 +117,30 @@ export function Sidebar({
    * The strips answer it: a screen's menu item is the head of whichever strip
    * carries it. See src/layout/sections.ts.
    */
-  const sectionHead = sectionHeadForPath(location.pathname);
+  /*
+    AND WHERE THE OFFICER CAME FROM, WHEN THE SCREEN WAS OPENED FROM ELSEWHERE.
+
+    A treasury report has one address and is reached from two offices. Opened
+    from Accounting > Treasury Reports, its address is under /treasury/ - and
+    the menu lit Treasury, opened Treasury, and left the Accountant looking at
+    the Treasurer's menu with their own place in it shut. When the address
+    carries the screen it was opened from, that is where the menu shows them
+    standing. See src/lib/returnTo.ts.
+  */
+  const here = originPathname(location.search) ?? location.pathname;
+  const sectionHead = sectionHeadForPath(here);
 
   /** Whether a menu entry is the one holding the current screen. */
   const holdsCurrent = useCallback(
     (to: string, children?: readonly NavChild[]) => {
-      if (to === '/') return location.pathname === '/';
+      if (to === '/') return here === '/';
       if (sectionHead !== null) {
         if (to === sectionHead) return true;
         if (children?.some((c) => c.to === sectionHead)) return true;
       }
-      return location.pathname === to || location.pathname.startsWith(`${to}/`);
+      return here === to || here.startsWith(`${to}/`);
     },
-    [location.pathname, sectionHead],
+    [here, sectionHead],
   );
 
   // Keep the section containing the current route open.
@@ -139,16 +151,16 @@ export function Sidebar({
     if (match) {
       setOpenSections((s) => new Set(s).add(match.to));
     }
-  }, [location.pathname, holdsCurrent]);
+  }, [here, holdsCurrent]);
 
   // Open the heading holding the current screen, so the user can always see
   // where they are standing.
   useEffect(() => {
-    const found = groupForPath(location.pathname);
+    const found = groupForPath(here);
     if (!found) return;
     const key = groupKey(found.sectionTo, found.group);
     setOpenGroups((s) => (s.has(key) ? s : new Set(s).add(key)));
-  }, [location.pathname]);
+  }, [here]);
 
   const toggleGroup = useCallback((key: string) => {
     setOpenGroups((s) => {
@@ -179,7 +191,10 @@ export function Sidebar({
               Cash in Local Treasury, say, under /reports/. The entry holding
               the screen must stay lit wherever its tabs happen to live.
             */
-            active || child.to === sectionHead
+            active ||
+              child.to === sectionHead ||
+              here === child.to ||
+              here.startsWith(`${child.to}/`)
               ? 'bg-brand-600/20 text-white font-medium'
               : 'text-slate-400 hover:bg-navy-800/60 hover:text-white',
           )

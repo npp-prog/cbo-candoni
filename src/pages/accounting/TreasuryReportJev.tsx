@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { CoveringCell } from '@/pages/treasury/CoveringCell';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { hereAsReturn, withReturn } from '@/lib/returnTo';
 import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -61,8 +62,39 @@ export default function TreasuryReportJev() {
 
   const { data, loading, error } = useReportsAwaitingJev(fiscalYear);
 
-  const [tab, setTab] = useState('');
-  const [status, setStatus] = useState('');
+  /*
+    THE TAB AND THE STATUS FILTER LIVE IN THE ADDRESS.
+
+    They were held in memory, so opening a report and coming back always
+    landed on "All reports" with no filter - the Accountant working down the
+    RCI tab lost their place every time they journalized one. In the address
+    they come back with the Back button, with a refresh, and with the return
+    path a report carries back here. See src/lib/returnTo.ts.
+  */
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') ?? '';
+  const status = params.get('status') ?? '';
+  const setParam = useCallback(
+    (key: string, value: string) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value) next.set(key, value);
+          else next.delete(key);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+  const setTab = useCallback((v: string) => setParam('tab', v), [setParam]);
+  const setStatus = useCallback((v: string) => setParam('status', v), [setParam]);
+
+  /* Where a report opened from here should bring the officer back to. */
+  const location = useLocation();
+  const here = hereAsReturn(location);
+  const openReport = (id: string, suffix = '') =>
+    navigate(withReturn(`/treasury/reports/${id}${suffix}`, here));
 
   const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
@@ -196,7 +228,7 @@ export default function TreasuryReportJev() {
             variant="secondary"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/treasury/reports/${r.id}/form`);
+              openReport(r.id, '/form');
             }}
           >
             View report
@@ -212,7 +244,7 @@ export default function TreasuryReportJev() {
             variant={r.status === 'CERTIFIED' ? 'primary' : 'ghost'}
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/treasury/reports/${r.id}`);
+              openReport(r.id);
             }}
           >
             {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'Open'}
@@ -254,7 +286,7 @@ export default function TreasuryReportJev() {
             opens the document instead, and the buttons do what they say;
             each stops its own click so the row does not open as well.
           */
-          onRowClick={(r) => navigate(`/treasury/reports/${r.id}`)}
+          onRowClick={(r) => openReport(r.id)}
           filters={
             <Select
               value={status}

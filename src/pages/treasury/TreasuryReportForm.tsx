@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { PageHeader, Alert, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useDocument } from '@/hooks/useFirestore';
@@ -11,6 +11,7 @@ import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import { FormPrintStyle, DraftBand } from '@/components/print/FormPrintStyle';
+import { FormBackButton } from './FormBackButton';
 import {
   TREASURY_REPORT_LABELS,
   TREASURY_REPORT_SHORT,
@@ -239,9 +240,7 @@ export default function TreasuryReportForm() {
           ]}
           actions={
             <>
-              <Link to={`/treasury/reports/${report.id}`}>
-                <Button variant="secondary">Back to the report</Button>
-              </Link>
+              <FormBackButton reportId={report.id} reportType={report.reportType} />
               <Button variant="primary" onClick={() => window.print()}>
                 Print
               </Button>

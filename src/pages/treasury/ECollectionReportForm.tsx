@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useCollections, useDeposits } from '@/data/queries';
@@ -9,6 +8,7 @@ import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import { FormPrintStyle, DraftBand } from '@/components/print/FormPrintStyle';
+import { FormBackButton } from './FormBackButton';
 import { TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { ECollectionReportType } from '@/types/enums';
 import type { Collection, TreasuryReport } from '@/types/treasury';
@@ -256,9 +256,7 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
           ]}
           actions={
             <>
-              <Link to={`/treasury/reports/${report.id}`}>
-                <Button variant="secondary">Back to the report</Button>
-              </Link>
+              <FormBackButton reportId={report.id} reportType={report.reportType} />
               <Button variant="primary" onClick={() => window.print()}>
                 Print
               </Button>

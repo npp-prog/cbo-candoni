@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { hereAsReturn, withReturn } from '@/lib/returnTo';
 import { CoveredDocument } from './CoveredDocument';
 import type { TreasuryReport } from '@/types/treasury';
 
@@ -54,6 +55,7 @@ import type { TreasuryReport } from '@/types/treasury';
  */
 export function CoveringCell({ report }: { report: TreasuryReport }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
 
   const lines = report.lines ?? [];
@@ -77,7 +79,7 @@ export function CoveringCell({ report }: { report: TreasuryReport }) {
           onClick={(e) => {
             e.stopPropagation();
             if (single) setOpen(true);
-            else navigate(`/treasury/reports/${report.id}`);
+            else navigate(withReturn(`/treasury/reports/${report.id}`, hereAsReturn(location)));
           }}
         >
           {serial}
