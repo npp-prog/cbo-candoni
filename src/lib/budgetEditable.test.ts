@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   augmentationDraftEditable,
   aroDraftWaiting,
+  allotmentWaiting,
   appropriationEditable,
   appropriationNotEditableBecause,
   EDITABLE_APPROPRIATION_STATUS,
@@ -115,5 +116,14 @@ describe('aroDraftWaiting', () => {
   it('is false of a missing order or one with no status', () => {
     expect(aroDraftWaiting(null)).toBe(false);
     expect(aroDraftWaiting({})).toBe(false);
+  });
+});
+
+describe('allotmentWaiting', () => {
+  it('is true of a withdrawal not yet approved, and of nothing else', () => {
+    expect(allotmentWaiting({ status: 'DRAFT' })).toBe(true);
+    expect(allotmentWaiting({ status: 'APPROVED' })).toBe(false);
+    expect(allotmentWaiting({ status: 'CANCELLED' })).toBe(false);
+    expect(allotmentWaiting(undefined)).toBe(false);
   });
 });

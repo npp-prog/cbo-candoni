@@ -149,3 +149,15 @@ export function aroDraftWaiting(
 ): boolean {
   return Boolean(draft) && draft?.status === EDITABLE_APPROPRIATION_STATUS;
 }
+
+/**
+ * Whether an allotment line - a withdrawal, in practice - is still waiting for
+ * the Budget Officer's approval. Patch 113 put Edit and Approve side by side on
+ * the allotment register, and the one test of "not yet approved" lives here
+ * rather than as a status comparison on the screen.
+ */
+export function allotmentWaiting(
+  line: { status?: string | null } | null | undefined,
+): boolean {
+  return Boolean(line) && line?.status === EDITABLE_APPROPRIATION_STATUS;
+}

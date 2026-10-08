@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildAllotmentRegister, budgetLineText, isLaterRelease } from './allotmentRegister';
-import type { Allotment } from '@/types/budget';
+import {
+  buildAllotmentRegister,
+  budgetLineText,
+  isLaterRelease,
+  laterReleasesOf,
+} from './allotmentRegister';
+import type { Allotment, AroDraft } from '@/types/budget';
 
 const line = (over: Partial<Allotment>): Allotment =>
   ({
@@ -78,7 +83,7 @@ describe('the allotment register', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].released).toBe(12_00);
     // Printed by office.
-    expect(rows[0].lines.map((l) => l.line.officeName)).toEqual(['Accountant', 'Mayor']);
+    expect(rows[0].lines.map((l) => l.officeName)).toEqual(['Accountant', 'Mayor']);
   });
 
   it('keeps withdrawals and lines with no order as rows of their own', () => {
@@ -96,6 +101,85 @@ describe('the allotment register', () => {
       line({ id: 'b', aroNo: 'ARO-2', allotmentDate: '2026-10-07' }),
     ]);
     expect(rows.map((r) => r.reference)).toEqual(['ARO-2', 'ARO-1']);
+  });
+});
+
+/**
+ * Patch 113: prepared orders are rows of the same register, with a status,
+ * where they used to be a box of their own above it.
+ */
+describe('prepared orders in the register', () => {
+  const draft = (over: Partial<AroDraft> = {}): AroDraft =>
+    ({
+      id: 'D1',
+      fiscalYear: 2026,
+      fundCode: 'GF',
+      expenseClass: 'CO',
+      purpose: 'cccc',
+      date: '2026-10-08',
+      status: 'DRAFT',
+      lines: [
+        {
+          balanceId: 'b',
+          officeId: 'mayor',
+          officeName: 'Office of the Municipal Mayor',
+          fppCode: 'CO-1',
+          fppName: 'Construction of aadad',
+          accountCode: '',
+          accountName: '',
+          amount: 10_000_00,
+          forLaterRelease: 2_000_00,
+        },
+      ],
+      ...over,
+    }) as AroDraft;
+
+  it('is a row marked Prepared, with no ARO number yet', () => {
+    const rows = buildAllotmentRegister([issued], [draft()]);
+    const p = rows.find((r) => r.kind === 'PREPARED');
+    expect(p?.status).toBe('PREPARED');
+    expect(p?.reference).toBe('');
+    expect(p?.released).toBe(10_000_00);
+    expect(p?.heldAtIssue).toBe(2_000_00);
+    expect(p?.draft?.id).toBe('D1');
+    expect(p?.lines[0].fppName).toBe('Construction of aadad');
+  });
+
+  it('comes first, because it is what someone has to act on', () => {
+    const rows = buildAllotmentRegister(
+      [line({ id: 'x', aroNo: 'ARO-9', allotmentDate: '2026-12-31' })],
+      [draft({ date: '2026-01-01' })],
+    );
+    expect(rows[0].kind).toBe('PREPARED');
+  });
+
+  it('leaves out an order already approved - it is an issued order now', () => {
+    const rows = buildAllotmentRegister([], [draft({ status: 'APPROVED', aroNo: 'ARO-7' })]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('carries a released line for the acts that need it, and none on a prepared one', () => {
+    const rows = buildAllotmentRegister([issued], [draft()]);
+    expect(rows.find((r) => r.kind === 'ORDER')?.lines[0].allotment?.id).toBe('ORIG');
+    expect(rows.find((r) => r.kind === 'PREPARED')?.lines[0].allotment).toBeUndefined();
+  });
+});
+
+describe('laterReleasesOf', () => {
+  it("finds the releases made from an order's holds", () => {
+    const rows = buildAllotmentRegister([issued, laterRelease]);
+    const order = rows.find((r) => r.kind === 'ORDER')!;
+    expect(laterReleasesOf(order, rows).map((r) => r.released)).toEqual([10_000_00]);
+  });
+
+  it("finds none for another order", () => {
+    const rows = buildAllotmentRegister([
+      laterRelease,
+      issued,
+      line({ id: 'Z', aroNo: 'ARO-OTHER', allotmentNo: 'ARO-OTHER' }),
+    ]);
+    const other = rows.find((r) => r.reference === 'ARO-OTHER')!;
+    expect(laterReleasesOf(other, rows)).toEqual([]);
   });
 });
 

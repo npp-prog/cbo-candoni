@@ -1,23 +1,34 @@
-import { useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, Select, TextInput, DateInput, AmountInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAroDrafts, useBudgetBalances } from '@/data/queries';
+import { useBudgetBalances } from '@/data/queries';
 import { createDraft, updateDraft, deleteDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
-import { aroDraftWaiting } from '@/lib/budgetEditable';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { engine } from '@/lib/engine';
 import { formatPeso, amountInWords } from '@/lib/money';
-import { formatShortDate, todayPh } from '@/lib/dates';
+import { todayPh } from '@/lib/dates';
 import { checkAllotmentAgainstAppropriation } from '@/lib/accounting-rules';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { AroDraft, BudgetBalance } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { FORM_OF, formOf, type AroSheet } from './AroPrint';
+
+/**
+ * What the register's table asks of a prepared order. Patch 113 moved the
+ * prepared orders into the register as rows, so their buttons are there now;
+ * the acts themselves - the builder, the two confirmations - stay here, with
+ * the state they need.
+ */
+export interface AroOrdersHandle {
+  edit: (d: AroDraft) => void;
+  approve: (d: AroDraft) => void;
+  discard: (d: AroDraft) => void;
+}
 import { fundLabel } from './Obligations';
 
 /**
@@ -87,24 +98,18 @@ const blank = (): DraftLine => ({
  * `embedded` is what the register passes. On its own - at the old address,
  * which still works - it keeps its heading.
  */
-export default function AllotmentReleaseOrders({
-  embedded,
-  building: buildingIn,
-  onBuildingChange,
-  onPrint,
-}: {
+interface AroOrdersProps {
   /** Rendered inside the register's page: no heading of its own. */
   embedded?: boolean;
   /** The register owns the button, so it owns the state behind it. */
   building?: boolean;
   onBuildingChange?: (next: boolean) => void;
-  /**
-   * Print a prepared order. The register's page owns the printed sheet, so
-   * that it can hide everything else on the page while it prints - the order
-   * used to come out with the whole register printed under it.
-   */
-  onPrint: (sheet: AroSheet) => void;
-}) {
+}
+
+const AllotmentReleaseOrders = forwardRef<AroOrdersHandle, AroOrdersProps>(function AllotmentReleaseOrders(
+  { embedded, building: buildingIn, onBuildingChange },
+  ref,
+) {
   const { fiscalYear, fundCode } = useFilters();
   const { hasRole, user, profile } = useAuth();
   const toast = useToast();
@@ -130,16 +135,11 @@ export default function AllotmentReleaseOrders({
     Recording an order released it, and only the Budget Officer could do it.
     Since patch 110 an order is PREPARED - by Budget Staff or the Budget
     Officer - and released only when the Budget Officer APPROVES it. The
-    engine enforces both; these say which buttons to offer.
+    engine enforces both; this says whether the builder may save. Who may
+    approve is decided on the register's page, where the button now is.
   */
   const canPrepare = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'BUDGET_STAFF');
-  const canApprove = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER');
 
-  const drafts = useAroDrafts(fiscalYear, fundCode);
-  const waiting = useMemo(
-    () => drafts.data.filter((d) => aroDraftWaiting(d)),
-    [drafts.data],
-  );
   /* The prepared order being corrected, if the builder was opened on one. */
   const [editingDraft, setEditingDraft] = useState<AroDraft | null>(null);
   const [approvingDraft, setApprovingDraft] = useState<AroDraft | null>(null);
@@ -337,6 +337,17 @@ export default function AllotmentReleaseOrders({
     }
   };
 
+  const builderTop = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (building) builderTop.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [building, editingDraft]);
+
+  useImperativeHandle(ref, () => ({
+    edit: editDraft,
+    approve: setApprovingDraft,
+    discard: setDiscardingDraft,
+  }));
+
   return (
     <>
       <div>
@@ -355,6 +366,9 @@ export default function AllotmentReleaseOrders({
           />
         )}
 
+        {/* Brought into view when it opens: Edit is pressed on a row that may
+            be far down the register, and the builder opens up here. */}
+        <div ref={builderTop} className="scroll-mt-4" />
         {building && (
           <Card
             title={`${editingDraft ? 'Correct' : 'Prepare'} ${FORM_OF[expenseClass]}`}
@@ -566,80 +580,6 @@ export default function AllotmentReleaseOrders({
           </Card>
         )}
 
-        {/*
-          ---------------------------------------------------------------------
-          PREPARED, AND WAITING FOR THE BUDGET OFFICER
-          ---------------------------------------------------------------------
-          Above the orders issued and plainly labelled, because nothing in this
-          box has released a peso. An office reading its available allotment
-          must not count these, and the tiles and the register below do not -
-          they read the allotment lines, which only approval writes.
-        */}
-        {waiting.length > 0 && (
-          <Card className="mb-5 border-amber-300 bg-amber-50/40">
-            <h2 className="text-sm font-semibold text-navy-900">
-              Prepared release orders - waiting for approval
-            </h2>
-            <p className="mt-1 text-xs text-slate-600">
-              Nothing has been released. Approving an order releases it, issues its ARO number, and
-              checks every line against the appropriation as it stands at that moment.
-            </p>
-
-            <ul className="mt-3 divide-y divide-amber-200/70">
-              {waiting.map((d) => {
-                const released = (d.lines ?? []).reduce((t, l) => t + (l.amount ?? 0), 0);
-                const held = (d.lines ?? []).reduce((t, l) => t + (l.forLaterRelease ?? 0), 0);
-                return (
-                  <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-navy-900">
-                        {formOf(d.expenseClass)} - {d.purpose || '(no purpose yet)'}
-                      </p>
-                      <p className="text-xs text-slate-600">
-                        {formatShortDate(d.date)} - {(d.lines ?? []).length} line
-                        {(d.lines ?? []).length === 1 ? '' : 's'}, {formatPeso(released)} to release
-                        {held > 0 ? `, ${formatPeso(held)} to hold back` : ''}
-                        {d.createdBy?.name ? ` - prepared by ${d.createdBy.name}` : ''}
-                        {d.source === 'UPLOAD' ? ' from an uploaded file' : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {/*
-                        Printed for signature before it is released - the
-                        Budget Officer recommends and the Mayor approves on
-                        paper, and the paper comes first. Patch 112.
-                      */}
-                      <Button size="sm" variant="ghost" onClick={() => onPrint(preparedSheet(d))}>
-                        Print
-                      </Button>
-                      {canPrepare && (
-                        <Button size="sm" variant="secondary" onClick={() => editDraft(d)}>
-                          Edit
-                        </Button>
-                      )}
-                      {canApprove && (
-                        <Button size="sm" variant="primary" onClick={() => setApprovingDraft(d)}>
-                          Approve and release
-                        </Button>
-                      )}
-                      {canPrepare && (
-                        <Button size="sm" variant="ghost" onClick={() => setDiscardingDraft(d)}>
-                          Discard
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-
-            {!canApprove && (
-              <p className="mt-2 text-2xs text-slate-500">
-                Only the Budget Officer can approve a release order.
-              </p>
-            )}
-          </Card>
-        )}
 
         <ConfirmDialog
           open={Boolean(approvingDraft)}
@@ -693,11 +633,12 @@ export default function AllotmentReleaseOrders({
             )
           }
         />
-
       </div>
     </>
   );
-}
+});
+
+export default AllotmentReleaseOrders;
 
 /** A prepared order as it goes on paper: no ARO number yet, the lines as prepared. */
 export function preparedSheet(d: AroDraft): AroSheet {

@@ -1,5 +1,6 @@
-import type { Allotment } from '@/types/budget';
+import type { Allotment, AroDraft } from '@/types/budget';
 import type { Centavos } from '@/types/common';
+import { aroDraftWaiting } from '@/lib/budgetEditable';
 
 /**
  * The Allotments screen as ONE register. Patch 112.
@@ -15,6 +16,8 @@ import type { Centavos } from '@/types/common';
  *
  * So the register is now made of DOCUMENTS. A row is one of:
  *
+ *   PREPARED       an order prepared and waiting for the Budget Officer -
+ *                  in the same table since patch 113, marked by its status
  *   ORDER          an Allotment Release Order, with its lines inside the row
  *   LATER_RELEASE  the release of an amount an order held back
  *   WITHDRAWAL     allotment taken back
@@ -42,20 +45,35 @@ import type { Centavos } from '@/types/common';
  * as it releases.
  */
 
-export type RegisterKind = 'ORDER' | 'LATER_RELEASE' | 'WITHDRAWAL' | 'NO_ORDER';
+export type RegisterKind = 'PREPARED' | 'ORDER' | 'LATER_RELEASE' | 'WITHDRAWAL' | 'NO_ORDER';
 
+/**
+ * One line of a register row, as it is shown and printed.
+ *
+ * Carried as plain figures rather than as the allotment record, because a
+ * PREPARED order has no allotment record yet - its lines live on the
+ * prepared order until approval writes them. `allotment` is there when the
+ * line has been released, for the acts that need it (releasing a hold).
+ */
 export interface RegisterLine {
-  line: Allotment;
-  /** For an order's line: what it held back when the order was issued. */
+  key: string;
+  officeName: string;
+  fppCode: string;
+  fppName: string;
+  accountCode: string;
+  accountName: string;
+  amount: Centavos;
+  /** What the line held back when the order was issued (or, prepared, will hold). */
   heldAtIssue: Centavos;
   /** And what it holds now, after any later release. */
   stillHeld: Centavos;
+  allotment?: Allotment;
 }
 
 export interface RegisterRow {
   key: string;
   kind: RegisterKind;
-  /** The ARO number, or the line's own number where there is no order. */
+  /** The ARO number, or the line's own number; empty on a prepared order. */
   reference: string;
   date: string;
   expenseClass: string;
@@ -64,7 +82,12 @@ export interface RegisterRow {
   released: Centavos;
   heldAtIssue: Centavos;
   stillHeld: Centavos;
-  status: Allotment['status'];
+  /** PREPARED for an order waiting for approval; otherwise the lines' own. */
+  status: Allotment['status'] | 'PREPARED';
+  /** The prepared order itself, for Edit, Approve and Discard. */
+  draft?: AroDraft;
+  /** The released lines behind the row, for the detail panel. */
+  allotments: Allotment[];
 }
 
 /** The release of a held amount, as the engine marks it. */
@@ -79,10 +102,26 @@ const sum = (xs: number[]) => xs.reduce((t, x) => t + x, 0);
 
 /** Lines of one order in the order they print: by office, then by budget line. */
 const byOfficeThenLine = (a: RegisterLine, b: RegisterLine) =>
-  a.line.officeName.localeCompare(b.line.officeName) ||
-  a.line.fppCode.localeCompare(b.line.fppCode);
+  a.officeName.localeCompare(b.officeName) || a.fppCode.localeCompare(b.fppCode);
 
-export function buildAllotmentRegister(allotments: Allotment[]): RegisterRow[] {
+const fromAllotment = (a: Allotment, heldAtIssue: number, stillHeld: number): RegisterLine => ({
+  key: a.id,
+  officeName: a.officeName ?? '',
+  fppCode: a.fppCode ?? '',
+  fppName: a.fppName ?? '',
+  accountCode: a.accountCode ?? '',
+  accountName: a.accountName ?? '',
+  amount: a.amount,
+  heldAtIssue,
+  stillHeld,
+  allotment: a,
+});
+
+
+export function buildAllotmentRegister(
+  allotments: Allotment[],
+  prepared: AroDraft[] = [],
+): RegisterRow[] {
   /* What has been released, since, from the hold on each line. */
   const releasedFrom = new Map<string, number>();
   for (const a of allotments) {
@@ -111,13 +150,9 @@ export function buildAllotmentRegister(allotments: Allotment[]): RegisterRow[] {
 
   for (const [aroNo, list] of orders) {
     const lines = list
-      .map((line) => {
-        const stillHeld = line.forLaterRelease ?? 0;
-        return {
-          line,
-          stillHeld,
-          heldAtIssue: stillHeld + (releasedFrom.get(line.id) ?? 0),
-        };
+      .map((a) => {
+        const stillHeld = a.forLaterRelease ?? 0;
+        return fromAllotment(a, stillHeld + (releasedFrom.get(a.id) ?? 0), stillHeld);
       })
       .sort(byOfficeThenLine);
     const first = [...list].sort((x, y) => x.allotmentDate.localeCompare(y.allotmentDate))[0];
@@ -130,7 +165,7 @@ export function buildAllotmentRegister(allotments: Allotment[]): RegisterRow[] {
       expenseClass: first.expenseClass,
       purpose: list.find((l) => l.aroPurpose)?.aroPurpose ?? '',
       lines,
-      released: sum(lines.map((l) => l.line.amount)),
+      released: sum(lines.map((l) => l.amount)),
       heldAtIssue: sum(lines.map((l) => l.heldAtIssue)),
       stillHeld: sum(lines.map((l) => l.stillHeld)),
       status: list.every((l) => l.status === 'APPROVED')
@@ -138,12 +173,59 @@ export function buildAllotmentRegister(allotments: Allotment[]): RegisterRow[] {
         : list.some((l) => l.status === 'DRAFT')
           ? 'DRAFT'
           : list[0].status,
+      allotments: list,
     });
   }
 
-  // Newest first; on one day, the later number first.
+  /*
+   * PREPARED ORDERS, IN THE SAME TABLE. Patch 113.
+   *
+   * They sat in a box of their own above the register. They are rows now,
+   * marked Prepared, with no ARO number - it is issued on approval - and
+   * nothing in the page's "released" total, which counts released lines only.
+   */
+  for (const d of prepared.filter((d) => aroDraftWaiting(d))) {
+    const lines: RegisterLine[] = (d.lines ?? [])
+      .map((l, i) => ({
+        key: `${d.id}:${i}`,
+        officeName: l.officeName ?? '',
+        fppCode: l.fppCode ?? '',
+        fppName: l.fppName ?? '',
+        accountCode: l.accountCode ?? '',
+        accountName: l.accountName ?? '',
+        amount: l.amount ?? 0,
+        heldAtIssue: l.forLaterRelease ?? 0,
+        stillHeld: l.forLaterRelease ?? 0,
+      }))
+      .sort(byOfficeThenLine);
+    rows.push({
+      key: `DRAFT:${d.id}`,
+      kind: 'PREPARED',
+      reference: '',
+      date: d.date,
+      expenseClass: d.expenseClass,
+      purpose: d.purpose ?? '',
+      lines,
+      released: sum(lines.map((l) => l.amount)),
+      heldAtIssue: sum(lines.map((l) => l.heldAtIssue)),
+      stillHeld: sum(lines.map((l) => l.stillHeld)),
+      status: 'PREPARED',
+      draft: d,
+      allotments: [],
+    });
+  }
+
+  /*
+   * What is waiting comes first - it is the part of the table someone has to
+   * act on - then everything else newest first; on one day, the later number
+   * first.
+   */
+  const rank = (r: RegisterRow) => (r.kind === 'PREPARED' || r.status === 'DRAFT' ? 0 : 1);
   return rows.sort(
-    (a, b) => b.date.localeCompare(a.date) || b.reference.localeCompare(a.reference),
+    (a, b) =>
+      rank(a) - rank(b) ||
+      b.date.localeCompare(a.date) ||
+      b.reference.localeCompare(a.reference),
   );
 }
 
@@ -161,12 +243,30 @@ function single(a: Allotment, kind: RegisterKind): RegisterRow {
         ? (a.releasedFromHeld?.reason ??
           (a.particulars ?? '').replace(/^Release of allotment held for later release\.\s*/, ''))
         : (a.particulars ?? ''),
-    lines: [{ line: a, heldAtIssue: held, stillHeld: held }],
+    lines: [fromAllotment(a, held, held)],
     released: a.amount,
     heldAtIssue: held,
     stillHeld: held,
     status: a.status,
+    allotments: [a],
   };
+}
+
+/**
+ * The later releases made from an order's holds - for the order's detail, so
+ * the officer reading it sees where the held amount went.
+ */
+export function laterReleasesOf(order: RegisterRow, rows: RegisterRow[]): RegisterRow[] {
+  const ids = new Set(order.allotments.map((a) => a.id));
+  return rows.filter(
+    (r) =>
+      r.kind === 'LATER_RELEASE' &&
+      r.allotments.some((a) =>
+        a.releasedFromHeld?.allotmentId
+          ? ids.has(a.releasedFromHeld.allotmentId)
+          : order.reference !== '' && a.aroNo === order.reference,
+      ),
+  );
 }
 
 /** A budget line as it reads on the register: its object, or its programme. */

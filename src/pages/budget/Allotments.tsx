@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -13,12 +13,14 @@ import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import {
   useAllotments,
+  useAroDrafts,
   useBudgetBalances,
   useEstimatedReceipts,
   useCollections,
 } from '@/data/queries';
 import { createDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
+import { allotmentWaiting } from '@/lib/budgetEditable';
 import { engine } from '@/lib/engine';
 import { appropriationLineLabel } from '@/lib/budgetLines';
 import { formatPeso } from '@/lib/money';
@@ -27,12 +29,13 @@ import { checkAllotmentWithdrawal } from '@/lib/accounting-rules';
 import { type Allotment } from '@/types/budget';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import { fundLabel } from './Obligations';
-import AllotmentReleaseOrders from './AllotmentReleaseOrders';
+import AllotmentReleaseOrders, { preparedSheet, type AroOrdersHandle } from './AllotmentReleaseOrders';
+import { AllotmentDetail, KIND_NOTE, type DetailActions } from './AllotmentDetail';
 import { AroPrintSheet, usePrintSheet, formOf, type AroSheet } from './AroPrint';
 import {
   buildAllotmentRegister,
   budgetLineText,
-  type RegisterKind,
+  laterReleasesOf,
   type RegisterRow,
 } from './allotmentRegister';
 
@@ -69,7 +72,7 @@ import {
 export default function Allotments() {
   const { fiscalYear, fundCode } = useFilters();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, hasRole } = useAuth();
   const toast = useToast();
   const { data, loading, error } = useAllotments(fiscalYear, fundCode);
 
@@ -110,40 +113,74 @@ export default function Allotments() {
   };
 
   /*
-    ONE REGISTER, patch 112. The release orders and the lines they released
-    were two tables saying the same thing twice; a row is now a document - an
-    order with its lines inside it, a later release, a withdrawal. See
-    allotmentRegister.ts, including the order that used to change its date.
+    ONE REGISTER, patch 112 - and since patch 113 the prepared orders are in
+    it too, marked Prepared, where they used to sit in a box of their own
+    above it. A row is a document: a prepared order, an issued order with its
+    lines inside it, a later release, a withdrawal. See allotmentRegister.ts.
   */
-  const register = useMemo(() => buildAllotmentRegister(data), [data]);
+  const prepared = useAroDrafts(fiscalYear, fundCode);
+  const register = useMemo(
+    () => buildAllotmentRegister(data, prepared.data),
+    [data, prepared.data],
+  );
 
-  /** The order as issued, for the printed form. */
-  const issuedSheet = (r: RegisterRow): AroSheet => ({
-    aroNo: r.reference,
-    date: r.date,
-    expenseClass: r.expenseClass,
-    purpose: r.purpose,
-    fundCode,
-    fiscalYear,
-    prepared: false,
-    lines: r.lines.map(({ line, heldAtIssue }) => ({
-      key: line.id,
-      officeName: line.officeName,
-      fppCode: line.fppCode,
-      fppName: line.fppName ?? '',
-      accountCode: line.accountCode ?? '',
-      accountName: line.accountName ?? '',
-      released: line.amount,
-      // As the order was issued - not what is left after a later release.
-      held: heldAtIssue,
-    })),
-  });
+  /* Who may do what to a prepared order. The engine enforces both. */
+  const canPrepare = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'BUDGET_STAFF');
+  const canApproveOrder = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER');
+  /* The builder and the two confirmations live in AllotmentReleaseOrders. */
+  const orders = useRef<AroOrdersHandle>(null);
 
-  const KIND_NOTE: Record<RegisterKind, string> = {
-    ORDER: 'Release order',
-    LATER_RELEASE: 'Release of amount held',
-    WITHDRAWAL: 'Withdrawal',
-    NO_ORDER: 'No order',
+  /** The row whose detail is open - clicking a row opens it. */
+  const [viewing, setViewing] = useState<RegisterRow | null>(null);
+
+  /** The order as it goes on paper: issued as issued, prepared with no number. */
+  const sheetOf = (r: RegisterRow): AroSheet =>
+    r.draft
+      ? preparedSheet(r.draft)
+      : {
+          aroNo: r.reference,
+          date: r.date,
+          expenseClass: r.expenseClass,
+          purpose: r.purpose,
+          fundCode,
+          fiscalYear,
+          prepared: false,
+          lines: r.lines.map((l) => ({
+            key: l.key,
+            officeName: l.officeName,
+            fppCode: l.fppCode,
+            fppName: l.fppName,
+            accountCode: l.accountCode,
+            accountName: l.accountName,
+            released: l.amount,
+            // As the order was issued - not what is left after a later release.
+            held: l.heldAtIssue,
+          })),
+        };
+
+  /**
+   * Every act a row offers, in one place, so the row's buttons and the
+   * detail panel's cannot drift apart. Each closes the panel first: the
+   * window it opens - the builder, a confirmation - belongs on top.
+   */
+  const actionsFor = (r: RegisterRow): DetailActions => {
+    const then = (fn: () => void) => () => {
+      setViewing(null);
+      fn();
+    };
+    const d = r.draft;
+    return {
+      print: r.kind === 'ORDER' || r.kind === 'PREPARED' ? then(() => setSheet(sheetOf(r))) : undefined,
+      edit: d && canPrepare ? then(() => orders.current?.edit(d)) : undefined,
+      discard: d && canPrepare ? then(() => orders.current?.discard(d)) : undefined,
+      approve:
+        d && canApproveOrder
+          ? then(() => orders.current?.approve(d))
+          : r.kind === 'WITHDRAWAL' && allotmentWaiting(r.allotments[0]) && can('budget', 'approve')
+            ? then(() => setApproving(r.allotments[0]))
+            : undefined,
+      releaseHeld: can('budget', 'approve') ? (line) => then(() => setReleasing(line))() : undefined,
+    };
   };
 
   const columns: Column<RegisterRow>[] = [
@@ -157,7 +194,9 @@ export default function Allotments() {
           {r.reference ? (
             <span className="font-mono text-xs">{r.reference}</span>
           ) : (
-            <span className="text-xs italic text-slate-400">Draft</span>
+            <span className="text-xs italic text-slate-500">
+              {r.kind === 'PREPARED' ? 'Number on approval' : 'Draft'}
+            </span>
           )}
           {/*
             What kind of document this is. A line with no order came from a
@@ -180,15 +219,19 @@ export default function Allotments() {
       key: 'form',
       header: 'Form',
       width: '10rem',
-      value: (r) => (r.kind === 'ORDER' ? formOf(r.expenseClass) : r.expenseClass),
-      cell: (r) => (
-        <div>
-          {r.kind === 'ORDER' && <span className="text-xs">{formOf(r.expenseClass)}</span>}
-          <span className={r.kind === 'ORDER' ? 'block text-2xs text-slate-500' : 'text-xs'}>
-            {EXPENSE_CLASS_LABELS[r.expenseClass as ExpenseClass] ?? r.expenseClass}
-          </span>
-        </div>
-      ),
+      value: (r) =>
+        r.kind === 'ORDER' || r.kind === 'PREPARED' ? formOf(r.expenseClass) : r.expenseClass,
+      cell: (r) => {
+        const isOrder = r.kind === 'ORDER' || r.kind === 'PREPARED';
+        return (
+          <div>
+            {isOrder && <span className="text-xs">{formOf(r.expenseClass)}</span>}
+            <span className={isOrder ? 'block text-2xs text-slate-500' : 'text-xs'}>
+              {EXPENSE_CLASS_LABELS[r.expenseClass as ExpenseClass] ?? r.expenseClass}
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: 'purpose',
@@ -201,47 +244,28 @@ export default function Allotments() {
       header: 'Office and budget line',
       value: (r) =>
         r.lines
-          .map(({ line }) => {
-            const b = budgetLineText(line);
-            return `${line.officeName} ${b.code} ${b.name} ${line.fppCode}`;
+          .map((l) => {
+            const b = budgetLineText(l);
+            return `${l.officeName} ${b.code} ${b.name} ${l.fppCode}`;
           })
           .join('; '),
       cell: (r) => (
         <ul className="space-y-1">
-          {r.lines.map(({ line, stillHeld }) => {
-            const b = budgetLineText(line);
+          {r.lines.map((l) => {
+            const b = budgetLineText(l);
             return (
-              <li key={line.id} className="text-xs">
-                <span className="text-slate-600">{line.officeName}</span>
+              <li key={l.key} className="text-xs">
+                <span className="text-slate-600">{l.officeName}</span>
                 <span className="block">
                   {b.code && <span className="font-mono text-2xs text-slate-500">{b.code} </span>}
                   {b.name}
                   {!b.code && <span className="text-2xs text-slate-500"> (programme)</span>}
                   {r.lines.length > 1 && (
                     <span className="ml-2 font-mono text-2xs text-slate-500">
-                      {formatPeso(line.amount, { symbol: false })}
+                      {formatPeso(l.amount, { symbol: false })}
                     </span>
                   )}
                 </span>
-                {/*
-                  Column 5 of the Allotment Release Order, released. Offered
-                  on the line that still holds something; the window it opens
-                  shows what has been collected against the year's Estimated
-                  Receipts, which is the figure the decision rests on.
-                */}
-                {stillHeld > 0 && line.status === 'APPROVED' && can('budget', 'approve') && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="mt-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setReleasing(line);
-                    }}
-                  >
-                    Release {formatPeso(stillHeld, { symbol: false })} held
-                  </Button>
-                )}
               </li>
             );
           })}
@@ -255,9 +279,19 @@ export default function Allotments() {
       width: '9rem',
       value: (r) => r.released,
       cell: (r) => (
-        <span className={r.released < 0 ? 'text-rose-700' : undefined}>
-          {formatPeso(r.released, { symbol: false, parens: true })}
-        </span>
+        <div>
+          <span
+            className={
+              r.released < 0 ? 'text-rose-700' : r.kind === 'PREPARED' ? 'text-slate-500' : undefined
+            }
+          >
+            {formatPeso(r.released, { symbol: false, parens: true })}
+          </span>
+          {/* Not released until approved, and not in the total above. */}
+          {r.kind === 'PREPARED' && (
+            <span className="block text-2xs font-normal text-slate-500">to release</span>
+          )}
+        </div>
       ),
     },
     {
@@ -285,39 +319,64 @@ export default function Allotments() {
     {
       key: 'status',
       header: 'Status',
-      width: '11rem',
+      width: '7rem',
       value: (r) => r.status,
-      cell: (r) => (
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={r.status} />
-          {r.kind === 'WITHDRAWAL' && r.status === 'DRAFT' && can('budget', 'approve') && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                setApproving(r.lines[0].line);
-              }}
-            >
-              Approve
-            </Button>
-          )}
-          {r.kind === 'ORDER' && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSheet(issuedSheet(r));
-              }}
-            >
-              Print
-            </Button>
-          )}
-        </div>
-      ),
+      cell: (r) => <StatusBadge status={r.status} />,
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: '13rem',
       fixed: true,
       sortable: false,
+      cell: (r) => {
+        const act = actionsFor(r);
+        /*
+          The row opens its detail when clicked, so every button here stops
+          the click going on to the row - otherwise Approve would also open
+          the panel behind its own confirmation. See check-rules section 40.
+        */
+        return (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {act.print && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  act.print?.();
+                }}
+              >
+                Print
+              </Button>
+            )}
+            {act.edit && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  act.edit?.();
+                }}
+              >
+                Edit
+              </Button>
+            )}
+            {act.approve && (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  act.approve?.();
+                }}
+              >
+                Approve
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -364,16 +423,17 @@ export default function Allotments() {
         appearing in both; patch 112 made them one.
       */}
       <AllotmentReleaseOrders
+        ref={orders}
         embedded
         building={building}
         onBuildingChange={setBuilding}
-        onPrint={setSheet}
       />
 
       <DataTable
         rows={register}
         columns={columns}
         rowKey={(r) => r.key}
+        onRowClick={(r) => setViewing(r)}
         loading={loading}
         error={error}
         searchPlaceholder="ARO number, purpose, office or budget line"
@@ -432,6 +492,12 @@ export default function Allotments() {
         }
       />
     </div>
+    <AllotmentDetail
+      row={viewing}
+      laterReleases={viewing && viewing.kind === 'ORDER' ? laterReleasesOf(viewing, register) : []}
+      actions={viewing ? actionsFor(viewing) : {}}
+      onClose={() => setViewing(null)}
+    />
     {sheet && <AroPrintSheet sheet={sheet} />}
     </>
   );
