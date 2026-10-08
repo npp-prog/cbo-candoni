@@ -62,6 +62,13 @@ export const COL = {
    */
   augmentationDrafts: 'augmentationDrafts',
   /**
+   * An Allotment Release Order prepared and awaiting the Budget Officer's
+   * approval. Released by `approveAro`, which marks it APPROVED with its ARO
+   * number - kept, as the record of who prepared it, and so the same uploaded
+   * file cannot be prepared twice.
+   */
+  aroDrafts: 'aroDrafts',
+  /**
    * The Trust Fund's own funding control. A programme is money received for a
    * stated purpose, with a programmed ceiling that a Funding Utilization
    * Request is checked against - the part the released allotment plays in the

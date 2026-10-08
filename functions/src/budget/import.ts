@@ -2,12 +2,12 @@ import { programDocId } from '../lib/budgetPrograms';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, assertFundInScope, invalid, type Role } from '../lib/context';
+import { requireCaller, assertFundInScope, invalid, hasRole, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
-import { issueNumber, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { assertFiscalYearOpen } from '../lib/period';
 import {
   readBudgetBalance,
+  budgetKeyId,
   applyBudgetDelta,
   applySummaryDelta,
   type BudgetKey,
@@ -69,6 +69,15 @@ import { findSector } from '../lib/sectors';
 
 const BUDGET_APPROVERS: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER'];
 
+/**
+ * Who may PREPARE allotment from a file. Budget Staff as well as the Budget
+ * Officer, since patch 110: an allotment upload no longer releases anything,
+ * it fills prepared orders that only the Budget Officer can approve - which is
+ * the same division of work as an order typed by hand. An appropriation upload
+ * still posts enacted authority and stays with the approvers.
+ */
+const BUDGET_PREPARERS: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER', 'BUDGET_STAFF'];
+
 type ImportKind = 'APPROPRIATION' | 'ALLOTMENT';
 
 /**
@@ -127,7 +136,7 @@ function slug(value: string): string {
 export const importBudgetLines = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
-    const caller = await requireCaller(request, BUDGET_APPROVERS);
+    const caller = await requireCaller(request, BUDGET_PREPARERS);
     const data = (request.data ?? {}) as {
       kind?: string;
       fiscalYear?: number;
@@ -144,6 +153,19 @@ export const importBudgetLines = onCall(
     const kind = data.kind as ImportKind;
     if (kind !== 'APPROPRIATION' && kind !== 'ALLOTMENT') {
       throw invalid('An upload is either appropriations or allotments.');
+    }
+
+    /*
+     * An appropriation upload POSTS - it is enacted authority, and the
+     * approval of a prepared augmentation comes through here too. That stays
+     * the Budget Officer's. Only preparing allotment is open to Budget Staff.
+     */
+    if (kind === 'APPROPRIATION' && !hasRole(caller, ...BUDGET_APPROVERS)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Posting appropriations is the Budget Officer\'s. Budget Staff may prepare allotment ' +
+          'releases from a file; the Budget Officer approves them.',
+      );
     }
 
     const fiscalYear = Number(data.fiscalYear);
@@ -470,9 +492,37 @@ export const importBudgetLines = onCall(
       }
     }
 
-    const numberingConfig =
-      kind === 'ALLOTMENT' ? await loadNumberingConfig('ALLOT') : null;
-    const bookCode = kind === 'ALLOTMENT' ? await bookCodeForFund(fundCode) : '';
+    /*
+     * ---------------------------------------------------------------------
+     * AN ALLOTMENT UPLOAD PREPARES; IT DOES NOT RELEASE
+     * ---------------------------------------------------------------------
+     * Since patch 110 allotment is released only when the Budget Officer
+     * approves a prepared Allotment Release Order. This upload used to release
+     * straight away - with no order, no purpose and nobody's approval - which
+     * by the rule already written into `releaseAllotment` ("released by order,
+     * and only by order") was a door left open beside the one being guarded.
+     *
+     * So a file of allotments now fills prepared orders, one per expense
+     * class because each class has its own LBE form, and they wait on the
+     * Allotments screen for approval exactly like an order typed by hand.
+     * Nothing in the books moves here.
+     *
+     * A WITHDRAWAL cannot go on an order - an order releases authority - so a
+     * negative row is refused here, before anything is read, and pointed at
+     * the place withdrawals are recorded.
+     */
+    if (kind === 'ALLOTMENT') {
+      const negative = resolved.filter((r) => r.amount < 0);
+      if (negative.length) {
+        throw invalid(
+          `Row${negative.length === 1 ? '' : 's'} ${negative.slice(0, 8).map((r) => r.lineNo).join(', ')}` +
+            `${negative.length > 8 ? ', …' : ''} ${negative.length === 1 ? 'is a' : 'are'} negative. ` +
+            'This upload prepares Allotment Release Orders, and an order releases authority. ' +
+            'Record a withdrawal of allotment on its own, from Withdraw allotment on the Allotments screen.',
+        );
+      }
+    }
+
 
     // ---- post ---------------------------------------------------------------
 
@@ -535,6 +585,37 @@ export const importBudgetLines = onCall(
             `Nothing was posted a second time. If this is a different ordinance, give it its own reference; ` +
             `if it is a correction, record it as a supplemental appropriation or an adjustment.`,
         );
+      }
+
+      /*
+       * And for an allotment upload, the prepared orders this file would fill.
+       * Their ids are made from the reference and the expense class, so the
+       * same file uploaded twice lands on the same orders and is refused -
+       * whether the first upload is still waiting or has since been approved.
+       * (The check above still catches a file released before patch 110, when
+       * an upload wrote allotment lines directly.)
+       */
+      const aroDraftId = (expenseClass: string) =>
+        `${fiscalYear}__${fundCode}__${refSlug}__${expenseClass}`;
+      const uploadClasses =
+        kind === 'ALLOTMENT' ? [...new Set(resolved.map((r) => r.expenseClass))] : [];
+      if (uploadClasses.length) {
+        const prepared = await Promise.all(
+          uploadClasses.map((c) => tx.get(db.collection(COL.aroDrafts).doc(aroDraftId(c)))),
+        );
+        const taken = prepared.filter((d) => d.exists);
+        if (taken.length) {
+          const released = taken.find((d) => d.get('status') === 'APPROVED');
+          throw new HttpsError(
+            'already-exists',
+            released
+              ? `Release ${reference} has already been prepared and approved as ARO ${released.get('aroNo') ?? ''}. ` +
+                  'Nothing was prepared a second time. Give a different release its own reference.'
+              : `Release ${reference} has already been prepared and is waiting for approval on the ` +
+                  'Allotments screen. Nothing was prepared a second time. Correct that order, or ' +
+                  'discard it first if this file is meant to replace it.',
+          );
+        }
       }
 
       const lines = [...byLine.values()];
@@ -641,15 +722,89 @@ export const importBudgetLines = onCall(
 
       // ---- writes -----------------------------------------------------------
 
-      const allotmentNo =
-        kind === 'ALLOTMENT' && numberingConfig
-          ? await issueNumber(tx, numberingConfig, {
-              bookCode,
-              fundCode,
-              fiscalYear,
-              month: Number(date.slice(5, 7)),
-            })
-          : null;
+      if (kind === 'ALLOTMENT') {
+        const now = new Date().toISOString();
+        const stamp = {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+        };
+
+        let prepared = 0;
+        let total = 0;
+        for (const expenseClass of uploadClasses) {
+          const inClass = lines
+            .map((l, i) => ({ l, b: balances[i] }))
+            .filter(({ l }) => l.rows[0].expenseClass === expenseClass);
+          if (!inClass.length) continue;
+
+          tx.create(db.collection(COL.aroDrafts).doc(aroDraftId(expenseClass)), {
+            fiscalYear,
+            fundCode,
+            expenseClass,
+            /*
+             * A file carries no purpose, and an order may not be released
+             * without one - it is printed on the face of the ARO. The
+             * reference stands in until the Budget Officer writes the real
+             * purpose while checking the order, which a prepared order can.
+             */
+            purpose: `Allotment release ${reference}`,
+            date,
+            reference,
+            importFileName: data.fileName ?? null,
+            source: 'UPLOAD',
+            lines: inClass.map(({ l }) => {
+              const r = l.rows[0];
+              total += l.amount;
+              return {
+                balanceId: budgetKeyId(l.key),
+                officeId: r.officeId,
+                officeName: r.officeName,
+                fppCode: r.fppCode,
+                fppName: r.fppName,
+                accountCode: r.accountCode,
+                accountName: r.accountName,
+                amount: l.amount,
+                forLaterRelease: 0,
+              };
+            }),
+            status: 'DRAFT',
+            createdBy: stamp,
+            createdAt: now,
+          });
+          prepared += 1;
+        }
+
+        recordTransition(tx, {
+          caller,
+          event: 'UPLOAD',
+          entityType: COL.aroDrafts,
+          entityId: refSlug,
+          entityRef: `Allotment release ${reference} - prepared`,
+          fiscalYear,
+          fundCode,
+          action: 'SUBMIT',
+          newStatus: 'DRAFT',
+          remarks:
+            `${prepared} prepared order${prepared === 1 ? '' : 's'}, ${lines.length} budget line` +
+            `${lines.length === 1 ? '' : 's'}, ${peso(total)}${data.fileName ? `, from ${data.fileName}` : ''}. ` +
+            'Nothing released until approved.',
+        });
+
+        return {
+          posted: 0,
+          budgetLines: lines.length,
+          total,
+          allotmentNo: null,
+          reference,
+          allotmentMoved: 0,
+          preparedOrders: prepared,
+        };
+      }
+
+      /* From here on the upload is an appropriation; an allotment upload returned above. */
+      const allotmentNo: string | null = null;
 
       const now = new Date().toISOString();
       const stamp = {
@@ -666,9 +821,7 @@ export const importBudgetLines = onCall(
         const first = line.rows[0];
 
         const delta: Partial<BudgetBalanceData> = {};
-        if (kind === 'ALLOTMENT') {
-          delta.allotmentReleased = line.amount;
-        } else if (appropriationKind === 'ORIGINAL') {
+        if (appropriationKind === 'ORIGINAL') {
           delta.appropriationOriginal = line.amount;
         } else if (appropriationKind === 'SUPPLEMENTAL') {
           delta.appropriationSupplemental = line.amount;

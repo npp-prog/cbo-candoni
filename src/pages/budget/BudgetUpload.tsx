@@ -182,7 +182,16 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   // A realignment goes in ONE call so the server can see the whole set. Half a
   // realignment posted and half refused would change the municipality's total
   // appropriation, which is the one thing a realignment must never do.
-  const tooManyForOneCall = isRealignment && checked.length > CHUNK;
+  /*
+    AN ALLOTMENT FILE GOES IN ONE CALL TOO, since patch 110. It no longer
+    releases anything: it fills prepared release orders, one per expense
+    class, keyed on the release reference. Sent in pieces, the second piece
+    would find the first piece's order already prepared and be refused - so
+    the file goes whole, or is split by the office into separate releases
+    with references of their own.
+  */
+  const oneCall = isRealignment || !isAppropriation;
+  const tooManyForOneCall = oneCall && checked.length > CHUNK;
 
   const blocked =
     bad.length > 0 ||
@@ -209,15 +218,18 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
     if (blocked || !checked.length) return;
     setBusy(true);
     let posted = 0;
+    let prepared = 0;
     let amount = 0;
 
     // A realignment is one call; everything else is chunked.
-    const step = isRealignment ? checked.length : CHUNK;
+    const step = oneCall ? checked.length : CHUNK;
 
     try {
       for (let i = 0; i < checked.length; i += step) {
         const chunk = checked.slice(i, i + step);
-        setProgress(`Posting ${i + 1} to ${i + chunk.length} of ${checked.length}`);
+        setProgress(
+          `${isAppropriation ? 'Posting' : 'Preparing'} ${i + 1} to ${i + chunk.length} of ${checked.length}`,
+        );
 
         const res = await engine.importBudgetLines({
           kind,
@@ -243,12 +255,21 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
         });
         posted += res.posted;
         amount += res.total;
+        prepared += res.preparedOrders ?? 0;
       }
 
-      toast.success(
-        isAppropriation ? 'Appropriation posted' : 'Allotment released',
-        `${posted} line${posted === 1 ? '' : 's'}, ${formatPeso(amount)}. It is in the budget ledger now and available ${isAppropriation ? 'for allotment' : 'to obligate'}.`,
-      );
+      if (isAppropriation) {
+        toast.success(
+          'Appropriation posted',
+          `${posted} line${posted === 1 ? '' : 's'}, ${formatPeso(amount)}. It is in the budget ledger now and available for allotment.`,
+        );
+      } else {
+        toast.success(
+          `${prepared} release order${prepared === 1 ? '' : 's'} prepared`,
+          `${formatPeso(amount)} across ${checked.length} line${checked.length === 1 ? '' : 's'}. ` +
+            'Nothing is released yet - the Budget Officer approves each order on the Allotments screen.',
+        );
+      }
       setRows([]);
       setFileName('');
       setReference('');
@@ -273,7 +294,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
         subtitle={
           isAppropriation
             ? 'The annex to the appropriation ordinance, read line by line into the budget ledger. One row per office per account.'
-            : 'A batch of allotment releases, read from the spreadsheet the Budget Office already keeps. Each line is checked against the appropriation it draws on.'
+            : 'A batch of allotment releases, read from the spreadsheet the Budget Office already keeps. It fills prepared release orders - one per expense class - and nothing is released until the Budget Officer approves them on the Allotments screen.'
         }
         breadcrumbs={[
           { label: 'Budget' },
@@ -428,11 +449,29 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
         {checked.length > 0 && (
           <div className="mt-4">
             {tooManyForOneCall && (
-              <Alert tone="error" title="This realignment is too long to post in one go" className="mb-3">
-                A realignment must be sent whole so the server can see that it comes to zero, and
-                one call takes at most {CHUNK} rows. This file has {checked.length}. Split it into
-                separate realignments, each balanced on its own, and give each its own ordinance
-                reference.
+              <Alert
+                tone="error"
+                title={
+                  isAppropriation
+                    ? 'This realignment is too long to post in one go'
+                    : 'This release is too long to prepare in one go'
+                }
+                className="mb-3"
+              >
+                {isAppropriation ? (
+                  <>
+                    A realignment must be sent whole so the server can see that it comes to zero,
+                    and one call takes at most {CHUNK} rows. This file has {checked.length}. Split
+                    it into separate realignments, each balanced on its own, and give each its own
+                    ordinance reference.
+                  </>
+                ) : (
+                  <>
+                    An allotment file is prepared whole, as release orders keyed on its reference,
+                    and one call takes at most {CHUNK} rows. This file has {checked.length}. Split
+                    it into separate releases and give each its own reference.
+                  </>
+                )}
               </Alert>
             )}
 
@@ -493,7 +532,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
                 )}{' '}
                 {isAppropriation
                   ? 'Posting records this as enacted authority; it becomes available for allotment straight away.'
-                  : 'Each line is checked against its appropriation before anything is released.'}
+                  : 'Each line is checked against its appropriation now, and again when the Budget Officer approves the order. Nothing is released by this upload.'}
               </Alert>
             )}
 
@@ -509,7 +548,8 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
                 disabled={busy || blocked}
                 onClick={() => void post()}
               >
-                Post {checked.length} line{checked.length === 1 ? '' : 's'}
+                {isAppropriation ? 'Post' : 'Prepare'} {checked.length} line
+                {checked.length === 1 ? '' : 's'}
               </Button>
             </div>
           </div>

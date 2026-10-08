@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   augmentationDraftEditable,
+  aroDraftWaiting,
   appropriationEditable,
   appropriationNotEditableBecause,
   EDITABLE_APPROPRIATION_STATUS,
@@ -93,5 +94,26 @@ describe('augmentationDraftEditable', () => {
   it('refuses a missing draft', () => {
     expect(augmentationDraftEditable(null)).toBe(false);
     expect(augmentationDraftEditable(undefined)).toBe(false);
+  });
+});
+
+describe('aroDraftWaiting', () => {
+  it('is true of a prepared order', () => {
+    expect(aroDraftWaiting({ status: 'DRAFT' })).toBe(true);
+  });
+
+  /**
+   * An approved order has released authority. It is kept as the record of who
+   * prepared it, and it must never show among the orders waiting - an officer
+   * pressing Approve on it again would be told it was released already, but
+   * offering the button at all would say it had not been.
+   */
+  it('is false of an approved order', () => {
+    expect(aroDraftWaiting({ status: 'APPROVED' })).toBe(false);
+  });
+
+  it('is false of a missing order or one with no status', () => {
+    expect(aroDraftWaiting(null)).toBe(false);
+    expect(aroDraftWaiting({})).toBe(false);
   });
 });

@@ -62,6 +62,8 @@ export const COL = {
   numberingRules: 'numberingRules',
   appropriations: 'appropriations',
   allotments: 'allotments',
+  /** Allotment Release Orders prepared and awaiting the Budget Officer's approval. */
+  aroDrafts: 'aroDrafts',
   obligations: 'obligations',
   budgetBalances: 'budgetBalances',
   budgetSummaries: 'budgetSummaries',

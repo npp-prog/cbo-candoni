@@ -130,3 +130,22 @@ export function augmentationDraftEditable(
    */
   return (draft.status ?? EDITABLE_APPROPRIATION_STATUS) === EDITABLE_APPROPRIATION_STATUS;
 }
+
+// ---------------------------------------------------------------------------
+// An Allotment Release Order being prepared
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a prepared Allotment Release Order is still waiting - and so may be
+ * corrected, approved or discarded.
+ *
+ * Unlike a prepared augmentation, a prepared ARO is KEPT after approval, marked
+ * APPROVED with its ARO number, as the record of who prepared the release. So
+ * the status does decide something here: an approved order has released
+ * authority and is frozen, by the Firestore rule as well as by this.
+ */
+export function aroDraftWaiting(
+  draft: { status?: string | null } | null | undefined,
+): boolean {
+  return Boolean(draft) && draft?.status === EDITABLE_APPROPRIATION_STATUS;
+}

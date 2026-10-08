@@ -251,7 +251,7 @@ export default function Allotments() {
                   away. */}
               {!building && (
                 <Button variant="primary" size="sm" onClick={() => setBuilding(true)}>
-                  Issue a release order
+                  Prepare a release order
                 </Button>
               )}
             </div>

@@ -6,6 +6,7 @@ import type {
   Allotment,
   Appropriation,
   AugmentationDraft,
+  AroDraft,
   Ada,
   BankAccount,
   BudgetBalance,
@@ -150,6 +151,18 @@ export const useAugmentationDrafts = (fiscalYear: number, fundCode: string) =>
       orderBy('authorityDate', 'desc'),
     ],
     ['augmentationDrafts', fiscalYear, fundCode],
+  );
+
+/**
+ * Allotment Release Orders prepared for the Budget Officer, and the ones
+ * already approved from them. The screen shows the prepared ones; the approved
+ * ones are the record of who prepared what.
+ */
+export const useAroDrafts = (fiscalYear: number, fundCode: string) =>
+  useCollection<AroDraft>(
+    COL.aroDrafts,
+    [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('date', 'desc')],
+    ['aroDrafts', fiscalYear, fundCode],
   );
 
 export const useAllotments = (fiscalYear: number, fundCode: string) =>

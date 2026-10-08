@@ -2622,6 +2622,109 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 41. Allotment is released only by the Budget Officer's approval -------
+
+/*
+ * ---------------------------------------------------------------------------
+ * RECORDING IS NOT RELEASING
+ * ---------------------------------------------------------------------------
+ * Until patch 110, entering an Allotment Release Order released it, and so did
+ * uploading a file of allotments. The Budget Office asked for the two to be
+ * separate: an order is PREPARED - by Budget Staff or the Budget Officer - and
+ * authority moves only when the Budget Officer approves it.
+ *
+ * Three things hold that, and each is a place it could quietly come undone:
+ *
+ *   The prepared order is written by the browser, so the RULE must refuse a
+ *   browser writing it as APPROVED or giving it an ARO number. A client that
+ *   could would make an order look released without releasing anything.
+ *
+ *   `issueAro` - the old one-press release - is still deployed, because
+ *   deleting a function is an easily-missed step. It must refuse, not
+ *   release. Left working it is the door beside the one being guarded.
+ *
+ *   `approveAro` reads the order it releases inside its own transaction. An
+ *   approval that took the lines from the browser would release whatever the
+ *   browser said at that moment, not what was prepared.
+ */
+{
+  const block = firestore.match(/match \/aroDrafts\/\{[^}]*\}\s*\{([\s\S]*?)\n    \}/);
+  if (!block) {
+    failures.push("firestore.rules: no rule block for 'aroDrafts', the prepared release orders.");
+  } else {
+    const body = block[1].replace(/\/\/[^\n]*/g, '');
+    for (const verb of ['create', 'update']) {
+      const rule = body.match(new RegExp(`allow ${verb}:([\\s\\S]*?);`));
+      if (!rule) {
+        failures.push(`firestore.rules: 'aroDrafts' has no ${verb} rule to check.`);
+        continue;
+      }
+      if (!/request\.resource\.data\.status == 'DRAFT'/.test(rule[1])) {
+        failures.push(
+          `firestore.rules: the 'aroDrafts' ${verb} rule does not hold a browser to status DRAFT. ` +
+            'Only the engine may mark an order APPROVED - a client that could would make an order ' +
+            'look released without releasing anything.',
+        );
+      }
+      if (!/aroNo/.test(rule[1])) {
+        failures.push(
+          `firestore.rules: the 'aroDrafts' ${verb} rule lets a browser write an ARO number. ` +
+            'The number is issued by the engine when the order is released, and by nothing else.',
+        );
+      }
+    }
+    const del = body.match(/allow delete:([\s\S]*?);/);
+    if (del && !/resource\.data\.status == 'DRAFT'/.test(del[1])) {
+      failures.push(
+        "firestore.rules: the 'aroDrafts' delete rule lets an APPROVED order be deleted. It is the " +
+          'record of who prepared a release, and its id is what stops an uploaded release being ' +
+          'prepared twice.',
+      );
+    }
+  }
+
+  const aroFile = resolve(root, 'functions/src/budget/aro.ts');
+  if (existsSync(aroFile)) {
+    const src = readFileSync(aroFile, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    const issue = src.match(/export const issueAro = onCall\(([\s\S]*?)\n\);/);
+    if (!issue) {
+      failures.push('functions/src/budget/aro.ts no longer declares issueAro, so it cannot be checked.');
+    } else if (/postAroInTransaction|runTransaction|applyBudgetDelta/.test(issue[1])) {
+      failures.push(
+        'functions/src/budget/aro.ts: issueAro releases allotment again. It must refuse - an order ' +
+          'is prepared and then approved, and a one-press release beside that is a way round the ' +
+          "Budget Officer's approval.",
+      );
+    }
+
+    const approve = src.match(/export const approveAro = onCall\(([\s\S]*?)\n\);/);
+    if (!approve) {
+      failures.push('functions/src/budget/aro.ts no longer declares approveAro.');
+    } else {
+      if (!/tx\.get\(ref\)/.test(approve[1])) {
+        failures.push(
+          'functions/src/budget/aro.ts: approveAro does not read the prepared order inside its ' +
+            'transaction. What is released must be what was prepared, read where it is released.',
+        );
+      }
+      if (/request\.data[^;]*lines/.test(approve[1])) {
+        failures.push(
+          'functions/src/budget/aro.ts: approveAro takes its lines from the request. They must come ' +
+            'from the stored order, or an order can be approved as something other than what was ' +
+            'prepared.',
+        );
+      }
+    }
+  }
+
+  if (!failures.some((f) => f.includes('aroDrafts') || f.includes('budget/aro.ts'))) {
+    console.log("budget: allotment is released only by the Budget Officer's approval");
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (failures.length > 0) {

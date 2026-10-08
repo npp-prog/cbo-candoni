@@ -418,6 +418,49 @@ service cloud.firestore {
         && fundAllowed(resource.data.fundCode);
     }
 
+    // --- Budget: Allotment Release Orders, prepared ---------------------------
+
+    // An order prepared by the Budget Office and awaiting the Budget Officer's
+    // approval. NOTHING HERE MOVES AUTHORITY - no balance, no allotment line -
+    // which is what makes it safe for budget staff to write directly.
+    //
+    // Releasing is `approveAro`, on the server, and it is the only thing that
+    // may write APPROVED. A browser may only ever write DRAFT: a client that
+    // could write APPROVED could mark an order released without releasing it,
+    // and the prepared list would stop telling the truth about what is waiting.
+    //
+    // An approved order is frozen - it is the record of who prepared what, and
+    // its id is what stops an uploaded release being prepared twice.
+    match /aroDrafts/{id} {
+      allow read: if canRead();
+
+      allow create: if signedIn()
+        && hasAny(budgetRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && request.resource.data.get('aroNo', null) == null
+        && fundAllowed(request.resource.data.fundCode);
+
+      // Corrected while it waits - the purpose rewritten, a line added or
+      // taken off. The year and fund are frozen: a correction corrects THIS
+      // order rather than becoming a different one.
+      allow update: if signedIn()
+        && hasAny(budgetRoles())
+        && resource.data.status == 'DRAFT'
+        && request.resource.data.status == 'DRAFT'
+        && request.resource.data.get('aroNo', null) == null
+        && fundAllowed(resource.data.fundCode)
+        && fundAllowed(request.resource.data.fundCode)
+        && didNotChange(['createdBy', 'fiscalYear', 'fundCode', 'source', 'reference']);
+
+      // Discarded while it is still only prepared. Once approved it is the
+      // record of a release and stays.
+      allow delete: if signedIn()
+        && hasAny(budgetRoles())
+        && resource.data.status == 'DRAFT'
+        && fundAllowed(resource.data.fundCode);
+    }
+
     // --- Budget: allotments --------------------------------------------------
 
     match /allotments/{id} {

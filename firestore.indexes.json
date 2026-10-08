@@ -224,6 +224,24 @@
       ]
     },
     {
+      "collectionGroup": "aroDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "//": "Audit trail search: one user's actions, newest first.",
       "collectionGroup": "auditLogs",
       "queryScope": "COLLECTION",

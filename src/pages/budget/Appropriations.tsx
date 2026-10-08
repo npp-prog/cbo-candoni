@@ -1588,78 +1588,18 @@ function AppropriationForm({
             second time what the Type at the top of the form already settled,
             and the two questions could disagree.
           */}
-          <Alert
-            tone={instrument === 'AUGMENTATION' ? 'info' : 'warning'}
-            title={
-              instrument === 'AUGMENTATION'
-                ? 'Augmentation — signed by the Local Chief Executive'
-                : 'Realignment — by ordinance of the Sanggunian'
-            }
-            className="mb-4"
-          >
-            {instrument === 'AUGMENTATION' ? (
-              <p>
-                Section 336. Savings moved <strong>within one expense class</strong> — Personal
-                Services to Personal Services, MOOE to MOOE, Capital Outlay to Capital Outlay. No
-                ordinance of its own is needed, because the General Provisions of the annual budget
-                already carry the authority. If this needs to cross a class, change the Type above
-                to Realignment.
-              </p>
-            ) : (
-              <p>
-                Section 321. Authority moved <strong>across expense classes</strong> — Personal
-                Services to MOOE, and anything an augmentation may not reach. This takes an
-                ordinance of the Sanggunian, so record its number in the authority reference below;
-                the Local Chief Executive cannot sign it alone.
-              </p>
-            )}
-          </Alert>
-
+          {/*
+            The two panels that explained Sections 336 and 321 and how the
+            allotment moves were removed at the Budget Office's request in
+            patch 110. The rules are unchanged - the engine still enforces the
+            expense class, the authority and the savings, and its refusals say
+            which rule a set broke. The Type's own hint names the act.
+          */}
           {classCheck && !classCheck.ok && (
             <Alert tone="error" title="An augmentation cannot cross an expense class" className="mb-4">
               {classCheck.violations[0].message}
             </Alert>
           )}
-
-          <Alert
-            tone="info"
-            title={
-              instrument === 'AUGMENTATION'
-                ? 'An augmentation is made after the allotment'
-                : 'A realignment carries its allotment with it'
-            }
-            className="mb-4"
-          >
-            <p>
-              This is one budget transaction, not a record of one. Posting it moves the
-              appropriation and, where it has to, the allotment as well — withdrawn from the line
-              the savings come from and released to the line being augmented, in the same act. The
-              total allotment of the fund does not change, because an augmentation creates no new
-              spending authority.
-            </p>
-            {instrument === 'AUGMENTATION' ? (
-              <p className="mt-1">
-                Savings are the balance of a <em>released</em> allotment left free of obligation
-                once an activity is finished, abandoned or discontinued — so the allotment comes
-                first, and the allotment moves peso for peso with the appropriation. A line with
-                no allotment released has no savings to give and is refused: move that
-                appropriation by Realignment instead, which is an ordinance of the Sanggunian.
-              </p>
-            ) : (
-              <p className="mt-1">
-                A realignment is the Sanggunian re-appropriating under Section 321, and it may move
-                appropriation that was never released as allotment at all. So the authority is taken
-                from the unreleased part first, since moving that costs the account no spending
-                authority it holds today, and only the shortfall comes back out of the released
-                allotment.
-              </p>
-            )}
-            <p className="mt-1">
-              Allotment that is already obligated cannot be taken back. Where it would have to be,
-              nothing is posted and the line is named, so the obligations can be cancelled or less
-              taken from that account.
-            </p>
-          </Alert>
 
           <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
             <div>

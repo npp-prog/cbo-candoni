@@ -129,28 +129,29 @@ export const engine = {
         reference: string;
         /** How much allotment a realignment carried across with it. */
         allotmentMoved: Centavos;
+        /**
+         * An allotment upload no longer releases anything. It fills prepared
+         * release orders - one per expense class - for the Budget Officer to
+         * approve. This says how many.
+         */
+        preparedOrders?: number;
       }
     >('importBudgetLines', p),
 
-  /** Issues an Allotment Release Order: one expense class, many budget lines. */
-  issueAro: (p: {
-    fiscalYear: number;
-    fundCode: string;
-    expenseClass: string;
-    purpose: string;
-    date: IsoDate;
-    lines: Array<{
-      officeId: Id;
-      fppCode: string;
-      accountCode: string;
-      amount: Centavos;
-      forLaterRelease: Centavos;
-    }>;
-  }) =>
+  /**
+   * Releases a PREPARED Allotment Release Order. The Budget Officer's act.
+   *
+   * Only the order's id is sent. The lines and amounts are read from the
+   * stored order inside the transaction that releases them, so what is
+   * approved is exactly what was prepared - not whatever the browser says at
+   * the moment of approval. (`issueAro`, which released an order the moment it
+   * was entered, now refuses and says to prepare it instead.)
+   */
+  approveAro: (p: { draftId: Id }) =>
     call<
       typeof p,
       { aroNo: string; form: string; lineCount: number; totalReleased: Centavos; totalHeld: Centavos }
-    >('issueAro', p),
+    >('approveAro', p),
 
   /**
    * Releasing allotment that an Allotment Release Order held back.

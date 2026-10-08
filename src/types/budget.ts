@@ -159,6 +159,49 @@ export interface AugmentationDraft extends Partial<AuditStamps> {
   status: 'DRAFT';
 }
 
+/**
+ * ---------------------------------------------------------------------------
+ * AN ALLOTMENT RELEASE ORDER, PREPARED AND AWAITING APPROVAL
+ * ---------------------------------------------------------------------------
+ * Since patch 110 an ARO is not released when it is entered. It is saved here,
+ * moves nothing, and is released when the Budget Officer approves it - by
+ * `approveAro`, which reads THIS document inside the transaction that releases
+ * it, so what is approved is exactly what was prepared.
+ *
+ * Kept after approval, marked APPROVED with its ARO number, as the record of
+ * who prepared the order and so an uploaded file cannot be prepared twice. Only
+ * the engine can write APPROVED; a browser can only ever write DRAFT.
+ */
+export interface AroDraftLine {
+  /** The budget balance document id - how the order form reopens on the line. */
+  balanceId: string;
+  officeId: string;
+  officeName: string;
+  fppCode: string;
+  fppName: string;
+  accountCode: string;
+  accountName: string;
+  amount: Centavos;
+  forLaterRelease: Centavos;
+}
+
+export interface AroDraft extends Partial<AuditStamps> {
+  id: Id;
+  fiscalYear: number;
+  fundCode: string;
+  expenseClass: ExpenseClass;
+  purpose: string;
+  date: IsoDate;
+  lines: AroDraftLine[];
+  status: 'DRAFT' | 'APPROVED';
+  /** Set by the engine on approval, with `approvedBy` from AuditStamps. */
+  aroNo?: string;
+  /** Set when the order was filled from an uploaded file. */
+  source?: 'UPLOAD';
+  reference?: string;
+  importFileName?: string | null;
+}
+
 export type AppropriationKind =
   | 'ORIGINAL'
   | 'SUPPLEMENTAL'

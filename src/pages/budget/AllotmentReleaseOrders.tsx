@@ -7,13 +7,17 @@ import { useToast } from '@/components/ui/Toast';
 import { Letterhead, SignatureLine } from '@/components/print/formParts';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAllotments, useBudgetBalances } from '@/data/queries';
+import { useAllotments, useAroDrafts, useBudgetBalances } from '@/data/queries';
+import { createDraft, updateDraft, deleteDraft, actorStamp } from '@/data/mutations';
+import { COL } from '@/lib/collections';
+import { aroDraftWaiting } from '@/lib/budgetEditable';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import { engine } from '@/lib/engine';
 import { formatPeso, formatAmount, amountInWords } from '@/lib/money';
 import { formatShortDate, formatLongDate, todayPh } from '@/lib/dates';
 import { checkAllotmentAgainstAppropriation } from '@/lib/accounting-rules';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
-import type { Allotment, BudgetBalance } from '@/types/budget';
+import type { Allotment, AroDraft, BudgetBalance } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { useEntity } from '@/data/useEntity';
 import { fundLabel } from './Obligations';
@@ -117,7 +121,7 @@ export default function AllotmentReleaseOrders({
 } = {}) {
   const entity = useEntity();
   const { fiscalYear, fundCode } = useFilters();
-  const { hasRole } = useAuth();
+  const { hasRole, user, profile } = useAuth();
   const toast = useToast();
 
   const balances = useBudgetBalances(fiscalYear, fundCode);
@@ -136,7 +140,62 @@ export default function AllotmentReleaseOrders({
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState<IssuedOrder | null>(null);
 
-  const canIssue = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER');
+  /*
+    ---------------------------------------------------------------------------
+    TWO PEOPLE NOW, WHERE THERE WAS ONE
+    ---------------------------------------------------------------------------
+    Recording an order released it, and only the Budget Officer could do it.
+    Since patch 110 an order is PREPARED - by Budget Staff or the Budget
+    Officer - and released only when the Budget Officer APPROVES it. The
+    engine enforces both; these say which buttons to offer.
+  */
+  const canPrepare = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'BUDGET_STAFF');
+  const canApprove = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER');
+
+  const drafts = useAroDrafts(fiscalYear, fundCode);
+  const waiting = useMemo(
+    () => drafts.data.filter((d) => aroDraftWaiting(d)),
+    [drafts.data],
+  );
+  /* The prepared order being corrected, if the builder was opened on one. */
+  const [editingDraft, setEditingDraft] = useState<AroDraft | null>(null);
+  const [approvingDraft, setApprovingDraft] = useState<AroDraft | null>(null);
+  const [discardingDraft, setDiscardingDraft] = useState<AroDraft | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const actor = user
+    ? actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      })
+    : null;
+
+  /* Open the builder on a prepared order, with everything it carried. */
+  const editDraft = (d: AroDraft) => {
+    setEditingDraft(d);
+    setExpenseClass(d.expenseClass);
+    setPurpose(d.purpose ?? '');
+    setDate(d.date);
+    setLines(
+      (d.lines ?? []).length
+        ? d.lines.map((l) => ({
+            ...blank(),
+            balanceId: l.balanceId,
+            amount: l.amount || null,
+            forLaterRelease: l.forLaterRelease || null,
+          }))
+        : [blank()],
+    );
+    setBuilding(true);
+  };
+
+  const closeBuilder = () => {
+    setBuilding(false);
+    setEditingDraft(null);
+    setLines([blank()]);
+    setPurpose('');
+  };
 
   /** Only lines of the chosen expense class may go on this order. */
   const available = useMemo(
@@ -210,10 +269,19 @@ export default function AllotmentReleaseOrders({
   const ready =
     filled.length > 0 && problems.length === 0 && duplicated.size === 0 && purpose.trim().length > 0;
 
-  const issue = async () => {
+  /**
+   * Saving the order as PREPARED. Nothing is released and no balance moves.
+   *
+   * The whole line is stored - office, budget line, names and amounts - and
+   * not just the balance id, so the prepared list can show what the order
+   * says without reading every budget line, and so approval reads the order
+   * as it was prepared.
+   */
+  const prepare = async () => {
+    if (!actor) return;
     setSaving(true);
     try {
-      const result = await engine.issueAro({
+      const record = {
         fiscalYear,
         fundCode,
         expenseClass,
@@ -222,27 +290,67 @@ export default function AllotmentReleaseOrders({
         lines: filled.map((l) => {
           const b = byId.get(l.balanceId as string) as BudgetBalance;
           return {
+            balanceId: b.id,
             officeId: b.officeId,
+            officeName: b.officeName,
             fppCode: b.fppCode,
+            fppName: b.fppName ?? '',
             accountCode: b.accountCode,
+            accountName: b.accountName ?? '',
             amount: l.amount ?? 0,
             forLaterRelease: l.forLaterRelease ?? 0,
           };
         }),
-      });
+        status: 'DRAFT' as const,
+      };
+      if (editingDraft) {
+        await updateDraft(COL.aroDrafts, editingDraft.id, record, actor);
+      } else {
+        await createDraft(COL.aroDrafts, record, actor);
+      }
       toast.success(
-        `${result.form} issued as ${result.aroNo}`,
+        `${FORM_OF[expenseClass]} prepared`,
+        `${formatPeso(totalReleased)} to release${
+          totalHeld > 0 ? `, ${formatPeso(totalHeld)} to hold back` : ''
+        }. Nothing is released until the Budget Officer approves it.`,
+      );
+      closeBuilder();
+    } catch (err) {
+      toast.error('Could not save the order', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** The Budget Officer's act. The engine reads the stored order itself. */
+  const approve = async (d: AroDraft) => {
+    setBusy(true);
+    try {
+      const result = await engine.approveAro({ draftId: d.id });
+      toast.success(
+        `${result.form} released as ${result.aroNo}`,
         `${formatPeso(result.totalReleased)} released${
           result.totalHeld > 0 ? `, ${formatPeso(result.totalHeld)} held for later release` : ''
         }.`,
       );
-      setBuilding(false);
-      setLines([blank()]);
-      setPurpose('');
+      setApprovingDraft(null);
     } catch (err) {
       toast.error('Nothing was released', err instanceof Error ? err.message : String(err));
     } finally {
-      setSaving(false);
+      setBusy(false);
+    }
+  };
+
+  const discard = async (d: AroDraft) => {
+    setBusy(true);
+    try {
+      await deleteDraft(COL.aroDrafts, d.id);
+      toast.success('Prepared order discarded', 'Nothing had been released from it.');
+      setDiscardingDraft(null);
+    } catch (err) {
+      toast.error('Could not discard it', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -375,9 +483,9 @@ export default function AllotmentReleaseOrders({
             subtitle={`${fundLabel(fundCode)} · fiscal year ${fiscalYear}`}
             breadcrumbs={[{ label: 'Budget' }, { label: 'Allotments' }]}
             actions={
-              canIssue && !building ? (
+              canPrepare && !building ? (
                 <Button variant="primary" onClick={() => setBuilding(true)}>
-                  Issue an order
+                  Prepare an order
                 </Button>
               ) : undefined
             }
@@ -386,8 +494,8 @@ export default function AllotmentReleaseOrders({
 
         {building && (
           <Card
-            title={`Issue ${FORM_OF[expenseClass]}`}
-            subtitle="One expense class to an order. The manual has a separate form for each, released on its own schedule."
+            title={`${editingDraft ? 'Correct' : 'Prepare'} ${FORM_OF[expenseClass]}`}
+            subtitle="Saved as prepared. Nothing is released until the Budget Officer approves it. One expense class to an order - the manual has a separate form for each."
             className="mb-5"
             footer={
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -406,14 +514,14 @@ export default function AllotmentReleaseOrders({
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => setBuilding(false)}>Cancel</Button>
+                  <Button onClick={closeBuilder}>Cancel</Button>
                   <Button
                     variant="primary"
                     loading={saving}
-                    disabled={!ready || saving}
-                    onClick={() => void issue()}
+                    disabled={!ready || saving || !canPrepare}
+                    onClick={() => void prepare()}
                   >
-                    Issue the order
+                    {editingDraft ? 'Save changes' : 'Save as prepared'}
                   </Button>
                 </div>
               </div>
@@ -594,6 +702,126 @@ export default function AllotmentReleaseOrders({
             )}
           </Card>
         )}
+
+        {/*
+          ---------------------------------------------------------------------
+          PREPARED, AND WAITING FOR THE BUDGET OFFICER
+          ---------------------------------------------------------------------
+          Above the orders issued and plainly labelled, because nothing in this
+          box has released a peso. An office reading its available allotment
+          must not count these, and the tiles and the register below do not -
+          they read the allotment lines, which only approval writes.
+        */}
+        {waiting.length > 0 && (
+          <Card className="mb-5 border-amber-300 bg-amber-50/40">
+            <h2 className="text-sm font-semibold text-navy-900">
+              Prepared release orders - waiting for approval
+            </h2>
+            <p className="mt-1 text-xs text-slate-600">
+              Nothing has been released. Approving an order releases it, issues its ARO number, and
+              checks every line against the appropriation as it stands at that moment.
+            </p>
+
+            <ul className="mt-3 divide-y divide-amber-200/70">
+              {waiting.map((d) => {
+                const released = (d.lines ?? []).reduce((t, l) => t + (l.amount ?? 0), 0);
+                const held = (d.lines ?? []).reduce((t, l) => t + (l.forLaterRelease ?? 0), 0);
+                return (
+                  <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-navy-900">
+                        {formOf(d.expenseClass)} - {d.purpose || '(no purpose yet)'}
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {formatShortDate(d.date)} - {(d.lines ?? []).length} line
+                        {(d.lines ?? []).length === 1 ? '' : 's'}, {formatPeso(released)} to release
+                        {held > 0 ? `, ${formatPeso(held)} to hold back` : ''}
+                        {d.createdBy?.name ? ` - prepared by ${d.createdBy.name}` : ''}
+                        {d.source === 'UPLOAD' ? ' from an uploaded file' : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {canPrepare && (
+                        <Button size="sm" variant="secondary" onClick={() => editDraft(d)}>
+                          Edit
+                        </Button>
+                      )}
+                      {canApprove && (
+                        <Button size="sm" variant="primary" onClick={() => setApprovingDraft(d)}>
+                          Approve and release
+                        </Button>
+                      )}
+                      {canPrepare && (
+                        <Button size="sm" variant="ghost" onClick={() => setDiscardingDraft(d)}>
+                          Discard
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {!canApprove && (
+              <p className="mt-2 text-2xs text-slate-500">
+                Only the Budget Officer can approve a release order.
+              </p>
+            )}
+          </Card>
+        )}
+
+        <ConfirmDialog
+          open={Boolean(approvingDraft)}
+          onCancel={() => setApprovingDraft(null)}
+          onConfirm={() => {
+            if (approvingDraft) void approve(approvingDraft);
+          }}
+          loading={busy}
+          title="Approve and release this order"
+          confirmLabel="Approve and release"
+          variant="primary"
+          message={
+            approvingDraft && (
+              <>
+                <p>
+                  This releases{' '}
+                  <strong>
+                    {formatPeso(
+                      (approvingDraft.lines ?? []).reduce((t, l) => t + (l.amount ?? 0), 0),
+                    )}
+                  </strong>{' '}
+                  of allotment on {formOf(approvingDraft.expenseClass)} and issues its ARO number.
+                </p>
+                <p className="mt-2">
+                  Every line is checked against the appropriation as it stands now, not as it stood
+                  when the order was prepared. If any line no longer fits, nothing is released and
+                  the order stays prepared for correcting.
+                </p>
+              </>
+            )
+          }
+        />
+
+        <ConfirmDialog
+          open={Boolean(discardingDraft)}
+          onCancel={() => setDiscardingDraft(null)}
+          onConfirm={() => {
+            if (discardingDraft) void discard(discardingDraft);
+          }}
+          loading={busy}
+          title="Discard this prepared order"
+          confirmLabel="Discard"
+          variant="danger"
+          message={
+            discardingDraft && (
+              <p>
+                The prepared {formOf(discardingDraft.expenseClass)} and its{' '}
+                {(discardingDraft.lines ?? []).length} lines are deleted. Nothing had been released
+                from it, so nothing in the books changes.
+              </p>
+            )
+          }
+        />
 
         {/*
           Inside the register the orders are context, not the subject: the
