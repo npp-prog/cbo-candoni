@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  augmentationDraftEditable,
   appropriationEditable,
   appropriationNotEditableBecause,
   EDITABLE_APPROPRIATION_STATUS,
@@ -70,5 +71,27 @@ describe('appropriationEditable', () => {
 
   it('names the one editable status, which the Firestore rule also names', () => {
     expect(EDITABLE_APPROPRIATION_STATUS).toBe('DRAFT');
+  });
+});
+
+describe('augmentationDraftEditable', () => {
+  it('allows a draft set', () => {
+    expect(augmentationDraftEditable({ status: 'DRAFT' })).toBe(true);
+  });
+
+  it('allows one with no status written, which is what the rule permits', () => {
+    expect(augmentationDraftEditable({})).toBe(true);
+  });
+
+  it('refuses a status this build does not understand', () => {
+    // There is no POSTED: a posted set is deleted and the ledger is the record.
+    // A document carrying one is from a build with different rules, and the
+    // safe answer to that is no.
+    expect(augmentationDraftEditable({ status: 'POSTED' })).toBe(false);
+  });
+
+  it('refuses a missing draft', () => {
+    expect(augmentationDraftEditable(null)).toBe(false);
+    expect(augmentationDraftEditable(undefined)).toBe(false);
   });
 });

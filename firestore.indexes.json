@@ -183,24 +183,6 @@
       ]
     },
     {
-      "collectionGroup": "appropriations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "fiscalYear",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fundCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "accountCode",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "//": "Appropriation ledger.",
       "collectionGroup": "appropriations",
       "queryScope": "COLLECTION",
@@ -219,6 +201,24 @@
         },
         {
           "fieldPath": "authorityDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "appropriations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
           "order": "ASCENDING"
         }
       ]
@@ -287,6 +287,24 @@
         },
         {
           "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "augmentationDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "authorityDate",
           "order": "DESCENDING"
         }
       ]

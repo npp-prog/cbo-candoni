@@ -94,6 +94,71 @@ export function budgetKeyId(k: BudgetKey): string {
 // appropriations/{id}
 // ---------------------------------------------------------------------------
 
+/**
+ * ---------------------------------------------------------------------------
+ * AN AUGMENTATION BEING PREPARED
+ * ---------------------------------------------------------------------------
+ * An augmentation moves savings from one budget line to another within a
+ * single expense class, under the Local Chief Executive's omnibus authority.
+ * Until patch 103 it was posted the moment the form was submitted: the lines
+ * landed APPROVED, the allotment moved with them, and there was no state in
+ * which the Budget Officer could read back what they had typed before it
+ * became authority.
+ *
+ * A draft is therefore ONE DOCUMENT HOLDING THE WHOLE SET, not a row per line.
+ * The shape is the point. An augmentation is only valid as a set - the amounts
+ * come to zero, every line is in the same expense class, and the allotment
+ * moves peso for peso - so a draft made of loose rows could be approved
+ * halfway, which is the one outcome that must be impossible. One document
+ * cannot be half-approved.
+ *
+ * Nothing here touches a balance. The draft is the office's own working paper;
+ * the engine is what posts, and it runs every check at that moment and not
+ * before.
+ */
+export interface AugmentationDraftLine {
+  lineNo: number;
+  officeId: string | null;
+  /** The office NAME is what is sent: the engine resolves by code, name or short name. */
+  officeName: string;
+  /** The chosen budget line's balance document id, so the form can reopen on it. */
+  lineId: string | null;
+  fppCode: string;
+  fppName: string;
+  sector: string;
+  serviceSector: string;
+  accountCode: string;
+  accountName: string;
+  expenseClass: string;
+  /** Centavos. Negative on the line giving up savings, positive on the one receiving. */
+  amount: number;
+  particulars: string;
+}
+
+export interface AugmentationDraft extends Partial<AuditStamps> {
+  id: Id;
+  fiscalYear: number;
+  fundCode: string;
+  /**
+   * Always AUGMENTATION today. A realignment is still posted whole from the
+   * form, by the office's own choice - it is enacted by ordinance, so the
+   * figures are settled before anyone sits down at the screen. The field is
+   * here so that decision can be revisited without a migration.
+   */
+  instrument: 'AUGMENTATION';
+  /** The authority of the Local Chief Executive, and its date. */
+  authorityReference: string;
+  authorityDate: IsoDate;
+  lines: AugmentationDraftLine[];
+  /**
+   * DRAFT is the only status a client may write. There is no POSTED: once the
+   * engine has posted the set, the Appropriation Ledger is the record and the
+   * draft is deleted. A draft that survives a successful posting is harmless -
+   * approving it again is refused by the engine, which keys on the reference.
+   */
+  status: 'DRAFT';
+}
+
 export type AppropriationKind =
   | 'ORIGINAL'
   | 'SUPPLEMENTAL'
@@ -135,6 +200,18 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
   expenseClass: ExpenseClass;
 
   kind: AppropriationKind;
+  /**
+   * Where this line came from, when it came from a file.
+   *
+   * Written by `importBudgetLines` on every posted line and absent on one
+   * recorded through the form. It is on the type because the detail panel
+   * shows it: an officer asking "where did this figure come from" on a line
+   * nobody remembers typing is asking exactly this, and the answer was in the
+   * document all along without being in the type.
+   */
+  importReference?: string | null;
+  importLineNo?: number | null;
+  importFileName?: string | null;
   /**
    * Which instrument a REALIGNMENT was made under. Meaningless on any other
    * kind.

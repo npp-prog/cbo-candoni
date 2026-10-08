@@ -54,6 +54,14 @@ export const COL = {
   /** One marker per fiscal year and fund; see recordEstimatedReceipts. */
   estimatedReceiptLocks: 'estimatedReceiptLocks',
   /**
+   * An augmentation being prepared, before it is posted.
+   *
+   * ONE DOCUMENT PER SET, holding all of its lines, because an augmentation is
+   * a set that comes to zero and a draft made of loose rows could be approved
+   * halfway. See src/types/budget.ts.
+   */
+  augmentationDrafts: 'augmentationDrafts',
+  /**
    * The Trust Fund's own funding control. A programme is money received for a
    * stated purpose, with a programmed ceiling that a Funding Utilization
    * Request is checked against - the part the released allotment plays in the

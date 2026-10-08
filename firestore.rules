@@ -372,6 +372,52 @@ service cloud.firestore {
       allow delete: if signedIn() && isAdmin() && isDraft();
     }
 
+    // --- Budget: augmentations being prepared --------------------------------
+
+    // One document per SET, holding every line of it. The shape is the control:
+    // an augmentation is only valid as a set that comes to zero, and a draft
+    // made of loose rows could be approved halfway.
+    //
+    // NOTHING HERE AFFECTS A BALANCE. A draft is the Budget Office's own
+    // working paper - no appropriation moves, no allotment moves, nothing is
+    // obligable against it. That is what makes it safe to let a client write
+    // this collection directly, as it writes an appropriation draft.
+    //
+    // POSTING IS NOT DONE HERE. The engine posts the set, runs every check at
+    // that moment, and refuses a second posting of the same reference. Once it
+    // has, the Appropriation Ledger is the record and the draft is deleted -
+    // which is why there is no POSTED status a client could claim without
+    // having posted anything.
+    match /augmentationDrafts/{id} {
+      allow read: if canRead();
+
+      allow create: if signedIn()
+        && hasAny(budgetRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'DRAFT'
+        && request.resource.data.instrument == 'AUGMENTATION'
+        && fundAllowed(request.resource.data.fundCode);
+
+      // Corrected in place while it is still a draft, which is the whole point
+      // of there being one. The year, the fund and the instrument are frozen
+      // for the same reason they are on an appropriation: a correction corrects
+      // THIS set rather than quietly becoming a different one.
+      allow update: if signedIn()
+        && hasAny(budgetRoles())
+        && resource.data.status == 'DRAFT'
+        && request.resource.data.status == 'DRAFT'
+        && fundAllowed(resource.data.fundCode)
+        && fundAllowed(request.resource.data.fundCode)
+        && didNotChange(['createdBy', 'fiscalYear', 'fundCode', 'instrument']);
+
+      // Deleted when it has been posted, or when it is abandoned. Budget staff
+      // may, because nothing in the books depends on it: the posted lines are
+      // the record and they live in /appropriations.
+      allow delete: if signedIn()
+        && hasAny(budgetRoles())
+        && fundAllowed(resource.data.fundCode);
+    }
+
     // --- Budget: allotments --------------------------------------------------
 
     match /allotments/{id} {

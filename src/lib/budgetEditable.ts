@@ -100,3 +100,33 @@ export function appropriationEditable(
 ): boolean {
   return appropriationNotEditableBecause(appropriation) === null;
 }
+
+// ---------------------------------------------------------------------------
+// An augmentation being prepared
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a prepared augmentation may still be corrected.
+ *
+ * The answer is "while it exists", and that is not a dodge - it is the shape of
+ * the thing. A draft augmentation has no approved state to be in: the moment
+ * the engine posts it the set becomes lines in the Appropriation Ledger and the
+ * draft is deleted. There is no document left to edit, so there is no status to
+ * test.
+ *
+ * It is a function rather than a constant `true` because the screen asks the
+ * same question of both acts, and a reader comparing the two should find the
+ * same shape and the reason written down - not an `appropriationEditable(a)` on
+ * one row and a bare `true` on the next with nothing saying why they differ.
+ */
+export function augmentationDraftEditable(
+  draft: { status?: string | null } | null | undefined,
+): boolean {
+  if (!draft) return false;
+  /*
+   * DRAFT is the only status the Firestore rule permits a client to write, on
+   * create and on update alike. Anything else in this field means a document
+   * this build does not understand, and the safe answer to that is no.
+   */
+  return (draft.status ?? EDITABLE_APPROPRIATION_STATUS) === EDITABLE_APPROPRIATION_STATUS;
+}

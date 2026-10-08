@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert, Card } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -12,8 +12,13 @@ import { Combobox } from '@/components/pickers/Combobox';
 import { BudgetLinePicker } from '@/components/pickers/BudgetLinePicker';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAppropriations, useBudgetBalances, usePrograms } from '@/data/queries';
-import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
+import {
+  useAppropriations,
+  useAugmentationDrafts,
+  useBudgetBalances,
+  usePrograms,
+} from '@/data/queries';
+import { createDraft, updateDraft, deleteDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
@@ -23,10 +28,18 @@ import {
   type RealignmentInstrument,
 } from '@/lib/accounting-rules';
 import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
-import { appropriationEditable, appropriationNotEditableBecause } from '@/lib/budgetEditable';
+import {
+  appropriationEditable,
+  appropriationNotEditableBecause,
+  augmentationDraftEditable,
+} from '@/lib/budgetEditable';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
-import type { Appropriation, AppropriationKind } from '@/types/budget';
+import type {
+  Appropriation,
+  AppropriationKind,
+  AugmentationDraft,
+} from '@/types/budget';
 import { AppropriationTabs } from './appropriationTabs';
 import { fundLabel } from './Obligations';
 
@@ -161,6 +174,13 @@ export default function Appropriations() {
   const [approving, setApproving] = useState<Appropriation | null>(null);
   const [editing, setEditing] = useState<Appropriation | null>(null);
   const [busy, setBusy] = useState(false);
+  /* The augmentations prepared but not yet posted, and what is being done to one. */
+  const drafts = useAugmentationDrafts(fiscalYear, fundCode);
+  const [editingDraft, setEditingDraft] = useState<AugmentationDraft | null>(null);
+  const [approvingDraft, setApprovingDraft] = useState<AugmentationDraft | null>(null);
+  const [discardingDraft, setDiscardingDraft] = useState<AugmentationDraft | null>(null);
+  /* And the line whose detail is open, from clicking a row. */
+  const [viewing, setViewing] = useState<Appropriation | null>(null);
 
   const totals = useMemo(() => {
     const approved = data.filter((a) => a.status === 'APPROVED');
@@ -186,6 +206,105 @@ export default function Appropriations() {
       setApproving(null);
     } catch (err) {
       toast.error('Could not approve', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * ---------------------------------------------------------------------------
+   * POSTING A PREPARED AUGMENTATION
+   * ---------------------------------------------------------------------------
+   * The draft is a working paper, not a half-posted transaction. Nothing has
+   * moved while it sat here: no appropriation, no allotment, nothing obligable.
+   * So approving it is simply recording it, through the SAME engine call the
+   * form used to make directly - which resolves every office and account
+   * against master data, checks the authority of the Local Chief Executive,
+   * refuses a set that does not come to zero or that crosses expense classes,
+   * moves the allotment peso for peso, and writes the lot in one transaction.
+   *
+   * THE DRAFT IS DELETED AFTERWARDS, not marked posted. Two reasons, and the
+   * second is the one that matters:
+   *
+   *   The posted lines are the record. They are in the Appropriation Ledger
+   *   with the authority reference on them, which is where an auditor looks.
+   *   A second copy in a drafts collection is a second thing to keep true.
+   *
+   *   A CLIENT MUST NOT BE ABLE TO CLAIM SOMETHING WAS POSTED. If the draft
+   *   carried a POSTED status the browser would be the one writing it, and a
+   *   browser that can write "posted" can write it without having posted
+   *   anything. There is no such status to write.
+   *
+   * If the delete fails after a successful posting - the network drops in
+   * between - the draft simply remains, and pressing Approve on it again is
+   * refused by the engine, which keys on the authority reference and says so
+   * in those words. Nothing is posted twice. That is the whole of the recovery
+   * and it needs no code here.
+   */
+  const approveDraft = async (draft: AugmentationDraft) => {
+    setBusy(true);
+    try {
+      const res = await engine.importBudgetLines({
+        kind: 'APPROPRIATION',
+        fiscalYear,
+        fundCode,
+        appropriationKind: 'REALIGNMENT',
+        instrument: 'AUGMENTATION',
+        reference: draft.authorityReference.trim(),
+        date: draft.authorityDate,
+        fileName: 'Prepared on screen',
+        rows: draft.lines.map((l, i) => ({
+          lineNo: i + 1,
+          office: l.officeName,
+          fpp: l.fppCode,
+          fppName: l.fppName || undefined,
+          sector: l.sector,
+          serviceSector: l.serviceSector || undefined,
+          accountCode: l.accountCode || undefined,
+          expenseClass: l.expenseClass as ExpenseClass,
+          amount: l.amount,
+          particulars: l.particulars?.trim() || undefined,
+        })),
+      });
+
+      try {
+        await deleteDraft(COL.augmentationDrafts, draft.id);
+      } catch {
+        /*
+         * Posted, but the working paper would not clear. Harmless and not
+         * worth an error toast over a success: the engine refuses to post the
+         * same reference twice, so the stale draft cannot do damage. It is
+         * mentioned so nobody is puzzled by it still being on the screen.
+         */
+        toast.info(
+          'Posted, but the prepared copy is still listed',
+          'Refresh the page. If it is still there, discard it - the posting is done and cannot happen twice.',
+        );
+      }
+
+      toast.success(
+        'Augmentation posted',
+        `${res.posted} line${res.posted === 1 ? '' : 's'}. The total appropriation of the fund is unchanged` +
+          (res.allotmentMoved
+            ? `, and ${formatPeso(res.allotmentMoved)} of allotment moved with it.`
+            : '. No allotment had to move.'),
+      );
+      setApprovingDraft(null);
+    } catch (err) {
+      toast.error('Nothing was posted', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discardDraft = async (draft: AugmentationDraft) => {
+    setBusy(true);
+    try {
+      await deleteDraft(COL.augmentationDrafts, draft.id);
+      toast.success('Prepared augmentation discarded', 'Nothing had been posted from it.');
+      setDiscardingDraft(null);
+    } catch (err) {
+      toast.error('Could not discard it', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -357,10 +476,90 @@ export default function Appropriations() {
         <SummaryTile label="Revised appropriation" amount={totals.revised} emphasis />
       </div>
 
+      {/*
+        ---------------------------------------------------------------------
+        PREPARED AUGMENTATIONS, ABOVE THE LEDGER AND NOT IN IT
+        ---------------------------------------------------------------------
+        A draft is deliberately NOT a row in the Appropriation Ledger below,
+        and the reason is the summary tiles. "Realignments and adjustments"
+        foots the ledger; a draft counted there would put money the Local Chief
+        Executive has not signed into a total an officer reads as the fund's
+        position. So the ledger shows what is posted, and what is merely
+        prepared sits above it, plainly labelled as not yet posted.
+      */}
+      {drafts.data.length > 0 && (
+        <Card className="mb-4 border-amber-300 bg-amber-50/40">
+          <h2 className="text-sm font-semibold text-navy-900">
+            Prepared augmentations - not yet posted
+          </h2>
+          <p className="mt-1 text-xs text-slate-600">
+            Nothing has moved. No appropriation, no allotment, nothing obligable against these.
+            Approving one posts the whole set and moves the allotment with it.
+          </p>
+
+          <ul className="mt-3 divide-y divide-amber-200/70">
+            {drafts.data.map((d) => {
+              const lines = d.lines ?? [];
+              const set = lines.length
+                ? checkRealignmentSet(lines.map((l, i) => ({ lineNo: i + 1, amount: l.amount })))
+                : null;
+              const takes = lines.filter((l) => l.amount > 0).reduce((t, l) => t + l.amount, 0);
+              /* The engine refuses an unbalanced set anyway; saying so here
+                 saves the round trip and names the figure it is out by. */
+              const blocked = !lines.length
+                ? 'It has no lines on it yet.'
+                : set && !set.ok
+                  ? set.violations[0]?.message ?? 'The set does not come to zero.'
+                  : null;
+
+              return (
+                <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-navy-900">
+                      {d.authorityReference || '(no authority reference)'}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {formatShortDate(d.authorityDate)} - {lines.length} line
+                      {lines.length === 1 ? '' : 's'}, {formatPeso(takes)} moved
+                      {blocked ? null : ' - balanced'}
+                    </p>
+                    {blocked && <p className="mt-0.5 text-xs text-amber-800">{blocked}</p>}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {can('budget', 'create') && augmentationDraftEditable(d) && (
+                      <Button size="sm" variant="secondary" onClick={() => setEditingDraft(d)}>
+                        Edit
+                      </Button>
+                    )}
+                    {can('budget', 'approve') && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={Boolean(blocked)}
+                        onClick={() => setApprovingDraft(d)}
+                      >
+                        Approve and post
+                      </Button>
+                    )}
+                    {can('budget', 'create') && (
+                      <Button size="sm" variant="ghost" onClick={() => setDiscardingDraft(d)}>
+                        Discard
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
       <DataTable
         rows={data}
         columns={columns}
         rowKey={(a) => a.id}
+        onRowClick={(a) => setViewing(a)}
         loading={loading}
         error={error}
         searchPlaceholder="Account, office or authority reference"
@@ -371,6 +570,101 @@ export default function Appropriations() {
           fundLabel: fundLabel(fundCode),
           periodLabel: `For the fiscal year ${fiscalYear}`,
         }}
+      />
+
+      {/* The line's own detail, from clicking its row. */}
+      <AppropriationDetail
+        appropriation={viewing}
+        onClose={() => setViewing(null)}
+        onEdit={
+          can('budget', 'create')
+            ? (a) => {
+                setViewing(null);
+                setEditing(a);
+              }
+            : undefined
+        }
+      />
+
+      {editingDraft && (
+        <AppropriationForm
+          key={editingDraft.id}
+          draft={editingDraft}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          onClose={() => setEditingDraft(null)}
+          onSaved={() => {
+            setEditingDraft(null);
+            toast.success(
+              'Prepared augmentation saved',
+              'Still not posted. Approve it when the figures are right.',
+            );
+          }}
+          actor={
+            user
+              ? actorStamp({
+                  uid: user.uid,
+                  name: profile?.displayName ?? user.email ?? user.uid,
+                  position: profile?.position,
+                })
+              : null
+          }
+        />
+      )}
+
+      <ConfirmDialog
+        open={Boolean(approvingDraft)}
+        onCancel={() => setApprovingDraft(null)}
+        onConfirm={() => {
+          if (approvingDraft) void approveDraft(approvingDraft);
+        }}
+        loading={busy}
+        title="Post this augmentation"
+        confirmLabel="Approve and post"
+        variant="primary"
+        message={
+          approvingDraft && (
+            <>
+              <p>
+                This posts all {approvingDraft.lines?.length ?? 0} lines of{' '}
+                <strong>{approvingDraft.authorityReference}</strong> together, and moves the
+                allotment with them peso for peso.
+              </p>
+              <p className="mt-2">
+                The checks run now, not when it was prepared: the authority of the Local Chief
+                Executive, that every line is in the same expense class, that the savings exist in
+                a released allotment, and that the set comes to zero. If any of them fails NOTHING
+                is posted and the prepared copy stays as it is.
+              </p>
+              <p className="mt-2">
+                Afterwards the lines are in the Appropriation Ledger and this prepared copy is
+                cleared. Posting the same authority reference twice is refused.
+              </p>
+            </>
+          )
+        }
+      />
+
+      <ConfirmDialog
+        open={Boolean(discardingDraft)}
+        onCancel={() => setDiscardingDraft(null)}
+        onConfirm={() => {
+          if (discardingDraft) void discardDraft(discardingDraft);
+        }}
+        loading={busy}
+        title="Discard this prepared augmentation"
+        confirmLabel="Discard"
+        variant="danger"
+        message={
+          discardingDraft && (
+            <p>
+              <strong>{discardingDraft.authorityReference}</strong> and its{' '}
+              {discardingDraft.lines?.length ?? 0} lines are deleted. Nothing had been posted from
+              it, so nothing in the books changes - but what was typed is gone and is not
+              recoverable.
+            </p>
+          )
+        }
       />
 
       {editing && (
@@ -454,6 +748,106 @@ export default function Appropriations() {
   );
 }
 
+/**
+ * ---------------------------------------------------------------------------
+ * ONE LINE, IN FULL
+ * ---------------------------------------------------------------------------
+ * The ledger table shows six columns because six is what fits. An appropriation
+ * line carries roughly twice that, and the ones left out are not decoration:
+ * the sector decides where the line appears on the SRE, the service sector
+ * decides it again when the first is a funding source, the programme is what
+ * an obligation is actually charged against on a project line, and the
+ * authority reference is the ordinance the whole thing rests on.
+ *
+ * Until now the only way to read those was to open the edit form, which meant
+ * opening a form to find out what a line said - and on an approved line there
+ * was no way at all.
+ *
+ * Deliberately NOT the whole realignment set. A set is held together by its
+ * authority reference and the office reads it on the ledger, filtered; pulling
+ * the siblings in here would make a panel about one line into a report about
+ * four, which is a different screen.
+ */
+function AppropriationDetail({
+  appropriation,
+  onClose,
+  onEdit,
+}: {
+  appropriation: Appropriation | null;
+  onClose: () => void;
+  onEdit?: (a: Appropriation) => void;
+}) {
+  if (!appropriation) return null;
+  const a = appropriation;
+  const byProgramme = !a.accountCode;
+  const why = appropriationNotEditableBecause(a);
+
+  const rows: Array<[string, React.ReactNode]> = [
+    ['Type', a.kind === 'REALIGNMENT' && a.instrument === 'AUGMENTATION' ? 'Augmentation' : KIND_LABELS[a.kind] ?? a.kind],
+    ['Office', a.officeName],
+    [
+      byProgramme ? 'Programme or project' : 'Object of expenditure',
+      byProgramme ? `${a.fppCode} ${a.fppName}` : `${a.accountCode} ${a.accountName}`,
+    ],
+    ['Expense class', EXPENSE_CLASS_LABELS[a.expenseClass as ExpenseClass] ?? a.expenseClass],
+    ['Sector', a.sector || '-'],
+    ...(a.serviceSector ? ([['Service sector', a.serviceSector]] as Array<[string, React.ReactNode]>) : []),
+    ['Amount', formatPeso(a.amount)],
+    ['Authority', a.authorityReference || '(none recorded)'],
+    ['Authority date', a.authorityDate ? formatShortDate(a.authorityDate) : '-'],
+    ['Particulars', a.particulars || '-'],
+    ['Recorded by', a.createdBy?.name ?? '-'],
+    ...(a.approvedBy?.name
+      ? ([['Approved by', a.approvedBy.name]] as Array<[string, React.ReactNode]>)
+      : []),
+    ...(a.importFileName
+      ? ([['Loaded from', `${a.importFileName}, row ${a.importLineNo ?? '?'}`]] as Array<
+          [string, React.ReactNode]
+        >)
+      : []),
+  ];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Appropriation line"
+      description={`${a.officeName} - ${formatPeso(a.amount)}`}
+      size="lg"
+      footer={
+        <>
+          <Button onClick={onClose}>Close</Button>
+          {onEdit && appropriationEditable(a) && (
+            <Button variant="primary" onClick={() => onEdit(a)}>
+              Edit
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <StatusBadge status={a.status} />
+      </div>
+
+      <dl className="divide-y divide-slate-100">
+        {rows.map(([label, value]) => (
+          <div key={label} className="grid grid-cols-3 gap-3 py-2">
+            <dt className="text-xs text-slate-500">{label}</dt>
+            <dd className="col-span-2 text-sm text-navy-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Why there is no Edit button, rather than only the absence of one. */}
+      {why && !appropriationEditable(a) && (
+        <Alert tone="info" className="mt-4">
+          {why}
+        </Alert>
+      )}
+    </Modal>
+  );
+}
+
 function SummaryTile({
   label,
   amount,
@@ -480,6 +874,7 @@ function AppropriationForm({
   onSaved,
   actor,
   existing,
+  draft,
 }: {
   fiscalYear: number;
   fundCode: string;
@@ -496,9 +891,17 @@ function AppropriationForm({
    * could not be recorded can still be edited into existence.
    */
   existing?: Appropriation | null;
+  /**
+   * The prepared augmentation being corrected, or nothing.
+   *
+   * Never both this and `existing`: one is a single appropriation line, the
+   * other a whole set of them, and the form is in one mode or the other.
+   */
+  draft?: AugmentationDraft | null;
 }) {
   const toast = useToast();
   const editing = Boolean(existing);
+  const editingDraft = Boolean(draft);
   /*
     A line can stop being editable while this form is open - another officer
     approves it from the same list a moment later. The row's Edit button is
@@ -508,10 +911,14 @@ function AppropriationForm({
   */
   const blockedReason = existing ? appropriationNotEditableBecause(existing) : null;
   const [kind, setKind] = useState<FormKind>(
-    (existing?.kind as FormKind | undefined) ?? 'ORIGINAL',
+    draft ? 'AUGMENTATION' : ((existing?.kind as FormKind | undefined) ?? 'ORIGINAL'),
   );
-  const [authorityReference, setAuthorityReference] = useState(existing?.authorityReference ?? '');
-  const [authorityDate, setAuthorityDate] = useState(existing?.authorityDate ?? todayPh());
+  const [authorityReference, setAuthorityReference] = useState(
+    draft?.authorityReference ?? existing?.authorityReference ?? '',
+  );
+  const [authorityDate, setAuthorityDate] = useState(
+    draft?.authorityDate ?? existing?.authorityDate ?? todayPh(),
+  );
   const [officeId, setOfficeId] = useState<string | null>(existing?.officeId ?? null);
   const [officeName, setOfficeName] = useState(existing?.officeName ?? '');
   const [accountCode, setAccountCode] = useState<string | null>(existing?.accountCode || null);
@@ -565,7 +972,25 @@ function AppropriationForm({
   const [amount, setAmount] = useState<number | null>(existing?.amount ?? null);
   const [particulars, setParticulars] = useState(existing?.particulars ?? '');
   const [saving, setSaving] = useState(false);
-  const [realignLines, setRealignLines] = useState<RealignLine[]>(() => [blankLine(), blankLine()]);
+  const [realignLines, setRealignLines] = useState<RealignLine[]>(() =>
+    draft?.lines?.length
+      ? draft.lines.map((l) => ({
+          ...blankLine(),
+          officeId: l.officeId,
+          officeName: l.officeName,
+          lineId: l.lineId,
+          fppCode: l.fppCode,
+          fppName: l.fppName,
+          sector: l.sector,
+          serviceSector: l.serviceSector,
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+          expenseClass: l.expenseClass as ExpenseClass,
+          amount: l.amount,
+          particulars: l.particulars,
+        }))
+      : [blankLine(), blankLine()],
+  );
   // The lines a realignment may move authority between: the ones that exist.
   const balances = useBudgetBalances(fiscalYear, fundCode);
 
@@ -574,6 +999,13 @@ function AppropriationForm({
   /** Which of the two the user chose, which is now a single question. */
   const instrument: RealignmentInstrument =
     kind === 'AUGMENTATION' ? 'AUGMENTATION' : 'REALIGNMENT';
+  /*
+    An augmentation is PREPARED and a realignment is POSTED, so the two parts
+    of `isRealignment` - "uses the line grid" and "goes straight to the engine"
+    - have come apart and need separate names. They were the same thing until
+    patch 103, which is why one flag did both jobs.
+  */
+  const isAugmentation = kind === 'AUGMENTATION';
   const allowsNegative = kind === 'ADJUSTMENT' || isRealignment;
   /*
     NOT a non-null assertion any more, and the reason is worth the three lines.
@@ -697,14 +1129,88 @@ function AppropriationForm({
     }
   };
 
+  /**
+   * ---------------------------------------------------------------------------
+   * PREPARING AN AUGMENTATION, rather than posting it
+   * ---------------------------------------------------------------------------
+   * An augmentation now lands here instead of going straight to the engine. A
+   * realignment still posts whole, which is not an inconsistency: a realignment
+   * is enacted by ordinance, so the figures were settled by the Sanggunian
+   * before anybody sat down at this screen and there is nothing to review. An
+   * augmentation is signed by the Local Chief Executive on the strength of
+   * savings the Budget Office itself works out, and that working out is the
+   * part worth being able to read back before it becomes authority.
+   *
+   * THE SET IS NOT CHECKED HERE BEYOND HAVING A REFERENCE. A draft that must
+   * balance before it can be saved is a draft you cannot leave half-done,
+   * which is most of what a draft is for. The screen still shows the live
+   * balance and the expense-class check while the amounts are typed, the
+   * prepared list shows whether each set comes to zero, and the engine refuses
+   * everything that is wrong at the moment of posting.
+   */
+  const saveAugmentationDraft = async () => {
+    if (!actor) return;
+    if (!authorityReference.trim()) {
+      toast.error(
+        'The authority is required',
+        'It is what the Local Chief Executive signed, and it is also the key that stops the same augmentation being posted twice.',
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      const record = {
+        fiscalYear,
+        fundCode,
+        instrument: 'AUGMENTATION' as const,
+        authorityReference: authorityReference.trim(),
+        authorityDate,
+        lines: filledLines.map((l, i) => ({
+          lineNo: i + 1,
+          officeId: l.officeId,
+          officeName: l.officeName,
+          lineId: l.lineId,
+          fppCode: l.fppCode,
+          fppName: l.fppName,
+          sector: l.sector,
+          serviceSector: l.serviceSector,
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+          expenseClass: l.expenseClass,
+          amount: l.amount ?? 0,
+          particulars: l.particulars.trim(),
+        })),
+        status: 'DRAFT' as const,
+      };
+
+      if (draft) {
+        await updateDraft(COL.augmentationDrafts, draft.id, record, actor);
+      } else {
+        await createDraft(COL.augmentationDrafts, record, actor);
+      }
+      onSaved();
+    } catch (err) {
+      toast.error('Could not save', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async () => {
     /*
-      A realignment is posted whole and never exists as a draft, so this can
-      only be reached by someone switching the Type on an edit - which the
-      form does not allow. The guard is here because the consequence if it ever
-      were reached is a second set of lines posted from a form that was opened
-      to correct one.
+      A realignment is posted whole and never exists as a draft, so the edit
+      case can only be reached by someone switching the Type on an edit - which
+      the form does not allow. The guard is here because the consequence if it
+      ever were reached is a second set of lines posted from a form that was
+      opened to correct one.
     */
+    if (editingDraft && !isAugmentation) {
+      toast.error(
+        'A prepared augmentation stays an augmentation',
+        'Discard this one and record the other act from Record appropriation.',
+      );
+      return;
+    }
     if (isRealignment) {
       if (editing) {
         toast.error(
@@ -713,6 +1219,7 @@ function AppropriationForm({
         );
         return;
       }
+      if (instrument === 'AUGMENTATION') return saveAugmentationDraft();
       return postRealignment();
     }
     const byProgramme = basis === 'PROGRAMME';
@@ -817,18 +1324,24 @@ function AppropriationForm({
       open
       onClose={onClose}
       title={
-        editing
-          ? 'Correct this appropriation'
-          : isRealignment
-            ? 'Record a realignment'
-            : 'Record an appropriation'
+        editingDraft
+          ? 'Correct this augmentation'
+          : editing
+            ? 'Correct this appropriation'
+            : isAugmentation
+              ? 'Prepare an augmentation'
+              : isRealignment
+                ? 'Record a realignment'
+                : 'Record an appropriation'
       }
       description={
-        editing
-          ? 'It is still a draft, so it may be corrected in place. It stays a draft on save - approving it is a separate act.'
-          : isRealignment
-            ? 'Posted whole, not saved as a draft. There is no half-way state for a realignment to sit in.'
-            : 'Saved as a draft. Approving it makes the authority available for allotment.'
+        isAugmentation
+          ? 'Prepared, not posted. Nothing moves until it is approved - and the checks on the savings, the expense class and the authority all run at that moment.'
+          : editing
+            ? 'It is still a draft, so it may be corrected in place. It stays a draft on save - approving it is a separate act.'
+            : isRealignment
+              ? 'Posted whole, not saved as a draft. A realignment is enacted by ordinance, so there is nothing here to review.'
+              : 'Saved as a draft. Approving it makes the authority available for allotment.'
       }
       size={isRealignment ? 'xl' : 'lg'}
       footer={
@@ -837,10 +1350,20 @@ function AppropriationForm({
           <Button
             variant="primary"
             loading={saving}
-            disabled={Boolean(blockedReason) || (isRealignment && !realignmentReady)}
+            disabled={
+              Boolean(blockedReason) || (isRealignment && !isAugmentation && !realignmentReady)
+            }
             onClick={() => void save()}
           >
-            {editing ? 'Save changes' : isRealignment ? 'Post realignment' : 'Save draft'}
+            {isAugmentation
+              ? editingDraft
+                ? 'Save changes'
+                : 'Save as prepared'
+              : editing
+                ? 'Save changes'
+                : isRealignment
+                  ? 'Post realignment'
+                  : 'Save draft'}
           </Button>
         </>
       }
@@ -862,11 +1385,15 @@ function AppropriationForm({
         */}
         <Field
           label="Type"
-          required={!editing}
+          required={!editing && !editingDraft}
           htmlFor="kind"
-          hint={editing ? 'Fixed once recorded. Delete and re-record to change it.' : selectedKind.hint}
+          hint={
+            editing || editingDraft
+              ? 'Fixed once recorded. Discard and re-record to change it.'
+              : selectedKind.hint
+          }
         >
-          {editing ? (
+          {editing || editingDraft ? (
             <div className="cbo-input flex items-center bg-slate-50 text-slate-600">
               {selectedKind.label}
             </div>

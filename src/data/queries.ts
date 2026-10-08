@@ -5,6 +5,7 @@ import type {
   Account,
   Allotment,
   Appropriation,
+  AugmentationDraft,
   Ada,
   BankAccount,
   BudgetBalance,
@@ -132,6 +133,23 @@ export const useAppropriations = (fiscalYear: number, fundCode: string) =>
     COL.appropriations,
     [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('accountCode')],
     ['appropriations', fiscalYear, fundCode],
+  );
+
+/**
+ * The augmentations prepared but not yet posted.
+ *
+ * Ordered newest first: a draft is a working paper, and the one being worked on
+ * is the one made most recently. There are rarely more than a handful.
+ */
+export const useAugmentationDrafts = (fiscalYear: number, fundCode: string) =>
+  useCollection<AugmentationDraft>(
+    COL.augmentationDrafts,
+    [
+      where('fiscalYear', '==', fiscalYear),
+      where('fundCode', '==', fundCode),
+      orderBy('authorityDate', 'desc'),
+    ],
+    ['augmentationDrafts', fiscalYear, fundCode],
   );
 
 export const useAllotments = (fiscalYear: number, fundCode: string) =>

@@ -1796,8 +1796,56 @@ if (existsSync(functionsSrc)) {
       }
     }
 
-    if (offenders === 0) {
-      console.log(`indexes: ${checked} master-data lists each have the index they need`);
+    /*
+     * ---- AND THE SECOND FAMILY: a year, a fund, and an order ---------------
+     *
+     * The other shape this application asks over and over - the appropriations
+     * of a fund for a year, its allotments, its obligations - needs a
+     * three-field composite index, and fails exactly as loudly without one.
+     *
+     * It was not checked while every such query predated the index file. Patch
+     * 103 added `useAugmentationDrafts`, which is the first new one in a long
+     * while, and an unindexed query here would have shown the Budget Officer a
+     * red box where their prepared augmentations should be.
+     */
+    let yearFundOffenders = 0;
+    let yearFundChecked = 0;
+
+    for (const m of source.matchAll(/useCollection<[^>]+>\(\s*COL\.(\w+)\s*,\s*\[([^\]]*)\]/g)) {
+      const key = m[1];
+      const constraints = m[2].replace(/\s+/g, ' ');
+
+      if (!/where\('fiscalYear',\s*'=='/.test(constraints)) continue;
+      if (!/where\('fundCode',\s*'=='/.test(constraints)) continue;
+
+      const ordered = /orderBy\('([^']+)'/.exec(constraints);
+      if (!ordered) continue;
+
+      /* Exactly the three; anything richer is out of scope, as above. */
+      const parts = constraints.split('),').map((p) => p.trim()).filter(Boolean);
+      if (parts.length !== 3) continue;
+
+      const collection = collections[key] ?? key;
+      const field = ordered[1];
+      yearFundChecked += 1;
+
+      if (!have.has(`${collection}|fiscalYear,fundCode,${field}`)) {
+        yearFundOffenders += 1;
+        failures.push(
+          `firestore.indexes.json: the ${collection} list asks for one fund's records for one ` +
+            `year ordered by '${field}', and there is no index for it. Firestore refuses that ` +
+            'query rather than answering it empty, and the screen shows a red "this view needs ' +
+            'a Firestore index" where the records should be. Add { collectionGroup: ' +
+            `"${collection}", fields: [fiscalYear, fundCode, ${field}] } and deploy the indexes.`,
+        );
+      }
+    }
+
+    if (offenders === 0 && yearFundOffenders === 0) {
+      console.log(
+        `indexes: ${checked} master-data lists and ${yearFundChecked} fund-and-year lists each ` +
+          'have the index they need',
+      );
     }
   }
 }
