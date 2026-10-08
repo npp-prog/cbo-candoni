@@ -185,7 +185,7 @@ export default function TreasuryReportJev() {
     {
       key: 'action',
       header: '',
-      width: '10rem',
+      width: '18rem',
       sortable: false,
       fixed: true,
       value: (r) => r.status,
@@ -193,18 +193,31 @@ export default function TreasuryReportJev() {
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
           {/*
-            Opens the report's own page rather than a pop-up. The entry is
-            adjusted and posted there, beside the documents the report covers
-            and the signed form the Treasurer attached to it - which a pop-up
-            over this list could not show, and which is the thing an Accountant
-            should have read before posting the entry.
+            VIEW REPORT opens the prescribed form - Appendix 38 for an RCI,
+            Appendix 34 for an RCD, and so on: the document the Treasurer
+            signed and sent over. It is the first thing an Accountant wants in
+            front of them when a report arrives, and it was two presses away
+            through the report's own page.
           */}
           <Button
             size="sm"
-            variant={r.status === 'CERTIFIED' ? 'primary' : 'secondary'}
+            variant="secondary"
+            onClick={() => navigate(`/treasury/reports/${r.id}/form`)}
+          >
+            View report
+          </Button>
+          {/*
+            And the report's own page, where the entry is adjusted and posted,
+            beside the documents it covers and the signed form attached to it.
+            Called "Open" rather than "View" now that the form beside it is
+            the thing being viewed.
+          */}
+          <Button
+            size="sm"
+            variant={r.status === 'CERTIFIED' ? 'primary' : 'ghost'}
             onClick={() => navigate(`/treasury/reports/${r.id}`)}
           >
-            {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'View'}
+            {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'Open'}
           </Button>
         </div>
       ),

@@ -201,7 +201,7 @@ export default function TreasuryReports({
     {
       key: 'status',
       header: '',
-      width: '15rem',
+      width: '20rem',
       sortable: false,
       fixed: true,
       value: (r) => r.status,
@@ -212,9 +212,23 @@ export default function TreasuryReports({
           proposes and the signed form attached to it - which are the things a
           Treasurer should have read before certifying. A button on a row
           certifies a report nobody has opened.
+
+          VIEW REPORT is different, and belongs here. It is not an act on the
+          report - it opens the prescribed form, which is reading rather than
+          doing, and reading is the thing a clerk comes to this list for. Until
+          patch 105 the form was two presses away through the report's own
+          page, which is two presses for the most ordinary errand on the
+          screen: somebody asks what is on RCI 2026-10-0003 and you print it.
         */
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => navigate(`/treasury/reports/${r.id}/form`)}
+          >
+            View report
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => navigate(`/treasury/reports/${r.id}`)}>
             Open
           </Button>
