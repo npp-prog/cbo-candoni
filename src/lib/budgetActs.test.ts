@@ -32,7 +32,11 @@ describe('acts', () => {
 
   it('knows what finances each act', () => {
     expect(fundingBasis('ORIGINAL')).toBe('ESTIMATED_REVENUE');
-    expect(sectionsFinancing('SUPPLEMENTAL')).toEqual(['NEW_REVENUE', 'EXCESS_COLLECTION']);
+    expect(sectionsFinancing('SUPPLEMENTAL')).toEqual([
+      'NEW_REVENUE',
+      'EXCESS_COLLECTION',
+      'SAVINGS',
+    ]);
     expect(sectionsFinancing('CONTINUING')).toEqual(['CONTINUING']);
     expect(fundingBasis('REALIGNMENT')).toBe('OWN_LINES');
     expect(fundingBasis('AUGMENTATION')).toBe('OWN_LINES');
@@ -160,5 +164,18 @@ describe('actsLeftUnfunded', () => {
         approvedByAct: approved,
       }),
     ).toEqual(['A']);
+  });
+});
+
+describe('3.0 Savings (patch 126)', () => {
+  it('finances a supplemental budget when encoded', () => {
+    const c = coverEncoded({
+      kind: 'SUPPLEMENTAL',
+      actId: 'A',
+      sources: [{ section: 'SAVINGS', amount: 40_00, actId: 'A' }],
+      approvedByAct: new Map(),
+      adding: 40_00,
+    });
+    expect(c.ok).toBe(true);
   });
 });

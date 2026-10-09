@@ -2,7 +2,8 @@ import type { Centavos } from '@/types/common';
 
 /**
  * LBP Form No. 8 - Statement of Funding Sources (Supplemental Budget).
- * Budget Operations Manual for LGUs, 2023 Edition, page 70. Patch 119.
+ * Budget Operations Manual for LGUs, 2023 Edition, page 70. Patch 119,
+ * redrawn in patches 123 and 126.
  *
  * The form has four numbered sources, in the manual's own order and words:
  *
@@ -11,27 +12,24 @@ import type { Centavos } from '@/types/common';
  *   3.0 Savings
  *   4.0 Realignment
  *
- * with an account classification and an amount against each, certified by
- * the Local Treasurer and the Local Accountant.
- *
  * ---------------------------------------------------------------------------
- * WHERE EACH SECTION COMES FROM (patch 123)
+ * WHERE EACH SECTION COMES FROM
  * ---------------------------------------------------------------------------
- *   1.0, 2.0   ENCODED - inside a supplemental ordinance or on the Sources
- *              tab (`fundingSources`, written by the engine). They are what
- *              finances a supplemental budget, and it cannot be approved
- *              without them.
- *   3.0        the SAVINGS augmentations took - the negative lines of every
- *              augmentation posted this year, by the object they came from.
- *   4.0        what REALIGNMENTS took - the negative lines of every
- *              realignment posted this year, by the object they came from.
+ *   1.0, 2.0, 3.0  ENCODED - inside a supplemental ordinance or on the
+ *                  Supplemental Sources tab (`fundingSources`, written by the
+ *                  engine). They finance a supplemental budget, and it cannot
+ *                  be approved without them.
+ *   4.0            what REALIGNMENTS took - the negative lines of every
+ *                  realignment posted this year, by the object they came
+ *                  from. A realignment is part of the supplemental budget.
  *
- * Patch 119 left 1.0 to 3.0 blank for the hand. Neil, 09 Oct 2026: the
- * augmentation's source is 3.0 Savings, and the supplemental's sources are
- * encoded, so the form is filled from the books in all four.
+ * An AUGMENTATION is not on the form. Neil, patch 126: savings moved by the
+ * Local Chief Executive under the authority the Sanggunian gave need not be
+ * in the supplemental budget. Savings that DO finance a supplemental budget
+ * are encoded under 3.0. (Patch 123 had filled 3.0 from augmentations.)
  *
- * The new realigned or augmented budget - the positive side - is on the
- * Appropriation Ledger and on LBP Form No. 2, not here.
+ * The new realigned budget - the positive side - is on the Appropriation
+ * Ledger and on LBP Form No. 2, not here.
  */
 
 export interface FundingSourceInput {
@@ -42,25 +40,28 @@ export interface FundingSourceInput {
   accountName?: string;
   fppCode?: string;
   fppName?: string;
+  authorityReference?: string;
   /** Negative on the side the authority was taken from. */
   amount: Centavos;
 }
 
-export interface FundingSourceRow {
-  /** Column 2: the account classification - the object the authority came from. */
-  classification: string;
-  /** Column 1, for an encoded source: what it is. */
-  particulars?: string;
-  accountCode: string;
-  /** Column 3, always positive. */
-  amount: Centavos;
-}
-
 export interface EncodedSourceInput {
+  id?: string;
   section: string;
   particulars: string;
   accountCode?: string | null;
   accountName?: string | null;
+  amount: Centavos;
+  actReference?: string | null;
+}
+
+export interface FundingSourceRow {
+  /** Column 2: the account classification. */
+  classification: string;
+  accountCode: string;
+  /** Column 1, for an encoded source: what it is. */
+  particulars?: string;
+  /** Column 3, always positive. */
   amount: Centavos;
 }
 
@@ -76,11 +77,6 @@ export interface FundingSourcesSheet {
   total: Centavos;
 }
 
-/** A line of a posted augmentation that gave up its savings. */
-export function isSavingsSource(a: FundingSourceInput): boolean {
-  return a.status === 'APPROVED' && a.kind === 'REALIGNMENT' && a.instrument === 'AUGMENTATION' && a.amount < 0;
-}
-
 /** A line of a posted realignment that took authority away. */
 export function isRealignmentSource(a: FundingSourceInput): boolean {
   return (
@@ -92,16 +88,22 @@ export function isRealignmentSource(a: FundingSourceInput): boolean {
   );
 }
 
-const classificationOf = (a: FundingSourceInput): string => {
+const classificationOf = (a: {
+  accountCode?: string | null;
+  accountName?: string | null;
+  fppCode?: string;
+  fppName?: string;
+}): string => {
   if (a.accountCode && a.accountName) return `${a.accountCode} - ${a.accountName}`;
+  if (a.accountCode) return a.accountCode;
   if (a.accountName) return a.accountName;
   return a.fppName || a.fppCode || '';
 };
 
-function takenFrom(appropriations: FundingSourceInput[], test: (a: FundingSourceInput) => boolean) {
+function realignedFrom(appropriations: FundingSourceInput[]): FundingSourceRow[] {
   const byAccount = new Map<string, FundingSourceRow>();
   for (const a of appropriations) {
-    if (!test(a)) continue;
+    if (!isRealignmentSource(a)) continue;
     const key = a.accountCode || a.fppCode || classificationOf(a);
     const row = byAccount.get(key) ?? {
       classification: classificationOf(a),
@@ -112,7 +114,9 @@ function takenFrom(appropriations: FundingSourceInput[], test: (a: FundingSource
     byAccount.set(key, row);
   }
   return [...byAccount.values()].sort(
-    (x, y) => x.accountCode.localeCompare(y.accountCode) || x.classification.localeCompare(y.classification),
+    (x, y) =>
+      x.accountCode.localeCompare(y.accountCode) ||
+      x.classification.localeCompare(y.classification),
   );
 }
 
@@ -120,9 +124,7 @@ function encodedRows(sources: EncodedSourceInput[], section: string): FundingSou
   return sources
     .filter((s) => s.section === section)
     .map((s) => ({
-      classification: s.accountCode
-        ? `${s.accountCode}${s.accountName ? ` - ${s.accountName}` : ''}`
-        : s.particulars,
+      classification: s.accountCode ? classificationOf(s) : '',
       accountCode: s.accountCode ?? '',
       particulars: s.particulars,
       amount: s.amount,
@@ -137,8 +139,8 @@ export function buildFundingSources(
 ): FundingSourcesSheet {
   const newRevenue = encodedRows(sources, 'NEW_REVENUE');
   const excess = encodedRows(sources, 'EXCESS_COLLECTION');
-  const savings = takenFrom(appropriations, isSavingsSource);
-  const realignment = takenFrom(appropriations, isRealignmentSource);
+  const savings = encodedRows(sources, 'SAVINGS');
+  const realignment = realignedFrom(appropriations);
   const t = {
     totalNewRevenue: sum(newRevenue),
     totalExcess: sum(excess),
@@ -153,4 +155,81 @@ export function buildFundingSources(
     ...t,
     total: t.totalNewRevenue + t.totalExcess + t.totalSavings + t.totalRealignment,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The register - what the tab shows on screen. Patch 126.
+// ---------------------------------------------------------------------------
+
+export interface RegisterRow {
+  key: string;
+  /** '1.0' .. '4.0', for sorting and the column. */
+  number: string;
+  section: string;
+  particulars: string;
+  classification: string;
+  /** The act it belongs to, or null for an open source. */
+  encodedIn: string | null;
+  amount: Centavos;
+  /** Set on an encoded source: it may be corrected or removed. A realignment row is read from the books. */
+  sourceId: string | null;
+}
+
+const NUMBER: Record<string, string> = {
+  NEW_REVENUE: '1.0',
+  EXCESS_COLLECTION: '2.0',
+  SAVINGS: '3.0',
+  REALIGNMENT: '4.0',
+};
+
+/**
+ * Every supplemental source of the year, one row each: the encoded ones as
+ * encoded, and each realignment's taken-from side by ordinance and account.
+ * The form groups the same figures by section; the register keeps them apart
+ * so each can be traced to where it came from.
+ */
+export function buildSourceRegister(
+  appropriations: FundingSourceInput[],
+  sources: EncodedSourceInput[],
+): RegisterRow[] {
+  const rows: RegisterRow[] = [];
+  for (const s of sources) {
+    const number = NUMBER[s.section];
+    if (!number) continue; // CONTINUING is not a supplemental source
+    rows.push({
+      key: s.id ?? `${s.section}-${s.particulars}-${rows.length}`,
+      number,
+      section: s.section,
+      particulars: s.particulars,
+      classification: s.accountCode ? classificationOf(s) : '',
+      encodedIn: s.actReference ?? null,
+      amount: s.amount,
+      sourceId: s.id ?? null,
+    });
+  }
+  const realigned = new Map<string, RegisterRow>();
+  for (const a of appropriations) {
+    if (!isRealignmentSource(a)) continue;
+    const ref = a.authorityReference ?? '';
+    const key = `R-${ref}-${a.accountCode || a.fppCode}`;
+    const row = realigned.get(key) ?? {
+      key,
+      number: '4.0',
+      section: 'REALIGNMENT',
+      particulars: 'Appropriation realigned from',
+      classification: classificationOf(a),
+      encodedIn: ref || null,
+      amount: 0,
+      sourceId: null,
+    };
+    row.amount += Math.abs(a.amount);
+    realigned.set(key, row);
+  }
+  rows.push(...realigned.values());
+  return rows.sort(
+    (x, y) =>
+      x.number.localeCompare(y.number) ||
+      (x.encodedIn ?? '').localeCompare(y.encodedIn ?? '') ||
+      x.particulars.localeCompare(y.particulars),
+  );
 }

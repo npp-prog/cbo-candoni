@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFundingSources, isRealignmentSource, isSavingsSource } from './fundingSources';
+import { buildFundingSources, buildSourceRegister, isRealignmentSource } from './fundingSources';
 
 const line = (over: Record<string, unknown>) => ({
   kind: 'REALIGNMENT',
@@ -50,25 +50,68 @@ describe('LBP Form No. 8 - funding sources', () => {
     expect(s.realignment[0].classification).toBe('Road, Gatuslao');
   });
 
-  it('puts what an augmentation took under 3.0 Savings (patch 123)', () => {
+  it('leaves an augmentation off the form - it is not part of a supplemental budget (patch 126)', () => {
     const s = buildFundingSources([line({ instrument: 'AUGMENTATION', amount: -4_000_00 })]);
-    expect(isSavingsSource(line({ instrument: 'AUGMENTATION' }))).toBe(true);
-    expect(s.savings[0].amount).toBe(4_000_00);
-    expect(s.realignment).toHaveLength(0);
-    expect(s.total).toBe(4_000_00);
+    expect(s.savings).toHaveLength(0);
+    expect(s.total).toBe(0);
   });
 
   it('fills 1.0 and 2.0 from the sources encoded (patch 123)', () => {
     const s = buildFundingSources(
       [line({})],
       [
-        { section: 'NEW_REVENUE', particulars: 'Tax Revenue', accountCode: '40101010', accountName: 'RPT', amount: 1_000_00 },
-        { section: 'EXCESS_COLLECTION', particulars: 'Excess collection FY 2025', amount: 2_000_00 },
+        {
+          section: 'NEW_REVENUE',
+          particulars: 'Tax Revenue',
+          accountCode: '40101010',
+          accountName: 'RPT',
+          amount: 1_000_00,
+        },
+        {
+          section: 'EXCESS_COLLECTION',
+          particulars: 'Excess collection FY 2025',
+          amount: 2_000_00,
+        },
         { section: 'CONTINUING', particulars: 'Not on this form', amount: 9_000_00 },
       ],
     );
     expect(s.newRevenue[0].classification).toBe('40101010 - RPT');
-    expect(s.excess[0].classification).toBe('Excess collection FY 2025');
+    expect(s.excess[0]).toMatchObject({
+      particulars: 'Excess collection FY 2025',
+      classification: '',
+    });
     expect(s.total).toBe(1_000_00 + 2_000_00 + 10_000_00);
+  });
+
+  it('fills 3.0 from the savings encoded (patch 126)', () => {
+    const s = buildFundingSources(
+      [],
+      [{ section: 'SAVINGS', particulars: 'Savings, MOOE FY 2026', amount: 7_00 }],
+    );
+    expect(s.savings[0]).toMatchObject({ particulars: 'Savings, MOOE FY 2026', amount: 7_00 });
+    expect(s.total).toBe(7_00);
+  });
+
+  it('lists every source in the register, numbered, with where it came from (patch 126)', () => {
+    const r = buildSourceRegister(
+      [
+        line({ authorityReference: 'Ord. 14' }),
+        line({ authorityReference: 'Ord. 14', amount: -1_00 }),
+      ],
+      [
+        {
+          id: 'b',
+          section: 'SAVINGS',
+          particulars: 'Savings',
+          amount: 3_00,
+          actReference: 'Ord. 7',
+        },
+        { id: 'a', section: 'NEW_REVENUE', particulars: 'Tax', amount: 1_00 },
+        { id: 'c', section: 'CONTINUING', particulars: 'Not supplemental', amount: 9_00 },
+      ],
+    );
+    expect(r.map((x) => x.number)).toEqual(['1.0', '3.0', '4.0']);
+    expect(r[0]).toMatchObject({ encodedIn: null, sourceId: 'a' });
+    expect(r[2]).toMatchObject({ encodedIn: 'Ord. 14', amount: 10_001_00, sourceId: null });
   });
 });

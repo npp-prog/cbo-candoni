@@ -27,7 +27,7 @@ import {
   type IncomeClass,
 } from '@/lib/estimatedReceipts';
 import { parseReceiptsFile, type ParsedReceiptRow } from './parseReceipts';
-import { FundingSourcesTab } from './FundingSourcesTab';
+import { ContinuingSourcesTab, FundingSourcesTab } from './FundingSourcesTab';
 import type { EstimatedReceipt } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from './Obligations';
@@ -115,7 +115,7 @@ export default function EstimatedReceipts() {
     section of LBP Form No. 1 ("Estimated Receipts"), and LBP Form No. 8,
     the funding sources of a supplemental budget.
   */
-  const [tab, setTab] = useState<'schedule' | 'form' | 'sources'>('schedule');
+  const [tab, setTab] = useState<'schedule' | 'form' | 'sources' | 'continuing'>('schedule');
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -455,14 +455,17 @@ export default function EstimatedReceipts() {
         tabs={[
           { id: 'schedule', label: 'Schedule', count: filled.length },
           { id: 'form', label: 'Estimated Receipts' },
-          { id: 'sources', label: 'Funding Sources (LBP Form 8)' },
+          { id: 'sources', label: 'Supplemental Sources' },
+          { id: 'continuing', label: 'Continuing' },
         ]}
         active={tab}
-        onChange={(id) => setTab(id as 'schedule' | 'form' | 'sources')}
+        onChange={(id) => setTab(id as typeof tab)}
       />
 
       {tab === 'sources' ? (
         <FundingSourcesTab fiscalYear={fiscalYear} fundCode={fundCode} />
+      ) : tab === 'continuing' ? (
+        <ContinuingSourcesTab fiscalYear={fiscalYear} fundCode={fundCode} />
       ) : loading ? (
         <Spinner />
       ) : tab === 'schedule' ? (
@@ -602,28 +605,37 @@ export default function EstimatedReceipts() {
                         />
                       )}
                     </td>
+                    {/* Patch 126: a closed schedule is read, not edited - plain
+                        figures, not greyed-out boxes too narrow for them
+                        ("Regular Incom", "P 50,000,000"). */}
                     <td className="px-2 py-1.5">
-                      <Select
-                        value={r.incomeClass}
-                        disabled={!canEdit}
-                        onChange={(e) =>
-                          set(r.key, { incomeClass: e.target.value as IncomeClass })
-                        }
-                      >
-                        {INCOME_CLASSES.map((c) => (
-                          <option key={c} value={c}>
-                            {INCOME_CLASS_LABELS[c]}
-                          </option>
-                        ))}
-                      </Select>
+                      {canEdit ? (
+                        <Select
+                          value={r.incomeClass}
+                          onChange={(e) =>
+                            set(r.key, { incomeClass: e.target.value as IncomeClass })
+                          }
+                        >
+                          {INCOME_CLASSES.map((c) => (
+                            <option key={c} value={c}>
+                              {INCOME_CLASS_LABELS[c]}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <span className="text-sm">{INCOME_CLASS_LABELS[r.incomeClass]}</span>
+                      )}
                     </td>
                     {(['q1', 'q2', 'q3', 'q4'] as const).map((q) => (
-                      <td key={q} className="px-2 py-1.5">
-                        <AmountInput
-                          value={r[q]}
-                          disabled={!canEdit}
-                          onChange={(v) => set(r.key, { [q]: v ?? 0 } as Partial<DraftRow>)}
-                        />
+                      <td key={q} className={canEdit ? 'px-2 py-1.5' : 'px-2 py-1.5 text-right font-mono'}>
+                        {canEdit ? (
+                          <AmountInput
+                            value={r[q]}
+                            onChange={(v) => set(r.key, { [q]: v ?? 0 } as Partial<DraftRow>)}
+                          />
+                        ) : (
+                          formatAmount(r[q] ?? 0)
+                        )}
                       </td>
                     ))}
                     <td className="px-2 py-1.5 text-right font-mono">

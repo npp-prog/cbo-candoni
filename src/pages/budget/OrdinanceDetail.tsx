@@ -55,6 +55,7 @@ import { LbpForm2Sheet, usePrintForm2 } from './LbpForm2Sheet';
  * A REALIGNMENT ordinance differs in step 2: its lines are prepared as one
  * set that must come to zero, and step 4 posts that set. Its positive side is
  * what LBP Form No. 2 shows; the side it took from is on LBP Form No. 8.
+ * (An augmentation's is not: it is not part of a supplemental budget - p126.)
  */
 export default function OrdinanceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -343,7 +344,7 @@ export default function OrdinanceDetail() {
             documented={readiness.documented}
             fundedText={
               basis === 'OWN_LINES'
-                ? `Finances itself: ${formatPeso(readiness.takenFrom)} taken from the lines it gives up (LBP Form No. 8, ${isAug ? '3.0 Savings' : '4.0 Realignment'}).`
+                ? `Finances itself: ${formatPeso(readiness.takenFrom)} taken from the lines it gives up${isAug ? ' - its savings' : ' (LBP Form No. 8, 4.0 Realignment)'}.`
                 : readiness.cover
                   ? `${formatPeso(readiness.cover.needed)} to finance; ${formatPeso(readiness.cover.available)} available from ${basis === 'ESTIMATED_REVENUE' ? 'the Estimated Revenue' : 'its sources'}.`
                   : ''
@@ -373,7 +374,7 @@ export default function OrdinanceDetail() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-slate-600">
                 {isAug
-                  ? 'An augmentation is prepared as one set that comes to zero, within one expense class, printed on the Augmentation Form for the Mayor to sign, and posted whole. The savings it takes are its source - LBP Form No. 8, 3.0.'
+                  ? 'An augmentation is prepared as one set that comes to zero, within one expense class, printed on the Augmentation Form for the Mayor to sign, and posted whole. The savings it takes are its source. It is not part of a supplemental budget and is not on LBP Form No. 8.'
                   : realign
                     ? 'A realignment is prepared as one set that comes to zero, printed on LBP Form No. 2 for signature, and posted whole. What it takes away is its source - LBP Form No. 8, 4.0.'
                     : 'Record the lines here, one at a time or from the annex, encode its sources, attach the signed copy, print LBP Form No. 2 for signature, then approve them all.'}
@@ -545,7 +546,7 @@ export default function OrdinanceDetail() {
             {basis === 'ENCODED' && (
               <>
                 <Card
-                  title={ordinance.kind === 'SUPPLEMENTAL' ? 'Sources encoded in this ordinance - 1.0 and 2.0' : 'Continuing sources encoded here'}
+                  title={ordinance.kind === 'SUPPLEMENTAL' ? 'Sources encoded in this ordinance - 1.0, 2.0 and 3.0' : 'Continuing sources encoded here'}
                   subtitle={
                     readiness.cover
                       ? `Needed ${formatPeso(readiness.cover.needed)} - own ${formatPeso(readiness.cover.own)} - open on the Sources tab ${formatPeso(readiness.cover.open)}.`
@@ -581,7 +582,7 @@ export default function OrdinanceDetail() {
 
             {basis === 'OWN_LINES' && (
               <Card
-                title={isAug ? '3.0 Savings - what this augmentation takes from' : '4.0 Realignment - what this realignment takes from'}
+                title={isAug ? 'Savings - what this augmentation takes from' : '4.0 Realignment - what this realignment takes from'}
                 subtitle="Its own source. The set must come to zero, so what it gives is exactly what it takes."
                 bodyClassName="p-0"
               >

@@ -93,7 +93,7 @@ export const saveFundingSource = onCall(
         const meta = SOURCE_SECTIONS.find((s) => s.value === section);
         if (!meta)
           throw invalid(
-            'Choose which source this is: 1.0 New Revenue, 2.0 Excess Collection, or Continuing.',
+            'Choose which source this is: 1.0 New Revenue, 2.0 Excess Collection, 3.0 Savings, or Continuing.',
           );
         const particulars = String(d.particulars ?? '').trim();
         if (!particulars)

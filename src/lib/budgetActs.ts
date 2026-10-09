@@ -22,10 +22,15 @@
  * ---------------------------------------------------------------------------
  *   ORIGINAL       the Estimated Revenue - the Sources of Financing schedule
  *                  (LBP Form No. 1). Original appropriations may not exceed it.
- *   SUPPLEMENTAL   LBP Form No. 8, 1.0 New Revenue Sources and 2.0 Actual
- *                  Collection in Excess of the Estimated Income - encoded.
+ *   SUPPLEMENTAL   LBP Form No. 8, 1.0 New Revenue Sources, 2.0 Actual
+ *                  Collection in Excess of the Estimated Income and 3.0
+ *                  Savings - encoded.
  *   REALIGNMENT    LBP Form No. 8, 4.0 Realignment - the lines it takes from.
- *   AUGMENTATION   LBP Form No. 8, 3.0 Savings - the lines it takes from.
+ *   AUGMENTATION   its own savings - the lines it takes from. NOT on LBP
+ *                  Form No. 8: under the omnibus authority the Sanggunian
+ *                  gives the Local Chief Executive, an augmentation is not
+ *                  part of a supplemental budget (Neil, patch 126). Savings
+ *                  that DO finance a supplemental budget are encoded as 3.0.
  *   CONTINUING     the Continuing sources - encoded.
  *
  * A realignment and an augmentation finance themselves: the set must come to
@@ -60,7 +65,7 @@ export const ACT_KINDS: Array<{
     document: 'Supplemental Appropriation Ordinance',
     numberLabel: 'Ordinance number',
     placeholder: 'Ord. No. 2026-07',
-    hint: 'Additional authority during the year. Financed by new revenue sources or by collections in excess of the estimate (LBP Form No. 8, 1.0 and 2.0).',
+    hint: 'Additional authority during the year. Financed by new revenue, collections in excess of the estimate, or savings (LBP Form No. 8, 1.0 to 3.0).',
   },
   {
     value: 'REALIGNMENT',
@@ -76,7 +81,7 @@ export const ACT_KINDS: Array<{
     document: 'Augmentation Order',
     numberLabel: 'Office or executive order number',
     placeholder: 'Office Order No. 2026-03',
-    hint: 'Savings moved within one expense class by the Local Chief Executive (s.336). The savings it takes from are its source (LBP Form No. 8, 3.0).',
+    hint: 'Savings moved within one expense class by the Local Chief Executive under the authority the Sanggunian gave (s.336). The savings it takes from are its source; it is not part of a supplemental budget.',
   },
   {
     value: 'CONTINUING',
@@ -136,8 +141,8 @@ export const actKindOfInstrument = (instrument: string | null | undefined): ActK
 // Sources
 // ---------------------------------------------------------------------------
 
-/** The sources that are ENCODED. Savings and realignment are read from the acts. */
-export type SourceSection = 'NEW_REVENUE' | 'EXCESS_COLLECTION' | 'CONTINUING';
+/** The sources that are ENCODED. A realignment's (4.0) are read from the act itself. */
+export type SourceSection = 'NEW_REVENUE' | 'EXCESS_COLLECTION' | 'SAVINGS' | 'CONTINUING';
 
 export const SOURCE_SECTIONS: Array<{ value: SourceSection; label: string; finances: ActKind }> = [
   { value: 'NEW_REVENUE', label: '1.0 New Revenue Sources', finances: 'SUPPLEMENTAL' },
@@ -146,6 +151,7 @@ export const SOURCE_SECTIONS: Array<{ value: SourceSection; label: string; finan
     label: '2.0 Actual Collection in Excess of the Estimated Income',
     finances: 'SUPPLEMENTAL',
   },
+  { value: 'SAVINGS', label: '3.0 Savings', finances: 'SUPPLEMENTAL' },
   { value: 'CONTINUING', label: 'Continuing', finances: 'CONTINUING' },
 ];
 
@@ -277,7 +283,7 @@ export function coverShortfall(kind: ActKind, reference: string, c: Cover): stri
   }
   const where =
     kind === 'SUPPLEMENTAL'
-      ? '1.0 New Revenue Sources or 2.0 Excess Collection'
+      ? '1.0 New Revenue Sources, 2.0 Excess Collection or 3.0 Savings'
       : 'Continuing sources';
   return (
     `${reference} cannot be approved: it would come to ${peso(c.needed)} and its sources come to ${peso(c.available)}` +

@@ -75,7 +75,9 @@ export function FundingSourceDialog({
       ? 'A new tax, fee or charge, or loan proceeds, that finances a supplemental budget.'
       : section === 'EXCESS_COLLECTION'
         ? 'What was collected beyond the estimate, as certified by the Treasurer.'
-        : "Last year's unexpended authority, carried into this year.";
+        : section === 'SAVINGS'
+          ? 'Savings declared to finance a supplemental budget - not an augmentation by the Mayor, which is not part of it.'
+          : "Last year's unexpended authority, carried into this year.";
 
   return (
     <Modal
@@ -122,7 +124,9 @@ export function FundingSourceDialog({
                 ? 'Tax Revenue - new market stall fees'
                 : section === 'EXCESS_COLLECTION'
                   ? 'Excess collection, Real Property Tax'
-                  : 'Continuing appropriation, FY 2025 - Construction of ...'
+                  : section === 'SAVINGS'
+                    ? 'Savings, MOOE - Office of the Municipal Mayor'
+                    : 'Continuing appropriation, FY 2025 - Construction of ...'
             }
           />
         </Field>
@@ -201,7 +205,7 @@ export function FundingSourceList({
                 <td className="px-3 py-2">{s.particulars}</td>
                 <td className="px-3 py-2 font-mono">{s.accountCode ?? ''}</td>
                 <td className="px-3 py-2 text-slate-600">
-                  {s.actReference ?? 'Sources tab - open'}
+                  {s.actReference ?? 'Open - any act of its kind'}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">
                   {formatPeso(s.amount, { symbol: false })}
