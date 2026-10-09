@@ -62,27 +62,46 @@ const ORIGINS = [
  * and the Status column is the only honest way to say so. The register lists
  * the vouchers; the ledger carries the posted ones.
  */
+/** Patch 152: the default status filter. */
+const NOT_CANCELLED = '__NOT_CANCELLED__';
+
 export default function JournalEntriesRegister() {
   const { fiscalYear, fundCode, period } = useFilters();
   /* Opens a document remembering this table, so its Back button returns here. */
   const open = useOpenWithReturn();
-  const [status, setStatus] = useState('');
+  /*
+   * Patch 152: by default every status EXCEPT cancelled - a cancelled entry
+   * never reached the books, and it is looked for on purpose, not scrolled
+   * past every day.
+   */
+  const [status, setStatus] = useState(NOT_CANCELLED);
   const [origin, setOrigin] = useState('');
 
-  const { data, loading, error } = useJevs(fiscalYear, fundCode, status || undefined);
+  const { data, loading, error } = useJevs(
+    fiscalYear,
+    fundCode,
+    status && status !== NOT_CANCELLED ? status : undefined,
+  );
 
   const rows = useMemo(() => {
     let out = period ? data.filter((j) => j.period === period) : data;
+    if (status === NOT_CANCELLED) out = out.filter((j) => j.status !== 'CANCELLED');
     if (origin === 'DIRECT') out = out.filter((j) => isDirectEntry(j.sourceType));
     if (origin === 'DOCUMENT') out = out.filter((j) => !isDirectEntry(j.sourceType));
-    return newestFirst(out, (j) => ({
-      // An entry waiting to be posted has no number, so it sorts to the top -
-      // which is where the Accountant wants it, since it is the one still
-      // needing an act.
+    const sorted = newestFirst(out, (j) => ({
       ref: hasJevNumber(j.jevNo) ? j.jevNo : '',
       date: j.jevDate,
     }));
-  }, [data, period, origin]);
+    /*
+     * Patch 152: the entries with no JEV number yet go LAST - after every
+     * numbered entry, so the register reads as the book, in number order.
+     * Those waiting to be posted are still counted at the top (awaitingPosting).
+     */
+    return [
+      ...sorted.filter((j) => hasJevNumber(j.jevNo)),
+      ...sorted.filter((j) => !hasJevNumber(j.jevNo)),
+    ];
+  }, [data, period, origin, status]);
 
   const waiting = useMemo(() => awaitingPosting(rows), [rows]);
 
@@ -212,6 +231,7 @@ export default function JournalEntriesRegister() {
               className="w-auto py-1.5 text-sm"
               aria-label="Filter by status"
             >
+              <option value={NOT_CANCELLED}>All statuses but cancelled</option>
               <option value="">All statuses</option>
               {JEV_STATUSES.map((s) => (
                 <option key={s} value={s}>

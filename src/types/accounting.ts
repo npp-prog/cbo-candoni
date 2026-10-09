@@ -131,6 +131,12 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
    */
   severalPayees?: boolean;
   payees?: DvPayee[];
+  /**
+   * Patch 152: an Accounts Payable carried forward from the opening balances
+   * as an unpaid voucher - no obligation, no expense lines. Engine-written.
+   */
+  openingPayable?: boolean;
+  openingBalanceId?: string;
 
   particulars: string;
 

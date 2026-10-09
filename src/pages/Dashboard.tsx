@@ -69,6 +69,8 @@ export default function Dashboard() {
     }
     for (const dv of dvs.data) {
       if (dv.status === 'CANCELLED') continue;
+      // Patch 152: a payable carried forward was disbursed in an earlier year's books.
+      if (dv.openingPayable) continue;
       const p = Number(dv.dvDate?.slice(5, 7) ?? 0);
       if (p >= 1 && p <= 12) months[p - 1].disbursed += dv.grossAmount ?? 0;
     }

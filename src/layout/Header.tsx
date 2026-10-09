@@ -66,18 +66,18 @@ export function Header({
             </svg>
           </button>
 
-          <div className="hidden min-w-0 md:block">
-            <p className="truncate text-xs font-semibold uppercase tracking-wide text-navy-900">
-              Municipal Government of Candoni
-            </p>
-            <p className="truncate text-2xs text-slate-500">Province of Negros Occidental</p>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <UniversalSearch />
+          {/*
+            Patch 152: the municipality's name is gone from here - it is on
+            the sidebar and on every printed form - and the search takes its
+            place, as wide as the bar allows.
+          */}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="min-w-0 max-w-2xl flex-1">
+              <UniversalSearch />
+            </div>
 
             {/* Working context: fiscal year, fund and period. */}
-            <div className="hidden items-center gap-1.5 rounded-md border border-slate-300 bg-slate-50 px-1.5 py-1 sm:flex">
+            <div className="ml-auto hidden items-center gap-1.5 rounded-md border border-slate-300 bg-slate-50 px-1.5 py-1 sm:flex">
               <select
                 value={fiscalYear}
                 onChange={(e) => setFiscalYear(Number(e.target.value))}

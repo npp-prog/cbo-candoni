@@ -104,7 +104,7 @@ export function UniversalSearch() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="hidden items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50 md:flex"
+        className="hidden w-full items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 md:flex"
       >
         <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path
@@ -113,8 +113,10 @@ export function UniversalSearch() {
             clipRule="evenodd"
           />
         </svg>
-        Search
-        <kbd className="rounded border border-slate-300 bg-slate-50 px-1 text-2xs">Ctrl K</kbd>
+        <span className="truncate">Search DV, OBR, JEV, check, ADA or RCD numbers, or a payee...</span>
+        <kbd className="ml-auto shrink-0 rounded border border-slate-300 bg-slate-50 px-1 text-2xs">
+          Ctrl K
+        </kbd>
       </button>
 
       {open && (

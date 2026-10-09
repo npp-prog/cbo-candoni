@@ -93,6 +93,9 @@ export function DataTable<T>({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(0);
+  /* Patch 152: rows per page, chosen at the foot of the table. */
+  const [perPage, setPerPage] = useState(pageSize);
+  const [goTo, setGoTo] = useState('');
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(columns.filter((c) => c.optional).map((c) => c.key)),
   );
@@ -145,12 +148,18 @@ export function DataTable<T>({
     return copy;
   }, [searched, sortKey, sortDir, columns]);
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(sorted.length / perPage));
   const currentPage = Math.min(page, pageCount - 1);
   const paged = useMemo(
-    () => sorted.slice(currentPage * pageSize, currentPage * pageSize + pageSize),
-    [sorted, currentPage, pageSize],
+    () => sorted.slice(currentPage * perPage, currentPage * perPage + perPage),
+    [sorted, currentPage, perPage],
   );
+  const sizeOptions = [...new Set([25, 50, 100, pageSize])].sort((a, b) => a - b);
+  const jump = () => {
+    const n = Number(goTo);
+    if (Number.isInteger(n) && n >= 1) setPage(Math.min(n, pageCount) - 1);
+    setGoTo('');
+  };
 
   const toggleSort = (col: Column<T>) => {
     if (col.sortable === false) return;
@@ -345,21 +354,62 @@ export function DataTable<T>({
         </div>
       )}
 
-      {sorted.length > pageSize && (
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2.5 no-print">
-          <p className="text-xs text-slate-500">
-            Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, sorted.length)} of{' '}
-            {sorted.length.toLocaleString('en-PH')}
-          </p>
-          <div className="flex items-center gap-1.5">
+      {/*
+        Patch 152: rows per page (25, 50, 100), and a box to go straight to a
+        page by its number, beside First / Previous / Next / Last.
+      */}
+      {sorted.length > Math.min(...sizeOptions) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-3 py-2.5 no-print">
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-slate-500">
+              Showing {currentPage * perPage + 1}-{Math.min((currentPage + 1) * perPage, sorted.length)} of{' '}
+              {sorted.length.toLocaleString('en-PH')}
+            </p>
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              Show
+              <select
+                value={perPage}
+                onChange={(e) => {
+                  setPerPage(Number(e.target.value));
+                  setPage(0);
+                }}
+                className="rounded border-slate-300 py-0.5 pl-2 pr-7 text-xs"
+                aria-label="Rows per page"
+              >
+                {sizeOptions.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              per page
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button size="sm" disabled={currentPage === 0} onClick={() => setPage(0)}>
               First
             </Button>
             <Button size="sm" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
               Previous
             </Button>
-            <span className="px-2 text-xs text-slate-600">
-              Page {currentPage + 1} of {pageCount}
+            <span className="flex items-center gap-1 px-1 text-xs text-slate-600">
+              Page
+              <input
+                type="number"
+                min={1}
+                max={pageCount}
+                value={goTo}
+                placeholder={String(currentPage + 1)}
+                onChange={(e) => setGoTo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') jump();
+                }}
+                onBlur={() => goTo && jump()}
+                className="w-14 rounded border-slate-300 px-1.5 py-0.5 text-center text-xs"
+                aria-label="Go to page"
+                title="Type a page number and press Enter"
+              />
+              of {pageCount}
             </span>
             <Button size="sm" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
               Next

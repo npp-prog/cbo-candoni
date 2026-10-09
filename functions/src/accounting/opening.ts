@@ -12,6 +12,8 @@ import {
   type JevData,
   type JevLineData,
 } from '../lib/ledger';
+import { ACCOUNTS_PAYABLE } from '../lib/chartOfAccounts';
+import { openingPayableVouchers, type OpeningPayableLine } from '../lib/openingPayables';
 
 /**
  * Opening balances.
@@ -123,6 +125,8 @@ export const postOpeningBalances = onCall(
       );
 
       const lines: JevLineData[] = [];
+      /** Patch 152: what each line was, for the payables carried forward. */
+      const sources: OpeningPayableLine[] = [];
       let totalDebit = 0;
       let totalCredit = 0;
 
@@ -229,6 +233,16 @@ export const postOpeningBalances = onCall(
               .filter(Boolean)
               .join(' - '),
         });
+        sources.push({
+          accountCode: line.accountCode,
+          credit,
+          subsidiaryType: line.subsidiaryType ?? null,
+          subsidiaryId: line.subsidiaryId ?? null,
+          subsidiaryName: line.subsidiaryName ?? null,
+          referenceNo: line.referenceNo ?? null,
+          agingDate,
+          particulars: line.particulars ?? null,
+        });
       }
 
       if (!lines.length) throw invalid('Every line was blank.');
@@ -273,6 +287,54 @@ export const postOpeningBalances = onCall(
 
       const now = new Date().toISOString();
 
+      /*
+       * Patch 152. Every Accounts Payable carried forward becomes an unpaid
+       * voucher in Treasury's payment queue - see lib/openingPayables.ts. No
+       * obligation and no expense lines: paying it settles the payable only.
+       */
+      const payables = openingPayableVouchers(sources, {
+        payableAccountCode: ACCOUNTS_PAYABLE.code,
+        fiscalYear,
+        fundCode,
+        asOfDate,
+      });
+      for (const v of payables) {
+        tx.create(db.collection(COL.disbursementVouchers).doc(v.id), {
+          dvNo: v.dvNo,
+          dvDate: v.dvDate,
+          fiscalYear,
+          period: 1,
+          fundCode,
+          openingPayable: true,
+          openingBalanceId: markerRef.id,
+          payableAccountCode: ACCOUNTS_PAYABLE.code,
+          obligationId: null,
+          obrNo: null,
+          officeId: '',
+          officeName: 'Carried forward',
+          payeeId: v.payeeId,
+          payeeName: v.payeeName,
+          particulars: v.particulars,
+          grossAmount: v.amount,
+          deductions: [],
+          totalDeductions: 0,
+          netAmount: v.amount,
+          accountLines: [],
+          status: 'APPROVED',
+          awaitingTransferToTreasury: false,
+          jevId,
+          jevNo,
+          jevPostedAt: now,
+          createdAt: now,
+          createdBy: {
+            uid: caller.uid,
+            name: caller.name,
+            position: caller.position ?? null,
+            at: now,
+          },
+        });
+      }
+
       tx.create(markerRef, {
         fiscalYear,
         fundCode,
@@ -282,6 +344,7 @@ export const postOpeningBalances = onCall(
         lineCount: lines.length,
         totalDebit,
         totalCredit,
+        payableVoucherIds: payables.map((v) => v.id),
         remarks: remarks?.trim() ?? null,
         postedAt: now,
         postedBy: {
@@ -306,7 +369,13 @@ export const postOpeningBalances = onCall(
         severity: 'CRITICAL',
       });
 
-      return { jevId, jevNo, lineCount: lines.length, total: totalDebit };
+      return {
+        jevId,
+        jevNo,
+        lineCount: lines.length,
+        total: totalDebit,
+        payableVouchers: payables.length,
+      };
     });
   },
 );
@@ -426,6 +495,27 @@ export const reopenOpeningBalances = onCall(
       await assertFiscalYearOpen(fiscalYear, tx);
 
       /*
+       * Patch 152. The unpaid vouchers the opening payables became. Re-opening
+       * takes them away with the balances - unless one has been paid: a check
+       * or an ADA drawn on it pays a payable that would no longer be in the
+       * books. Then the payment is undone first (cancel the check or ADA).
+       */
+      const payableSnap = await tx.get(
+        db.collection(COL.disbursementVouchers).where('openingBalanceId', '==', markerRef.id),
+      );
+      const paid = payableSnap.docs
+        .map((d) => d.data() as { dvNo?: string; checkNo?: string; adaNo?: string; checkId?: string; adaId?: string })
+        .filter((d) => d.checkId || d.adaId);
+      if (paid.length > 0) {
+        throw new HttpsError(
+          'failed-precondition',
+          `The payables carried forward have started to be paid: ${paid
+            .map((d) => `DV ${d.dvNo ?? ''} by ${d.checkNo ? `check ${d.checkNo}` : `ADA ${d.adaNo ?? ''}`}`)
+            .join('; ')}. Cancel ${paid.length === 1 ? 'that payment' : 'those payments'} before re-opening the opening balances.`,
+        );
+      }
+
+      /*
        * The period the original was raised in. It is written on the entry; the
        * 1 is the fallback for the marker whose entry has gone missing, and
        * matches what postOpeningBalances writes.
@@ -508,6 +598,9 @@ export const reopenOpeningBalances = onCall(
           reversedByJevId: created.jevId,
         });
       }
+
+      // Patch 152: the unpaid vouchers go with the balances they came from.
+      for (const d of payableSnap.docs) tx.delete(d.ref);
 
       // The door. Everything above it is what makes opening it safe.
       tx.delete(markerRef);

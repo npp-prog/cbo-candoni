@@ -302,6 +302,13 @@ export default function TreasuryReportJev() {
               <option value="JOURNALIZED">Journalized</option>
             </Select>
           }
+          /* Patch 152: Columns, Excel, CSV and Print, as on the other registers. */
+          exportMeta={{
+            title: tab
+              ? `${TREASURY_REPORT_LABELS[tab as TreasuryReportType]} - received by Accounting`
+              : 'Treasury Reports received by Accounting',
+            periodLabel: `Fiscal year ${fiscalYear}`,
+          }}
           emptyTitle={tab ? `No ${TREASURY_REPORT_SHORT[tab as TreasuryReportType]} received` : 'Nothing received'}
           emptyMessage={`No ${
             tab ? TREASURY_REPORT_LABELS[tab as TreasuryReportType] : 'treasury report'

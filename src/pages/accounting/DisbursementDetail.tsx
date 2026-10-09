@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { JevLink } from '@/components/JevLink';
+import { OpeningPayableVoucher } from './OpeningPayableVoucher';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
@@ -83,7 +84,24 @@ import { withEtAl, withoutEtAl } from '@/lib/accounting-rules';
  *  - Approval, payment and posting are all server calls. Nothing on this
  *    screen decides whether the obligation has room for the voucher.
  */
+/**
+ * Patch 152. A voucher carried forward from the opening balances has nothing
+ * to edit, so it has its own, read-only page (OpeningPayableVoucher). Every
+ * other voucher opens the editor below as before.
+ */
 export default function DisbursementDetail() {
+  const { id } = useParams<{ id: string }>();
+  const isNew = !id || id === 'new';
+  const { data, loading } = useDocument<DisbursementVoucher>(
+    isNew ? null : COL.disbursementVouchers,
+    id,
+  );
+  if (!isNew && loading) return <Spinner label="Loading the voucher" />;
+  if (data?.openingPayable) return <OpeningPayableVoucher dv={data} />;
+  return <DisbursementEditor />;
+}
+
+function DisbursementEditor() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();

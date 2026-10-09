@@ -145,7 +145,12 @@ export default function JevAppendix30() {
 
       {/* --- the form ------------------------------------------------------- */}
       <div className="mx-auto max-w-[8.5in] bg-white p-6 text-[11px] text-navy-900 ring-1 ring-slate-200 print:p-0 print:ring-0">
-        <Letterhead appendix="Appendix 30" title="Journal Voucher" lines={entity.headingLines} />
+        <Letterhead
+          appendix="Appendix 30"
+          title="Journal Voucher"
+          lines={entity.headingLines}
+          seal="center"
+        />
 
         {/*
           ------------------------------------------------------------------
@@ -173,28 +178,40 @@ export default function JevAppendix30() {
           CFMS posts to the ledger itself, and printing a tick would assert
           somebody had done the manual step.
         */}
-        <table className="mb-2 w-full">
-          <tbody>
-            <tr>
-              <td className="w-1/2 py-0.5">
-                <span className="text-slate-500">Fund :</span>{' '}
-                <span className="font-semibold">{fundLabel(jev.fundCode)}</span>
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">JV No.:</span>{' '}
-                <span className="font-mono font-semibold">
+        {/*
+          Patch 152: Fund and Date at the left; JV No. at the far right, its
+          label and value in their own columns so the number lines up.
+        */}
+        <div className="mb-2 flex items-start justify-between gap-6">
+          <table style={{ width: 'auto' }}>
+            <tbody>
+              <tr>
+                <td className="py-0.5 text-slate-500" style={{ paddingRight: '0.5rem' }}>
+                  Fund:
+                </td>
+                <td className="py-0.5 font-semibold">{fundLabel(jev.fundCode)}</td>
+              </tr>
+              <tr>
+                <td className="py-0.5 text-slate-500" style={{ paddingRight: '0.5rem' }}>
+                  Date:
+                </td>
+                <td className="py-0.5 font-semibold">{formatShortDate(jev.jevDate)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <table className="shrink-0" style={{ width: 'auto' }}>
+            <tbody>
+              <tr>
+                <td className="py-0.5 text-slate-500" style={{ paddingRight: '0.5rem' }}>
+                  JV No.:
+                </td>
+                <td className="py-0.5 font-mono font-semibold">
                   {hasJevNumber(jev.jevNo) ? jev.jevNo : ''}
-                </span>
-              </td>
-            </tr>
-            <tr>
-              <td className="py-0.5" colSpan={2}>
-                <span className="text-slate-500">Date :</span>{' '}
-                <span className="font-semibold">{formatShortDate(jev.jevDate)}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <table className="w-full border-collapse">
           <thead>

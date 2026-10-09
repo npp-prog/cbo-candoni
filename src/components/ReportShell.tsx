@@ -132,8 +132,12 @@ export function ReportHeading({ meta, seal }: { meta: ReportMeta; seal?: boolean
   */
   if (seal) {
     return (
-      <header className="report-header mb-5 grid grid-cols-[5rem_1fr_5rem] items-center gap-2">
-        <Seal className="h-16 w-16 justify-self-start" />
+      /*
+        Patch 152: the seal larger - 6rem, about 23mm on paper - in a column
+        sized to it, level with the whole heading block.
+      */
+      <header className="report-header mb-5 grid grid-cols-[7rem_1fr_7rem] items-center gap-2">
+        <Seal className="h-24 w-24 justify-self-start" />
         <HeadingText meta={meta} />
         <span aria-hidden="true" />
       </header>

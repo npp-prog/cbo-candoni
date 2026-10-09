@@ -771,7 +771,10 @@ export const engine = {
       agingDate?: IsoDate | null;
     }>;
   }) =>
-    call<typeof p, { jevId: Id; jevNo: string; lineCount: number; total: number }>(
+    call<
+      typeof p,
+      { jevId: Id; jevNo: string; lineCount: number; total: number; payableVouchers?: number }
+    >(
       'postOpeningBalances',
       p,
     ),

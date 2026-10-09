@@ -91,6 +91,12 @@ interface Row {
    * aging report counts from, and it is the one fact only the old system holds.
    */
   since: string;
+  /**
+   * Patch 152: what the balance is for - "Office supplies, August 2025". It is
+   * the line's explanation in the opening entry, and for an Accounts Payable
+   * the particulars of the unpaid voucher it becomes.
+   */
+  particulars: string;
   /** Set when the code is not in the chart of accounts. */
   problem?: string;
 }
@@ -132,6 +138,7 @@ const blankRow = (): Row => ({
   party: '',
   reference: '',
   since: '',
+  particulars: '',
 });
 
 export default function OpeningBalances() {
@@ -246,6 +253,9 @@ export default function OpeningBalances() {
           find(raw, [/reference/i, /^ref/i, /dv\s*no/i, /voucher/i, /^document/i]) ?? '',
         ).trim();
         const since = normaliseDate(find(raw, [/date/i, /since/i, /granted/i, /incurred/i]));
+        const particulars = String(
+          find(raw, [/particular/i, /description/i, /nature/i, /explanation/i, /purpose/i]) ?? '',
+        ).trim();
 
         imported.push({
           key: nextKey++,
@@ -269,6 +279,7 @@ export default function OpeningBalances() {
           party,
           reference,
           since,
+          particulars,
           problem: !account
             ? 'Not in the Chart of Accounts'
             : account.postable === false
@@ -320,11 +331,15 @@ export default function OpeningBalances() {
           subsidiaryName: r.subsidiaryId ? r.subsidiaryName : null,
           referenceNo: r.reference || null,
           agingDate: r.since || null,
+          particulars: r.particulars.trim() || undefined,
         })),
       });
       toast.success(
         `Opening balances posted as JEV ${res.jevNo}`,
-        `${res.lineCount} accounts, ${formatPeso(res.total)}. They are in the General Ledger and will appear on every report.`,
+        `${res.lineCount} accounts, ${formatPeso(res.total)}. They are in the General Ledger and will appear on every report.` +
+          (res.payableVouchers
+            ? ` ${res.payableVouchers} accounts payable ${res.payableVouchers === 1 ? 'is' : 'are'} now unpaid voucher${res.payableVouchers === 1 ? '' : 's'} in Treasury's Disbursements for Payment.`
+            : ''),
       );
     } catch (err) {
       toast.error('Could not post', err instanceof Error ? err.message : String(err));
@@ -497,15 +512,19 @@ export default function OpeningBalances() {
               <span className="text-xs text-slate-500">
                 The sheet needs a column for the account code and one each for debit and credit.
                 For payables, receivables and cash advances, add a column naming the subsidiary ledger account, one for
-                the reference document, and one for the date it arose - that date is what the aging
+                the reference document, one for the date it arose - that date is what the aging
                 report counts from, and it is the one thing the old system knows that cannot be
-                worked out later. Other columns are ignored.
+                worked out later - and one for the particulars. Other columns are ignored.
+                Each Accounts Payable line becomes an unpaid voucher in Treasury&apos;s
+                Disbursements for Payment, numbered by its Reference, so it can be paid by check
+                or ADA.
               </span>
             </div>
           </Card>
 
           <Card className="mt-4">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: '72rem' }}>
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase text-slate-600">
                   <th className="px-2 py-2 text-left" style={{ width: '10rem' }}>
@@ -527,6 +546,9 @@ export default function OpeningBalances() {
                   </th>
                   <th className="px-2 py-2 text-left" style={{ width: '9rem' }}>
                     Outstanding since
+                  </th>
+                  <th className="px-2 py-2 text-left" style={{ minWidth: '14rem' }}>
+                    Particulars
                   </th>
                   <th className="px-2 py-2 text-right" style={{ width: '11rem' }}>
                     Debit
@@ -609,6 +631,13 @@ export default function OpeningBalances() {
                     </td>
                     <td className="px-2 py-1">
                       <TextInput
+                        value={row.particulars}
+                        onChange={(e) => setRow(row.key, { particulars: e.target.value })}
+                        placeholder="Office supplies, Aug 2025"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <TextInput
                         value={row.debit ? (row.debit / 100).toFixed(2) : ''}
                         onChange={(e) => setRow(row.key, { debit: parsePeso(e.target.value) ?? 0, credit: 0 })}
                         className="text-right"
@@ -638,7 +667,7 @@ export default function OpeningBalances() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-300 font-semibold">
-                  <td className="px-2 py-2" colSpan={5}>
+                  <td className="px-2 py-2" colSpan={6}>
                     {filled.length} account{filled.length === 1 ? '' : 's'}
                   </td>
                   <td className="px-2 py-2 text-right">
@@ -651,6 +680,7 @@ export default function OpeningBalances() {
                 </tr>
               </tfoot>
             </table>
+            </div>
 
             {problems.length > 0 && (
               <Alert tone="warning" className="mt-3">
