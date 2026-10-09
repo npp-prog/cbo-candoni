@@ -184,7 +184,6 @@ export default function Appropriations() {
   const toast = useToast();
   const { data, loading, error } = useAppropriations(fiscalYear, fundCode);
 
-  const [showForm, setShowForm] = useState(false);
   /* Patch 119: the ordinance is recorded first, as a document of its own. */
   const [recordingOrdinance, setRecordingOrdinance] = useState<
     boolean | { kind: ActKind; reference: string; date: string }
@@ -522,19 +521,16 @@ export default function Appropriations() {
         breadcrumbs={[{ label: 'Budget' }, { label: 'Appropriations' }]}
         actions={
           can('budget', 'create') && (
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => navigate('/budget/appropriations/upload')}>
-                Upload ordinance
-              </Button>
-              {/* A stray bracket sat here and rendered a literal "(" between
-                  the two buttons. */}
-              <Button variant="secondary" size="sm" onClick={() => setShowForm(true)}>
-                Record appropriation
-              </Button>
-              <Button variant="primary" size="sm" onClick={() => setRecordingOrdinance(true)}>
-                Record an authority
-              </Button>
-            </div>
+            /*
+              Patch 127: one way in. "Upload ordinance" and "Record
+              appropriation" are gone from here - both are inside the act
+              now (Upload lines from the annex, Add a line, Prepare the
+              augmentation or realignment), which is where a line has to
+              be recorded to be approved at all since patch 123.
+            */
+            <Button variant="primary" size="sm" onClick={() => setRecordingOrdinance(true)}>
+              Record an authority
+            </Button>
           )
         }
       />
@@ -817,7 +813,7 @@ export default function Appropriations() {
         error={error}
         searchPlaceholder="Account, office or authority reference"
         emptyTitle="No appropriations recorded"
-        emptyMessage={`Record the enacted budget for the ${fundLabel(fundCode)} before releasing allotments.`}
+        emptyMessage={`Record the enacted budget for the ${fundLabel(fundCode)} before releasing allotments - Record an authority, then its lines inside it.`}
         exportMeta={{
           title: 'Appropriation Ledger',
           fundLabel: fundLabel(fundCode),
@@ -952,29 +948,6 @@ export default function Appropriations() {
         />
       )}
 
-      {showForm && (
-        <AppropriationForm
-          fiscalYear={fiscalYear}
-          fundCode={fundCode}
-          onClose={() => setShowForm(false)}
-          onSaved={() => {
-            setShowForm(false);
-            toast.success(
-              'Saved as a draft',
-              'Nothing is authority until it is approved.',
-            );
-          }}
-          actor={
-            user
-              ? actorStamp({
-                  uid: user.uid,
-                  name: profile?.displayName ?? user.email ?? user.uid,
-                  position: profile?.position,
-                })
-              : null
-          }
-        />
-      )}
 
       <ConfirmDialog
         open={Boolean(approving)}
@@ -1430,7 +1403,7 @@ export function AppropriationForm({
       if (editing) {
         toast.error(
           'A draft cannot become a realignment',
-          'Close this, then record the realignment from Record appropriation.',
+          'Close this, then prepare the realignment from its ordinance under Authorities.',
         );
         return;
       }
