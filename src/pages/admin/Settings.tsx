@@ -9,6 +9,7 @@ import { upsertMaster, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { ENVIRONMENT } from '@/lib/firebase';
 import { ROLES, ROLE_LABELS, type Role, type SystemSettings } from '@/types/system';
+import { BudgetRepairCard } from './BudgetRepairCard';
 
 /**
  * System settings.
@@ -393,6 +394,8 @@ export default function Settings() {
             ))}
           </div>
         </Card>
+
+        {hasRole('SUPER_ADMIN') && <BudgetRepairCard />}
 
         <Card title="Environment">
           <dl className="grid gap-4 text-sm sm:grid-cols-3">

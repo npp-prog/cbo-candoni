@@ -14,6 +14,7 @@ import {
 import { recordTransition, notifyInTransaction } from '../lib/audit';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
 import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
+import { allocateDvShares, obligationLineKey } from '../lib/dvShares';
 import { checkDvCategory, checkDvMath } from '../lib/rules';
 import {
   createJevInTransaction,
@@ -490,22 +491,8 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       }
 
       for (const line of obligationIsTrust ? [] : obligation.lines ?? []) {
-        const key: BudgetKey = {
-          fiscalYear: line.fiscalYear ?? obligation.fiscalYear,
-          fundCode: line.fundCode ?? obligation.fundCode,
-          officeId: line.officeId,
-          responsibilityCenterId: line.responsibilityCenterId ?? null,
-          programId: line.programId ?? null,
-          projectId: line.projectId ?? null,
-          activityId: line.activityId ?? null,
-          fppCode: line.fppCode,
-          // The object code the APPROPRIATION carried, which is empty on a
-          // project line - never the object this line commits. On a third of
-          // the FY2025 ordinance those differ, and keying on the wrong one
-          // would look for a balance that does not exist.
-          accountCode: line.appropriatedAccountCode ?? '',
-        };
-        obligationBalances.set(line.lineNo, await readBudgetBalance(tx, key));
+        // Keyed on the object the APPROPRIATION carried - see obligationLineKey.
+        obligationBalances.set(line.lineNo, await readBudgetBalance(tx, obligationLineKey(obligation, line)));
       }
 
       if (obligationIsTrust) {
@@ -678,54 +665,30 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     // the SAOB continues to show a coherent picture per account.
     if (obligation) {
       const obr = obligation;
-      const obrTotal = obr.totalAmount || 1;
-      let allocated = 0;
-      const lines = obr.lines ?? [];
 
       /** Trust Fund only: what this voucher pays per programme. */
       const trustShares = new Map<string, number>();
 
-      lines.forEach((line, idx) => {
-        const isLast = idx === lines.length - 1;
-        // The last line absorbs the rounding remainder so the allocation sums
-        // exactly to the voucher amount.
-        const share = isLast
-          ? dv.grossAmount - allocated
-          : Math.round((line.amount / obrTotal) * dv.grossAmount);
-        allocated += share;
-
+      // The same allocation cancelDv, unapproveDv and the nightly verifier
+      // use - patch 120. It must be, or the shares given back differ from the
+      // shares taken by a centavo and the budget line drifts.
+      for (const { line, share } of allocateDvShares(obr.lines ?? [], obr.totalAmount, dv.grossAmount)) {
         if (obligationIsTrust) {
           const programId = String(line.trustProgramId ?? '').trim();
           if (programId) {
             trustShares.set(programId, (trustShares.get(programId) ?? 0) + share);
           }
-          return;
+          continue;
         }
-
-        const key: BudgetKey = {
-          fiscalYear: line.fiscalYear ?? obr.fiscalYear,
-          fundCode: line.fundCode ?? obr.fundCode,
-          officeId: line.officeId,
-          responsibilityCenterId: line.responsibilityCenterId ?? null,
-          programId: line.programId ?? null,
-          projectId: line.projectId ?? null,
-          activityId: line.activityId ?? null,
-          fppCode: line.fppCode,
-          // The object code the APPROPRIATION carried, which is empty on a
-          // project line - never the object this line commits. On a third of
-          // the FY2025 ordinance those differ, and keying on the wrong one
-          // would look for a balance that does not exist.
-          accountCode: line.appropriatedAccountCode ?? '',
-        };
 
         applyBudgetDelta(
           tx,
-          key,
+          obligationLineKey(obr, line),
           obligationBalances.get(line.lineNo)!,
           { disbursed: share },
           { officeName: line.officeName, accountName: line.accountName, expenseClass: line.expenseClass },
         );
-      });
+      }
 
       /*
        * A trust voucher moves the programme and nothing in the budget.
@@ -1292,30 +1255,51 @@ async function readDvConsumption(
   obrSnap: FirebaseFirestore.DocumentSnapshot | null;
   trust: Map<string, TrustProgramData>;
   shares: Map<string, number>;
+  /**
+   * Every budget line the voucher's approval added to, with its stored
+   * balance and the share it was given - read here so the write phase can
+   * take exactly that share back. Empty for a trust voucher, which moved
+   * programmes and no budget line.
+   */
+  budgetLines: Array<{
+    key: BudgetKey;
+    balance: Awaited<ReturnType<typeof readBudgetBalance>>;
+    share: number;
+    labels: { officeName: string; accountName: string; expenseClass: string };
+  }>;
 }> {
   const trust = new Map<string, TrustProgramData>();
   const shares = new Map<string, number>();
+  const budgetLines: Awaited<ReturnType<typeof readDvConsumption>>['budgetLines'] = [];
 
-  if (!dv.obligationId) return { obrSnap: null, trust, shares };
+  if (!dv.obligationId) return { obrSnap: null, trust, shares, budgetLines };
 
   const obrSnap = await tx.get(db.collection(COL.obligations).doc(dv.obligationId));
-  if (!obrSnap.exists) return { obrSnap: null, trust, shares };
+  if (!obrSnap.exists) return { obrSnap: null, trust, shares, budgetLines };
 
   const obr = obrSnap.data() as ObligationDoc;
   const isTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
 
-  if (isTrust) {
-    const lines = obr.lines ?? [];
-    const obrTotal = obr.totalAmount || 1;
-    let allocated = 0;
-    lines.forEach((line, idx) => {
-      const share =
-        idx === lines.length - 1
-          ? dv.grossAmount - allocated
-          : Math.round((line.amount / obrTotal) * dv.grossAmount);
-      allocated += share;
+  for (const { line, share } of allocateDvShares(obr.lines ?? [], obr.totalAmount, dv.grossAmount)) {
+    if (isTrust) {
       const programId = String(line.trustProgramId ?? '').trim();
       if (programId) shares.set(programId, (shares.get(programId) ?? 0) + share);
+      continue;
+    }
+    /*
+     * This read was missing. Cancelling an approved voucher gave the money
+     * back to the obligation and to the fund summary, and left the BUDGET
+     * LINE still showing it disbursed. Cancel the obligation after that and
+     * the registry read more disbursed than obligated - Neil's screenshot of
+     * 09 Oct 2026: obligations 37,000.00, disbursements 51,000.00, unpaid
+     * -14,000.00 on the Accountant's office supplies line.
+     */
+    const key = obligationLineKey(obr, line);
+    budgetLines.push({
+      key,
+      balance: await readBudgetBalance(tx, key),
+      share,
+      labels: { officeName: line.officeName, accountName: line.accountName, expenseClass: line.expenseClass },
     });
   }
 
@@ -1323,7 +1307,7 @@ async function readDvConsumption(
     trust.set(programId, await readTrustProgram(tx, programId));
   }
 
-  return { obrSnap, trust, shares };
+  return { obrSnap, trust, shares, budgetLines };
 }
 
 /** `sign` is -1 to give it all back, which is the only use today. */
@@ -1333,7 +1317,7 @@ function applyDvConsumption(
   read: Awaited<ReturnType<typeof readDvConsumption>>,
   sign: 1 | -1,
 ): void {
-  const { obrSnap, trust, shares } = read;
+  const { obrSnap, trust, shares, budgetLines } = read;
   if (!obrSnap?.exists) return;
 
   const obr = obrSnap.data() as ObligationDoc;
@@ -1341,6 +1325,11 @@ function applyDvConsumption(
 
   for (const [programId, share] of shares) {
     applyTrustDelta(tx, programId, trust.get(programId)!, { disbursed: sign * share });
+  }
+
+  // The budget lines: the same shares approval added, with the sign turned.
+  for (const { key, balance, share, labels } of budgetLines) {
+    applyBudgetDelta(tx, key, balance, { disbursed: sign * share }, labels);
   }
 
   if (!isTrust) {

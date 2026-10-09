@@ -1,20 +1,9 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 
-/**
- * The statuses in which an obligation has committed allotment.
- *
- * MUST match COMMITTED in src/lib/budgetPeriods.ts, less the pre-certification
- * ones this verifier never sees. Listed rather than derived because a
- * Firestore `in` needs literals - and checked against the client's list by
- * check-rules, because an obligation state missing from here is one the
- * nightly verification silently stops counting, which makes it report
- * discrepancies that are not there.
- */
-const COMMITTED_OBLIGATION_STATUSES = ['OBLIGATED', 'WITH_DV', 'PAID', 'CLOSED'];
 import { db, COL, REGION } from '../lib/firebase';
 import { todayPh } from '../lib/period';
-import { budgetKeyId } from '../lib/budget';
+import { rebuildBudgetFigures } from './budgetRebuild';
 
 /**
  * Scheduled integrity and monitoring jobs.
@@ -41,84 +30,12 @@ export const verifyBudgetBalances = onSchedule(
   async () => {
     const year = Number(todayPh().slice(0, 4));
 
-    const [appropriations, allotments, obligations] = await Promise.all([
-      db.collection(COL.appropriations).where('fiscalYear', '==', year).where('status', '==', 'APPROVED').get(),
-      db.collection(COL.allotments).where('fiscalYear', '==', year).where('status', '==', 'APPROVED').get(),
-      db.collection(COL.obligations).where('fiscalYear', '==', year).where('status', 'in', COMMITTED_OBLIGATION_STATUSES).get(),
-    ]);
-
-    type Rebuilt = {
-      appropriation: number;
-      allotment: number;
-      forLaterRelease: number;
-      obligated: number;
-      disbursed: number;
-    };
-    const rebuilt = new Map<string, Rebuilt>();
-    const bump = (key: string, field: keyof Rebuilt, amount: number) => {
-      const cur = rebuilt.get(key) ?? {
-        appropriation: 0,
-        allotment: 0,
-        forLaterRelease: 0,
-        obligated: 0,
-        disbursed: 0,
-      };
-      cur[field] += amount;
-      rebuilt.set(key, cur);
-    };
-
     /*
-     * The document id of a budget balance, derived by the SAME function the
-     * transactional writers use.
-     *
-     * This used to be a hand-written join of the key fields, and it fell one
-     * segment behind when the budget key gained the FPP code. Nothing failed
-     * and nothing was logged: the rebuilt ids simply stopped matching any
-     * stored id, `rebuilt.get(doc.id)` returned nothing, every balance was
-     * skipped by the `if (!r) continue` below, and the job reported a clean
-     * night every night while verifying not one figure.
-     *
-     * A second copy of a key derivation is the whole hazard here, so there is
-     * no second copy any more. If the key changes again, this follows it.
+     * The rebuild lives in ./budgetRebuild.ts, shared with the repair
+     * callable - patch 120 - so what the repair writes is exactly what this
+     * job checks the next night.
      */
-    const keyOf = (d: Record<string, unknown>) =>
-      budgetKeyId({
-        fiscalYear: d.fiscalYear as number,
-        fundCode: d.fundCode as string,
-        officeId: d.officeId as string,
-        responsibilityCenterId: (d.responsibilityCenterId as string | null) ?? null,
-        programId: (d.programId as string | null) ?? null,
-        projectId: (d.projectId as string | null) ?? null,
-        activityId: (d.activityId as string | null) ?? null,
-        fppCode: (d.fppCode as string) ?? '',
-        accountCode: (d.accountCode as string) ?? '',
-      });
-
-    for (const doc of appropriations.docs) bump(keyOf(doc.data()), 'appropriation', doc.data().amount ?? 0);
-    for (const doc of allotments.docs) {
-      const a = doc.data();
-      bump(keyOf(a), 'allotment', (a.amount as number) ?? 0);
-      // The hold the Allotment Release Order placed on the line. It is carried
-      // on the allotment document precisely so that it can be rebuilt here;
-      // a figure that moves the balance and has no source document is a figure
-      // this job cannot check.
-      bump(keyOf(a), 'forLaterRelease', (a.forLaterRelease as number) ?? 0);
-    }
-    for (const doc of obligations.docs) {
-      const o = doc.data();
-      const total = (o.totalAmount as number) ?? 0;
-      const disbursed = (o.disbursedAmount as number) ?? 0;
-      for (const line of (o.lines as Array<Record<string, unknown>>) ?? []) {
-        const share = total > 0 ? Math.round(((line.amount as number) / total) * disbursed) : 0;
-        // An obligation line is keyed on the object code the APPROPRIATION
-        // carried, not on the object being bought - they differ on every
-        // project line, where the appropriation named no object at all.
-        // `certifyObligation` keys it this way; so must the rebuild.
-        const key = keyOf({ ...line, accountCode: line.appropriatedAccountCode ?? '' });
-        bump(key, 'obligated', (line.amount as number) ?? 0);
-        bump(key, 'disbursed', share);
-      }
-    }
+    const rebuilt = await rebuildBudgetFigures(year);
 
     const stored = await db.collection(COL.budgetBalances).where('fiscalYear', '==', year).get();
     const discrepancies: Array<Record<string, unknown>> = [];
@@ -133,6 +50,13 @@ export const verifyBudgetBalances = onSchedule(
         ['allotmentReleased', (s.allotmentReleased as number) ?? 0, r.allotment],
         ['forLaterRelease', (s.forLaterRelease as number) ?? 0, r.forLaterRelease],
         ['obligated', (s.obligated as number) ?? 0, r.obligated],
+        /*
+         * Rebuilt every night since the job was written and never compared.
+         * The one figure that was drifting was the one not on this list, so
+         * the job reported a clean night while the registry showed unpaid
+         * obligations below zero.
+         */
+        ['disbursed', (s.disbursed as number) ?? 0, r.disbursed],
       ];
 
       for (const [field, storedValue, rebuiltValue] of checks) {

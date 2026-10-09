@@ -206,6 +206,7 @@ if (!clientKey || !serverKey) {
 const HAND_ROLLED = /\.join\(\s*['"`]__['"`]\s*\)/;
 const KEY_CONSUMERS = [
   'functions/src/admin/scheduled.ts',
+  'functions/src/admin/budgetRebuild.ts',
   'functions/src/budget/aro.ts',
   'functions/src/budget/obligations.ts',
   'functions/src/budget/import.ts',
@@ -425,7 +426,9 @@ if (payeesRule && writersRule && existsSync(payeesLibPath)) {
 // fault is in the query. Adding WITH_DV would have done exactly that.
 
 const periodsTs = resolve(root, 'src/lib/budgetPeriods.ts');
-const scheduledTs = resolve(root, 'functions/src/admin/scheduled.ts');
+// Patch 120: the rebuild, and the list with it, moved to budgetRebuild.ts,
+// shared by the nightly verifier and the repair callable.
+const scheduledTs = resolve(root, 'functions/src/admin/budgetRebuild.ts');
 
 if (existsSync(periodsTs) && existsSync(scheduledTs)) {
   const notCommitted = readFileSync(periodsTs, 'utf8').match(
@@ -437,7 +440,15 @@ if (existsSync(periodsTs) && existsSync(scheduledTs)) {
   const enums = readFileSync(resolve(root, 'src/types/enums.ts'), 'utf8');
   const statuses = enums.match(/export const OBLIGATION_STATUSES = \[([\s\S]*?)\] as const;/);
 
-  if (notCommitted && serverList && statuses) {
+  if (!notCommitted || !serverList || !statuses) {
+    // This used to pass quietly when a list could not be found - a guard
+    // that cannot fail out loud. It fails now.
+    failures.push(
+      'The committed-status lists could not be read (budgetPeriods.ts NOT_COMMITTED, ' +
+        'budgetRebuild.ts COMMITTED_OBLIGATION_STATUSES, enums.ts OBLIGATION_STATUSES). ' +
+        'If one moved, point check-rules at it.',
+    );
+  } else {
     const names = (block) =>
       block
         .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -458,14 +469,14 @@ if (existsSync(periodsTs) && existsSync(scheduledTs)) {
 
     if (missing.length > 0) {
       failures.push(
-        `functions/src/admin/scheduled.ts does not count ${missing.join(', ')} as a committed ` +
+        `functions/src/admin/budgetRebuild.ts does not count ${missing.join(', ')} as a committed ` +
           'obligation, but the registries do. The nightly verification would stop counting ' +
           'those obligations and report budget balance discrepancies that are not there.',
       );
     }
     if (extra.length > 0) {
       failures.push(
-        `functions/src/admin/scheduled.ts counts ${extra.join(', ')}, which the registries do not.`,
+        `functions/src/admin/budgetRebuild.ts counts ${extra.join(', ')}, which the registries do not.`,
       );
     }
     if (missing.length === 0 && extra.length === 0) {
@@ -2956,6 +2967,56 @@ if (existsSync(functionsSrc)) {
   }
   if (failures.length === before) {
     console.log('ordinance: recorded, attached, printed on LBP Form No. 2, approved whole');
+  }
+}
+
+// --- 47. What a voucher takes from a budget line, its cancellation gives back
+
+/*
+ * Patch 120: approving a voucher adds its share to each budget line's
+ * `disbursed`. Cancelling or un-approving it gave the money back to the
+ * obligation and to the fund summary - and not to the budget line, so the
+ * registry showed more disbursed than obligated and an unpaid figure below
+ * zero. The nightly verifier rebuilt `disbursed` and never compared it.
+ *
+ * Three things this refuses: a dv.ts whose reversal (applyDvConsumption) does
+ * not write the budget line; a share allocation hand-rolled anywhere outside
+ * lib/dvShares.ts, which is how approval and reversal come to differ by a
+ * centavo; and a verifier that leaves `disbursed` off its comparison.
+ */
+{
+  const before = failures.length;
+  const dvTs = resolve(root, 'functions/src/accounting/dv.ts');
+  if (existsSync(dvTs)) {
+    const src = readFileSync(dvTs, 'utf8');
+    const reversal = src.match(/function applyDvConsumption\([\s\S]*?\n\}/);
+    if (!reversal || !/applyBudgetDelta\(/.test(reversal[0])) {
+      failures.push(
+        'functions/src/accounting/dv.ts: applyDvConsumption no longer gives the budget line back what the voucher took (patch 120).',
+      );
+    }
+  }
+  const HAND_ROLLED_SHARE = /Math\.round\(\s*\(\s*line\.amount\s*\/\s*\w+\s*\)\s*\*/;
+  for (const rel of [
+    'functions/src/accounting/dv.ts',
+    'functions/src/admin/scheduled.ts',
+    'functions/src/admin/budgetRebuild.ts',
+  ]) {
+    const full = resolve(root, rel);
+    if (existsSync(full) && HAND_ROLLED_SHARE.test(readFileSync(full, 'utf8'))) {
+      failures.push(`${rel} allocates a voucher over obligation lines by hand. Use allocateDvShares from lib/dvShares.ts.`);
+    }
+  }
+  const sched = resolve(root, 'functions/src/admin/scheduled.ts');
+  if (existsSync(sched)) {
+    const src = readFileSync(sched, 'utf8');
+    const checks = src.match(/const checks: Array<\[string, number, number\]> = \[([\s\S]*?)\];/);
+    if (!checks || !/\['disbursed'/.test(checks[1])) {
+      failures.push('functions/src/admin/scheduled.ts: the nightly verifier no longer compares `disbursed`.');
+    }
+  }
+  if (failures.length === before) {
+    console.log('vouchers: a cancelled voucher gives its budget line back, one allocation, verifier compares disbursed');
   }
 }
 

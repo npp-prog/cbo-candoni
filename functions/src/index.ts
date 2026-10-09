@@ -109,6 +109,7 @@ export {
 export { closePeriod, reopenPeriod, lockPeriod } from './admin/periods';
 export { setUserRoles, createUserAccount, onBeforeSignIn, recordExport } from './admin/users';
 export { lockAttachments } from './admin/attachments';
+export { repairBudgetDisbursed } from './admin/budgetRebuild';
 
 // --- Scheduled integrity and monitoring --------------------------------------
 export {

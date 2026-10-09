@@ -774,6 +774,32 @@ export const engine = {
       p,
     ),
 
+  /**
+   * Patch 120: put every budget line's `disbursed` back to what its
+   * obligations say. `apply: false` only reports the lines that differ.
+   * Super Administrator only; every line changed is in the audit trail.
+   */
+  repairBudgetDisbursed: (p: { fiscalYear: number; apply: boolean }) =>
+    call<
+      typeof p,
+      {
+        fiscalYear: number;
+        applied: boolean;
+        repaired?: number;
+        drifts: Array<{
+          budgetKey: string;
+          fundCode: string;
+          officeName: string;
+          fppCode: string;
+          accountCode: string;
+          accountName: string;
+          obligated: Centavos;
+          stored: Centavos;
+          rebuilt: Centavos;
+        }>;
+      }
+    >('repairBudgetDisbursed', p),
+
   setUserRoles: (p: {
     uid?: Id;
     email?: string;
