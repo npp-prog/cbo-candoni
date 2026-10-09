@@ -209,17 +209,14 @@ export default function IndexOfPayments() {
             ? `${payeeName} - fiscal year ${fiscalYear}`
             : `For the fiscal year ${fiscalYear}`,
         }}
-        footer={
-          <tr>
-            <td className="cbo-td font-medium" colSpan={6}>
-              Total - {rows.length} payments
-            </td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.gross, { symbol: false })}</td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.deductions, { symbol: false })}</td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.net, { symbol: false })}</td>
-            <td className="cbo-td" />
-          </tr>
-        }
+        totals={{
+          label: `Total - ${rows.length} payments`,
+          values: {
+            gross: formatPeso(totals.gross, { symbol: false }),
+            deductions: formatPeso(totals.deductions, { symbol: false }),
+            net: formatPeso(totals.net, { symbol: false }),
+          },
+        }}
       />
     </div>
   );

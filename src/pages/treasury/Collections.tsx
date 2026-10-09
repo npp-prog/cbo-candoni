@@ -248,15 +248,10 @@ export default function Collections() {
             ? `For the month of ${monthName(period)} ${fiscalYear}`
             : `For the fiscal year ${fiscalYear}`,
         }}
-        footer={
-          <tr>
-            <td className="cbo-td font-medium" colSpan={4}>
-              Total - {rows.filter((c) => c.status !== 'CANCELLED').length} receipts
-            </td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(total, { symbol: false })}</td>
-            <td className="cbo-td" colSpan={2} />
-          </tr>
-        }
+        totals={{
+          label: `Total - ${rows.filter((c) => c.status !== 'CANCELLED').length} receipts`,
+          values: { amount: formatPeso(total, { symbol: false }) },
+        }}
       />
 
       {viewing && (

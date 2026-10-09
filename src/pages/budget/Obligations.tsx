@@ -207,18 +207,15 @@ export default function Obligations() {
             ? `For the month of ${monthName(period)} ${fiscalYear}`
             : `For the fiscal year ${fiscalYear}`,
         }}
-        footer={
-          <tr>
-            <td className="cbo-td font-medium" colSpan={5}>
-              Total ({rows.filter((o) => o.status !== 'CANCELLED').length} obligations)
-            </td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.obligated, { symbol: false })}</td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.vouchered, { symbol: false })}</td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.paid, { symbol: false })}</td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.unpaid, { symbol: false })}</td>
-            <td className="cbo-td" />
-          </tr>
-        }
+        totals={{
+          label: `Total (${rows.filter((o) => o.status !== 'CANCELLED').length} obligations)`,
+          values: {
+            totalAmount: formatPeso(totals.obligated, { symbol: false }),
+            disbursedAmount: formatPeso(totals.vouchered, { symbol: false }),
+            paidAmount: formatPeso(totals.paid, { symbol: false }),
+            unpaid: formatPeso(totals.unpaid, { symbol: false }),
+          },
+        }}
       />
     </div>
   );

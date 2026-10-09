@@ -298,15 +298,16 @@ export default function Disbursements() {
             ? `For the month of ${monthName(period)} ${fiscalYear}`
             : `For the fiscal year ${fiscalYear}`,
         }}
-        footer={
-          <tr>
-            <td className="cbo-td font-medium" colSpan={4}>
-              Total ({rows.filter((d) => d.status !== 'CANCELLED').length} vouchers)
-            </td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.net, { symbol: false })}</td>
-            <td className="cbo-td" colSpan={2} />
-          </tr>
-        }
+        totals={{
+          label: `Total (${rows.filter((d) => d.status !== 'CANCELLED').length} vouchers)`,
+          // Gross and deductions are optional columns: their totals appear
+          // when they are shown in Columns.
+          values: {
+            gross: formatPeso(totals.gross, { symbol: false }),
+            deductions: formatPeso(totals.deductions, { symbol: false }),
+            net: formatPeso(totals.net, { symbol: false }),
+          },
+        }}
       />
     </div>
   );

@@ -282,21 +282,20 @@ export default function TrustPrograms() {
           searchPlaceholder="Code, programme, source agency or reference"
           emptyTitle="No trust programme has been recorded"
           emptyMessage="Until a programme exists, no Funding Utilization Request in the Trust Fund can be certified — there is nothing for it to be charged to."
-          footer={
-            programs.data.length > 0 ? (
-              <tr className="border-t-2 border-navy-800 font-semibold">
-                <td className="cbo-td" colSpan={2}>
-                  TOTAL
-                </td>
-                <td className="cbo-td cbo-amount">{formatAmount(totals.programmed)}</td>
-                <td className="cbo-td cbo-amount">{formatAmount(totals.received)}</td>
-                <td className="cbo-td cbo-amount">{formatAmount(totals.utilised)}</td>
-                <td className="cbo-td cbo-amount">
-                  {formatAmount(totals.programmed - totals.utilised)}
-                </td>
-                <td className="cbo-td" />
-              </tr>
-            ) : undefined
+          totals={
+            programs.data.length > 0
+              ? {
+                  label: 'TOTAL',
+                  className: 'border-t-2 border-navy-800 font-semibold',
+                  values: {
+                    programmed: formatAmount(totals.programmed),
+                    received: formatAmount(totals.received),
+                    utilised: formatAmount(totals.utilised),
+                    disbursed: formatAmount(totals.disbursed),
+                    available: formatAmount(totals.programmed - totals.utilised),
+                  },
+                }
+              : null
           }
         />
       </Card>

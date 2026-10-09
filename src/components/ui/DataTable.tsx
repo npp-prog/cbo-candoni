@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { Button } from './Button';
 import { EmptyState, Spinner } from './Layout';
 import { exportCsv, exportXlsx, printReport, type ExportColumn, type ReportMeta } from '@/lib/export';
+import { totalsLayout } from './totalsRow';
 
 /**
  * The table every register and listing in CFMS is built on.
@@ -55,8 +56,17 @@ interface Props<T> {
   pageSize?: number;
   /** Enables the export and print buttons. */
   exportMeta?: ReportMeta;
-  /** A totals row rendered at the foot of the table. */
-  footer?: ReactNode;
+  /**
+   * The totals row. Name the column each total belongs to; the table lays it
+   * out against the columns on screen, so it stays aligned when a column is
+   * hidden or shown (patch 122). There is no free-form footer any more: a
+   * hand-counted colSpan is what put the totals under the wrong columns.
+   */
+  totals?: {
+    label: ReactNode;
+    values: Partial<Record<string, ReactNode>>;
+    className?: string;
+  } | null;
   dense?: boolean;
   className?: string;
 }
@@ -75,7 +85,7 @@ export function DataTable<T>({
   emptyAction,
   pageSize = 25,
   exportMeta,
-  footer,
+  totals,
   dense,
   className,
 }: Props<T>) {
@@ -326,7 +336,11 @@ export function DataTable<T>({
                 </tr>
               ))}
             </tbody>
-            {footer && <tfoot className="bg-slate-50 font-medium">{footer}</tfoot>}
+            {totals && (
+              <tfoot className="bg-slate-50 font-medium">
+                <TotalsRow columns={visibleColumns} allKeys={columns.map((c) => c.key)} totals={totals} dense={dense} />
+              </tfoot>
+            )}
           </table>
         </div>
       )}
@@ -357,5 +371,56 @@ export function DataTable<T>({
         </div>
       )}
     </div>
+  );
+}
+
+function TotalsRow<T>({
+  columns,
+  allKeys,
+  totals,
+  dense,
+}: {
+  columns: Column<T>[];
+  allKeys: string[];
+  totals: NonNullable<Props<T>['totals']>;
+  dense?: boolean;
+}) {
+  const keys = Object.keys(totals.values).filter((k) => totals.values[k] !== undefined);
+  // A total named after a column that does not exist would simply vanish.
+  // Say so where a developer will see it.
+  const unknown = keys.filter((k) => !allKeys.includes(k));
+  if (unknown.length > 0) {
+    console.error(`DataTable totals name columns that do not exist: ${unknown.join(', ')}`);
+  }
+  const layout = totalsLayout(
+    columns.map((c) => c.key),
+    keys,
+  );
+  const byKey = new Map(columns.map((c) => [c.key, c]));
+  return (
+    <tr className={totals.className}>
+      {layout.labelSpan > 0 && (
+        <td className={clsx('cbo-td font-medium', dense && 'py-1.5')} colSpan={layout.labelSpan}>
+          {totals.label}
+        </td>
+      )}
+      {layout.cells.map((key) => {
+        const col = byKey.get(key)!;
+        return (
+          <td
+            key={key}
+            className={clsx(
+              'cbo-td',
+              dense && 'py-1.5',
+              (col.kind === 'amount' || col.kind === 'number' || col.align === 'right') && 'text-right',
+              col.kind === 'amount' && 'cbo-amount font-semibold',
+              col.align === 'center' && 'text-center',
+            )}
+          >
+            {totals.values[key] ?? null}
+          </td>
+        );
+      })}
+    </tr>
   );
 }

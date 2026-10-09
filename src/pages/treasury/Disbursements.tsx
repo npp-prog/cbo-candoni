@@ -170,18 +170,10 @@ export default function TreasuryDisbursements() {
         emptyTitle="Nothing waiting to be paid"
         emptyMessage="A voucher appears here once the Municipal Accountant approves it. One that already carries a check or an advice has been paid and is in the registers."
         exportMeta={{ title: 'CFMS Disbursements for Payment' }}
-        footer={
-          rows.length > 0 ? (
-            <tr className="bg-slate-50 font-medium">
-              <td className="cbo-td" colSpan={6}>
-                Total payable
-              </td>
-              <td className="cbo-td cbo-amount font-semibold text-navy-900">
-                {formatPeso(total, { symbol: false })}
-              </td>
-              <td className="cbo-td" />
-            </tr>
-          ) : null
+        totals={
+          rows.length > 0
+            ? { label: 'Total payable', values: { netAmount: formatPeso(total, { symbol: false }) } }
+            : null
         }
       />
 
