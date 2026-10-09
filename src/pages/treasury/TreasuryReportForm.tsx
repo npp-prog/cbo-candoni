@@ -10,6 +10,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { reportSerials } from '@/lib/reportSerials';
+import { JevLink } from '@/components/JevLink';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import { FormPrintStyle, printableHeightMm } from '@/components/print/FormPrintStyle';
 import { useFitRows } from '@/components/print/fitRows';
@@ -474,7 +475,8 @@ export default function TreasuryReportForm() {
 
         {report.jevNo && (
           <p className="mt-2 text-[9px] text-slate-500">
-            Taken up in the books as JV <span className="font-mono">{report.jevNo}</span>.
+            Taken up in the books as JV{' '}
+            <JevLink jevId={report.jevId} jevNo={report.jevNo} className="font-mono" />.
           </p>
         )}
       </div>

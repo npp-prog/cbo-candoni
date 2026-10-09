@@ -48,6 +48,7 @@ import {
 import type { Centavos, PeriodNo } from '@/types/common';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { BUDGET_REPORT_TABS } from '@/layout/sections';
+import { JevLink } from '@/components/JevLink';
 
 /**
  * Statement of Receipts and Expenditures.
@@ -146,6 +147,15 @@ export default function Sre() {
   const mapping: SreMapping = useMemo(() => mappingDoc.data?.lines ?? {}, [mappingDoc.data]);
   const [draft, setDraft] = useState<SreMapping | null>(null);
   const working = draft ?? mapping;
+
+  /* Patch 150: the JEV numbers on the reconciliation open their entries. */
+  const jevIdByNo = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of [...gf.data, ...sef.data, ...tf.data]) {
+      if (e.jevNo && e.jevId) m.set(e.jevNo, e.jevId);
+    }
+    return m;
+  }, [gf.data, sef.data, tf.data]);
 
   const entries = useMemo<SreEntry[]>(
     () =>
@@ -776,7 +786,14 @@ export default function Sre() {
                         <td className="px-2 py-1.5 text-right font-mono tabular font-semibold">
                           {formatPeso(r.difference, { symbol: false })}
                         </td>
-                        <td className="px-2 py-1.5 font-mono">{r.jevNos.join(', ')}</td>
+                        <td className="px-2 py-1.5 font-mono">
+                          {r.jevNos.map((no, k) => (
+                            <span key={no}>
+                              {k > 0 ? ', ' : ''}
+                              <JevLink jevId={jevIdByNo.get(no)} jevNo={no} />
+                            </span>
+                          ))}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

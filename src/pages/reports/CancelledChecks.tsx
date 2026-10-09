@@ -63,7 +63,8 @@ export default function CancelledChecks() {
 
   return (
     <ReportShell
-      seal
+      /* Patch 150: A4 landscape, fitted to the width, the seal at the left. */
+      printLayout="landscape"
       meta={{
         title: 'Report of Cancelled Checks',
         fundLabel: fundLabel(fundCode),

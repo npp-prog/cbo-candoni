@@ -13,6 +13,7 @@ import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
+import { JevLink } from '@/components/JevLink';
 
 /**
  * Cash advance monitoring.
@@ -202,10 +203,14 @@ export default function CashAdvances() {
         <Alert tone="warning" title="Advances with no accountable officer" className="mb-4">
           {unassigned.length} posting{unassigned.length === 1 ? '' : 's'} to an advance account
           name{unassigned.length === 1 ? 's' : ''} no officer as subsidiary (
-          {unassigned
-            .slice(0, 6)
-            .map((e) => `JEV ${e.jevNo}`)
-            .join(', ')}
+          {unassigned.slice(0, 6).map((e, i) => (
+            <span key={e.id}>
+              {i > 0 ? ', ' : ''}
+              <JevLink jevId={e.jevId} jevNo={e.jevNo}>
+                JEV {e.jevNo}
+              </JevLink>
+            </span>
+          ))}
           ). Nobody can liquidate {unassigned.length === 1 ? 'it' : 'them'} until the entry names
           one - correct the entry in the Journal Entries Register.
         </Alert>

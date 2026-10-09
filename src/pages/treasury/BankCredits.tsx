@@ -92,7 +92,8 @@ export default function BankCredits() {
 
   return (
     <ReportShell
-      seal
+      /* Patch 150: A4 landscape, fitted to the width, the seal at the left. */
+      printLayout="landscape"
       meta={{
         title: 'Bank Credits',
         fundLabel: fundLabel(fundCode),

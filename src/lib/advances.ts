@@ -36,6 +36,8 @@ export interface AdvanceLedgerEntry {
   entryDate: string;
   agingDate?: string | null;
   jevNo: string;
+  /** Patch 150: the entry the line belongs to, so its number can open it. */
+  jevId?: string | null;
   referenceNo?: string | null;
   accountCode: string;
   accountName: string;

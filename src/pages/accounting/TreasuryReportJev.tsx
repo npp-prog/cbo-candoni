@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { JevLink } from '@/components/JevLink';
 import { CoveringCell } from '@/pages/treasury/CoveringCell';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { hereAsReturn, withReturn } from '@/lib/returnTo';
@@ -181,7 +182,7 @@ export default function TreasuryReportJev() {
       value: (r) => r.jevNo ?? '',
       cell: (r) =>
         r.jevNo ? (
-          <span className="font-mono text-xs text-navy-900">{r.jevNo}</span>
+          <JevLink jevId={r.jevId} jevNo={r.jevNo} className="font-mono text-xs" />
         ) : (
           <span className="text-xs italic text-slate-400">not yet journalized</span>
         ),

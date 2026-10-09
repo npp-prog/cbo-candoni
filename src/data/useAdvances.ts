@@ -36,6 +36,7 @@ export function useAdvances(fiscalYear: number, fundCode: string, outstandingOnl
           entryDate: e.entryDate,
           agingDate: e.agingDate ?? null,
           jevNo: e.jevNo,
+          jevId: e.jevId ?? null,
           referenceNo: e.referenceNo ?? null,
           accountCode: e.accountCode,
           accountName: e.accountName,

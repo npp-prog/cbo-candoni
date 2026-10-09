@@ -88,7 +88,7 @@ export default function AdaAppendix36() {
       </div>
 
       {/* --- the form ------------------------------------------------------- */}
-      <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+      <div className="cbo-card cbo-print-exact px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
         <Letterhead
           appendix="Appendix 36"
           title="Authority to Debit Account (ADA)"
@@ -119,26 +119,33 @@ export default function AdaAppendix36() {
           and it is gone. Those dates are on the ADA register, which is where
           somebody asking "has it been debited" is actually looking.
         */}
-        <table className="mb-4 w-full">
-          <tbody>
-            <tr>
-              <td className="w-1/2 py-0.5 align-top">
-                <p className="font-semibold">THE MANAGER</p>
-                <p>{ada.bankName}</p>
-              </td>
-              <td className="py-0.5 align-top">
-                <p>
-                  <span className="text-slate-500">ADA No.</span>{' '}
-                  <span className="font-mono font-semibold">{ada.adaNo}</span>
-                </p>
-                <p>
-                  <span className="text-slate-500">Date:</span>{' '}
-                  <span className="font-semibold">{formatLongDate(ada.adaDate)}</span>
-                </p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        {/*
+          Patch 150: the addressee at the left; ADA No. and Date at the far
+          right, one under the other, the labels in one column and the values
+          in the next so both start on the same line.
+        */}
+        <div className="mb-4 flex items-start justify-between gap-6">
+          <div>
+            <p className="font-semibold">THE MANAGER</p>
+            <p>{ada.bankName}</p>
+          </div>
+          <table className="shrink-0" style={{ width: 'auto' }}>
+            <tbody>
+              <tr>
+                <td className="py-0.5 text-slate-500" style={{ paddingRight: '0.75rem' }}>
+                  ADA No.:
+                </td>
+                <td className="py-0.5 font-mono font-semibold">{ada.adaNo}</td>
+              </tr>
+              <tr>
+                <td className="py-0.5 text-slate-500" style={{ paddingRight: '0.75rem' }}>
+                  Date:
+                </td>
+                <td className="py-0.5 font-semibold">{formatLongDate(ada.adaDate)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <p className="mb-3">Sir/Madam:</p>
 
@@ -197,7 +204,7 @@ export default function AdaAppendix36() {
             {blankRows(Math.max(0, 6 - (group ? (ada.payees ?? []).length : 1)), 3, 'ada')}
           </tbody>
           <tfoot>
-            <tr className="bg-slate-50 font-bold">
+            <tr className="bg-slate-100 font-bold">
               <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={2}>
                 TOTAL
               </td>

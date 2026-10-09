@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { JevLink } from '@/components/JevLink';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card, Alert, DetailField, Spinner, Tabs } from '@/components/ui/Layout';
@@ -258,7 +259,8 @@ export default function LiquidationDetail() {
 
       {!posted && liq.jevNo && (
         <Alert tone="info" className="mb-4">
-          JEV <span className="font-mono">{liq.jevNo}</span> - given when the report was saved.
+          JEV <JevLink jevId={liq.jevId} jevNo={liq.jevNo} className="font-mono" /> - given when
+          the report was saved.
           The entry is posted under this number when the Accountant approves the report.
         </Alert>
       )}

@@ -31,6 +31,7 @@ import type { JournalEntryVoucher } from '@/types/accounting';
 import { SECTION_TABS } from './sections';
 import { CoveredDocument } from './CoveredDocument';
 import { ReportNumberEdit } from './ReportNumberEdit';
+import { JevLink } from '@/components/JevLink';
 
 /**
  * One treasury report, on a page of its own.
@@ -649,7 +650,15 @@ export default function TreasuryReportDetail() {
 
       {report.status === 'JOURNALIZED' && (
         <Alert tone="success" className="mb-4">
-          Journalized{report.jevNo ? ` as JEV ${report.jevNo}` : ''}
+          Journalized
+          {report.jevNo ? (
+            <>
+              {' as '}
+              <JevLink jevId={report.jevId} jevNo={report.jevNo} className="font-medium">
+                JEV {report.jevNo}
+              </JevLink>
+            </>
+          ) : null}
           {report.journalizedAt ? ` on ${formatInstant(report.journalizedAt)}` : ''}. A posted entry
           is never edited - a correction is a reversing entry in General Transactions.
         </Alert>

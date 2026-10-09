@@ -3,6 +3,7 @@ import { CoveringCell } from './CoveringCell';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { hereAsReturn, withReturn } from '@/lib/returnTo';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
+import { JevLink } from '@/components/JevLink';
 import { newestFirst } from '@/lib/registerOrder';
 import {
   cashInBankLine,
@@ -198,7 +199,7 @@ export default function TreasuryReports({
       value: (r) => r.jevNo ?? '',
       cell: (r) =>
         r.jevNo ? (
-          <span className="font-mono text-xs">{r.jevNo}</span>
+          <JevLink jevId={r.jevId} jevNo={r.jevNo} className="font-mono text-xs" />
         ) : (
           <span className="text-xs text-slate-400">-</span>
         ),

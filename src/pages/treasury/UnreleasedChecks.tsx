@@ -5,12 +5,16 @@ import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useBankAccounts, useChecks, useDisbursementVouchers } from '@/data/queries';
-import { formatPeso } from '@/lib/money';
+import { formatAmount, formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildUnreleasedChecks, totalUnreleased, type SucRow } from './unreleasedChecksReport';
 import { PAYMENT_TAB_GROUPS } from './sections';
 import { fundLabel } from '@/pages/budget/Obligations';
+
+/* Patch 150: the ruled cells, as on the Claim Sheet. */
+const TH = 'border border-slate-400 px-2 py-1.5 text-left font-semibold';
+const TD = 'border border-slate-400 px-2 py-1 align-top';
 
 /**
  * Schedule of Unreleased Checks. GAM for LGUs, Appendix 42.
@@ -69,7 +73,7 @@ export default function UnreleasedChecks() {
     { key: 'date', header: 'Check Date', value: (x) => x.r.checkDate },
     { key: 'serial', header: 'Check Serial No.', value: (x) => x.r.checkNo },
     { key: 'dv', header: 'DV/Payroll No.', value: (x) => x.r.dvNo },
-    { key: 'obr', header: 'Obligation No.', value: (x) => x.r.obrNo },
+    { key: 'obr', header: 'OBR No.', value: (x) => x.r.obrNo },
     { key: 'payee', header: 'Payee', value: (x) => x.r.payeeName },
     { key: 'nature', header: 'Nature of Payment', value: (x) => x.r.natureOfPayment },
     { key: 'amount', header: 'Amount', kind: 'amount', value: (x) => x.r.amount },
@@ -77,7 +81,8 @@ export default function UnreleasedChecks() {
 
   return (
     <ReportShell
-      seal
+      /* Patch 150: A4 landscape, fitted to the width, the seal at the left. */
+      printLayout="landscape"
       meta={{
         title: 'Schedule of Unreleased Checks',
         fundLabel: fundLabel(fundCode),
@@ -163,27 +168,32 @@ export default function UnreleasedChecks() {
                   {s.bankName} - {s.bankAccountNumber}
                 </p>
               </header>
+              {/*
+                Patch 150: ruled and shaded like the Claim Sheet, the Bank
+                Credits and the RCC - the heading row and the total shaded, on
+                paper too.
+              */}
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+                <table className="w-full border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-slate-300 text-left text-slate-600">
-                      <th className="cbo-th" style={{ width: '6rem' }}>
+                    <tr className="bg-slate-100">
+                      <th className={TH} style={{ width: '6.5rem' }}>
                         Check Date
                       </th>
-                      <th className="cbo-th" style={{ width: '8rem' }}>
+                      <th className={TH} style={{ width: '6.5rem' }}>
                         Serial No.
                       </th>
-                      <th className="cbo-th" style={{ width: '9rem' }}>
+                      <th className={TH} style={{ width: '8rem' }}>
                         DV/Payroll No.
                       </th>
-                      <th className="cbo-th" style={{ width: '9rem' }}>
-                        Obligation No.
+                      <th className={TH} style={{ width: '8rem' }}>
+                        OBR No.
                       </th>
-                      <th className="cbo-th" style={{ minWidth: '10rem' }}>
+                      <th className={TH} style={{ width: '22%' }}>
                         Payee
                       </th>
-                      <th className="cbo-th">Nature of Payment</th>
-                      <th className="cbo-th text-right" style={{ width: '9rem' }}>
+                      <th className={TH}>Nature of Payment</th>
+                      <th className={`${TH} text-right`} style={{ width: '7.5rem' }}>
                         Amount
                       </th>
                     </tr>
@@ -192,13 +202,17 @@ export default function UnreleasedChecks() {
                     {s.rows.map((r) => (
                       <Row key={`${r.checkNo}-${r.checkDate}`} row={r} />
                     ))}
-                    <tr className="border-t-2 border-navy-800 font-semibold text-navy-900">
-                      <td className="cbo-td" colSpan={6}>
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-bold">
+                      <td className={`${TD} text-right`} colSpan={6}>
                         Total for this account
                       </td>
-                      <td className="cbo-td cbo-amount">{formatPeso(s.total)}</td>
+                      <td className={`${TD} text-right tabular-nums`}>
+                        {formatAmount(s.total, false)}
+                      </td>
                     </tr>
-                  </tbody>
+                  </tfoot>
                 </table>
               </div>
             </section>
@@ -211,13 +225,13 @@ export default function UnreleasedChecks() {
 
 function Row({ row }: { row: SucRow }) {
   return (
-    <tr className="border-b border-slate-100">
-      <td className="cbo-td font-mono">{row.checkDate}</td>
-      <td className="cbo-td font-mono">{row.checkNo}</td>
-      <td className="cbo-td font-mono">{row.dvNo}</td>
-      <td className="cbo-td font-mono">{row.obrNo || '-'}</td>
-      <td className="cbo-td">{row.payeeName}</td>
-      <td className="cbo-td">
+    <tr style={{ breakInside: 'avoid' }}>
+      <td className={`${TD} whitespace-nowrap font-mono`}>{row.checkDate}</td>
+      <td className={`${TD} font-mono`}>{row.checkNo}</td>
+      <td className={`${TD} font-mono`}>{row.dvNo}</td>
+      <td className={`${TD} font-mono`}>{row.obrNo || '-'}</td>
+      <td className={TD}>{row.payeeName}</td>
+      <td className={TD}>
         {row.natureOfPayment}
         {/*
           Shown, because a reader checking this line against the register today
@@ -239,7 +253,7 @@ function Row({ row }: { row: SucRow }) {
           </span>
         )}
       </td>
-      <td className="cbo-td cbo-amount">{formatPeso(row.amount)}</td>
+      <td className={`${TD} text-right tabular-nums`}>{formatAmount(row.amount, false)}</td>
     </tr>
   );
 }

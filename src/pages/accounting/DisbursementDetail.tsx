@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { JevLink } from '@/components/JevLink';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
@@ -1104,7 +1105,11 @@ export default function DisbursementDetail() {
                     <StatusBadge status={existing.status} />
                   </DetailField>
                   <DetailField label="Journal entry" mono>
-                    {existing.jevNo ?? 'Not yet posted'}
+                    {existing.jevNo ? (
+                      <JevLink jevId={existing.jevId} jevNo={existing.jevNo} />
+                    ) : (
+                      'Not yet posted'
+                    )}
                   </DetailField>
                 </dl>
               )}

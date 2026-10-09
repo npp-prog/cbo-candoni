@@ -94,6 +94,17 @@ export function ReportPrintStyle({ orientation }: { orientation: 'portrait' | 'l
     overflow-wrap: normal !important;
   }
 
+  /*
+    Patch 150. The shading - the heading row and the total - is part of the
+    form, and a browser leaves background colours off the paper unless told
+    otherwise ("Background graphics" in the print dialogue). Told here.
+  */
+  .cbo-report-sheet,
+  .cbo-report-sheet * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   /* The heading with the seal at its left is a grid, not a table group. */
   .cbo-report-sheet .report-header {
     display: grid !important;

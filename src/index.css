@@ -205,3 +205,13 @@
 .print-only {
   display: none;
 }
+
+/*
+  Patch 150. Shading that is part of a printed form - a heading row, a total -
+  printed even with "Background graphics" off in the print dialogue. The
+  property is inherited, so it is set once on the sheet.
+*/
+.cbo-print-exact {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
