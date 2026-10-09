@@ -9,7 +9,7 @@ import {
   issueNumbers,
   loadNumberingConfig,
   bookCodeForFund,
-  reserveDocumentNumber,
+  prepareDocumentNumber,
 } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevLineData } from '../lib/ledger';
@@ -177,15 +177,13 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
       month: period,
     };
 
-    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
-    const jevNo = issuedJevNo as string;
-
     /*
      * The RCD number is the collecting officer's own, typed on the draft.
      * CFMS refuses a duplicate rather than issuing its own series beside the
-     * office's. See reserveDocumentNumber.
+     * office's. Read before the JEV counter is drawn, written after it: a
+     * transaction does every read before any write (patch 135).
      */
-    const rcdNo = await reserveDocumentNumber(tx, {
+    const rcdNumber = await prepareDocumentNumber(tx, {
       kind: 'RCD',
       fiscalYear: rcd.fiscalYear,
       fundCode: rcd.fundCode,
@@ -193,6 +191,11 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
       documentId: rcdId,
       label: 'Report of Collections and Deposits',
     });
+
+    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
+    const jevNo = issuedJevNo as string;
+    rcdNumber.commit();
+    const rcdNo = rcdNumber.number;
 
     const lines: JevLineData[] = [
       {

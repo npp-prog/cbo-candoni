@@ -542,7 +542,7 @@ export const engine = {
   cancelAda: (p: { adaId: Id; reason: string }) => call<typeof p, { adaId: Id }>('cancelAda', p),
 
   postLiquidation: (p: { liquidationId: Id }) =>
-    call<typeof p, { liquidationId: Id; jevId: Id; outstandingBalance: Centavos }>(
+    call<typeof p, { liquidationId: Id; jevId: Id; jevNo?: string; outstandingBalance: Centavos }>(
       'postLiquidation',
       p,
     ),

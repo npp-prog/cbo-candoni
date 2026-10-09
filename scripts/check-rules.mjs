@@ -3255,6 +3255,40 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 54. A liquidation posts: reads first, and no refund line ------------
+
+/*
+ * Patch 135. postLiquidation drew the JEV number (a counter write) and then
+ * read the report-number reservation, and Firestore refused every
+ * liquidation: "transactions require all reads to be executed before all
+ * writes". The reservation is now read (prepareDocumentNumber) before the JEV
+ * number is drawn and written after it. postRcd had the same order and is
+ * fixed the same way. And a liquidation posts no line for a cash refund -
+ * Neil: the refund reaches the books with the Treasury's collections.
+ */
+{
+  const before = failures.length;
+  for (const f of ['functions/src/accounting/liquidation.ts', 'functions/src/treasury/collections.ts']) {
+    const src = readFileSync(resolve(root, f), 'utf8');
+    const prep = src.indexOf('prepareDocumentNumber(tx');
+    const issue = src.indexOf('issueNumbers(tx');
+    if (/reserveDocumentNumber\(tx/.test(src) || prep < 0 || issue < 0 || prep > issue) {
+      failures.push(`${f}: reserves the document number after drawing the JEV number - a read after a write, which Firestore refuses. Use prepareDocumentNumber before issueNumbers and commit after.`);
+    }
+  }
+  const liq = readFileSync(resolve(root, 'functions/src/accounting/liquidation.ts'), 'utf8');
+  if (/CASH_LOCAL_TREASURY/.test(liq)) {
+    failures.push('functions/src/accounting/liquidation.ts: a liquidation posts a cash line for the refund again - the Treasury posts the refund with its collections.');
+  }
+  const list = readFileSync(resolve(root, 'src/pages/accounting/Liquidation.tsx'), 'utf8');
+  if (!/onRowClick=/.test(list)) {
+    failures.push('src/pages/accounting/Liquidation.tsx: a row of the liquidation register no longer opens the report.');
+  }
+  if (failures.length === before) {
+    console.log('liquidation: number read before the JEV is drawn; no refund line; rows open the report');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

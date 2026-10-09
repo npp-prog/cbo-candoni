@@ -125,17 +125,11 @@ export default function Liquidation() {
       sortable: false,
       cell: (l) => (
         /*
-          Post used to be a button here. It is on the report's own page now,
-          beside the expenses it covers, the entry it will make and the signed
-          report attached to it - which are the things somebody should have
-          read before posting to the books.
+          Post used to be a button here, then Open. The whole row opens the
+          report now (patch 135); approving and posting is on the report's own
+          page, beside the expenses, the entry and the signed report.
         */
-        <div className="flex items-center gap-1.5">
-          <StatusBadge status={l.status} />
-          <Button size="sm" variant="ghost" onClick={() => open(`/accounting/liquidation/${l.id}`)}>
-            Open
-          </Button>
-        </div>
+        <StatusBadge status={l.status} />
       ),
     },
   ];
@@ -163,6 +157,8 @@ export default function Liquidation() {
         rows={rows}
         columns={columns}
         rowKey={(l) => l.id}
+        /* Patch 135: the whole row opens the report. */
+        onRowClick={(l) => open(`/accounting/liquidation/${l.id}`)}
         loading={loading}
         error={error}
         searchPlaceholder="Officer, report number or cash advance"

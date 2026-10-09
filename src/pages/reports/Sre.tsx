@@ -93,16 +93,17 @@ export default function Sre() {
    * obligation until it is paid." A cash advance not yet liquidated, or a
    * liquidation (posted with no budget line), cannot move it.
    *
-   * OBLIGATIONS - obligations incurred: the Registry (RAAO), LBAc Form No. 2
-   * and the SCBAA read the same figures. The default.
-   *
    * PAID - what checks and ADAs have paid on those obligations: the
-   * Registry's Disbursements column.
+   * Registry's Disbursements column. THE DEFAULT since patch 135 - Neil's
+   * answer for the statement as submitted.
+   *
+   * OBLIGATIONS - obligations incurred: the Registry (RAAO), LBAc Form No. 2
+   * and the SCBAA read the same figures.
    *
    * Receipts are still read off the ledger: a collection is income when it
    * is journalized.
    */
-  const [basis, setBasis] = useState<'OBLIGATIONS' | 'PAID'>('OBLIGATIONS');
+  const [basis, setBasis] = useState<'OBLIGATIONS' | 'PAID'>('PAID');
   const [showMapping, setShowMapping] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -504,8 +505,8 @@ export default function Sre() {
               value={basis}
               onChange={(e) => setBasis(e.target.value as 'OBLIGATIONS' | 'PAID')}
             >
-              <option value="OBLIGATIONS">Obligations incurred (as the Registry)</option>
               <option value="PAID">Paid by check or ADA (Registry disbursements)</option>
+              <option value="OBLIGATIONS">Obligations incurred (as the Registry)</option>
             </Select>
           </Field>
         </div>

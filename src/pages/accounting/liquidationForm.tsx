@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react';
 import { Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, Select, DateInput, AmountInput, TextInput } from '@/components/ui/Field';
+import { Field, DateInput, AmountInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker } from '@/components/pickers';
 import { useAuth } from '@/auth/AuthProvider';
-import { createDraft, actorStamp } from '@/data/mutations';
+import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
+import { Combobox } from '@/components/pickers/Combobox';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { checkLiquidation } from '@/lib/accounting-rules';
-import type { LiquidationLine, CashAdvance } from '@/types/accounting';
+import type { LiquidationLine, CashAdvance, Liquidation } from '@/types/accounting';
 
 /**
  * The form that raises a liquidation report.
@@ -31,6 +32,7 @@ export function LiquidationForm({
   fundCode,
   advances,
   unassignedCount = 0,
+  existing = null,
   onCancel,
   onSaved,
 }: {
@@ -39,6 +41,12 @@ export function LiquidationForm({
   advances: CashAdvance[];
   /** Advances posted with no officer named - shown, since nobody can liquidate them. */
   unassignedCount?: number;
+  /**
+   * Patch 135: a saved report being corrected before the Accountant approves
+   * it. Its number and its advance are fixed (the security rules keep them);
+   * everything else may change.
+   */
+  existing?: Liquidation | null;
   onCancel: () => void;
   /** Given the new report's id, so the page can open it properly. */
   onSaved: (id: string) => void;
@@ -46,15 +54,63 @@ export function LiquidationForm({
   const toast = useToast();
   const { user, profile } = useAuth();
 
-  const [cashAdvanceId, setCashAdvanceId] = useState('');
-  const [liquidationNo, setLiquidationNo] = useState('');
-  const [liquidationDate, setLiquidationDate] = useState(todayPh());
-  const [lines, setLines] = useState<Array<Partial<LiquidationLine>>>([{ lineNo: 1, date: todayPh() }]);
-  const [refundAmount, setRefundAmount] = useState<number | null>(null);
-  const [reimbursementAmount, setReimbursementAmount] = useState<number | null>(null);
+  const [cashAdvanceId, setCashAdvanceId] = useState(existing?.cashAdvanceId ?? '');
+  const [liquidationNo, setLiquidationNo] = useState(existing?.liquidationNo ?? '');
+  const [liquidationDate, setLiquidationDate] = useState(existing?.liquidationDate ?? todayPh());
+  const [lines, setLines] = useState<Array<Partial<LiquidationLine>>>(
+    existing?.lines?.length ? existing.lines.map((l) => ({ ...l })) : [{ lineNo: 1, date: todayPh() }],
+  );
+  const [refundAmount, setRefundAmount] = useState<number | null>(existing?.refundAmount || null);
+  const [reimbursementAmount, setReimbursementAmount] = useState<number | null>(
+    existing?.reimbursementAmount || null,
+  );
   const [saving, setSaving] = useState(false);
 
-  const advance = advances.find((a) => a.id === cashAdvanceId) ?? null;
+  /*
+   * The advance. When correcting a saved report it is the one the report was
+   * raised against; if it is no longer in the list (an old record), it is
+   * rebuilt from what the report stored.
+   */
+  const advance =
+    advances.find((a) => a.id === cashAdvanceId) ??
+    (existing
+      ? ({
+          id: existing.cashAdvanceId,
+          fiscalYear: existing.fiscalYear,
+          fundCode: existing.fundCode,
+          caType: 'OTHER',
+          dvId: '',
+          dvNo: existing.dvNo,
+          accountableOfficerId: existing.accountableOfficerId,
+          accountableOfficerName: existing.accountableOfficerName,
+          officeId: existing.officeId,
+          officeName: existing.officeName,
+          dateGranted: existing.dateGranted,
+          amountGranted: existing.amountGranted,
+          purpose: existing.purpose,
+          dueDate: '',
+          amountLiquidated: 0,
+          amountRefunded: 0,
+          outstandingBalance: existing.amountGranted,
+          status: 'OUTSTANDING',
+          glAccountCode: existing.advanceAccountCode ?? '',
+          glAccountName: existing.advanceAccountName ?? undefined,
+          source: existing.advanceSource,
+        } as CashAdvance)
+      : null);
+
+  const advanceOptions = useMemo(
+    () =>
+      advances.map((a) => ({
+        value: a.id,
+        code: a.dvNo,
+        label: `${a.accountableOfficerName} - ${formatPeso(a.outstandingBalance)} outstanding`,
+        detail: [a.glAccountName, a.purpose, a.dateGranted ? `granted ${formatShortDate(a.dateGranted)}` : '']
+          .filter(Boolean)
+          .join(' - '),
+      })),
+    [advances],
+  );
   const amountLiquidated = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
 
   const check = useMemo(() => {
@@ -96,6 +152,42 @@ export function LiquidationForm({
 
     setSaving(true);
     try {
+      const actor = actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      });
+      const linesOut = lines.map((l, i) => ({
+        lineNo: i + 1,
+        date: l.date ?? liquidationDate,
+        particulars: l.particulars ?? '',
+        accountCode: l.accountCode ?? '',
+        accountName: l.accountName ?? '',
+        amount: l.amount ?? 0,
+        orNumber: l.orNumber ?? null,
+        supplierName: l.supplierName ?? null,
+      }));
+      if (existing) {
+        // The number and the advance stay as saved; the rules refuse a change to either.
+        await updateDraft(
+          COL.liquidations,
+          existing.id,
+          {
+            liquidationDate,
+            period: Number(liquidationDate.slice(5, 7)),
+            lines: linesOut,
+            amountLiquidated,
+            refundAmount: refundAmount ?? 0,
+            reimbursementAmount: reimbursementAmount ?? 0,
+            outstandingBalance: Math.max(outstanding, 0),
+            status: existing.status,
+          },
+          actor,
+        );
+        toast.success('Liquidation report saved', 'It waits for the Accountant to approve it.');
+        onSaved(existing.id);
+        return;
+      }
       const newId = await createDraft(
         COL.liquidations,
         {
@@ -121,27 +213,14 @@ export function LiquidationForm({
           dateGranted: advance.dateGranted,
           amountGranted: advance.amountGranted,
           purpose: advance.purpose,
-          lines: lines.map((l, i) => ({
-            lineNo: i + 1,
-            date: l.date ?? liquidationDate,
-            particulars: l.particulars ?? '',
-            accountCode: l.accountCode ?? '',
-            accountName: l.accountName ?? '',
-            amount: l.amount ?? 0,
-            orNumber: l.orNumber ?? null,
-            supplierName: l.supplierName ?? null,
-          })),
+          lines: linesOut,
           amountLiquidated,
           refundAmount: refundAmount ?? 0,
           reimbursementAmount: reimbursementAmount ?? 0,
           outstandingBalance: Math.max(outstanding, 0),
           status: 'DRAFT',
         },
-        actorStamp({
-          uid: user.uid,
-          name: profile?.displayName ?? user.email ?? user.uid,
-          position: profile?.position,
-        }),
+        actor,
       );
       onSaved(newId);
     } catch (err) {
@@ -155,16 +234,25 @@ export function LiquidationForm({
     <Card title="Liquidation report">
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Cash advance" required htmlFor="ca" className="sm:col-span-2">
-          <Select id="ca" value={cashAdvanceId} onChange={(e) => setCashAdvanceId(e.target.value)}>
-            <option value="">Select the advance being liquidated</option>
-            {advances.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.dvNo} - {a.accountableOfficerName}
-                {a.glAccountName ? ` - ${a.glAccountName}` : ''} - {formatPeso(a.outstandingBalance)}{' '}
-                outstanding
-              </option>
-            ))}
-          </Select>
+          {existing ? (
+            <p className="cbo-input bg-slate-50 py-2 text-sm">
+              <span className="font-mono text-xs">{existing.dvNo}</span> -{' '}
+              {existing.accountableOfficerName}
+              <span className="block text-2xs text-slate-500">
+                The advance a saved report liquidates is fixed. Raise a new report for another.
+              </span>
+            </p>
+          ) : (
+            /* Patch 135: searchable - officer, reference, account or purpose. */
+            <Combobox
+              id="ca"
+              options={advanceOptions}
+              value={cashAdvanceId || null}
+              onChange={(v) => setCashAdvanceId(v ?? '')}
+              placeholder="Search the officer, reference or purpose"
+              emptyMessage="No outstanding advance matches"
+            />
+          )}
           {advances.length === 0 && (
             <p className="mt-1 text-xs text-amber-700">
               No advance is outstanding in this fund and year. An advance appears here once it is
@@ -189,6 +277,7 @@ export function LiquidationForm({
           <TextInput
             id="lno"
             value={liquidationNo}
+            disabled={Boolean(existing)}
             onChange={(e) => setLiquidationNo(e.target.value)}
             placeholder="100-26-10-0001"
             className="font-mono"
@@ -318,7 +407,11 @@ export function LiquidationForm({
       </Button>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
-        <Field label="Refund returned" htmlFor="refund" hint="Cash the officer handed back.">
+        <Field
+          label="Refund returned"
+          htmlFor="refund"
+          hint="Cash the officer handed back to the Treasury. Recorded here; posted by the Treasury with its collections, not by this report."
+        >
           <AmountInput id="refund" value={refundAmount} onChange={setRefundAmount} />
         </Field>
 
@@ -349,7 +442,7 @@ export function LiquidationForm({
       )}
       <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
         <Button variant="primary" loading={saving} onClick={() => void save()}>
-          Save draft
+          {existing ? 'Save changes' : 'Save'}
         </Button>
         <Button variant="secondary" onClick={onCancel}>
           Cancel

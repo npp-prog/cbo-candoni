@@ -304,6 +304,27 @@ export async function bookCodeForFund(fundCode: string): Promise<string> {
  */
 export async function reserveDocumentNumber(
   tx: Transaction,
+  input: Parameters<typeof prepareDocumentNumber>[1],
+): Promise<string> {
+  const prepared = await prepareDocumentNumber(tx, input);
+  prepared.commit();
+  return prepared.number;
+}
+
+/**
+ * reserveDocumentNumber in two halves: the READ (and the refusal of a number
+ * already used) now, the WRITE when `commit` is called. Patch 135.
+ *
+ * A Firestore transaction must do every read before any write. A caller that
+ * also draws a JEV number (issueNumbers reads the counter, then writes it)
+ * cannot call reserveDocumentNumber on either side of it: before, its write
+ * precedes the counter read; after, its read follows the counter write.
+ * postLiquidation did exactly that and every liquidation failed with
+ * "Firestore transactions require all reads to be executed before all
+ * writes". Prepare first, draw the JEV number, then commit.
+ */
+export async function prepareDocumentNumber(
+  tx: Transaction,
   input: {
     /** The series: 'RCI', 'RCD', 'LIQ'. Part of the reservation's identity. */
     kind: string;
@@ -316,7 +337,7 @@ export async function reserveDocumentNumber(
     /** How to name the series in the message a user reads. */
     label?: string;
   },
-): Promise<string> {
+): Promise<{ number: string; commit: () => void }> {
   const label = input.label ?? input.kind;
   // A draft carries the placeholder until it is numbered; that is not a number.
   const number = hasDocumentNumber(input.number) ? String(input.number).trim() : '';
@@ -346,16 +367,18 @@ export async function reserveDocumentNumber(
     );
   }
 
-  if (!snap.exists) {
-    tx.create(ref, {
-      docType: input.kind,
-      fiscalYear: input.fiscalYear,
-      fundCode: input.fundCode,
-      number,
-      documentId: input.documentId,
-      at: new Date().toISOString(),
-    });
-  }
-
-  return number;
+  return {
+    number,
+    commit: () => {
+      if (snap.exists) return;
+      tx.create(ref, {
+        docType: input.kind,
+        fiscalYear: input.fiscalYear,
+        fundCode: input.fundCode,
+        number,
+        documentId: input.documentId,
+        at: new Date().toISOString(),
+      });
+    },
+  };
 }

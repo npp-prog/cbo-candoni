@@ -1,6 +1,6 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { titleForAccountCode } from '../lib/accountTitles';
-import { CASH_LOCAL_TREASURY, isLiquidatableAccount } from '../lib/chartOfAccounts';
+import { isLiquidatableAccount } from '../lib/chartOfAccounts';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
@@ -9,7 +9,7 @@ import {
   issueNumbers,
   loadNumberingConfig,
   bookCodeForFund,
-  reserveDocumentNumber,
+  prepareDocumentNumber,
 } from '../lib/numbering';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import { createJevInTransaction, postJevInTransaction, type JevData, type JevLineData } from '../lib/ledger';
@@ -20,7 +20,7 @@ import { checkLiquidation, outstandingAdvance } from '../lib/rules';
  *
  * The accounting shape is:
  *   Dr  the expense accounts actually incurred
- *   Dr  Cash in Vault / Cash in Bank      (for any refund returned)
+ *   (no line for a refund - the Treasury posts it with its collections; patch 135)
  *   Dr  Due to Officers and Employees     (for a reimbursement owed)
  *       Cr  Advances to Officers and Employees   (the cash advance account)
  *
@@ -137,15 +137,28 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
         );
       }
       // The officer's balance on the account, this fiscal year, from the ledger.
-      let q = db
-        .collection(COL.ledgerEntries)
-        .where('fiscalYear', '==', g.fiscalYear)
-        .where('fundCode', '==', g.fundCode)
-        .where('accountCode', '==', g.accountCode);
-      q = g.subsidiaryId
-        ? q.where('subsidiaryId', '==', g.subsidiaryId)
-        : q.where('subsidiaryName', '==', g.subsidiaryName);
-      const officerEntries = await tx.get(q);
+      // By the officer's name (normalised) or the same subsidiary id - the
+      // same rule as src/lib/advances.ts, so a refund the Treasury's RCD
+      // credited to the advance by the officer's name is counted.
+      const norm = (v: unknown) =>
+        String(v ?? '')
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, ' ');
+      const accountEntries = await tx.get(
+        db
+          .collection(COL.ledgerEntries)
+          .where('fiscalYear', '==', g.fiscalYear)
+          .where('fundCode', '==', g.fundCode)
+          .where('accountCode', '==', g.accountCode),
+      );
+      const officerEntries = {
+        docs: accountEntries.docs.filter(
+          (d) =>
+            (g.subsidiaryName && norm(d.get('subsidiaryName')) === norm(g.subsidiaryName)) ||
+            (g.subsidiaryId && d.get('subsidiaryId') === g.subsidiaryId),
+        ),
+      };
       const balance = officerEntries.docs.reduce(
         (t, d) => t + Number(d.get('debit') ?? 0) - Number(d.get('credit') ?? 0),
         0,
@@ -170,10 +183,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
      * The titles of the two accounts whose CODE comes from a record rather
      * than from this file. Read before any write, as the ordering requires.
      */
-    const [cashTitle, advanceTitle] = await Promise.all([
-      titleForAccountCode(CASH_LOCAL_TREASURY.code),
-      titleForAccountCode(ca.glAccountCode),
-    ]);
+    const advanceTitle = await titleForAccountCode(ca.glAccountCode);
     if (!advanceTitle) {
       throw new HttpsError(
         'failed-precondition',
@@ -221,14 +231,16 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       month: period,
     };
 
-    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
-    const jevNo = issuedJevNo as string;
-
     /*
      * The liquidation report number is assigned by Accounting from its own
      * book and typed on the draft. CFMS refuses a duplicate.
+     *
+     * Read here, written after the JEV number is drawn. Patch 135: this used
+     * to draw the JEV number (a counter write) and THEN read the reservation,
+     * and Firestore refused every liquidation - "transactions require all
+     * reads to be executed before all writes".
      */
-    const liquidationNo = await reserveDocumentNumber(tx, {
+    const liqNumber = await prepareDocumentNumber(tx, {
       kind: 'LIQ',
       fiscalYear: liq.fiscalYear,
       fundCode: liq.fundCode,
@@ -236,6 +248,11 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       documentId: liquidationId,
       label: 'Liquidation report',
     });
+
+    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
+    const jevNo = issuedJevNo as string;
+    liqNumber.commit();
+    const liquidationNo = liqNumber.number;
 
     // ---- Build the entry ----------------------------------------------------
 
@@ -256,25 +273,15 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       });
     }
 
-    if ((liq.refundAmount ?? 0) > 0) {
-      lines.push({
-        lineNo: lineNo++,
-        accountCode: CASH_LOCAL_TREASURY.code,
-        /*
-         * Named from the chart, not written out. This line said "Cash in
-         * Vault" against 10101010, which the Chart of Accounts calls Cash
-         * Local Treasury - so every refund posted a ledger line printing an
-         * account title that is in no chart.
-         */
-        accountName: cashTitle ?? CASH_LOCAL_TREASURY.name,
-        debit: liq.refundAmount,
-        credit: 0,
-        officeId: liq.officeId,
-        officeName: liq.officeName,
-        cashFlowClass: 'OPERATING',
-        particulars: `Refund of unexpended cash advance, ${liq.accountableOfficerName}`,
-      });
-    }
+    /*
+     * NO LINE FOR A REFUND. Patch 135 - Neil: "Any refund should have no
+     * accounting entry, since it will be reflected in the collections
+     * submitted by the Treasury." The officer hands the cash to the
+     * Treasury, which issues an Official Receipt for it; the RCD that
+     * reports that receipt posts it. Posting it here as well would put the
+     * same refund in the books twice. The report still records the refund,
+     * and still counts it when checking the liquidation against the advance.
+     */
 
     if ((liq.reimbursementAmount ?? 0) > 0) {
       lines.push({
@@ -293,8 +300,8 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       });
     }
 
-    const advanceSettled =
-      computedLiquidated + (liq.refundAmount ?? 0) - (liq.reimbursementAmount ?? 0);
+    // The refund is credited to the advance by the Treasury's collection, not here.
+    const advanceSettled = computedLiquidated - (liq.reimbursementAmount ?? 0);
 
     lines.push({
       lineNo: lineNo++,
@@ -376,6 +383,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       liquidationNo,
       status: 'POSTED',
       jevId,
+      jevNo,
       outstandingBalance: outstanding,
       approvedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
@@ -394,7 +402,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       remarks: `${liq.accountableOfficerName}: liquidated ${(computedLiquidated / 100).toFixed(2)}, outstanding ${(outstanding / 100).toFixed(2)}.`,
     });
 
-    return { liquidationId, jevId, outstandingBalance: outstanding };
+    return { liquidationId, jevId, jevNo, outstandingBalance: outstanding };
   });
 });
 

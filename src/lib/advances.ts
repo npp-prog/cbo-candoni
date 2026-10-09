@@ -77,11 +77,18 @@ export interface AdvanceRegister {
   unassigned: AdvanceLedgerEntry[];
 }
 
-const officerKey = (e: { subsidiaryId?: string | null; subsidiaryName?: string | null }) =>
-  String(e.subsidiaryId ?? '').trim() ||
+/**
+ * Who an entry belongs to: the officer's NAME, normalised, where there is one,
+ * else the subsidiary id. Patch 135: by name first, because a refund reaches
+ * the advance through the Treasury's collections, and the RCD entry names the
+ * officer as a subsidiary by name - it has no payee record id to carry. Keyed
+ * by id, that credit would sit apart from the advance it settles.
+ */
+export const officerKey = (e: { subsidiaryId?: string | null; subsidiaryName?: string | null }) =>
   String(e.subsidiaryName ?? '')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/\s+/g, ' ') || String(e.subsidiaryId ?? '').trim();
 
 const dateOf = (e: AdvanceLedgerEntry) => e.agingDate || e.entryDate;
 

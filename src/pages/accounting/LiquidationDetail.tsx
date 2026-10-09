@@ -11,7 +11,7 @@ import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
 import { useAccounts } from '@/data/queries';
-import { CASH_LOCAL_TREASURY, DUE_TO_OFFICERS_AND_EMPLOYEES } from '@/lib/chartOfAccounts';
+import { DUE_TO_OFFICERS_AND_EMPLOYEES } from '@/lib/chartOfAccounts';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
@@ -73,6 +73,8 @@ export default function LiquidationDetail() {
 
   const [tab, setTab] = useState<'report' | 'entry' | 'attachments' | 'history'>('report');
   const [confirm, setConfirm] = useState(false);
+  /** Patch 135: a saved report is corrected in place until the Accountant approves it. */
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
@@ -92,14 +94,7 @@ export default function LiquidationDetail() {
       rows.push({ code: line.accountCode, name: line.accountName, debit: line.amount, credit: 0 });
     }
 
-    if (liq.refundAmount > 0) {
-      rows.push({
-        code: CASH_LOCAL_TREASURY.code,
-        name: accountTitle(CASH_LOCAL_TREASURY.code) ?? CASH_LOCAL_TREASURY.name,
-        debit: liq.refundAmount,
-        credit: 0,
-      });
-    }
+    // Patch 135: no line for a refund - the Treasury posts it with its collections.
 
     if (liq.reimbursementAmount > 0) {
       rows.push({
@@ -122,7 +117,7 @@ export default function LiquidationDetail() {
       code: advanceCode,
       name: accountTitle(advanceCode) ?? 'the cash advance account',
       debit: 0,
-      credit: liq.amountLiquidated + liq.refundAmount - liq.reimbursementAmount,
+      credit: liq.amountLiquidated - liq.reimbursementAmount,
     });
 
     return rows;
@@ -203,6 +198,7 @@ export default function LiquidationDetail() {
   }
 
   const posted = liq.status === 'POSTED';
+  const editable = ['DRAFT', 'RETURNED'].includes(liq.status) && can('accounting', 'edit');
   const attachmentCount = liq.attachmentCount ?? 0;
 
   const post = async () => {
@@ -210,8 +206,8 @@ export default function LiquidationDetail() {
     try {
       const res = await engine.postLiquidation({ liquidationId: liq.id });
       toast.success(
-        'Liquidation posted',
-        `The expenses are in the General Ledger and the advance is credited. Outstanding balance ${formatPeso(res.outstandingBalance)}.`,
+        'Liquidation approved and posted',
+        `JEV ${res.jevNo ?? ''} - the expenses are in the General Ledger and the advance is credited. Outstanding balance ${formatPeso(res.outstandingBalance)}.`,
       );
       setConfirm(false);
     } catch (err) {
@@ -240,9 +236,20 @@ export default function LiquidationDetail() {
             {/* Back to the table it was opened from. Patch 114. */}
             <BackButton list={{ to: '/accounting/liquidation', label: 'Liquidation Reports' }} />
             <StatusBadge status={liq.status} className="mr-1" />
-            {!posted && canPost && (
+            {editable && !editing && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setTab('report');
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </Button>
+            )}
+            {!posted && canPost && !editing && (
               <Button variant="primary" onClick={() => setConfirm(true)}>
-                Post to General Ledger
+                Approve and post
               </Button>
             )}
           </>
@@ -289,7 +296,18 @@ export default function LiquidationDetail() {
       />
 
       <div className="mt-4 space-y-4">
-        {tab === 'report' && (
+        {tab === 'report' && editing && (
+          <LiquidationForm
+            fiscalYear={liq.fiscalYear}
+            fundCode={liq.fundCode}
+            advances={advances.data}
+            existing={liq}
+            onCancel={() => setEditing(false)}
+            onSaved={() => setEditing(false)}
+          />
+        )}
+
+        {tab === 'report' && !editing && (
           <>
             <Card title="The advance being accounted for">
               <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -379,6 +397,11 @@ export default function LiquidationDetail() {
                 </DetailField>
                 <DetailField label={liq.refundAmount > 0 ? 'Refunded by the officer' : 'Refund'}>
                   <span className="cbo-amount">{formatPeso(liq.refundAmount)}</span>
+                  {liq.refundAmount > 0 && (
+                    <span className="block text-2xs text-slate-500">
+                      Posted by the Treasury with its collections, not by this report.
+                    </span>
+                  )}
                 </DetailField>
                 <DetailField
                   label={
@@ -403,8 +426,10 @@ export default function LiquidationDetail() {
           <Card title={posted ? 'The entry this report posted' : 'The entry this report will post'}>
             <p className="mb-3 text-xs text-slate-500">
               Each expense is charged to its own account and the advance is credited with what the
-              officer accounted for, including anything refunded in cash. The entry is built by the
-              engine from the figures above; this is what it comes to.
+              officer accounted for. A cash refund has no line here: the officer pays it to the
+              Treasury, and it reaches the books with the Treasury&apos;s collections. The entry is
+              built by the engine from the figures above when the Accountant approves the report;
+              that is when it takes its JEV number.
             </p>
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -474,17 +499,18 @@ export default function LiquidationDetail() {
         onCancel={() => setConfirm(false)}
         onConfirm={() => void post()}
         loading={busy}
-        title="Post the liquidation to the General Ledger"
-        confirmLabel="Post"
+        title="Approve the liquidation and post it"
+        confirmLabel="Approve and post"
         variant="success"
         message={
           <>
             <p>
               Recognises {formatPeso(liq.amountLiquidated)} of expenses
-              {liq.refundAmount > 0 && `, a refund of ${formatPeso(liq.refundAmount)}`}
               {liq.reimbursementAmount > 0 &&
                 `, and a reimbursement of ${formatPeso(liq.reimbursementAmount)} due to the officer`}
-              , and credits the cash advance.
+              , and credits the cash advance. It is given its JEV number now.
+              {liq.refundAmount > 0 &&
+                ` The refund of ${formatPeso(liq.refundAmount)} is not posted here - it reaches the books with the Treasury's collections.`}
             </p>
             {attachmentCount === 0 && (
               <p className="mt-2">
