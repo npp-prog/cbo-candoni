@@ -9,6 +9,7 @@ import { COL } from '@/lib/collections';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
+import { reportSerials } from '@/lib/reportSerials';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import { FormPrintStyle, printableHeightMm } from '@/components/print/FormPrintStyle';
 import { useFitRows } from '@/components/print/fitRows';
@@ -431,8 +432,9 @@ export default function TreasuryReportForm() {
             <p className="mt-2 text-2xs leading-relaxed">
               {form.certification({
                 sheets: 1,
-                from: report.serialFrom ?? '________',
-                to: report.serialTo ?? '________',
+                // Patch 148: a draft's range comes from its own lines.
+                from: reportSerials(report).from ?? '________',
+                to: reportSerials(report).to ?? '________',
               })}
             </p>
             {/*

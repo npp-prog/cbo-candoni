@@ -22,6 +22,7 @@ import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
+import { reportSerials } from '@/lib/reportSerials';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, formatInstant, monthName } from '@/lib/dates';
 import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
@@ -338,6 +339,8 @@ export default function TreasuryReportDetail() {
 
   const short = TREASURY_REPORT_SHORT[report.reportType];
   const label = TREASURY_REPORT_LABELS[report.reportType];
+  /* Patch 148: a draft's serials come from its own lines. */
+  const serials = reportSerials(report);
   /* Where Back goes and what it is called. See reportOrigin.ts. */
   const origin = reportOrigin(returnPath, {
     section: 'Treasury',
@@ -697,12 +700,10 @@ export default function TreasuryReportDetail() {
           {report.accountableOfficerName && (
             <DetailField label="Accountable officer">{report.accountableOfficerName}</DetailField>
           )}
-          {report.serialFrom && (
+          {serials.from && (
             <DetailField label="Serials covered" mono>
-              {report.serialFrom}
-              {report.serialTo && report.serialTo !== report.serialFrom
-                ? ` - ${report.serialTo}`
-                : ''}
+              {serials.from}
+              {serials.to && serials.to !== serials.from ? ` - ${serials.to}` : ''}
             </DetailField>
           )}
           {report.certifiedBy?.name && (
