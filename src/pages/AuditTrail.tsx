@@ -76,6 +76,8 @@ export default function AuditTrail() {
         return `/accounting/disbursements/${log.entityId}`;
       case COL.obligations:
         return `/budget/obligations/${log.entityId}`;
+      case COL.ordinances:
+        return `/budget/appropriations/ordinances/${log.entityId}`;
       case COL.jevs:
         return `/accounting/general-transactions/${log.entityId}`;
       default:

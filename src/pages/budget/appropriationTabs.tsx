@@ -22,10 +22,13 @@ import { Tabs } from '@/components/ui/Layout';
 
 export const APPROPRIATION_TABS = [
   { id: 'appropriations', label: 'Appropriations', to: '/budget/appropriations' },
+  // The ordinances as documents of their own - recorded first, with their
+  // lines, the scanned copy and LBP Form No. 2 inside. Patch 119.
+  { id: 'ordinances', label: 'Ordinances', to: '/budget/appropriations/ordinances' },
   { id: 'programmes', label: 'Budget Programmes', to: '/budget/appropriations/programmes' },
 ];
 
-export type AppropriationTab = 'appropriations' | 'programmes';
+export type AppropriationTab = 'appropriations' | 'ordinances' | 'programmes';
 
 export function AppropriationTabs({ active }: { active: AppropriationTab }) {
   const navigate = useNavigate();

@@ -256,7 +256,7 @@ export default function QuarterlyReceipts() {
               the figures the Local Finance Committee certified, what is below is a list of
               collections and not LBAc Form No. 1. They are recorded once, for the whole year, on{' '}
               <Link className="underline" to="/budget/estimated-receipts">
-                Budget &rsaquo; Estimated Receipts
+                Budget &rsaquo; Sources of Financing
               </Link>{' '}
               &mdash; the same figures the SRE and the Statement of Comparison use.
             </Alert>

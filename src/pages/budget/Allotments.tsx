@@ -896,7 +896,7 @@ function ReleaseHeldForm({
             ) : (
               <p className="mt-1 text-xs text-amber-700">
                 No Estimated Receipts are recorded for {fiscalYear}, so there is nothing to
-                measure the collections against. Load them under Budget &gt; Estimated Receipts.
+                measure the collections against. Load them under Budget &gt; Sources of Financing.
               </p>
             )}
           </>

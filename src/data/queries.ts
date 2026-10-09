@@ -7,6 +7,7 @@ import type {
   Appropriation,
   AugmentationDraft,
   AroDraft,
+  Ordinance,
   Ada,
   BankAccount,
   BudgetBalance,
@@ -163,6 +164,17 @@ export const useAroDrafts = (fiscalYear: number, fundCode: string) =>
     COL.aroDrafts,
     [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('date', 'desc')],
     ['aroDrafts', fiscalYear, fundCode],
+  );
+
+/**
+ * The ordinances recorded for a year and fund. No orderBy - the list is sorted
+ * on screen - so no index is needed for it. Patch 119.
+ */
+export const useOrdinances = (fiscalYear: number, fundCode: string) =>
+  useCollection<Ordinance>(
+    COL.ordinances,
+    [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode)],
+    ['ordinances', fiscalYear, fundCode],
   );
 
 export const useAllotments = (fiscalYear: number, fundCode: string) =>

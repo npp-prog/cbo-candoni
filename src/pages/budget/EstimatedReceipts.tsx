@@ -27,6 +27,7 @@ import {
   type IncomeClass,
 } from '@/lib/estimatedReceipts';
 import { parseReceiptsFile, type ParsedReceiptRow } from './parseReceipts';
+import { FundingSourcesTab } from './FundingSourcesTab';
 import type { EstimatedReceipt } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from './Obligations';
@@ -109,7 +110,12 @@ export default function EstimatedReceipts() {
   const accounts = useAccounts(false);
   const mappingDoc = useDocument<{ lines?: SreMapping }>(COL.settings, 'sreMapping');
 
-  const [tab, setTab] = useState<'schedule' | 'form'>('schedule');
+  /*
+    Three tabs since patch 119: the schedule that is typed in, the receipts
+    section of LBP Form No. 1 ("Estimated Receipts"), and LBP Form No. 8,
+    the funding sources of a supplemental budget.
+  */
+  const [tab, setTab] = useState<'schedule' | 'form' | 'sources'>('schedule');
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -361,9 +367,9 @@ export default function EstimatedReceipts() {
   return (
     <div>
       <PageHeader
-        title="Estimated Receipts"
+        title="Sources of Financing"
         subtitle={`${fundLabel(fundCode)} · budget year ${fiscalYear}`}
-        breadcrumbs={[{ label: 'Budget' }, { label: 'Estimated Receipts' }]}
+        breadcrumbs={[{ label: 'Budget' }, { label: 'Sources of Financing' }]}
         actions={
           canEdit ? (
             <>
@@ -448,13 +454,16 @@ export default function EstimatedReceipts() {
       <Tabs
         tabs={[
           { id: 'schedule', label: 'Schedule', count: filled.length },
-          { id: 'form', label: 'Sources of Financing' },
+          { id: 'form', label: 'Estimated Receipts' },
+          { id: 'sources', label: 'Funding Sources (LBP Form 8)' },
         ]}
         active={tab}
-        onChange={(id) => setTab(id as 'schedule' | 'form')}
+        onChange={(id) => setTab(id as 'schedule' | 'form' | 'sources')}
       />
 
-      {loading ? (
+      {tab === 'sources' ? (
+        <FundingSourcesTab fiscalYear={fiscalYear} fundCode={fundCode} />
+      ) : loading ? (
         <Spinner />
       ) : tab === 'schedule' ? (
         <Card

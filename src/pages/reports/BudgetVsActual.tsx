@@ -370,7 +370,7 @@ export default function BudgetVsActual() {
               No estimated receipts have been recorded for {fiscalYear} in the{' '}
               {fundLabel(fundCode)}. An appropriation ordinance authorises expenditure and enacts
               no receipts, so this half of the statement cannot be read off it. Record the receipts
-              portion of LBP Form No. 1 on Budget &rsaquo; Estimated Receipts, and the comparison
+              portion of LBP Form No. 1 on Budget &rsaquo; Sources of Financing, and the comparison
               below fills in.
             </Alert>
           ) : (

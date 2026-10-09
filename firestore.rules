@@ -382,6 +382,41 @@ service cloud.firestore {
       );
     }
 
+    // --- Budget: the ordinance as a document ---------------------------------
+
+    // The header an appropriation's lines are recorded under, and the thing
+    // the scanned ordinance is attached to. Patch 119.
+    //
+    // IT HOLDS NO MONEY AND NO STATUS. What the ordinance has enacted is read
+    // from its lines in /appropriations, which keep their own rules; this
+    // record can be written by budget staff because nothing in a balance
+    // depends on it. Its id is made from the year, fund, kind and number, so
+    // recording the same ordinance twice collides on the id.
+    //
+    // The year, fund, kind and number are frozen once written: the lines
+    // find their ordinance by those four, and changing one would orphan every
+    // line already recorded under it.
+    match /ordinances/{id} {
+      allow read: if canRead();
+
+      allow create: if signedIn()
+        && hasAny(budgetRoles())
+        && createdByCaller()
+        && request.resource.data.reference is string
+        && request.resource.data.reference.size() > 0
+        && request.resource.data.kind in ['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT']
+        && fundAllowed(request.resource.data.fundCode);
+
+      allow update: if signedIn()
+        && hasAny(budgetRoles())
+        && fundAllowed(resource.data.fundCode)
+        && didNotChange(['createdBy', 'fiscalYear', 'fundCode', 'kind', 'reference']);
+
+      // Only an administrator, and only the header: the lines under it, if
+      // any, are untouched by this and still carry the number.
+      allow delete: if signedIn() && isAdmin();
+    }
+
     // --- Budget: augmentations being prepared --------------------------------
 
     // One document per SET, holding every line of it. The shape is the control:

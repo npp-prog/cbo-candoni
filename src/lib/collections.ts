@@ -40,6 +40,8 @@ export const COL = {
 
   // Budget
   appropriations: 'appropriations',
+  /** The appropriation ordinance as a document of its own. Patch 119. */
+  ordinances: 'ordinances',
   allotments: 'allotments',
   obligations: 'obligations',
   budgetBalances: 'budgetBalances',

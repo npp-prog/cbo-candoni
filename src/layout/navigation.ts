@@ -84,7 +84,10 @@ export const NAVIGATION: NavItem[] = [
        */
       {
         group: 'Budget transactions',
-        label: 'Estimated Receipts',
+        // Named for the whole of what the screen holds since patch 119: the
+        // estimated receipts of LBP Form No. 1 and the funding sources of a
+        // supplemental budget, LBP Form No. 8. The address is unchanged.
+        label: 'Sources of Financing',
         to: '/budget/estimated-receipts',
       },
       { group: 'Budget transactions', label: 'Appropriation', to: '/budget/appropriations' },

@@ -23,6 +23,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 const Appropriations = lazy(() => import('./pages/budget/Appropriations'));
 const BudgetPrograms = lazy(() => import('./pages/budget/BudgetPrograms'));
+const Ordinances = lazy(() => import('./pages/budget/Ordinances'));
+const OrdinanceDetail = lazy(() => import('./pages/budget/OrdinanceDetail'));
 const Allotments = lazy(() => import('./pages/budget/Allotments'));
 const EstimatedReceipts = lazy(() => import('./pages/budget/EstimatedReceipts'));
 const TrustPrograms = lazy(() => import('./pages/accounting/TrustPrograms'));
@@ -141,6 +143,17 @@ export default function App() {
           <Route
             path="/budget/appropriations/programmes"
             element={<Guard module="budget"><BudgetPrograms /></Guard>}
+          />
+          {/* The ordinances, each a document of its own (patch 119): recorded
+              first, its lines recorded inside it, the signed copy attached,
+              LBP Form No. 2 printed, then approved whole. */}
+          <Route
+            path="/budget/appropriations/ordinances"
+            element={<Guard module="budget"><Ordinances /></Guard>}
+          />
+          <Route
+            path="/budget/appropriations/ordinances/:id"
+            element={<Guard module="budget"><OrdinanceDetail /></Guard>}
           />
           {/* The financing side. The ordinance carries only expenditure, so
               without this no statement has a budget column for receipts. */}

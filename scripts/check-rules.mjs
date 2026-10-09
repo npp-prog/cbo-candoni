@@ -2905,6 +2905,60 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 46. The ordinance is a document: attached, printed, approved whole -----
+
+/*
+ * Patch 119: an ordinance is recorded first and its lines inside it. Three
+ * things must stay true of it. The `ordinances` collection must be in the
+ * rules and never deletable except by an admin - its lines are found by the
+ * number it carries, so losing the record orphans them. The ordinance page
+ * must print LBP Form No. 2 and offer the Supporting documents panel. And a
+ * line typed inside an ordinance must carry `importReference`, or
+ * approveOrdinanceUpload cannot find it and "Approve all" leaves it behind.
+ */
+{
+  const before = failures.length;
+  const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
+  const block = rules.match(/match \/ordinances\/\{[^}]+\}\s*\{([\s\S]*?)\n\s{4}\}/);
+  if (!block) {
+    failures.push('firestore.rules has no /ordinances block (patch 119).');
+  } else {
+    if (!/allow delete:\s*if signedIn\(\) && isAdmin\(\)/.test(block[1])) {
+      failures.push('firestore.rules: an ordinance may be deleted by someone other than an admin.');
+    }
+    if (!/didNotChange\(\[[^\]]*'reference'[^\]]*\]\)/.test(block[1])) {
+      failures.push('firestore.rules: an ordinance number may be changed after its lines were recorded under it.');
+    }
+  }
+  const detail = resolve(root, 'src/pages/budget/OrdinanceDetail.tsx');
+  if (existsSync(detail)) {
+    const src = readFileSync(detail, 'utf8');
+    if (!/buildLbpForm2\(/.test(src) || !/<LbpForm2Sheet\b/.test(src)) {
+      failures.push('OrdinanceDetail.tsx no longer prints LBP Form No. 2.');
+    }
+    if (!/<AttachmentsPanel\b/.test(src)) {
+      failures.push('OrdinanceDetail.tsx no longer offers the supporting documents panel.');
+    }
+    if (!/approveOrdinanceUpload\(/.test(src)) {
+      failures.push('OrdinanceDetail.tsx no longer approves the ordinance whole.');
+    }
+  } else {
+    failures.push('src/pages/budget/OrdinanceDetail.tsx is missing (patch 119).');
+  }
+  const form = resolve(root, 'src/pages/budget/Appropriations.tsx');
+  if (existsSync(form)) {
+    const src = readFileSync(form, 'utf8');
+    if (!/importReference:\s*authorityReference\.trim\(\)\s*\|\|\s*null/.test(src)) {
+      failures.push(
+        'Appropriations.tsx: a line typed under an ordinance no longer carries importReference, so Approve all would leave it behind.',
+      );
+    }
+  }
+  if (failures.length === before) {
+    console.log('ordinance: recorded, attached, printed on LBP Form No. 2, approved whole');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

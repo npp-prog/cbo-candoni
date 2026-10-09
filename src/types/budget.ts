@@ -287,6 +287,40 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
 }
 
 // ---------------------------------------------------------------------------
+// ordinances/{id}   (the appropriation ordinance as a document of its own)
+// ---------------------------------------------------------------------------
+
+/**
+ * The ordinance an appropriation was enacted by, as a document. Patch 119.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A RECORD OF ITS OWN, WHEN THE LINES ALREADY NAME IT
+ * ---------------------------------------------------------------------------
+ * Every appropriation line carries its authority reference, and that is
+ * still what ties a line to its ordinance. What the lines cannot carry is
+ * the ordinance's own paper - the scanned ordinance, attached once - nor a
+ * place to stand before any line has been typed. This record is both: the
+ * header the lines are recorded under, and the thing the file is attached to.
+ *
+ * It holds no money and no status. What it has enacted is read from its
+ * lines: all approved, some still draft, or nothing recorded yet.
+ *
+ * Its id is made from the year, the fund, the kind and the number, so the
+ * same ordinance cannot be recorded twice.
+ */
+export interface Ordinance extends Partial<AuditStamps> {
+  id: Id;
+  fiscalYear: number;
+  fundCode: string;
+  kind: AppropriationKind;
+  /** The ordinance or resolution number, as the authority reference is written on its lines. */
+  reference: string;
+  date: IsoDate;
+  /** What it is, in the office's words: "Annual Budget FY 2026". */
+  title?: string;
+}
+
+// ---------------------------------------------------------------------------
 // allotments/{id}
 // ---------------------------------------------------------------------------
 

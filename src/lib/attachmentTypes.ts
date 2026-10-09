@@ -45,6 +45,11 @@ export function attachmentTypesFor(
     case COL.liquidations:
       return ['LIQUIDATION_REPORT'];
 
+    case COL.ordinances:
+      // The enacted ordinance, scanned, attached to the record its lines
+      // were encoded under. Patch 119.
+      return ['ORDINANCE'];
+
     case COL.jevs:
       /*
        * An entry written in Accounting answers to a piece of paper CFMS never

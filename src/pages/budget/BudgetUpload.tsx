@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, TextInput, DateInput, Select } from '@/components/ui/Field';
@@ -16,6 +17,9 @@ import {
 } from '@/lib/accounting-rules';
 import { findSector } from '@/lib/sectors';
 import { TEMPLATE_COLUMNS, downloadBudgetTemplate } from '@/lib/budgetTemplate';
+import { useDocument } from '@/hooks/useFirestore';
+import { COL } from '@/lib/collections';
+import type { Ordinance } from '@/types/budget';
 import { fundLabel } from './Obligations';
 import { parseBudgetFile, type ParsedBudgetRow } from './parseBudget';
 
@@ -50,9 +54,23 @@ const KINDS = [
 const CHUNK = 150;
 
 export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTMENT' }) {
-  const { fiscalYear, fundCode } = useFilters();
+  const filters = useFilters();
   const toast = useToast();
+  const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
+
+  /*
+    Patch 119: opened from inside an ordinance, the upload belongs to it. The
+    kind, number and date are the ordinance's and cannot be changed here, the
+    year and fund are the ordinance's whatever the header filters say, and the
+    screen returns to the ordinance when the file has landed.
+  */
+  const [params] = useSearchParams();
+  const ordinanceParam = kind === 'APPROPRIATION' ? params.get('ordinance') : null;
+  const ordinanceDoc = useDocument<Ordinance>(COL.ordinances, ordinanceParam);
+  const ordinance = ordinanceParam && ordinanceDoc.data ? ordinanceDoc.data : null;
+  const fiscalYear = ordinance?.fiscalYear ?? filters.fiscalYear;
+  const fundCode = ordinance?.fundCode ?? filters.fundCode;
 
   const offices = useOffices();
   const accounts = useAccounts(false);
@@ -68,6 +86,14 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
   const [progress, setProgress] = useState<string | null>(null);
   const [showFormat, setShowFormat] = useState(false);
   const [instrument, setInstrument] = useState<RealignmentInstrument>('AUGMENTATION');
+
+  useEffect(() => {
+    if (!ordinance) return;
+    setAppropriationKind(ordinance.kind);
+    setReference(ordinance.reference);
+    setDate(ordinance.date);
+    if (ordinance.kind === 'REALIGNMENT') setInstrument('REALIGNMENT');
+  }, [ordinance]);
 
   const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
   const isRealignment = isAppropriation && appropriationKind === 'REALIGNMENT';
@@ -279,8 +305,12 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
       }
       setRows([]);
       setFileName('');
-      setReference('');
       if (fileInput.current) fileInput.current.value = '';
+      if (ordinanceParam) {
+        navigate(`/budget/appropriations/ordinances/${ordinanceParam}`);
+        return;
+      }
+      setReference('');
     } catch (err) {
       toast.error(
         posted > 0 ? `Stopped after ${posted} lines` : 'Nothing was uploaded',
@@ -303,12 +333,42 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
             ? 'The annex to the appropriation ordinance, read line by line into the budget ledger as DRAFTS for the Budget Officer to approve. One row per office per account.'
             : 'A batch of allotment releases, read from the spreadsheet the Budget Office already keeps. It fills prepared release orders - one per expense class - and nothing is released until the Budget Officer approves them on the Allotments screen.'
         }
-        breadcrumbs={[
-          { label: 'Budget' },
-          { label: isAppropriation ? 'Appropriation' : 'Allotments' },
-          { label: 'Upload' },
-        ]}
+        breadcrumbs={
+          ordinanceParam
+            ? [
+                { label: 'Budget' },
+                { label: 'Ordinances', to: '/budget/appropriations/ordinances' },
+                { label: ordinance?.reference ?? '...', to: `/budget/appropriations/ordinances/${ordinanceParam}` },
+                { label: 'Upload lines' },
+              ]
+            : [
+                { label: 'Budget' },
+                { label: isAppropriation ? 'Appropriation' : 'Allotments' },
+                { label: 'Upload' },
+              ]
+        }
+        actions={
+          ordinanceParam && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate(`/budget/appropriations/ordinances/${ordinanceParam}`)}
+            >
+              Back to the ordinance
+            </Button>
+          )
+        }
       />
+
+      {ordinanceParam && (
+        <Alert tone="info" className="mb-4">
+          {ordinance
+            ? `Every line in this file is recorded under ${ordinance.reference}. It lands as drafts inside the ordinance, where it is printed on LBP Form No. 2 and approved whole.`
+            : ordinanceDoc.loading
+              ? 'Loading the ordinance...'
+              : 'That ordinance was not found. Record it on the Ordinances tab first.'}
+        </Alert>
+      )}
 
       <Card title={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}>
         <div className="grid gap-4 md:grid-cols-3">
@@ -316,6 +376,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
             <Field label="Type" required hint={chosenKind?.hint}>
               <Select
                 value={appropriationKind}
+                disabled={Boolean(ordinanceParam)}
                 onChange={(e) => setAppropriationKind(e.target.value)}
               >
                 {KINDS.map((k) => (
@@ -339,6 +400,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
             >
               <Select
                 value={instrument}
+                disabled={Boolean(ordinanceParam)}
                 onChange={(e) => setInstrument(e.target.value as RealignmentInstrument)}
               >
                 <option value="AUGMENTATION">Augmentation — within one expense class, by the LCE</option>
@@ -354,6 +416,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
           >
             <TextInput
               value={reference}
+              readOnly={Boolean(ordinanceParam)}
               onChange={(e) => setReference(e.target.value)}
               placeholder={isAppropriation ? 'Ordinance No. 2026-01' : 'ARO 2026-03'}
             />
@@ -364,7 +427,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
             required
             hint={isAppropriation ? 'The date the ordinance was enacted.' : undefined}
           >
-            <DateInput value={date} onChange={setDate} />
+            <DateInput value={date} onChange={setDate} disabled={Boolean(ordinanceParam)} />
           </Field>
         </div>
 

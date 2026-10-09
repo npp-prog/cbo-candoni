@@ -38,12 +38,15 @@ import { formatShortDate, todayPh } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type {
   Appropriation,
+  Ordinance,
   AppropriationKind,
   AugmentationDraft,
 } from '@/types/budget';
 import { AppropriationTabs } from './appropriationTabs';
 import { uploadedDrafts, type UploadGroup } from './uploadedDrafts';
 import { fundLabel } from './Obligations';
+import { RecordOrdinanceDialog } from './RecordOrdinanceDialog';
+import { ordinanceId } from './ordinanceModel';
 import { useEntity } from '@/data/useEntity';
 import { buildAugmentationSheet, type AugmentationSheet } from './augmentationForm';
 import { AugmentationFormSheet, usePrintAugmentation } from './AugmentationFormSheet';
@@ -180,6 +183,8 @@ export default function Appropriations() {
   const { data, loading, error } = useAppropriations(fiscalYear, fundCode);
 
   const [showForm, setShowForm] = useState(false);
+  /* Patch 119: the ordinance is recorded first, as a document of its own. */
+  const [recordingOrdinance, setRecordingOrdinance] = useState(false);
   const [approving, setApproving] = useState<Appropriation | null>(null);
   const [editing, setEditing] = useState<Appropriation | null>(null);
   const [busy, setBusy] = useState(false);
@@ -517,8 +522,11 @@ export default function Appropriations() {
               </Button>
               {/* A stray bracket sat here and rendered a literal "(" between
                   the two buttons. */}
-              <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setShowForm(true)}>
                 Record appropriation
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setRecordingOrdinance(true)}>
+                Record an ordinance
               </Button>
             </div>
           )
@@ -540,12 +548,13 @@ export default function Appropriations() {
       {uploads.length > 0 && (
         <Card className="mb-4 border-amber-300 bg-amber-50/40">
           <h2 className="text-sm font-semibold text-navy-900">
-            Uploaded ordinances - waiting for approval
+            Ordinances - waiting for approval
           </h2>
           <p className="mt-1 text-xs text-slate-600">
             The lines are in the ledger below, marked Draft. None of it is authority yet and none
-            of it is in the totals. Approve the upload whole once it has been read against the
-            ordinance - or approve, correct or discard lines one at a time.
+            of it is in the totals. Open the ordinance to record more lines, attach the signed
+            copy and print LBP Form No. 2 - then approve it whole once it has been read against
+            the ordinance, or approve, correct or discard lines one at a time.
           </p>
           <ul className="mt-3 divide-y divide-amber-200/70">
             {uploads.map((u) => (
@@ -564,6 +573,22 @@ export default function Appropriations() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      navigate(
+                        `/budget/appropriations/ordinances/${ordinanceId({
+                          fiscalYear,
+                          fundCode,
+                          kind: u.kind as AppropriationKind,
+                          reference: u.reference,
+                        })}`,
+                      )
+                    }
+                  >
+                    Open
+                  </Button>
                   {can('budget', 'approve') && (
                     <Button size="sm" variant="primary" onClick={() => setApprovingUpload(u)}>
                       Approve all {u.ids.length}
@@ -606,6 +631,27 @@ export default function Appropriations() {
           )
         }
       />
+
+      {recordingOrdinance && (
+        <RecordOrdinanceDialog
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          actor={
+            user
+              ? actorStamp({
+                  uid: user.uid,
+                  name: profile?.displayName ?? user.email ?? user.uid,
+                  position: profile?.position,
+                })
+              : null
+          }
+          onClose={() => setRecordingOrdinance(false)}
+          onRecorded={(id) => {
+            setRecordingOrdinance(false);
+            navigate(`/budget/appropriations/ordinances/${id}`);
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={Boolean(discardingUpload)}
@@ -1057,7 +1103,7 @@ function SummaryTile({
   );
 }
 
-function AppropriationForm({
+export function AppropriationForm({
   fiscalYear,
   fundCode,
   onClose,
@@ -1065,6 +1111,7 @@ function AppropriationForm({
   actor,
   existing,
   draft,
+  ordinance,
 }: {
   fiscalYear: number;
   fundCode: string;
@@ -1088,10 +1135,18 @@ function AppropriationForm({
    * other a whole set of them, and the form is in one mode or the other.
    */
   draft?: AugmentationDraft | null;
+  /**
+   * The ordinance this line is being recorded INTO, from its own page.
+   * Patch 119. The kind, the number and the date are the ordinance's and are
+   * shown rather than asked; a line recorded here is approved with the rest
+   * of the ordinance.
+   */
+  ordinance?: Ordinance | null;
 }) {
   const toast = useToast();
   const editing = Boolean(existing);
   const editingDraft = Boolean(draft);
+  const inOrdinance = Boolean(ordinance);
   /*
     A line can stop being editable while this form is open - another officer
     approves it from the same list a moment later. The row's Edit button is
@@ -1103,13 +1158,13 @@ function AppropriationForm({
   const [kind, setKind] = useState<FormKind>(
     draft
       ? (draft.instrument as FormKind)
-      : ((existing?.kind as FormKind | undefined) ?? 'ORIGINAL'),
+      : ((existing?.kind as FormKind | undefined) ?? (ordinance?.kind as FormKind | undefined) ?? 'ORIGINAL'),
   );
   const [authorityReference, setAuthorityReference] = useState(
-    draft?.authorityReference ?? existing?.authorityReference ?? '',
+    draft?.authorityReference ?? existing?.authorityReference ?? ordinance?.reference ?? '',
   );
   const [authorityDate, setAuthorityDate] = useState(
-    draft?.authorityDate ?? existing?.authorityDate ?? todayPh(),
+    draft?.authorityDate ?? existing?.authorityDate ?? ordinance?.date ?? todayPh(),
   );
   const [officeId, setOfficeId] = useState<string | null>(existing?.officeId ?? null);
   const [officeName, setOfficeName] = useState(existing?.officeName ?? '');
@@ -1414,6 +1469,13 @@ function AppropriationForm({
           expenseClass,
           kind: storedKind(kind),
           authorityReference: authorityReference.trim() || null,
+          /*
+            The ordinance's lines are approved TOGETHER - "Approve all" on the
+            ordinance and in the amber box above the ledger reads the lines by
+            this. A line typed under a number joins the ones uploaded under
+            it, which it did not before patch 119.
+          */
+          importReference: authorityReference.trim() || null,
           authorityDate,
           amount,
           particulars: particulars.trim() || null,
@@ -1501,7 +1563,7 @@ function AppropriationForm({
               : selectedKind.hint
           }
         >
-          {editing || editingDraft ? (
+          {editing || editingDraft || inOrdinance ? (
             <div className="cbo-input flex items-center bg-slate-50 text-slate-600">
               {selectedKind.label}
             </div>
@@ -1531,15 +1593,27 @@ function AppropriationForm({
                   : 'Ordinance or resolution number'
             }
           >
-            <TextInput
-              id="authority"
-              value={authorityReference}
-              onChange={(e) => setAuthorityReference(e.target.value)}
-              placeholder={kind === 'AUGMENTATION' ? 'Office Order No. 2026-__' : 'Ord. No. 2026-01'}
-            />
+            {inOrdinance ? (
+              <div className="cbo-input flex items-center bg-slate-50 text-slate-600">
+                {authorityReference}
+              </div>
+            ) : (
+              <TextInput
+                id="authority"
+                value={authorityReference}
+                onChange={(e) => setAuthorityReference(e.target.value)}
+                placeholder={kind === 'AUGMENTATION' ? 'Office Order No. 2026-__' : 'Ord. No. 2026-01'}
+              />
+            )}
           </Field>
           <Field label="Authority date" htmlFor="authorityDate">
-            <DateInput id="authorityDate" value={authorityDate} onChange={setAuthorityDate} />
+            {inOrdinance ? (
+              <div className="cbo-input flex items-center bg-slate-50 text-slate-600">
+                {formatShortDate(authorityDate)}
+              </div>
+            ) : (
+              <DateInput id="authorityDate" value={authorityDate} onChange={setAuthorityDate} />
+            )}
           </Field>
         </div>
 

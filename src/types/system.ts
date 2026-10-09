@@ -236,6 +236,8 @@ export const DOCUMENT_TYPES = [
   // Abstract is beside the RCD - not a loose "supporting document".
   'ERCD',
   'PROOF_OF_DEPOSIT',
+  // The appropriation ordinance itself, attached to its record. Patch 119.
+  'ORDINANCE',
   'OTHER',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -251,6 +253,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   RCDISB: 'Report of Cash Disbursement (RCDisb)',
   ERCD: 'Report of e-Collections and Deposits (eRCD)',
   PROOF_OF_DEPOSIT: 'Proof of deposit or fund transfer',
+  ORDINANCE: 'Appropriation Ordinance',
   /**
    * The supporting paper behind a journal entry written in Accounting - a
    * memorandum, a bank debit advice, the office's own journal voucher. CFMS
