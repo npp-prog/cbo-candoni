@@ -15,7 +15,12 @@ import { recordTransition, notifyInTransaction } from '../lib/audit';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
 import type { BudgetKey } from '../lib/budget';
 import { obligationStatusFor } from '../lib/paymentBudget';
-import { checkDvCategory, checkDvMath } from '../lib/rules';
+import {
+  checkDvCategory,
+  checkDvMath,
+  checkDoubleEntry,
+  checkExpenseDebitsHaveFpp,
+} from '../lib/rules';
 import {
   createJevInTransaction,
   postJevInTransaction,
@@ -1233,3 +1238,174 @@ function applyDvConsumption(
     status: obligationStatusFor(obr.status, obr.totalAmount, newDisbursed, obr.paidAmount ?? 0),
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// correctDvEntry - PATCH 131
+// ---------------------------------------------------------------------------
+
+/**
+ * The Municipal Accountant corrects the accounting entry of an approved (or
+ * paid) voucher whose entry is NOT YET IN THE GENERAL LEDGER.
+ *
+ * Vouchers approved before patch 85 had their entry prepared and left for
+ * the Accountant to post. Some carry an expense debit with no budget line, and
+ * postJev rightly refuses them - which left them with no way into the books:
+ * the voucher screen showed the entry read-only, and General Transactions does
+ * not open an entry raised by a voucher. Neil: "Allow edit of Accounting entry
+ * if not yet posted in Ledger."
+ *
+ * What may change: accounts, budget lines (FPP), particulars, subsidiaries,
+ * and how the amount is spread across lines. What may not: the TOTAL. The
+ * voucher was approved, the obligation charged and the supplier paid for that
+ * amount; an entry for a different amount would leave the books disagreeing
+ * with the paper. A different amount is corrected after posting, by Amend on
+ * the journal entry, which records the difference on the entry itself.
+ *
+ * The voucher's own copy of the entry (accountLines) is rewritten in the same
+ * transaction, so the printed voucher and the journal entry say the same.
+ * Once the entry is posted this refuses: a posted entry is corrected only by
+ * correctJev or amendPostedJev.
+ */
+export const correctDvEntry = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT']);
+    const { dvId, lines } = (request.data ?? {}) as {
+      dvId?: string;
+      lines?: Array<{
+        accountCode?: string;
+        accountName?: string;
+        fppCode?: string | null;
+        fppName?: string | null;
+        debit?: number;
+        credit?: number;
+        particulars?: string | null;
+        subsidiaryType?: string | null;
+        subsidiaryId?: string | null;
+        subsidiaryName?: string | null;
+      }>;
+    };
+    if (!dvId) throw invalid('Which voucher?');
+    if (!Array.isArray(lines) || lines.length === 0) throw invalid('The entry has no lines.');
+
+    const clean = lines.map((l, i) => ({
+      lineNo: i + 1,
+      accountCode: String(l.accountCode ?? '').trim(),
+      accountName: String(l.accountName ?? '').trim(),
+      fppCode: l.fppCode ? String(l.fppCode).trim() : null,
+      fppName: l.fppName ? String(l.fppName).trim() : null,
+      debit: Number(l.debit ?? 0),
+      credit: Number(l.credit ?? 0),
+      particulars: l.particulars ? String(l.particulars) : null,
+      subsidiaryType: l.subsidiaryType || null,
+      subsidiaryId: l.subsidiaryId || null,
+      subsidiaryName: l.subsidiaryName || null,
+    }));
+    for (const l of clean) {
+      if (!l.accountCode) throw invalid(`Line ${l.lineNo} has no account.`);
+      if (!Number.isInteger(l.debit) || !Number.isInteger(l.credit) || l.debit < 0 || l.credit < 0) {
+        throw invalid(`Line ${l.lineNo}: the amounts must be whole centavos, not negative.`);
+      }
+    }
+    const balance = checkDoubleEntry(clean);
+    if (!balance.ok) throw new HttpsError('failed-precondition', balance.violations[0].message);
+
+    // The Chart of Accounts, to know which debits are expenses and need a line.
+    const chart = await db.collection(COL.accounts).get();
+    const expense = new Set<string>();
+    for (const a of chart.docs) {
+      const d = a.data() as { code?: string; accountClass?: string };
+      if (d.code && d.accountClass === 'EXPENSE') expense.add(d.code.trim());
+    }
+    const fpp = checkExpenseDebitsHaveFpp(clean, (code) => expense.has(code));
+    if (!fpp.ok) throw new HttpsError('failed-precondition', fpp.violations[0].message);
+
+    return db.runTransaction(async (tx) => {
+      const dvRef = db.collection(COL.disbursementVouchers).doc(dvId);
+      const dvSnap = await tx.get(dvRef);
+      if (!dvSnap.exists) throw notFound('The voucher');
+      const dv = dvSnap.data() as DvDoc & { jevPostedAt?: string };
+      assertFundInScope(caller, dv.fundCode);
+      if (!['APPROVED', 'PAID'].includes(dv.status)) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Only an approved or paid voucher has an entry waiting to be posted. A voucher still in draft is corrected on the voucher itself.',
+        );
+      }
+      if (!dv.jevId) throw new HttpsError('failed-precondition', 'This voucher has no journal entry.');
+      if (dv.jevPostedAt) {
+        throw new HttpsError(
+          'failed-precondition',
+          'The entry is already in the General Ledger. Correct it from the journal entry (Amend, or Reverse and correct).',
+        );
+      }
+      const jevRef = db.collection(COL.jevs).doc(dv.jevId);
+      const jevSnap = await tx.get(jevRef);
+      if (!jevSnap.exists) throw notFound('The journal entry');
+      const jev = jevSnap.data() as {
+        status: string;
+        totalDebit: number;
+        jevNo?: string;
+        lines?: Array<{ lineNo: number; officeId?: string | null; responsibilityCenterId?: string | null; cashFlowClass?: string | null }>;
+      };
+      if (['POSTED', 'REVERSED', 'CANCELLED'].includes(jev.status)) {
+        throw new HttpsError(
+          'failed-precondition',
+          `The entry is ${jev.status.toLowerCase()} and cannot be corrected here.`,
+        );
+      }
+      const total = clean.reduce((t, l) => t + l.debit, 0);
+      if (total !== jev.totalDebit) {
+        throw new HttpsError(
+          'failed-precondition',
+          `The entry must still total ${(jev.totalDebit / 100).toFixed(2)}, the amount the voucher was approved and paid for; this one totals ${(total / 100).toFixed(2)}. ` +
+            'A different amount is corrected after posting, with Amend on the journal entry.',
+        );
+      }
+
+      const prior = new Map((jev.lines ?? []).map((l) => [l.lineNo, l]));
+      const jevLines = clean.map((l) => {
+        const was = prior.get(l.lineNo);
+        return {
+          ...l,
+          officeId: was?.officeId ?? dv.officeId ?? null,
+          officeName: dv.officeName ?? null,
+          responsibilityCenterId: was?.responsibilityCenterId ?? null,
+          cashFlowClass: was?.cashFlowClass ?? 'OPERATING',
+          particulars: l.particulars ?? dv.particulars ?? null,
+        };
+      });
+      const now = new Date().toISOString();
+      const by = { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now };
+      tx.update(jevRef, {
+        lines: jevLines,
+        totalDebit: total,
+        totalCredit: total,
+        updatedBy: by,
+        updatedAt: now,
+      });
+      tx.update(dvRef, {
+        accountLines: clean.map((l) => ({ ...l, officeId: prior.get(l.lineNo)?.officeId ?? dv.officeId })),
+        updatedBy: by,
+        updatedAt: now,
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'EDIT',
+        entityType: COL.disbursementVouchers,
+        entityId: dvId,
+        entityRef: `DV ${dv.dvNo ?? dvId}`,
+        fiscalYear: dv.fiscalYear,
+        fundCode: dv.fundCode,
+        action: 'CREATE',
+        previousStatus: dv.status,
+        newStatus: dv.status,
+        remarks: `Accounting entry corrected before posting (${clean.length} lines, ${(total / 100).toFixed(2)}).`,
+      });
+
+      return { dvId, jevId: dv.jevId, lineCount: clean.length };
+    });
+  },
+);

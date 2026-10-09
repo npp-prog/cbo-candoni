@@ -1368,7 +1368,7 @@ export function AppropriationForm({
 
   /**
    * Patch 128, corrected in 130: each source within its appropriation not
-   * yet allotted (appropriation less allotment released and held). The same rule the engine runs at posting; here it is
+   * yet allotted (appropriation less allotment released; a hold counts as unallotted since patch 131). The same rule the engine runs at posting; here it is
    * shown while the amounts are typed, and saving is refused while it fails,
    * because no amount of finishing the draft later makes it possible.
    */

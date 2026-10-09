@@ -658,15 +658,32 @@ export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckR
  * (Allotments > Withdraw) - and a withdrawal is refused if it would leave the
  * allotment below what is obligated against it (`checkAllotmentWithdrawal`).
  *
- * An amount held For Later Release on an Allotment Release Order is counted as
- * allotted: the order covers it, and it is released by that order, not
- * realigned out from under it.
+ * An amount held For Later Release on an Allotment Release Order IS
+ * realignable (patch 131 - Neil: "Yes they are realignable."). It was never
+ * released, so it is still appropriation not yet allotted. Realigning it
+ * cancels that much of the hold: the engine takes the unheld part first, then
+ * reduces the hold on the release order lines (heldTakenByRealignment), so
+ * the hold can never be released afterwards for money that has gone.
  */
 export const realignableBalance = (b: {
   appropriationRevised: number;
   allotmentReleased: number;
   forLaterRelease?: number;
-}): number => Math.max(0, b.appropriationRevised - b.allotmentReleased - (b.forLaterRelease ?? 0));
+}): number => Math.max(0, b.appropriationRevised - b.allotmentReleased);
+
+/**
+ * How much of a realignment's take comes out of the hold. The part of the
+ * appropriation neither released nor held goes first; only the rest reduces
+ * the hold. Patch 131.
+ */
+export const heldTakenByRealignment = (
+  b: { appropriationRevised: number; allotmentReleased: number; forLaterRelease?: number },
+  taken: number,
+): number => {
+  const held = b.forLaterRelease ?? 0;
+  const unheld = Math.max(0, b.appropriationRevised - b.allotmentReleased - held);
+  return Math.min(held, Math.max(0, taken - unheld));
+};
 
 export interface RealignableSource {
   lineNo: number;
@@ -698,7 +715,7 @@ export function checkRealignableBalances(lines: RealignableSource[]): CheckResul
         message:
           `${l.label} can give up at most ${php(available)} - its appropriation of ` +
           `${php(l.appropriationRevised)} less ${php(l.allotmentReleased)} released as allotment` +
-          (held ? ` and ${php(held)} held for later release` : '') +
+          (held ? ` (the ${php(held)} held for later release is included and may be taken)` : '') +
           ` - and this takes ${php(taken)}. Withdraw allotment first (Allotments) to free the rest; ` +
           'only allotment not yet obligated can be withdrawn.',
         details: {

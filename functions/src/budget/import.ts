@@ -20,6 +20,7 @@ import {
   checkAugmentationExpenseClass,
   checkRealignmentSet,
   checkRealignableBalances,
+  heldTakenByRealignment,
 } from '../lib/rules';
 import { findSector } from '../lib/sectors';
 import { postingFromPreparedSet, preparedSetId, type PreparedSet } from './preparedSets';
@@ -732,6 +733,11 @@ export const importBudgetLines = onCall(
 
       const lines = [...byLine.values()];
       const balances = await Promise.all(lines.map((l) => readBudgetBalance(tx, l.key)));
+      /** Patch 131: how much of each source comes out of a hold, and from which order lines. */
+      const heldTaken: number[] = lines.map(() => 0);
+      const heldPlans: Array<
+        Array<{ ref: DocumentReference; held: number; take: number; prior: unknown[] }>
+      > = lines.map(() => []);
 
       /*
        * WHAT A SOURCE MAY GIVE UP. Patch 130.
@@ -767,6 +773,57 @@ export const importBudgetLines = onCall(
             `${within.violations[0].message} Nothing was posted.`,
             within.violations[0].details,
           );
+        }
+
+        /*
+         * PATCH 131 - A HOLD IS REALIGNABLE. Neil: "Yes they are realignable."
+         *
+         * What a source gives up comes first from appropriation neither
+         * released nor held; only the rest is taken out of the hold. That
+         * part cancels the hold on the release order lines that carry it -
+         * latest order first - so the hold can never later be released for
+         * money that has been realigned away, and the nightly rebuild (which
+         * sums the holds off the allotment lines) agrees with the balance.
+         * Read here, before any write.
+         */
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].amount >= 0) continue;
+          const fromHeld = heldTakenByRealignment(balances[i], -lines[i].amount);
+          heldTaken[i] = fromHeld;
+          if (fromHeld === 0) continue;
+          const k = lines[i].key;
+          const snap = await tx.get(
+            db
+              .collection(COL.allotments)
+              .where('fiscalYear', '==', k.fiscalYear)
+              .where('fundCode', '==', k.fundCode)
+              .where('officeId', '==', k.officeId)
+              .where('fppCode', '==', k.fppCode)
+              .where('accountCode', '==', k.accountCode),
+          );
+          const holding = snap.docs
+            .filter((d) => (d.get('forLaterRelease') ?? 0) > 0 && d.get('status') !== 'CANCELLED')
+            .sort((a, b) =>
+              String(b.get('allotmentDate') ?? '').localeCompare(String(a.get('allotmentDate') ?? '')),
+            );
+          let left = fromHeld;
+          const plan: Array<{ ref: DocumentReference; held: number; take: number; prior: unknown[] }> = [];
+          for (const d of holding) {
+            if (left <= 0) break;
+            const held = Number(d.get('forLaterRelease') ?? 0);
+            const take = Math.min(held, left);
+            plan.push({ ref: d.ref, held, take, prior: (d.get('heldRealigned') as unknown[]) ?? [] });
+            left -= take;
+          }
+          if (left > 0) {
+            const r = lines[i].rows[0];
+            throw new HttpsError(
+              'failed-precondition',
+              `${r.accountCode || r.fppCode} ${r.accountName || r.fppName || ''} in ${r.officeName} shows ${peso(balances[i].forLaterRelease ?? 0)} held for later release, ` +
+                `but the release orders behind it hold only ${peso(fromHeld - left)}. Run Administration > Settings > Budget figures: Check, Repair, then try again. Nothing was posted.`,
+            );
+          }
+          heldPlans[i] = plan;
         }
       }
 
@@ -811,7 +868,8 @@ export const importBudgetLines = onCall(
           // realignment takes some of it back in the same transaction, so the
           // figure to test against is the one after that withdrawal, not the
           // one before it.
-          const resultingAllotment = balances[i].allotmentReleased + (balances[i].forLaterRelease ?? 0);
+          const resultingAllotment =
+            balances[i].allotmentReleased + (balances[i].forLaterRelease ?? 0) - heldTaken[i];
           if (resulting < resultingAllotment) {
             throw new HttpsError(
               'failed-precondition',
@@ -1015,6 +1073,19 @@ export const importBudgetLines = onCall(
         }
 
         // Patch 130: a realignment moves appropriation only; no allotment moves.
+        // Patch 131: what it takes out of a hold cancels that much of the hold.
+        if (heldTaken[i] > 0) {
+          delta.forLaterRelease = -heldTaken[i];
+          for (const h of heldPlans[i]) {
+            tx.update(h.ref, {
+              forLaterRelease: h.held - h.take,
+              heldRealigned: [
+                ...h.prior,
+                { reference, amount: h.take, at: now, by: caller.name ?? caller.uid },
+              ],
+            });
+          }
+        }
 
         applyBudgetDelta(tx, line.key, balances[i], delta, {
           officeName: first.officeName,

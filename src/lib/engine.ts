@@ -391,6 +391,27 @@ export const engine = {
   cancelDv: (p: { dvId: Id; reason: string }) => call<typeof p, { dvId: Id }>('cancelDv', p),
 
   /**
+   * Patch 131. The Accountant corrects the entry of an approved or paid
+   * voucher that is not yet in the General Ledger - accounts, budget lines,
+   * particulars - keeping its total. Refused once the entry is posted.
+   */
+  correctDvEntry: (p: {
+    dvId: Id;
+    lines: Array<{
+      accountCode: string;
+      accountName: string;
+      fppCode?: string | null;
+      fppName?: string | null;
+      debit: number;
+      credit: number;
+      particulars?: string | null;
+      subsidiaryType?: string | null;
+      subsidiaryId?: string | null;
+      subsidiaryName?: string | null;
+    }>;
+  }) => call<typeof p, { dvId: Id; jevId: Id; lineCount: number }>('correctDvEntry', p),
+
+  /**
    * Posts a JEV to the General Ledger. Validates debit = credit, that the
    * accounting period is open, and that the caller holds a posting role, then
    * writes the immutable ledger entries. Irreversible except by a reversing

@@ -3110,6 +3110,9 @@ if (existsSync(functionsSrc)) {
   if (!/checkRealignableBalances\(/.test(imp)) {
     failures.push('functions/src/budget/import.ts: a realignment or augmentation is posted without checking each source against its appropriation not yet allotted.');
   }
+  if (!/heldTakenByRealignment\(/.test(imp) || !/forLaterRelease: h\.held - h\.take/.test(imp)) {
+    failures.push('functions/src/budget/import.ts: a realignment may take an amount held for later release (patch 131) but no longer cancels that much of the hold on the release order lines - the hold could then be released for money already realigned away.');
+  }
   if (/planAugmentationAllotment\(/.test(imp)) {
     failures.push('functions/src/budget/import.ts: a realignment moves allotment again. Since patch 130 it moves appropriation only; allotment is freed by a withdrawal.');
   }
@@ -3156,6 +3159,38 @@ if (existsSync(functionsSrc)) {
   }
   if (failures.length === before) {
     console.log('collections: registries read every collection report; the SRE matches each expense to its budget line');
+  }
+}
+
+// --- 51. An unposted voucher entry is corrected, a posted one never ---------
+
+/*
+ * Patch 131. correctDvEntry lets the Accountant correct the entry of an
+ * approved or paid voucher that is NOT yet in the General Ledger. It must
+ * refuse once the entry is posted (a posted entry is corrected only by
+ * correctJev / amendPostedJev), keep the total the voucher was approved and
+ * paid for, and still demand a budget line on every expense debit.
+ */
+{
+  const before = failures.length;
+  const dv = readFileSync(resolve(root, 'functions/src/accounting/dv.ts'), 'utf8');
+  const start = dv.indexOf('export const correctDvEntry');
+  const body = start >= 0 ? dv.slice(start) : '';
+  if (!body) {
+    failures.push('functions/src/accounting/dv.ts: correctDvEntry is gone - an unposted voucher entry missing a budget line can no longer be put right.');
+  } else {
+    if (!/if \(dv\.jevPostedAt\)/.test(body) || !/\['POSTED', 'REVERSED', 'CANCELLED'\]\.includes\(jev\.status\)/.test(body)) {
+      failures.push('functions/src/accounting/dv.ts: correctDvEntry no longer refuses an entry already in the General Ledger.');
+    }
+    if (!/total !== jev\.totalDebit/.test(body)) {
+      failures.push('functions/src/accounting/dv.ts: correctDvEntry no longer keeps the total the voucher was approved and paid for.');
+    }
+    if (!/checkExpenseDebitsHaveFpp\(/.test(body)) {
+      failures.push('functions/src/accounting/dv.ts: correctDvEntry no longer requires a budget line on an expense debit.');
+    }
+  }
+  if (failures.length === before) {
+    console.log('voucher entry: correctable until posted, total kept, expense debits carry a budget line');
   }
 }
 

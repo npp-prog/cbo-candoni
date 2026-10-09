@@ -59,6 +59,7 @@ export {
   forwardDvToTreasury,
   unapproveDv,
   cancelDv,
+  correctDvEntry,
 } from './accounting/dv';
 export { postJev, reverseJev, correctJev, amendPostedJev } from './accounting/jev';
 export { issueCheck, cancelCheck, issueAda, cancelAda } from './accounting/payments';

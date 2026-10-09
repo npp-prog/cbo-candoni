@@ -29,7 +29,12 @@ import { engine } from '@/lib/engine';
 import { namedAccountTitle } from '@/lib/chartOfAccounts';
 import { formatPeso, amountInWords } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
-import { checkDvCategory, checkDvMath, findProbableDuplicates } from '@/lib/accounting-rules';
+import {
+  checkDoubleEntry,
+  checkDvCategory,
+  checkDvMath,
+  findProbableDuplicates,
+} from '@/lib/accounting-rules';
 import {
   proposeDvEntry,
   computeDeduction,
@@ -165,6 +170,14 @@ export default function DisbursementDetail() {
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [entryLines, setEntryLines] = useState<GridLine[]>([]);
   const [entryTouched, setEntryTouched] = useState(false);
+  /*
+   * Patch 131. The entry as it waits to be posted, for the Accountant to
+   * correct. Loaded from the journal entry itself (that is what postJev
+   * posts), and written back through correctDvEntry.
+   */
+  const [unpostedLines, setUnpostedLines] = useState<GridLine[] | null>(null);
+  const [unpostedDirty, setUnpostedDirty] = useState(false);
+  const [savingEntry, setSavingEntry] = useState(false);
 
   useEffect(() => {
     if (!existing) return;
@@ -300,6 +313,76 @@ export default function DisbursementDetail() {
     Boolean(existing?.jevId) &&
     !existing?.jevPostedAt &&
     hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+
+  /**
+   * Patch 131: "Allow edit of Accounting entry if not yet posted in Ledger."
+   *
+   * The same voucher the Post button is offered on, while its entry is still
+   * a proposal. The engine keeps the total and refuses once it is posted.
+   */
+  const canCorrectEntry =
+    canPost && Boolean(jev) && !['POSTED', 'REVERSED', 'CANCELLED'].includes(jev?.status ?? '');
+
+  useEffect(() => {
+    if (!canCorrectEntry || !jev || unpostedDirty) return;
+    setUnpostedLines(
+      (jev.lines ?? []).map((l, i) => ({
+        lineNo: l.lineNo ?? i + 1,
+        accountCode: l.accountCode,
+        accountName: l.accountName,
+        fppCode: l.fppCode ?? undefined,
+        fppName: l.fppName ?? undefined,
+        debit: l.debit,
+        credit: l.credit,
+        particulars: l.particulars ?? undefined,
+        subsidiaryType: l.subsidiaryType ?? undefined,
+        subsidiaryId: l.subsidiaryId ?? undefined,
+        subsidiaryName: l.subsidiaryName ?? undefined,
+      })),
+    );
+  }, [canCorrectEntry, jev, unpostedDirty]);
+
+  const unpostedCheck = useMemo(
+    () =>
+      checkDoubleEntry(
+        (unpostedLines ?? []).map((l) => ({
+          lineNo: l.lineNo,
+          accountCode: l.accountCode,
+          debit: l.debit,
+          credit: l.credit,
+        })),
+      ),
+    [unpostedLines],
+  );
+  const unpostedTotal = (unpostedLines ?? []).reduce((t, l) => t + l.debit, 0);
+
+  const saveUnpostedEntry = async () => {
+    if (!unpostedLines) return;
+    setSavingEntry(true);
+    try {
+      await engine.correctDvEntry({
+        dvId: id!,
+        lines: unpostedLines.map((l) => ({
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+          fppCode: l.fppCode ?? null,
+          fppName: l.fppName ?? null,
+          debit: l.debit,
+          credit: l.credit,
+          particulars: l.particulars ?? null,
+          subsidiaryType: l.subsidiaryType ?? null,
+          subsidiaryId: l.subsidiaryId ?? null,
+          subsidiaryName: l.subsidiaryName ?? null,
+        })),
+      });
+      setUnpostedDirty(false);
+      toast.success('Entry corrected', 'It is still not posted. Post it to the General Ledger when ready.');
+    } catch (err) {
+      toast.error('The entry was not saved', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingEntry(false);
+    }
+  };
 
   /**
    * Sending it over to Treasury.
@@ -547,7 +630,12 @@ export default function DisbursementDetail() {
                 somewhere else to post it is how entries sat unposted for days
                 while the ledger looked empty.
               */
-              <Button variant="success" onClick={() => setConfirm('post')}>
+              <Button
+                variant="success"
+                disabled={unpostedDirty}
+                title={unpostedDirty ? 'Save the corrected entry first' : undefined}
+                onClick={() => setConfirm('post')}
+              >
                 Post to General Ledger
               </Button>
             )}
@@ -947,7 +1035,60 @@ export default function DisbursementDetail() {
           </>
         )}
 
-        {tab === 'entry' && (
+        {tab === 'entry' && canCorrectEntry && unpostedLines && (
+          <Card
+            title="Accounting entry"
+            subtitle={`Not yet in the General Ledger. Until it is posted the Municipal Accountant may correct the accounts, the budget lines and the particulars. The total stays ${formatPeso(jev?.totalDebit ?? 0)}, the amount the voucher was approved for.`}
+            actions={
+              <div className="flex gap-2">
+                {unpostedDirty && (
+                  <Button size="sm" variant="ghost" onClick={() => setUnpostedDirty(false)}>
+                    Discard changes
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={savingEntry}
+                  disabled={!unpostedDirty || !unpostedCheck.ok}
+                  onClick={() => void saveUnpostedEntry()}
+                >
+                  Save the entry
+                </Button>
+              </div>
+            }
+          >
+            <JournalEntryGrid
+              lines={unpostedLines}
+              fppOptions={fppOptions}
+              expenseCodes={expenseCodes}
+              fundCode={fundCode}
+              onChange={(l) => {
+                setUnpostedLines(l);
+                setUnpostedDirty(true);
+              }}
+            />
+            {!unpostedCheck.ok && (
+              <Alert tone="error" className="mt-4" title="The entry does not balance">
+                {unpostedCheck.violations[0].message}
+              </Alert>
+            )}
+            {unpostedCheck.ok && unpostedTotal !== (jev?.totalDebit ?? 0) && (
+              <Alert tone="warning" className="mt-4" title="The total has changed">
+                This entry totals {formatPeso(unpostedTotal)}; the voucher was approved for{' '}
+                {formatPeso(jev?.totalDebit ?? 0)}. The save will be refused. A different amount is
+                corrected after posting, with Amend on the journal entry.
+              </Alert>
+            )}
+            {unpostedDirty && (
+              <p className="mt-3 text-xs text-amber-700">
+                Not saved yet. Save the entry before posting it - posting takes the saved entry.
+              </p>
+            )}
+          </Card>
+        )}
+
+        {tab === 'entry' && !(canCorrectEntry && unpostedLines) && (
           <Card
             title="Accounting entry"
             subtitle={

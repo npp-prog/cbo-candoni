@@ -96,7 +96,11 @@ function label(b: BudgetBalance, measure: 'allotment' | 'unallotted'): string {
   const object = b.accountCode ? ` · ${b.accountCode}` : '';
   if (measure === 'unallotted') {
     const free = formatPeso(realignableBalance(b), { symbol: false });
-    return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${free} unallotted)`;
+    // Patch 131: a hold is realignable, and says so.
+    const held = b.forLaterRelease
+      ? `, ${formatPeso(b.forLaterRelease, { symbol: false })} of it held`
+      : '';
+    return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${free} unallotted${held})`;
   }
   const available = formatPeso(b.availableAllotment, { symbol: false });
   return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${available} available)`;
