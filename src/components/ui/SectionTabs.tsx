@@ -164,7 +164,10 @@ export function SectionTabs({ tabs }: { tabs: readonly StripTab[] }) {
 export function GroupedSectionTabs({
   groups,
 }: {
-  groups: Array<{ group: string; tabs: Array<{ label: string; to: string }> }>;
+  groups: Array<{
+    group: string;
+    tabs: Array<{ label: string; to: string; children?: ReadonlyArray<{ label: string; to: string }> }>;
+  }>;
 }) {
   const { pathname } = useLocation();
 
@@ -175,19 +178,28 @@ export function GroupedSectionTabs({
    * true answer. Without it, standing on Deposits would light Transactions by
    * way of Collections, which happens to be right, and standing on the RCD
    * would light it too, which is not.
+   *
+   * Patch 144: a tab may carry children (a third row). A child's address
+   * lights its parent tab as well as itself.
    */
-  let best: { group: string; to: string } | null = null;
+  let best: { group: string; to: string; parent: string } | null = null;
+  const consider = (group: string, to: string, parent: string) => {
+    if (pathname !== to && !pathname.startsWith(`${to}/`)) return;
+    if (best === null || to.length > best.to.length) best = { group, to, parent };
+  };
   for (const g of groups) {
     for (const tab of g.tabs) {
-      if (pathname !== tab.to && !pathname.startsWith(`${tab.to}/`)) continue;
-      if (best === null || tab.to.length > best.to.length) best = { group: g.group, to: tab.to };
+      consider(g.group, tab.to, tab.to);
+      for (const c of tab.children ?? []) consider(g.group, c.to, tab.to);
     }
   }
+  const found = best as { group: string; to: string; parent: string } | null;
 
   /* Nothing matched - a screen reached by an address no tab carries. Show the
      first group rather than an empty strip. */
-  const activeGroup = best?.group ?? groups[0]?.group;
+  const activeGroup = found?.group ?? groups[0]?.group;
   const shown = groups.find((g) => g.group === activeGroup) ?? groups[0];
+  const activeTab = shown?.tabs.find((t) => t.to === found?.parent);
 
   return (
     <div className="mb-4 no-print">
@@ -211,7 +223,7 @@ export function GroupedSectionTabs({
           two rows cannot be mistaken for one. */}
       <nav className="flex flex-wrap gap-x-1 px-1 pt-1" aria-label={shown?.group}>
         {(shown?.tabs ?? []).map((tab) => {
-          const active = tab.to === best?.to;
+          const active = tab.to === found?.parent;
           return (
             <Link
               key={tab.to}
@@ -224,6 +236,33 @@ export function GroupedSectionTabs({
           );
         })}
       </nav>
+
+      {/* Patch 144: the active tab's own screens, a third and lightest row. */}
+      {activeTab?.children && activeTab.children.length > 0 && (
+        <nav
+          className="mt-2 flex flex-wrap border-b border-slate-200 px-2"
+          style={{ columnGap: '1.5rem' }}
+          aria-label={activeTab.label}
+        >
+          {activeTab.children.map((c) => {
+            const on = c.to === found?.to;
+            return (
+              <Link
+                key={c.to}
+                to={c.to}
+                aria-current={on ? 'page' : undefined}
+                className={`-mb-px whitespace-nowrap border-b-2 py-1.5 text-sm ${
+                  on
+                    ? 'border-brand-600 font-medium text-brand-700'
+                    : 'border-transparent text-slate-500 hover:text-navy-800'
+                }`}
+              >
+                {c.label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }

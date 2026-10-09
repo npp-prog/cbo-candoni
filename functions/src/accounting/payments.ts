@@ -678,100 +678,138 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
 });
 
 /**
- * postAdaOnline - patch 143. "Submit to bank" became "Posted online".
+ * postRadaiOnline - patch 144 (patch 143's postAdaOnline, moved to the RADAI).
  *
- * The Treasury marks the advice posted once the bank's online posting is
- * done, and says which credits the bank did NOT post (an ATM account closed,
- * a wrong number). Every payee is listed - each one of a group advice, or the
- * single payee - and the ones left unticked are recorded on the advice.
+ * The bank's file is uploaded from the RADAI, for every advice on it at once,
+ * so the bank's posting is recorded there too. The Treasury marks the RADAI
+ * "posted online" and says which credits the bank did NOT post - any payee of
+ * any advice on the report. Every advice on the report becomes "posted
+ * online"; the credits not posted are recorded on their advice and taken up,
+ * in ONE draft adjusting entry for the report, as trust liabilities:
  *
- * Those credits never left the bank account, and the municipality still owes
- * the payees - now as money held for them. So an ADJUSTING entry is raised as
- * a DRAFT journal entry for the Accountant to review and post:
- *
- *   Dr Cash in Bank (the advice's account)     total not posted
+ *   Dr Cash in Bank (the report's account)     total not posted
  *       Cr Trust Liabilities - <payee>         each payee's amount
  *
- * and each payee is repaid by a new voucher of the "Trust liability" kind.
- *
- * Every figure comes from the advice itself; the browser sends only WHICH
- * lines were not posted.
+ * for the Accountant to post. Each payee is repaid by a new voucher of the
+ * "Trust liability" kind. Every figure is read from the advices; the browser
+ * says only WHICH lines were not posted.
  */
-export const postAdaOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+export const postRadaiOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, TREASURY);
-  const { adaId, postedDate, bankReferenceNo, notPostedLineNos } = (request.data ?? {}) as {
-    adaId?: string;
+  const { reportId, postedDate, bankReferenceNo, notPosted: notPostedIn } = (request.data ?? {}) as {
+    reportId?: string;
     postedDate?: string;
     bankReferenceNo?: string;
-    notPostedLineNos?: number[];
+    notPosted?: Array<{ adaId: string; lineNo: number }>;
   };
-  if (!adaId) throw invalid('An ADA id is required.');
+  if (!reportId) throw invalid('A RADAI id is required.');
   if (!postedDate || !/^\d{4}-\d{2}-\d{2}$/.test(postedDate)) {
-    throw invalid('The date the bank posted the advice is required.');
+    throw invalid('The date the bank posted the advices is required.');
   }
-  const unposted = new Set((notPostedLineNos ?? []).map((n) => Number(n)));
+  const wanted = new Set((notPostedIn ?? []).map((n) => `${n.adaId}#${Number(n.lineNo)}`));
 
   // Titles are read before the transaction: they are reference data.
   const trustTitle = (await titleForAccountCode(TRUST_LIABILITIES.code)) ?? TRUST_LIABILITIES.name;
 
   return db.runTransaction(async (tx) => {
     // ---- READS ------------------------------------------------------------
-    const ref = db.collection(COL.ada).doc(adaId);
-    const snap = await tx.get(ref);
-    if (!snap.exists) throw notFound('The ADA');
-    const ada = snap.data() as {
-      adaNo: string;
+    const reportRef = db.collection(COL.treasuryReports).doc(reportId);
+    const reportSnap = await tx.get(reportRef);
+    if (!reportSnap.exists) throw notFound('The RADAI');
+    const report = reportSnap.data() as {
+      reportType: string;
+      reportNo?: string;
       status: string;
       fiscalYear: number;
       fundCode: string;
-      bankAccountId: string;
-      payeeId?: string;
-      payeeName: string;
-      amount: number;
-      payees?: Array<{ lineNo: number; payeeId: string | null; payeeName: string; accountNumber: string; amount: number }>;
-      treasuryReportId?: string;
-      dvNo?: string;
+      bankAccountId?: string;
+      postedOnlineAt?: string;
+      lines?: Array<{ sourceId: string; excluded?: boolean }>;
     };
-    assertFundInScope(caller, ada.fundCode);
-
-    if (ada.status !== 'PREPARED') {
+    assertFundInScope(caller, report.fundCode);
+    if (report.reportType !== 'RADAI') throw invalid('Only a Report of ADA Issued is posted online.');
+    if (!['CERTIFIED', 'JOURNALIZED'].includes(report.status)) {
       throw new HttpsError(
         'failed-precondition',
-        `ADA ${ada.adaNo} is ${ada.status.toLowerCase()} and cannot be marked posted online.`,
+        `RADAI ${report.reportNo ?? ''} is ${report.status.toLowerCase()}. Certify it before recording the bank's posting.`,
       );
     }
-    if (!ada.treasuryReportId) {
-      throw new HttpsError(
-        'failed-precondition',
-        `ADA ${ada.adaNo} is not on a certified Report of ADA Issued yet. Prepare the RADAI and have it certified first.`,
-      );
+    if (report.postedOnlineAt) {
+      throw new HttpsError('failed-precondition', `RADAI ${report.reportNo ?? ''} has already been posted online.`);
     }
 
-    const rows =
-      ada.payees && ada.payees.length > 0
-        ? ada.payees.map((p, i) => ({ ...p, lineNo: p.lineNo ?? i + 1 }))
-        : [
-            {
-              lineNo: 1,
-              payeeId: ada.payeeId ?? null,
-              payeeName: ada.payeeName,
-              accountNumber: '',
-              amount: ada.amount,
-            },
-          ];
-    for (const n of unposted) {
-      if (!rows.some((r) => r.lineNo === n)) throw invalid(`ADA ${ada.adaNo} has no line ${n}.`);
+    const adaIds = (report.lines ?? []).filter((l) => !l.excluded).map((l) => l.sourceId);
+    const adaSnaps = await Promise.all(adaIds.map((id) => tx.get(db.collection(COL.ada).doc(id))));
+
+    type Row = { lineNo: number; payeeId: string | null; payeeName: string; accountNumber: string; amount: number };
+    const advices = adaSnaps
+      .filter((snap) => snap.exists)
+      .map((snap) => {
+        const a = snap.data() as {
+          adaNo: string;
+          status: string;
+          payeeId?: string;
+          payeeName: string;
+          amount: number;
+          payees?: Row[];
+        };
+        const rows: Row[] =
+          a.payees && a.payees.length > 0
+            ? a.payees.map((p, i) => ({ ...p, lineNo: p.lineNo ?? i + 1 }))
+            : [{ lineNo: 1, payeeId: a.payeeId ?? null, payeeName: a.payeeName, accountNumber: '', amount: a.amount }];
+        return { id: snap.id, ref: snap.ref, ada: a, rows };
+      })
+      // An advice already posted (patch 143) or cancelled is left as it is.
+      .filter((x) => x.ada.status === 'PREPARED');
+
+    for (const key of wanted) {
+      const [adaId, lineNo] = key.split('#');
+      const x = advices.find((v) => v.id === adaId);
+      if (!x || !x.rows.some((r) => r.lineNo === Number(lineNo))) {
+        throw invalid('A credit marked not posted is not on this RADAI.');
+      }
     }
-    const notPosted = rows.filter((r) => unposted.has(r.lineNo));
-    const notPostedAmount = notPosted.reduce((t, r) => t + r.amount, 0);
+
+    // The account number of a single-payee advice not posted, for the record.
+    const singles = advices.filter(
+      (x) => !(x.ada.payees && x.ada.payees.length) && wanted.has(`${x.id}#1`) && x.ada.payeeId,
+    );
+    const payeeSnaps = await Promise.all(
+      singles.map((x) => tx.get(db.collection(COL.payees).doc(x.ada.payeeId as string))),
+    );
+    const employeeSnaps = await Promise.all(
+      payeeSnaps.map((p) => {
+        const empId = p.exists ? (p.data()?.employeeId as string | undefined) : undefined;
+        return empId ? tx.get(db.collection(COL.employees).doc(empId)) : Promise.resolve(null);
+      }),
+    );
+    singles.forEach((x, i) => {
+      const payee = payeeSnaps[i];
+      const emp = employeeSnaps[i];
+      const acct =
+        (emp?.exists ? (emp.data()?.bankAccountNumber as string) : '') ||
+        (payee.exists ? (payee.data()?.bankAccountNumber as string) : '') ||
+        '';
+      x.rows[0].accountNumber = acct;
+    });
+
+    const perAdvice = advices.map((x) => {
+      const notPosted = x.rows.filter((r) => wanted.has(`${x.id}#${r.lineNo}`));
+      return { ...x, notPosted, notPostedAmount: notPosted.reduce((t, r) => t + r.amount, 0) };
+    });
+    const credits = perAdvice.flatMap((x) =>
+      x.notPosted.map((r) => ({ ...r, payeeName: r.payeeName, adaNo: x.ada.adaNo })),
+    );
+    const notPostedAmount = credits.reduce((t, c) => t + c.amount, 0);
 
     let cash: ReturnType<typeof cashInBankLine> = null;
-    if (notPosted.length > 0) {
+    if (credits.length > 0) {
       const period = periodOf(postedDate);
-      await assertFiscalYearOpen(ada.fiscalYear, tx);
-      await assertPeriodOpen(ada.fiscalYear, period, ada.fundCode, `ADA ${ada.adaNo}`, tx);
-      const bankSnap = await tx.get(db.collection(COL.bankAccounts).doc(ada.bankAccountId));
-      if (!bankSnap.exists) throw notFound('The bank account of the advice');
+      await assertFiscalYearOpen(report.fiscalYear, tx);
+      await assertPeriodOpen(report.fiscalYear, period, report.fundCode, `RADAI ${report.reportNo ?? ''}`, tx);
+      if (!report.bankAccountId) throw invalid('The RADAI names no bank account.');
+      const bankSnap = await tx.get(db.collection(COL.bankAccounts).doc(report.bankAccountId));
+      if (!bankSnap.exists) throw notFound('The bank account of the RADAI');
       const bank = {
         ...(bankSnap.data() as {
           glAccountCode?: string;
@@ -794,14 +832,15 @@ export const postAdaOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
     // ---- WRITES -----------------------------------------------------------
     const now = new Date().toISOString();
     const by = { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now };
+    const reference = bankReferenceNo?.trim() || null;
 
     let notPostedJevId: string | null = null;
-    if (notPosted.length > 0 && cash) {
+    if (credits.length > 0 && cash) {
       const proposed = proposeNotPostedEntry({
-        adaNo: ada.adaNo,
+        adaNo: `on RADAI ${report.reportNo ?? ''}`.trim(),
         cash,
         trustLiability: { code: TRUST_LIABILITIES.code, name: trustTitle },
-        credits: notPosted,
+        credits,
       });
       const lines: JevLineData[] = proposed.map((l, i) => ({
         lineNo: i + 1,
@@ -818,15 +857,14 @@ export const postAdaOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
       const created = createJevInTransaction(tx, caller, {
         jevNo: UNNUMBERED_JEV,
         jevDate: postedDate,
-        fiscalYear: ada.fiscalYear,
+        fiscalYear: report.fiscalYear,
         period: periodOf(postedDate),
-        fundCode: ada.fundCode,
+        fundCode: report.fundCode,
         book: 'GENERAL_JOURNAL',
-        sourceType: 'ADA',
-        sourceId: adaId,
-        referenceNo: ada.adaNo,
-        payeeName: ada.payeeName,
-        particulars: `To take up ADA ${ada.adaNo} credits not posted online by the bank as trust liabilities, to be repaid by a new voucher.`,
+        sourceType: 'ADJUSTING',
+        sourceId: reportId,
+        referenceNo: `RADAI ${report.reportNo ?? ''}`.trim(),
+        particulars: `To take up the ADA credits on RADAI ${report.reportNo ?? ''} not posted online by the bank as trust liabilities, to be repaid by new vouchers.`,
         lines,
       });
       notPostedJevId = created.jevId;
@@ -834,8 +872,8 @@ export const postAdaOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
       notifyInTransaction(tx, {
         recipientRole: 'MUNICIPAL_ACCOUNTANT',
         kind: 'ADA_NOT_POSTED',
-        title: `ADA ${ada.adaNo}: ${notPosted.length} credit${notPosted.length === 1 ? '' : 's'} not posted`,
-        body: `${(notPostedAmount / 100).toFixed(2)} was not posted online by the bank. An adjusting entry to Trust Liabilities is waiting to be posted; repay by a new voucher of the Trust liability kind.`,
+        title: `RADAI ${report.reportNo ?? ''}: ${credits.length} credit${credits.length === 1 ? '' : 's'} not posted`,
+        body: `${(notPostedAmount / 100).toFixed(2)} was not posted online by the bank. An adjusting entry to Trust Liabilities is waiting to be posted; repay by new vouchers of the Trust liability kind.`,
         entityType: COL.jevs,
         entityId: created.jevId,
         link: `/accounting/general-transactions/${created.jevId}`,
@@ -843,32 +881,42 @@ export const postAdaOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
       });
     }
 
-    tx.update(ref, {
-      status: 'SUBMITTED',
-      dateSubmittedToBank: postedDate,
-      ...(bankReferenceNo?.trim() ? { bankReferenceNo: bankReferenceNo.trim() } : {}),
-      notPosted,
+    for (const x of perAdvice) {
+      tx.update(x.ref, {
+        status: 'SUBMITTED',
+        dateSubmittedToBank: postedDate,
+        ...(reference ? { bankReferenceNo: reference } : {}),
+        notPosted: x.notPosted,
+        notPostedAmount: x.notPostedAmount,
+        notPostedJevId: x.notPosted.length ? notPostedJevId : null,
+        postedOnlineBy: by,
+      });
+    }
+    tx.update(reportRef, {
+      postedOnlineAt: now,
+      postedOnlineDate: postedDate,
+      postedOnlineBy: by,
+      bankReferenceNo: reference,
       notPostedAmount,
       notPostedJevId,
-      postedOnlineBy: by,
     });
 
     recordTransition(tx, {
       caller,
       event: 'SUBMIT',
-      entityType: COL.ada,
-      entityId: adaId,
-      entityRef: `ADA ${ada.adaNo}`,
-      fiscalYear: ada.fiscalYear,
-      fundCode: ada.fundCode,
+      entityType: COL.treasuryReports,
+      entityId: reportId,
+      entityRef: `RADAI ${report.reportNo ?? ''}`,
+      fiscalYear: report.fiscalYear,
+      fundCode: report.fundCode,
       action: 'SUBMIT',
-      previousStatus: 'PREPARED',
-      newStatus: 'SUBMITTED',
-      remarks: notPosted.length
-        ? `Posted online on ${postedDate}; ${notPosted.length} credit(s), ${(notPostedAmount / 100).toFixed(2)}, not posted - taken up as trust liabilities.`
+      previousStatus: report.status,
+      newStatus: report.status,
+      remarks: credits.length
+        ? `Posted online on ${postedDate}; ${credits.length} credit(s), ${(notPostedAmount / 100).toFixed(2)}, not posted - taken up as trust liabilities.`
         : `Posted online on ${postedDate}; every credit posted.`,
     });
 
-    return { adaId, notPostedAmount, notPostedJevId };
+    return { reportId, adviceCount: perAdvice.length, notPostedAmount, notPostedJevId };
   });
 });

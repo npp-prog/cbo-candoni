@@ -39,6 +39,12 @@ export interface SectionTab {
    * own. See StripTab in components/ui/SectionTabs.tsx.
    */
   includes?: readonly string[];
+  /**
+   * Patch 144: screens shown as a third row UNDER this tab (the RCI's Claim
+   * Sheet, SUC and RCC; the RADAI's Bank Credits). The first child is the tab
+   * itself.
+   */
+  children?: readonly SectionTab[];
 }
 
 /*

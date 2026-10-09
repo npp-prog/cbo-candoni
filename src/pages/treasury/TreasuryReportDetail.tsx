@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { hereAsReturn, returnPathFrom, withReturn } from '@/lib/returnTo';
 import { reportOrigin } from './reportOrigin';
 import { PageHeader, Card, Alert, DetailField, Spinner, Tabs } from '@/components/ui/Layout';
@@ -17,6 +17,7 @@ import { useDocument } from '@/hooks/useFirestore';
 import { useAttachments, usePayees, useEmployees, useAda } from '@/data/queries';
 import { buildBankPayrollFile } from '@/lib/bankUpload';
 import { awaitingForward, isForwarded } from '@/lib/treasuryForwarding';
+import { RadaiPostedOnlineDialog, type RadaiCredit } from './RadaiPostedOnline';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
@@ -174,6 +175,49 @@ export default function TreasuryReportDetail() {
   }, [isRadai, report, payees.data, employees.data, ada.data]);
 
   const bankFile = useMemo(() => buildBankPayrollFile(bankRows), [bankRows]);
+
+  /**
+   * Patch 144: every credit of every advice on the RADAI, with the advice and
+   * line it belongs to - what "Posted online" ticks off.
+   */
+  const credits = useMemo<RadaiCredit[]>(() => {
+    if (!isRadai || !report) return [];
+    const payeeById = new Map(payees.data.map((p) => [p.id, p]));
+    const employeeById = new Map(employees.data.map((e) => [e.id, e]));
+    const adaById = new Map(ada.data.map((a) => [a.id, a]));
+    return report.lines
+      .filter((l) => !l.excluded)
+      .flatMap((l) => {
+        const advice = adaById.get(l.sourceId);
+        // The advice's own list first: it carries the line numbers the engine reads.
+        const group: Array<{ lineNo?: number; payeeName: string; accountNumber: string; amount: number }> | null =
+          advice?.payees?.length ? advice.payees : (l.payees ?? null);
+        if (group && group.length) {
+          return group.map((p, i) => ({
+            adaId: l.sourceId,
+            adaNo: l.sourceNo,
+            lineNo: p.lineNo ?? i + 1,
+            payeeName: p.payeeName,
+            accountNumber: p.accountNumber,
+            amount: p.amount,
+          }));
+        }
+        const payeeId = l.payeeId ?? advice?.payeeId;
+        const payee = payeeId ? payeeById.get(payeeId) : undefined;
+        const employee = payee?.employeeId ? employeeById.get(payee.employeeId) : undefined;
+        return [
+          {
+            adaId: l.sourceId,
+            adaNo: l.sourceNo,
+            lineNo: 1,
+            payeeName: l.payeeName ?? payee?.name ?? '',
+            accountNumber: employee?.bankAccountNumber || payee?.bankAccountNumber || '',
+            amount: l.amount,
+          },
+        ];
+      });
+  }, [isRadai, report, payees.data, employees.data, ada.data]);
+  const [postingOnline, setPostingOnline] = useState(false);
   /** Everything the account-number lookup depends on being here. */
   const lookupsLoading = payees.loading || employees.loading || ada.loading;
 
@@ -526,6 +570,18 @@ export default function TreasuryReportDetail() {
                 Download for the bank
               </Button>
             )}
+            {/*
+              Patch 144: the bank's posting is recorded here, for every advice
+              on the report - not on each ADA.
+            */}
+            {isRadai &&
+              canCertify &&
+              ['CERTIFIED', 'JOURNALIZED'].includes(report.status) &&
+              !report.postedOnlineAt && (
+                <Button variant="primary" onClick={() => setPostingOnline(true)}>
+                  Posted online
+                </Button>
+              )}
             {!finished && canCertify && (
               <Button variant="secondary" onClick={() => setConfirm('withdraw')}>
                 Withdraw
@@ -615,6 +671,27 @@ export default function TreasuryReportDetail() {
           {report.bankName && (
             <DetailField label="Drawn on">
               {report.bankName} {report.bankAccountNumber}
+            </DetailField>
+          )}
+          {isRadai && report.postedOnlineAt && (
+            <DetailField label="Posted online">
+              {formatShortDate(report.postedOnlineDate ?? report.postedOnlineAt.slice(0, 10))}
+              {report.bankReferenceNo ? ` - ref. ${report.bankReferenceNo}` : ''}
+              {(report.notPostedAmount ?? 0) > 0 && (
+                <span className="block text-xs text-amber-800">
+                  {formatPeso(report.notPostedAmount ?? 0)} not posted -{' '}
+                  {report.notPostedJevId ? (
+                    <Link
+                      to={`/accounting/general-transactions/${report.notPostedJevId}`}
+                      className="underline"
+                    >
+                      adjusting entry
+                    </Link>
+                  ) : (
+                    'trust liabilities'
+                  )}
+                </span>
+              )}
             </DetailField>
           )}
           {report.accountableOfficerName && (
@@ -831,6 +908,38 @@ export default function TreasuryReportDetail() {
           </Card>
         )}
       </div>
+
+      {postingOnline && report && (
+        <RadaiPostedOnlineDialog
+          reportNo={report.reportNo ?? ''}
+          credits={credits}
+          busy={busy}
+          onClose={() => setPostingOnline(false)}
+          onSubmit={({ reference, date, notPosted }) => {
+            setBusy(true);
+            void engine
+              .postRadaiOnline({
+                reportId: report.id,
+                postedDate: date,
+                bankReferenceNo: reference || undefined,
+                notPosted,
+              })
+              .then((r) => {
+                toast.success(
+                  `RADAI ${report.reportNo ?? ''} posted online`,
+                  r.notPostedAmount > 0
+                    ? `${formatPeso(r.notPostedAmount)} not posted - an adjusting entry to Trust Liabilities is waiting in General Transactions for the Accountant to post. Repay each payee by a new voucher of the Trust liability kind.`
+                    : `Every credit on ${r.adviceCount} advice${r.adviceCount === 1 ? '' : 's'} was posted.`,
+                );
+                setPostingOnline(false);
+              })
+              .catch((err) =>
+                toast.error('Could not record the posting', err instanceof Error ? err.message : String(err)),
+              )
+              .finally(() => setBusy(false));
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={confirm === 'certify'}

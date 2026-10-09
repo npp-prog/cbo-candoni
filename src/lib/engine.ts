@@ -542,19 +542,20 @@ export const engine = {
   cancelAda: (p: { adaId: Id; reason: string }) => call<typeof p, { adaId: Id }>('cancelAda', p),
 
   /**
-   * Patch 143. The advice is posted online by the bank; the lines NOT posted
-   * become trust liabilities through a draft adjusting entry.
+   * Patch 144. The RADAI is posted online by the bank - every advice on it at
+   * once; the credits NOT posted become trust liabilities through one draft
+   * adjusting entry.
    */
-  postAdaOnline: (p: {
-    adaId: Id;
+  postRadaiOnline: (p: {
+    reportId: Id;
     postedDate: string;
     bankReferenceNo?: string;
-    notPostedLineNos: number[];
+    notPosted: Array<{ adaId: Id; lineNo: number }>;
   }) =>
-    call<typeof p, { adaId: Id; notPostedAmount: number; notPostedJevId: Id | null }>(
-      'postAdaOnline',
-      p,
-    ),
+    call<
+      typeof p,
+      { reportId: Id; adviceCount: number; notPostedAmount: number; notPostedJevId: Id | null }
+    >('postRadaiOnline', p),
 
   /**
    * Patch 137: a saved liquidation report takes its JEV number now ("JEV at

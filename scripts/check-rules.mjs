@@ -3482,6 +3482,8 @@ if (existsSync(functionsSrc)) {
  * one not forwarded. An ADA is marked "posted online" by the engine alone
  * (postAdaOnline), which takes the credits the bank did not post up as trust
  * liabilities; the security rules no longer let a browser write an advice.
+ * Patch 144: the posting is recorded on the RADAI (postRadaiOnline), for
+ * every advice on it at once.
  */
 {
   const before = failures.length;
@@ -3500,8 +3502,8 @@ if (existsSync(functionsSrc)) {
     failures.push('firestore.rules: a browser may write an ADA again - "posted online" must go through postAdaOnline, which records the credits not posted.');
   }
   const payments = readFileSync(resolve(root, 'functions/src/accounting/payments.ts'), 'utf8');
-  if (!/export const postAdaOnline/.test(payments) || !/proposeNotPostedEntry\(/.test(payments)) {
-    failures.push('functions/src/accounting/payments.ts: postAdaOnline no longer takes unposted credits up as trust liabilities.');
+  if (!/export const postRadaiOnline/.test(payments) || !/proposeNotPostedEntry\(/.test(payments)) {
+    failures.push('functions/src/accounting/payments.ts: postRadaiOnline no longer takes unposted credits up as trust liabilities.');
   }
   const adaPage = readFileSync(resolve(root, 'src/pages/treasury/Ada.tsx'), 'utf8');
   if (/\/form`\}/.test(adaPage)) {

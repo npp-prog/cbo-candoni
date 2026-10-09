@@ -559,6 +559,12 @@ export interface TreasuryReport extends Partial<AuditStamps> {
    */
   forwardedAt?: string | null;
   forwardedBy?: { uid: string; name: string; position?: string | null; at: string } | null;
+  /** Patch 144 (RADAI): the bank's online posting, recorded by postRadaiOnline. */
+  postedOnlineAt?: string;
+  postedOnlineDate?: string;
+  bankReferenceNo?: string | null;
+  notPostedAmount?: number;
+  notPostedJevId?: string | null;
   /** The JEV raised from this report. Set once, when journalized. */
   jevId?: Id;
   jevNo?: string;

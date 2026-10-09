@@ -46,6 +46,7 @@ const JournalEntriesRegister = lazy(() => import('./pages/accounting/JournalEntr
 const Checks = lazy(() => import('./pages/treasury/Checks'));
 const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'));
 const AdaPage = lazy(() => import('./pages/treasury/Ada'));
+const BankCredits = lazy(() => import('./pages/treasury/BankCredits'));
 const TreasuryReportRegister = lazy(() => import('./pages/treasury/TreasuryReports'));
 const TreasuryReportDetail = lazy(() => import('./pages/treasury/TreasuryReportDetail'));
 const TreasuryReportForm = lazy(() => import('./pages/treasury/TreasuryReportForm'));
@@ -269,6 +270,11 @@ export default function App() {
           <Route
             path="/treasury/ada/:id/form"
             element={<Guard module="treasury"><AdaAppendix36 /></Guard>}
+          />
+          {/* Patch 144: the RADAI's Bank Credits - before the advice id route. */}
+          <Route
+            path="/treasury/ada/bank-credits"
+            element={<Guard module="treasury"><BankCredits /></Guard>}
           />
           <Route path="/treasury/ada/:id" element={<Guard module="treasury"><AdaPage /></Guard>} />
           {/* The four treasury reports share one screen, distinguished by the

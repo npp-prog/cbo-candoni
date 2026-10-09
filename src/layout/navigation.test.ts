@@ -287,13 +287,16 @@ describe('the menu itself', () => {
       'Disbursements for Payment',
       'Checks',
       'ADA',
+      // Patch 144: the check reports sit under the RCI, the bank's posting
+      // under the RADAI.
       'Report of Checks Issued (RCI)',
-      'Report of ADA Issued (RADAI)',
       'Claim Sheet',
       'Unreleased Checks (SUC)',
       // Joined in patch 87, when the Treasury Reports group came out of the
       // sidebar. It was the one report in that group on no strip at all.
       'Cancelled Checks (RCC)',
+      'Report of ADA Issued (RADAI)',
+      'Bank Credits',
     ]);
   });
 

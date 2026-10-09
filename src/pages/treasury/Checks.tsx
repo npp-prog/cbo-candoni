@@ -165,12 +165,13 @@ export default function Checks() {
     {
       key: 'status',
       header: 'Status',
-      width: '14rem',
+      // Patch 144: wide enough for the badge and its buttons on ONE line.
+      width: '21rem',
       value: (c) => c.status,
       sortable: false,
       fixed: true,
       cell: (c) => (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
           <StatusBadge
             status={
               ['RELEASED', 'SIGNED', 'PREPARED'].includes(c.status) && staleDate(c.checkDate) < today

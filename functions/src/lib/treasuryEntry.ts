@@ -246,6 +246,8 @@ export interface UnpostedCredit {
   payeeName: string;
   accountNumber?: string | null;
   amount: number;
+  /** Patch 144: the advice it was on, when the entry covers a whole RADAI. */
+  adaNo?: string;
 }
 
 /**
@@ -290,7 +292,7 @@ export function proposeNotPostedEntry(input: {
       subsidiaryType: c.payeeId ? 'PAYEE' : null,
       subsidiaryId: c.payeeId ?? null,
       subsidiaryName: c.payeeName,
-      particulars: `ADA ${input.adaNo} not posted to ${c.payeeName}${
+      particulars: `ADA ${c.adaNo ?? input.adaNo} not posted to ${c.payeeName}${
         c.accountNumber ? ` (ATM ${c.accountNumber})` : ''
       } - to be repaid by a new voucher`,
     })),

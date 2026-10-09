@@ -149,20 +149,31 @@ export const PAYMENT_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }> = 
     ],
   },
   {
-    /* What is drawn off those registers and sent to Accounting. */
+    /*
+     * What is drawn off those registers and sent to Accounting. Patch 144:
+     * two tabs, each with the screens that belong to it underneath - the
+     * check reports under the RCI, the bank's posting under the RADAI.
+     */
     group: 'Reports',
     tabs: [
-      { label: 'Report of Checks Issued (RCI)', to: '/treasury/checks/rci' },
-      { label: 'Report of ADA Issued (RADAI)', to: '/treasury/ada/radai' },
-      { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
-      { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
-      /*
-       * Joined in patch 87, when the Treasury Reports group came out of the
-       * sidebar. It was the one report in that group on no strip at all, so
-       * removing the group without putting it here would have left it
-       * reachable only by typing the address.
-       */
-      { label: 'Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+      {
+        label: 'Report of Checks Issued (RCI)',
+        to: '/treasury/checks/rci',
+        children: [
+          { label: 'RCI', to: '/treasury/checks/rci' },
+          { label: 'Claim Sheet', to: '/treasury/claim-sheet' },
+          { label: 'Unreleased Checks (SUC)', to: '/treasury/checks/unreleased' },
+          { label: 'Cancelled Checks (RCC)', to: '/reports/cancelled-checks' },
+        ],
+      },
+      {
+        label: 'Report of ADA Issued (RADAI)',
+        to: '/treasury/ada/radai',
+        children: [
+          { label: 'RADAI', to: '/treasury/ada/radai' },
+          { label: 'Bank Credits', to: '/treasury/ada/bank-credits' },
+        ],
+      },
     ],
   },
 ];
@@ -174,7 +185,9 @@ export const PAYMENT_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }> = 
  * group - `registerForPath` and the sidebar depend on that, and it is true
  * whether or not the strip is drawn in groups.
  */
-export const PAYMENT_TABS: SectionTab[] = PAYMENT_TAB_GROUPS.flatMap((g) => g.tabs);
+export const PAYMENT_TABS: SectionTab[] = PAYMENT_TAB_GROUPS.flatMap((g) =>
+  g.tabs.flatMap((t) => [t, ...(t.children ?? []).filter((c) => c.to !== t.to)]),
+);
 
 
 /**
