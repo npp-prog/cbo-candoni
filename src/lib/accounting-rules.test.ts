@@ -7,6 +7,7 @@ import {
   checkObligationAgainstAllotment,
   checkAugmentationExpenseClass,
   checkExpenseDebitsHaveFpp,
+  fppFromObligation,
   checkRealignmentSet,
   planAugmentationAllotment,
   isRealignmentInstrument,
@@ -1326,5 +1327,45 @@ describe('the guards fail closed', () => {
         forLaterRelease: 0,
       }).ok,
     ).toBe(true);
+  });
+});
+
+/** Patch 139: the budget line of a voucher's entry comes from its obligation. */
+describe('fppFromObligation', () => {
+  const obr = [
+    { accountCode: '50203010', fppCode: '1011-A', fppName: 'Office Supplies - MO' },
+    { accountCode: '50202010', fppCode: '1011-B', fppName: 'Training - MO' },
+  ];
+  const line = (accountCode: string, debit: number, fppCode?: string) => ({
+    lineNo: 1,
+    accountCode,
+    debit,
+    credit: debit ? 0 : 100,
+    fppCode,
+  });
+
+  it('keeps a budget line already proposed', () => {
+    const [l] = fppFromObligation([line('50203010', 100, 'KEEP')], obr);
+    expect(l.fppCode).toBe('KEEP');
+  });
+
+  it('fills an added expense debit from the obligation line with the same object', () => {
+    const [l] = fppFromObligation([line('50202010', 100)], obr);
+    expect(l).toMatchObject({ fppCode: '1011-B', fppName: 'Training - MO' });
+  });
+
+  it("takes the obligation's only budget line when the object is not on it", () => {
+    const [l] = fppFromObligation([line('50299990', 100)], [obr[0]]);
+    expect(l.fppCode).toBe('1011-A');
+  });
+
+  it('leaves it blank rather than guess between several', () => {
+    const [l] = fppFromObligation([line('50299990', 100)], obr);
+    expect(l.fppCode).toBeUndefined();
+  });
+
+  it('never puts a budget line on a credit, and does nothing without an obligation', () => {
+    expect(fppFromObligation([line('20101010', 0)], obr)[0].fppCode).toBeUndefined();
+    expect(fppFromObligation([line('50203010', 100)], [])[0].fppCode).toBeUndefined();
   });
 });

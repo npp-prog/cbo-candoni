@@ -26,7 +26,6 @@ import { formatInstant, formatLongDate, formatShortDate, monthName, todayPh } fr
 import { checkDoubleEntry } from '@/lib/accounting-rules';
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
-import { useFppOptions } from '@/data/useFppOptions';
 
 /**
  * The Journal Entry Voucher.
@@ -52,9 +51,6 @@ export default function JevDetail() {
   const location = useLocation();
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
-  // The budget lines this entry may be charged to, and which accounts are
-  // expenses and therefore need one.
-  const { fppOptions, expenseCodes } = useFppOptions(fiscalYear, fundCode);
   const { user, profile, can, hasRole } = useAuth();
 
   const { data: existing, loading } = useDocument<JournalEntryVoucher>(isNew ? null : COL.jevs, id);
@@ -610,8 +606,6 @@ export default function JevDetail() {
             <JournalEntryGrid
               lines={lines}
               onChange={setLines}
-              fppOptions={fppOptions}
-              expenseCodes={expenseCodes}
               fundCode={fundCode}
               readOnly={!canEdit && !amending}
             />

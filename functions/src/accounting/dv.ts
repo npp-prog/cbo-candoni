@@ -19,7 +19,7 @@ import {
   checkDvCategory,
   checkDvMath,
   checkDoubleEntry,
-  checkExpenseDebitsHaveFpp,
+  fppFromObligation,
   checkDvPayees,
 } from '../lib/rules';
 import {
@@ -191,6 +191,7 @@ interface ObligationDoc {
       accountName: string;
       /** The object code the appropriation carried; empty on a project line. */
       appropriatedAccountCode?: string;
+      fppName?: string;
       /** Trust Fund only: the programme this line utilises. */
       trustProgramId?: string;
       expenseClass: string;
@@ -586,15 +587,15 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
 
     // ---- WRITE PHASE --------------------------------------------------------
 
-    const jevLines: JevLineData[] = dv.accountLines.map((l) => ({
+    // Patch 139: the entry grid no longer asks for a budget line. A debit
+    // keeps the one proposed from the obligation; one without takes it from
+    // the obligation where that is unambiguous (fppFromObligation), and is
+    // left blank, never guessed, where it is not.
+    const withFpp = fppFromObligation(dv.accountLines, obligation?.lines ?? []);
+    const jevLines: JevLineData[] = withFpp.map((l) => ({
       lineNo: l.lineNo,
       accountCode: l.accountCode,
       accountName: l.accountName,
-      // Carried from the voucher line, which carried it from the obligation.
-      // Not derived here from the obligation: a voucher may draw on an
-      // obligation with several lines, and guessing which one this expense
-      // belongs to would put the spending against the wrong budget line in the
-      // one report built to compare them.
       fppCode: l.fppCode ?? null,
       fppName: l.fppName ?? null,
       debit: l.debit,
@@ -1332,16 +1333,6 @@ export const correctDvEntry = onCall(
     const balance = checkDoubleEntry(clean);
     if (!balance.ok) throw new HttpsError('failed-precondition', balance.violations[0].message);
 
-    // The Chart of Accounts, to know which debits are expenses and need a line.
-    const chart = await db.collection(COL.accounts).get();
-    const expense = new Set<string>();
-    for (const a of chart.docs) {
-      const d = a.data() as { code?: string; accountClass?: string };
-      if (d.code && d.accountClass === 'EXPENSE') expense.add(d.code.trim());
-    }
-    const fpp = checkExpenseDebitsHaveFpp(clean, (code) => expense.has(code));
-    if (!fpp.ok) throw new HttpsError('failed-precondition', fpp.violations[0].message);
-
     return db.runTransaction(async (tx) => {
       const dvRef = db.collection(COL.disbursementVouchers).doc(dvId);
       const dvSnap = await tx.get(dvRef);
@@ -1385,8 +1376,15 @@ export const correctDvEntry = onCall(
         );
       }
 
+      // Patch 139: a line added here takes its budget line from the obligation.
+      const obrSnap = dv.obligationId
+        ? await tx.get(db.collection(COL.obligations).doc(dv.obligationId))
+        : null;
+      const obrLines = obrSnap?.exists ? ((obrSnap.data() as ObligationDoc).lines ?? []) : [];
+      const filled = fppFromObligation(clean, obrLines);
+
       const prior = new Map((jev.lines ?? []).map((l) => [l.lineNo, l]));
-      const jevLines = clean.map((l) => {
+      const jevLines = filled.map((l) => {
         const was = prior.get(l.lineNo);
         return {
           ...l,
@@ -1407,7 +1405,7 @@ export const correctDvEntry = onCall(
         updatedAt: now,
       });
       tx.update(dvRef, {
-        accountLines: clean.map((l) => ({ ...l, officeId: prior.get(l.lineNo)?.officeId ?? dv.officeId })),
+        accountLines: filled.map((l) => ({ ...l, officeId: prior.get(l.lineNo)?.officeId ?? dv.officeId })),
         updatedBy: by,
         updatedAt: now,
       });

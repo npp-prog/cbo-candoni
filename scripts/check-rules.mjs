@@ -3169,7 +3169,8 @@ if (existsSync(functionsSrc)) {
  * approved or paid voucher that is NOT yet in the General Ledger. It must
  * refuse once the entry is posted (a posted entry is corrected only by
  * correctJev / amendPostedJev), keep the total the voucher was approved and
- * paid for, and still demand a budget line on every expense debit.
+ * paid for, and fill a budget line on an added expense debit from the
+ * obligation (patch 139 - the grid no longer asks for one).
  */
 {
   const before = failures.length;
@@ -3185,12 +3186,12 @@ if (existsSync(functionsSrc)) {
     if (!/total !== jev\.totalDebit/.test(body)) {
       failures.push('functions/src/accounting/dv.ts: correctDvEntry no longer keeps the total the voucher was approved and paid for.');
     }
-    if (!/checkExpenseDebitsHaveFpp\(/.test(body)) {
-      failures.push('functions/src/accounting/dv.ts: correctDvEntry no longer requires a budget line on an expense debit.');
+    if (!/fppFromObligation\(/.test(body)) {
+      failures.push('functions/src/accounting/dv.ts: correctDvEntry no longer takes the budget line of an added expense debit from the obligation.');
     }
   }
   if (failures.length === before) {
-    console.log('voucher entry: correctable until posted, total kept, expense debits carry a budget line');
+    console.log('voucher entry: correctable until posted, total kept, budget line from the obligation');
   }
 }
 
@@ -3357,6 +3358,40 @@ if (existsSync(functionsSrc)) {
   }
   if (failures.length === before) {
     console.log('payee et al.: list held at submit and approve, ADA only, payable cleared per payee');
+  }
+}
+
+// --- 57. The budget line comes from the obligation, not the entry grid ------
+
+/*
+ * Patch 139. The journal entry grids no longer show or ask for a budget line
+ * (FPP): every budget-spending entry is raised from a voucher, and every
+ * voucher from an obligation that already names it. The ledger still needs
+ * the FPP on an expense debit (budget vs actual, the SRE's ledger basis), so
+ * the voucher approval must fill it from the obligation. And the "Add a payee"
+ * window of a group voucher must stay wired in.
+ */
+{
+  const before = failures.length;
+  const grid = readFileSync(resolve(root, 'src/components/journal/JournalEntryGrid.tsx'), 'utf8');
+  if (/Budget line \(FPP\)/.test(grid) || /fppOptions/.test(grid)) {
+    failures.push('src/components/journal/JournalEntryGrid.tsx: the budget line (FPP) column is back in the entry grid. It comes from the obligation (patch 139).');
+  }
+  const dv = readFileSync(resolve(root, 'functions/src/accounting/dv.ts'), 'utf8');
+  const approve = dv.slice(dv.indexOf('export const approveDv'), dv.indexOf('export const', dv.indexOf('export const approveDv') + 10));
+  if (!/fppFromObligation\(dv\.accountLines, obligation\?\.lines/.test(approve)) {
+    failures.push('functions/src/accounting/dv.ts: approveDv no longer fills the budget line of the entry from the obligation - expense debits would reach the ledger with no FPP.');
+  }
+  const jev = readFileSync(resolve(root, 'functions/src/accounting/jev.ts'), 'utf8');
+  if (/assertExpenseDebitsCarryAnFpp\(/.test(jev)) {
+    failures.push('functions/src/accounting/jev.ts: posting demands a budget line on the JEV again, which the grid no longer offers - the entry could never post.');
+  }
+  const card = readFileSync(resolve(root, 'src/pages/accounting/DvPayeesCard.tsx'), 'utf8');
+  if (!/<DvPayeeModal\b/.test(card)) {
+    failures.push('src/pages/accounting/DvPayeesCard.tsx: "Add a payee" no longer opens the window that takes the payee, the account and the share.');
+  }
+  if (failures.length === before) {
+    console.log('budget line: from the obligation, not the entry grid; Add a payee opens its window');
   }
 }
 

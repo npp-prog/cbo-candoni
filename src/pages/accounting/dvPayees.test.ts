@@ -135,3 +135,20 @@ describe('the payee list of a group voucher', () => {
     expect(radai.find((l) => l.credit > 0)?.credit).toBe(1000);
   });
 });
+
+describe('the payee list messages', () => {
+  it('names a row with no payee by its line number', () => {
+    const r = checkDvPayees(
+      [
+        { payeeId: 'p1', payeeName: 'Ana', accountNumber: '1', amount: 100 },
+        { payeeId: null, payeeName: '', accountNumber: '', amount: 0 },
+      ],
+      100,
+    );
+    const text = r.violations.map((v) => v.message).join(' ');
+    expect(text).toContain('No payee from the master list on line 2');
+    expect(text).toContain('No ATM / account number for line 2');
+    expect(text).toContain('No share entered for line 2');
+    expect(text).not.toContain('(no name)');
+  });
+});

@@ -91,7 +91,7 @@ export default function DisbursementDetail() {
   const { fiscalYear, fundCode } = useFilters();
   // The budget lines this entry may be charged to, and which accounts are
   // expenses and therefore need one.
-  const { fppOptions, expenseCodes } = useFppOptions(fiscalYear, fundCode);
+  const { expenseCodes } = useFppOptions(fiscalYear, fundCode);
   const { user, profile, can, hasRole, officeScope } = useAuth();
 
   const { data: existing, loading } = useDocument<DisbursementVoucher>(
@@ -1149,8 +1149,6 @@ export default function DisbursementDetail() {
           >
             <JournalEntryGrid
               lines={unpostedLines}
-              fppOptions={fppOptions}
-              expenseCodes={expenseCodes}
               fundCode={fundCode}
               onChange={(l) => {
                 setUnpostedLines(l);
@@ -1195,8 +1193,6 @@ export default function DisbursementDetail() {
           >
             <JournalEntryGrid
               lines={entryLines}
-              fppOptions={fppOptions}
-              expenseCodes={expenseCodes}
               fundCode={fundCode}
               readOnly={!canEdit}
               onChange={(l) => {

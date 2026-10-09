@@ -37,6 +37,45 @@ import { findPayeeDuplicates, missingPayeeFields, type PayeeLike } from '@/lib/p
  * obligation is raised, and asking for them now is the interruption all over
  * again. They are filled in under Master Data > Payees, which the modal says.
  */
+/**
+ * Saves a new payee to the master list. Shared by this window and, from patch
+ * 139, the "Add a payee" window of a voucher for several payees. Blank
+ * optional fields are left out rather than written blank: an empty TIN reads
+ * as "we checked and there is none", and nobody checked.
+ */
+export async function addPayeeToMaster(
+  fields: {
+    name: string;
+    payeeType: string;
+    tin?: string;
+    address?: string;
+    bankAccountNumber?: string;
+  },
+  actor: { uid: string; name: string; position?: string },
+): Promise<{ id: string; name: string; tin?: string; address?: string; bankAccountNumber?: string }> {
+  const id = crypto.randomUUID();
+  const tin = (fields.tin ?? '').trim();
+  const address = (fields.address ?? '').trim();
+  const bankAccountNumber = (fields.bankAccountNumber ?? '').trim();
+  const payee = {
+    id,
+    name: fields.name.trim(),
+    payeeType: fields.payeeType,
+    ...(tin ? { tin } : {}),
+    ...(address ? { address } : {}),
+    ...(bankAccountNumber ? { bankAccountNumber } : {}),
+    active: true,
+  };
+  await upsertMaster(COL.payees, id, payee, actorStamp(actor));
+  return {
+    id,
+    name: payee.name,
+    tin: tin || undefined,
+    address: address || undefined,
+    bankAccountNumber: bankAccountNumber || undefined,
+  };
+}
+
 export function NewPayeeModal({
   initialName,
   initialTin = '',
@@ -94,42 +133,19 @@ export function NewPayeeModal({
 
     setSaving(true);
     try {
-      const id = crypto.randomUUID();
-      const payee = {
-        id,
-        name: name.trim(),
-        payeeType,
-        // Left out entirely rather than written blank: an empty string in the
-        // TIN column reads as "we checked and there is none", and nobody
-        // checked.
-        ...(tin.trim() ? { tin: tin.trim() } : {}),
-        ...(address.trim() ? { address: address.trim() } : {}),
-        ...(bankAccountNumber.trim() ? { bankAccountNumber: bankAccountNumber.trim() } : {}),
-        active: true,
-      };
-
-      await upsertMaster(
-        COL.payees,
-        id,
-        payee,
-        actorStamp({
+      const created = await addPayeeToMaster(
+        { name, payeeType, tin, address, bankAccountNumber },
+        {
           uid: user.uid,
           name: profile?.displayName ?? user.email ?? user.uid,
           position: profile?.position,
-        }),
+        },
       );
-
       toast.success(
         'Payee added',
         'Complete the bank and contact details under Master Data > Payees before paying them by ADA.',
       );
-      onCreated({
-        id,
-        name: payee.name,
-        tin: payee.tin,
-        address: payee.address,
-        bankAccountNumber: bankAccountNumber.trim() || undefined,
-      });
+      onCreated(created);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(

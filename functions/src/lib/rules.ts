@@ -339,6 +339,50 @@ export interface FppCheckLine {
 }
 
 /**
+ * Patch 139. The budget line of a voucher's entry comes from its obligation.
+ *
+ * The journal entry grids no longer carry a budget line (FPP) column: every
+ * entry that spends a budget is raised from a voucher, and every voucher from
+ * an Obligation Request that already names the budget line. Asking for it a
+ * second time on the JEV only invited a different answer.
+ *
+ * The ledger still keeps the FPP on each expense debit - the comparison of
+ * budget and actual amounts and the SRE's ledger basis read it - and this is
+ * where it comes from. A debit that already carries one (proposed from the
+ * obligation) keeps it. One that does not takes the budget line of the
+ * obligation line with the same object code, when exactly one budget line
+ * carries it; otherwise the obligation's only budget line, when it has one.
+ * Where the obligation names several and none fits, it is left blank rather
+ * than guessed: a charge against the wrong line is worse than one against
+ * none.
+ *
+ * Only debits are filled. A credit (payable, cash, a tax withheld) is not
+ * budget spending and an FPP on it would be counted as such.
+ */
+export function fppFromObligation<
+  L extends { debit: number; accountCode: string; fppCode?: string | null; fppName?: string | null },
+>(
+  lines: L[],
+  obligationLines: Array<{ accountCode?: string | null; fppCode?: string | null; fppName?: string | null }>,
+): L[] {
+  const withFpp = obligationLines.filter((o) => String(o.fppCode ?? '').trim());
+  if (withFpp.length === 0) return lines;
+  const distinct = (rows: typeof withFpp) => {
+    const m = new Map<string, string>();
+    for (const r of rows) m.set(String(r.fppCode).trim(), String(r.fppName ?? '').trim());
+    return [...m.entries()];
+  };
+  const all = distinct(withFpp);
+  return lines.map((l) => {
+    if (!(l.debit > 0) || String(l.fppCode ?? '').trim()) return l;
+    const code = String(l.accountCode ?? '').trim();
+    const same = distinct(withFpp.filter((o) => String(o.accountCode ?? '').trim() === code));
+    const pick = same.length === 1 ? same[0] : all.length === 1 ? all[0] : null;
+    return pick ? { ...l, fppCode: pick[0], fppName: pick[1] || l.fppName || null } : l;
+  });
+}
+
+/**
  * Every debit to an expense account names the budget line it is charged to.
  *
  * ---------------------------------------------------------------------------
@@ -1351,18 +1395,23 @@ export function checkDvPayees(payees: PayeeShare[], netAmount: number): CheckRes
       message: 'A voucher for several payees lists at least two. For one payee, clear "Several payees".',
     });
   }
+  // A row is named by its payee, or by its line number while it has none.
+  const who = (p: PayeeShare) =>
+    String(p.payeeName ?? '').trim() || `line ${payees.indexOf(p) + 1}`;
+  const list = (rows: PayeeShare[]) =>
+    `${rows.map(who).slice(0, 5).join(', ')}${rows.length > 5 ? ' and others' : ''}`;
   const unlisted = payees.filter((p) => !String(p.payeeId ?? '').trim());
   if (unlisted.length) {
     v.push({
       code: 'PAYEE_NOT_ON_FILE',
-      message: `${unlisted.map((p) => p.payeeName || '(no name)').slice(0, 5).join(', ')}${unlisted.length > 5 ? ' and others' : ''} ${unlisted.length === 1 ? 'is' : 'are'} not on the payee master list. Add ${unlisted.length === 1 ? 'them' : 'each'} first, so what is owed is kept per person.`,
+      message: `No payee from the master list on ${list(unlisted)}. Choose one, or add them with "Add a payee", so what is owed is kept per person.`,
     });
   }
   const noAccount = payees.filter((p) => !String(p.accountNumber ?? '').trim());
   if (noAccount.length) {
     v.push({
       code: 'PAYEE_NO_ACCOUNT',
-      message: `No ATM / account number for ${noAccount.map((p) => p.payeeName).slice(0, 5).join(', ')}${noAccount.length > 5 ? ' and others' : ''}. The bank file needs one for every payee.`,
+      message: `No ATM / account number for ${list(noAccount)}. The bank file needs one for every payee.`,
     });
   }
   const seen = new Map<string, number>();
@@ -1380,8 +1429,12 @@ export function checkDvPayees(payees: PayeeShare[], netAmount: number): CheckRes
       message: `${twice.map((p) => p.payeeName).join(', ')} ${twice.length === 1 ? 'is' : 'are'} listed twice. Put each payee once, with the whole of their share.`,
     });
   }
-  if (payees.some((p) => !(p.amount > 0))) {
-    v.push({ code: 'PAYEE_ZERO', message: 'Every payee is paid more than zero.' });
+  const zero = payees.filter((p) => !(p.amount > 0));
+  if (zero.length) {
+    v.push({
+      code: 'PAYEE_ZERO',
+      message: `No share entered for ${list(zero)}. Every payee is paid more than zero.`,
+    });
   }
   const total = payees.reduce((t, p) => t + (p.amount ?? 0), 0);
   if (payees.length && total !== netAmount) {

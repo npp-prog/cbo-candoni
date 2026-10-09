@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { entryGridColumns } from '@/lib/entryGridColumns';
 import clsx from 'clsx';
 import { AccountPicker, SubsidiaryPicker } from '@/components/pickers';
-import { AmountInput, Select, TextInput } from '@/components/ui/Field';
+import { AmountInput, TextInput } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { formatPeso } from '@/lib/money';
-import { checkDoubleEntry, checkExpenseDebitsHaveFpp } from '@/lib/accounting-rules';
+import { checkDoubleEntry } from '@/lib/accounting-rules';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -27,12 +27,10 @@ export interface GridLine {
   accountCode: string;
   accountName: string;
   /**
-   * The budget line this charge is against. Chosen, never typed.
-   *
-   * Required on a line that debits an expense, and empty everywhere else -
-   * a credit to Accounts Payable, a cash line, an opening balance. An FPP put
-   * on one of those would foot into the Statement of Comparison of Budget and
-   * Actual Amounts as spending that never happened.
+   * The budget line this charge is against. Not shown or asked for in the grid
+   * (patch 139): it is carried, unseen, from the obligation behind a voucher,
+   * and filled from it by the engine where a line was added by hand. An entry
+   * with no obligation behind it has none.
    */
   fppCode?: string;
   fppName?: string;
@@ -66,8 +64,6 @@ export function JournalEntryGrid({
   onChange,
   readOnly,
   showParticulars = true,
-  fppOptions,
-  expenseCodes,
   fundCode,
 }: {
   lines: GridLine[];
@@ -76,17 +72,6 @@ export function JournalEntryGrid({
   showParticulars?: boolean;
   /** Narrows the bank accounts the subsidiary picker offers. */
   fundCode?: string;
-  /**
-   * The budget lines this entry may be charged to. Supplying them adds the FPP
-   * column; leaving them out leaves the grid as it was, for the entries that
-   * have no budget behind them.
-   */
-  fppOptions?: FppOption[];
-  /**
-   * Accounts that are expenses, by code. A line debiting one of these must
-   * name an FPP, and the grid marks it when it does not.
-   */
-  expenseCodes?: Set<string>;
 }) {
   /*
    * The column layout, so the totals row and the header cannot disagree about
@@ -94,8 +79,10 @@ export function JournalEntryGrid({
    * has been wrong once already.
    */
   const layout = useMemo(
-    () => entryGridColumns({ showParticulars, withFpp: Boolean(fppOptions) }),
-    [showParticulars, fppOptions],
+    // Patch 139: no budget line (FPP) column. The FPP of an expense comes from
+    // the obligation behind the voucher (fppFromObligation), not from the grid.
+    () => entryGridColumns({ showParticulars, withFpp: false }),
+    [showParticulars],
   );
 
   const totals = useMemo(() => {
@@ -116,26 +103,6 @@ export function JournalEntryGrid({
       ),
     [lines],
   );
-
-  /**
-   * A line that debits an expense and names no budget line.
-   *
-   * The same rule the posting function runs, so a line marked here is exactly
-   * a line the server will refuse - and one that is not marked will post.
-   */
-  const needsFpp = (line: GridLine) =>
-    !checkExpenseDebitsHaveFpp(
-      [
-        {
-          lineNo: line.lineNo,
-          accountCode: line.accountCode,
-          debit: line.debit || 0,
-          credit: line.credit || 0,
-          fppCode: line.fppCode,
-        },
-      ],
-      (code) => Boolean(expenseCodes?.has(code)),
-    ).ok;
 
   const update = (index: number, patch: Partial<GridLine>) => {
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -189,7 +156,6 @@ export function JournalEntryGrid({
               <th className="cbo-th cbo-amount-col">Debit</th>
               <th className="cbo-th cbo-amount-col">Credit</th>
               <th className="cbo-th min-w-[14rem]">Subsidiary ledger</th>
-              {fppOptions && <th className="cbo-th min-w-[16rem]">Budget line (FPP)</th>}
               {!readOnly && <th className="cbo-th w-10" />}
             </tr>
           </thead>
@@ -283,43 +249,6 @@ export function JournalEntryGrid({
                   )}
                 </td>
 
-                {fppOptions && (
-                  <td className="cbo-td">
-                    {readOnly ? (
-                      line.fppCode ? (
-                        <div>
-                          <span className="font-mono text-xs text-slate-500">{line.fppCode}</span>{' '}
-                          <span className="text-xs text-navy-900">{line.fppName}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">&mdash;</span>
-                      )
-                    ) : (
-                      <Select
-                        value={line.fppCode ?? ''}
-                        onChange={(e) => {
-                          const chosen = fppOptions.find((o) => o.fppCode === e.target.value);
-                          update(index, {
-                            fppCode: chosen?.fppCode ?? '',
-                            fppName: chosen?.fppName ?? '',
-                          });
-                        }}
-                        invalid={needsFpp(line)}
-                        className="py-1.5"
-                      >
-                        <option value="">
-                          {needsFpp(line) ? 'An expense needs a budget line' : 'None'}
-                        </option>
-                        {fppOptions.map((o) => (
-                          <option key={o.fppCode} value={o.fppCode}>
-                            {o.fppCode} — {o.fppName}
-                            {o.officeName ? ` (${o.officeName})` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </td>
-                )}
                 {!readOnly && (
                   <td className="cbo-td text-center">
                     <button

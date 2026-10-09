@@ -13,6 +13,7 @@ import { formatPeso } from '@/lib/money';
 import { checkDvPayees } from '@/lib/accounting-rules';
 import { PAYEE_CREATOR_ROLES } from '@/lib/payees';
 import { matchPayees, parsePayeeSheet } from './dvPayees';
+import { DvPayeeModal } from './DvPayeeModal';
 
 /**
  * The payees of a "Payee, et al." voucher. Patch 138. See dvPayees.ts for the
@@ -47,7 +48,11 @@ export function DvPayeesCard({
   const payees = usePayees();
   const employees = useEmployees();
   const fileRef = useRef<HTMLInputElement>(null);
+  // The latest list, for "Add and next": several rows are added before the card re-renders.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   const [adding, setAdding] = useState<number | null>(null);
+  const [addingNew, setAddingNew] = useState(false);
   const mayAdd = hasRole(...PAYEE_CREATOR_ROLES);
 
   const accountOf = useMemo(() => {
@@ -121,12 +126,7 @@ export function DvPayeesCard({
             <Button size="sm" onClick={() => fileRef.current?.click()}>
               Upload list
             </Button>
-            <Button
-              size="sm"
-              onClick={() =>
-                onChange([...rows, { payeeId: null, payeeName: '', accountNumber: '', amount: 0 }])
-              }
-            >
+            <Button size="sm" variant="primary" onClick={() => setAddingNew(true)}>
               Add a payee
             </Button>
             <input
@@ -171,6 +171,7 @@ export function DvPayeesCard({
                   ) : (
                     <>
                       <PayeePicker
+                        allowAdd
                         value={r.payeeId}
                         onChange={(v, p) =>
                           set(i, {
@@ -272,8 +273,24 @@ export function DvPayeesCard({
       {rows.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
           Upload the list (Name, ATM No., Amount - TIN optional; use Template for the headings) or
-          add the payees one by one.
+          press Add a payee for each one.
         </p>
+      )}
+
+      {addingNew && (
+        <DvPayeeModal
+          existing={payees.data}
+          listedIds={rows.map((r) => r.payeeId).filter((id): id is string => Boolean(id))}
+          remaining={netAmount - total}
+          accountOf={accountOf}
+          mayCreate={mayAdd}
+          onAdd={(row) => {
+            const next = [...rowsRef.current, row];
+            rowsRef.current = next;
+            onChange(next);
+          }}
+          onClose={() => setAddingNew(false)}
+        />
       )}
 
       {adding !== null && rows[adding] && (
