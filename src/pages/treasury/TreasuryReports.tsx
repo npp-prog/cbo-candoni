@@ -543,6 +543,7 @@ function PrepareReport({
         kind: reportType,
         payable: ACCOUNTS.accountsPayable,
         cash,
+        reportNo: reportNo.trim(),
         documents: chosen.map((d) => ({
           sourceNo: d.sourceNo,
           payeeId: d.payeeId ?? null,
@@ -668,7 +669,18 @@ function PrepareReport({
         particulars: `Collections per ${short}`,
       })),
     ];
-  }, [reportType, total, chosen, collections.data, bankAccount, accountTitle, officerId, officerName, short]);
+  }, [
+    reportType,
+    reportNo,
+    total,
+    chosen,
+    collections.data,
+    bankAccount,
+    accountTitle,
+    officerId,
+    officerName,
+    short,
+  ]);
 
   const entryBalances =
     entry.length > 0 &&

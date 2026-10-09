@@ -44,10 +44,20 @@
  *         Candoni Builders
  *       Cr  Cash in Bank                        480,000.00
  *
- * The credit stays as one line. It is one withdrawal from one bank account, and
- * splitting it would invent a transaction per check that the bank statement has
- * no counterpart for - which is precisely what bank reconciliation would then
- * fail to match.
+ * ---------------------------------------------------------------------------
+ * WHY THE RCI'S CASH IS ALSO ONE LINE PER CHECK (patch 147)
+ * ---------------------------------------------------------------------------
+ * The credit used to be one line for the report. The office asked for it per
+ * check, and on an RCI that is how the bank sees it: each check is paid, and
+ * appears on the statement, on its own day, when the payee presents it.
+ *
+ *       Cr  Cash in Bank                        120,000.00   "Payment of RCI
+ *           Land Bank 1172-1020-22                2026-10-0005 Check No. 1234 -
+ *                                                 purchase of office supplies"
+ *       Cr  Cash in Bank                        360,000.00   "Payment of RCI ..."
+ *
+ * A RADAI keeps one credit: the bank debits the whole advice list at once,
+ * and the reconciliation matches it as that one debit (patch 146).
  */
 
 /** A check or an advice, as the report records it. */
@@ -133,6 +143,8 @@ export function proposePaymentEntry(input: {
   payable: { code: string; name: string };
   cash: CashLine;
   documents: PaidDocument[];
+  /** Patch 147: the report's number, for the RCI's cash lines. */
+  reportNo?: string | null;
 }): ProposedEntryLine[] {
   const live = input.documents.filter((d) => !d.excluded && (d.amount ?? 0) !== 0);
   if (live.length === 0) return [];
@@ -174,6 +186,27 @@ export function proposePaymentEntry(input: {
     };
   }
 
+  /*
+   * Patch 147. On an RCI the bank pays each CHECK on its own, when it is
+   * presented - so Cash in Bank is credited per check, each line saying
+   * "Payment of RCI <no> Check No. <no> - <the voucher's particulars>", and
+   * every line agrees with one line of the bank statement.
+   *
+   * A RADAI is posted by the bank as one debit (patch 146 reconciles it so),
+   * and keeps one credit for the whole report.
+   */
+  if (input.kind === 'RCI') {
+    return [
+      ...debits,
+      ...live.map((d) => ({
+        ...input.cash,
+        debit: 0,
+        credit: d.amount,
+        particulars: reportCashParticulars(input.kind, input.reportNo, d.sourceNo, d.particulars),
+      })),
+    ];
+  }
+
   return [
     ...debits,
     {
@@ -183,6 +216,46 @@ export function proposePaymentEntry(input: {
       particulars: `Payments per ${input.kind}`,
     },
   ];
+}
+
+/**
+ * Patch 147: "Payment of RCI 2026-10-0005 Check No. 123462 - supplies".
+ * The report's number is left out while the report has none yet; it is put
+ * in when the report is certified (renumberPaymentEntry).
+ */
+export function reportCashParticulars(
+  kind: string,
+  reportNo: string | null | undefined,
+  sourceNo: string,
+  particulars?: string | null,
+): string {
+  const no = String(reportNo ?? '').trim();
+  const label = INSTRUMENT_LABEL[kind] ?? 'No.';
+  const head = `Payment of ${kind}${no ? ` ${no}` : ''} ${label} ${String(sourceNo ?? '').trim()}`;
+  const tail = String(particulars ?? '').trim();
+  return tail ? `${head} - ${tail}` : head;
+}
+
+/**
+ * Patch 147: writes the report's (final) number into the cash lines of its
+ * entry - at certification, when the number is fixed. Lines that do not read
+ * "Payment of RCI ... Check No." are left exactly as they are, so an entry the
+ * Accountant reworded keeps its wording.
+ */
+export function renumberPaymentEntry<L extends { credit: number; particulars?: string | null }>(
+  entry: L[] | undefined,
+  kind: string,
+  reportNo: string,
+): L[] {
+  const label = INSTRUMENT_LABEL[kind];
+  if (!entry || !label) return entry ?? [];
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^Payment of ${kind}(?: \\S+)? (${escaped})`);
+  return entry.map((l) =>
+    (l.credit ?? 0) > 0 && typeof l.particulars === 'string' && pattern.test(l.particulars)
+      ? { ...l, particulars: l.particulars.replace(pattern, `Payment of ${kind} ${reportNo} $1`) }
+      : l,
+  );
 }
 
 /**
@@ -212,6 +285,7 @@ export function rebuildPaymentEntry(input: {
   /** The entry as it stands, which is where the cash line comes from. */
   existing: ProposedEntryLine[] | undefined;
   documents: PaidDocument[];
+  reportNo?: string | null;
 }): ProposedEntryLine[] {
   const cash = (input.existing ?? []).find((l) => (l.credit ?? 0) > 0);
   if (!cash) return input.existing ?? [];
@@ -227,6 +301,7 @@ export function rebuildPaymentEntry(input: {
       subsidiaryName: cash.subsidiaryName ?? null,
     },
     documents: input.documents,
+    reportNo: input.reportNo,
   });
 }
 

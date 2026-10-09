@@ -21,6 +21,7 @@ import {
   TREASURY_SOURCE_COLLECTION,
   TREASURY_SOURCE_REPORT_FIELD,
 } from '../lib/treasurySources';
+import { renumberPaymentEntry } from '../lib/treasuryEntry';
 import {
   createJevInTransaction,
   postJevInTransaction,
@@ -518,6 +519,15 @@ export const certifyTreasuryReport = onCall(
         reportNo,
         period,
         status: 'CERTIFIED',
+        /*
+         * Patch 147. The RCI's Cash in Bank lines read "Payment of RCI <no>
+         * Check No. ...". The number is only fixed now - an uploaded RCI has
+         * none until it is certified, and the Treasurer may correct a typed
+         * one - so the lines are given the number the report is certified as.
+         */
+        ...(type === 'RCI' && report.entry?.length
+          ? { entry: renumberPaymentEntry(report.entry, type, reportNo) }
+          : {}),
         serialFrom: serials[0],
         serialTo: serials[serials.length - 1],
         totalAmount: verifiedTotal,

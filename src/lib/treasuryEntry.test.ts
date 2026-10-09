@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   proposePaymentEntry,
   rebuildPaymentEntry,
+  renumberPaymentEntry,
   paymentParticulars,
 } from './treasuryEntry';
 
@@ -74,21 +75,54 @@ describe('proposePaymentEntry', () => {
   });
 
   /*
-   * The bank made one withdrawal. Splitting the credit per check would invent
-   * transactions the bank statement has no counterpart for, which is exactly
-   * what bank reconciliation would then fail to match.
+   * Patch 147. Each check is paid by the bank on its own, when it is
+   * presented - so Cash in Bank is credited per check, worded like the
+   * payable line but naming the report: "Payment of RCI <no> Check No. <no>
+   * - <the voucher's particulars>".
    */
-  it('credits the bank once, for the whole report', () => {
+  it('credits the bank once per check, naming the RCI and the check', () => {
     const entry = proposePaymentEntry({
       kind: 'RCI',
       payable: PAYABLE,
       cash: CASH,
       documents: CHECKS,
+      reportNo: '2026-10-0005',
     });
 
     const credits = entry.filter((l) => l.credit > 0);
+    expect(credits).toHaveLength(2);
+    expect(credits[0]).toMatchObject({
+      accountCode: '10102010',
+      credit: 120_000,
+      subsidiaryId: 'bank1',
+      particulars: 'Payment of RCI 2026-10-0005 Check No. 1234 - Purchase of office supplies',
+    });
+    expect(credits[1].credit).toBe(360_000);
+    // Debits first, then the credits.
+    expect(entry.map((l) => (l.debit > 0 ? 'D' : 'C')).join('')).toBe('DDCC');
+  });
+
+  it('leaves the report number out until the report has one', () => {
+    const entry = proposePaymentEntry({
+      kind: 'RCI',
+      payable: PAYABLE,
+      cash: CASH,
+      documents: [{ sourceNo: '1240', amount: 10_000 }],
+    });
+    expect(entry.find((l) => l.credit > 0)?.particulars).toBe('Payment of RCI Check No. 1240');
+  });
+
+  it('keeps ONE credit for a RADAI, which the bank debits as one', () => {
+    const entry = proposePaymentEntry({
+      kind: 'RADAI',
+      payable: PAYABLE,
+      cash: CASH,
+      documents: CHECKS,
+      reportNo: '2026-101',
+    });
+    const credits = entry.filter((l) => l.credit > 0);
     expect(credits).toHaveLength(1);
-    expect(credits[0]).toMatchObject({ accountCode: '10102010', credit: 480_000 });
+    expect(credits[0].credit).toBe(480_000);
   });
 
   it('balances', () => {
@@ -115,7 +149,8 @@ describe('proposePaymentEntry', () => {
     });
 
     expect(entry.filter((l) => l.debit > 0)).toHaveLength(2);
-    expect(entry.find((l) => l.credit > 0)?.credit).toBe(480_000);
+    expect(entry.filter((l) => l.credit > 0)).toHaveLength(2);
+    expect(entry.reduce((s, l) => s + l.credit, 0)).toBe(480_000);
   });
 
   /*
@@ -178,7 +213,8 @@ describe('rebuildPaymentEntry', () => {
     expect(debits).toHaveLength(3);
     expect(debits[0].debit).toBe(120_000);
     expect(debits[2]).toMatchObject({ subsidiaryId: 'p3', debit: 20_000 });
-    expect(rebuilt.find((l) => l.credit > 0)?.credit).toBe(500_000);
+    expect(rebuilt.reduce((s, l) => s + l.credit, 0)).toBe(500_000);
+    expect(rebuilt.filter((l) => l.credit > 0)).toHaveLength(3);
   });
 
   it('keeps the bank line it was given, adjustments and all', () => {
@@ -202,11 +238,11 @@ describe('rebuildPaymentEntry', () => {
       documents: CHECKS,
     });
 
-    expect(rebuilt.find((l) => l.credit > 0)).toMatchObject({
-      accountCode: '10102020',
-      subsidiaryId: 'bank9',
-      credit: 480_000,
-    });
+    const credits = rebuilt.filter((l) => l.credit > 0);
+    expect(credits.map((l) => l.credit)).toEqual([120_000, 360_000]);
+    for (const l of credits) {
+      expect(l).toMatchObject({ accountCode: '10102020', subsidiaryId: 'bank9' });
+    }
   });
 
   it('leaves an entry it cannot read alone', () => {
@@ -218,5 +254,45 @@ describe('rebuildPaymentEntry', () => {
         documents: CHECKS,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('renumberPaymentEntry (patch 147)', () => {
+  const entry = proposePaymentEntry({
+    kind: 'RCI',
+    payable: PAYABLE,
+    cash: CASH,
+    documents: CHECKS,
+    reportNo: '2026-10-05',
+  });
+
+  it('puts the certified number into the cash lines', () => {
+    const out = renumberPaymentEntry(entry, 'RCI', '2026-10-0005');
+    expect(out.filter((l) => l.credit > 0).map((l) => l.particulars)).toEqual([
+      'Payment of RCI 2026-10-0005 Check No. 1234 - Purchase of office supplies',
+      expect.stringMatching(/^Payment of RCI 2026-10-0005 Check No\. 1235/),
+    ]);
+  });
+
+  it('numbers a line that had no number yet', () => {
+    const bare = proposePaymentEntry({
+      kind: 'RCI',
+      payable: PAYABLE,
+      cash: CASH,
+      documents: [{ sourceNo: '1240', amount: 10_000 }],
+    });
+    const out = renumberPaymentEntry(bare, 'RCI', '2026-10-0006');
+    expect(out.find((l) => l.credit > 0)?.particulars).toBe(
+      'Payment of RCI 2026-10-0006 Check No. 1240',
+    );
+  });
+
+  it('leaves the payable lines, and wording the Accountant changed, alone', () => {
+    const edited = entry.map((l, i) =>
+      i === entry.length - 1 ? { ...l, particulars: 'Encashment of checks' } : l,
+    );
+    const out = renumberPaymentEntry(edited, 'RCI', '2026-10-0005');
+    expect(out.filter((l) => l.debit > 0)).toEqual(edited.filter((l) => l.debit > 0));
+    expect(out[out.length - 1].particulars).toBe('Encashment of checks');
   });
 });

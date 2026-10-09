@@ -999,6 +999,7 @@ export const resolveImportRow = onCall(
           payable: { code: ACCOUNTS_PAYABLE.code, name: ACCOUNTS_PAYABLE.name },
           existing: report.entry as never,
           documents: lines as never,
+          reportNo: report.reportNo ?? null,
         }),
         pendingRowCount: pendingCount,
       });
