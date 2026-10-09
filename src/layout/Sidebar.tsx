@@ -5,6 +5,7 @@ import {
   NAVIGATION,
   ICONS,
   childrenForFund,
+  sectionShownForFund,
   toBlocks,
   groupForPath,
   type NavChild,
@@ -117,7 +118,9 @@ export function Sidebar({
    */
   const visible = useMemo(
     () =>
-      NAVIGATION.filter((item) => can(item.module, 'view')).map((item) =>
+      NAVIGATION.filter(
+        (item) => can(item.module, 'view') && sectionShownForFund(item, fundCode),
+      ).map((item) =>
         item.children ? { ...item, children: childrenForFund(item.children, fundCode) } : item,
       ),
     [can, fundCode],

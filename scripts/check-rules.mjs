@@ -3311,8 +3311,21 @@ if (existsSync(functionsSrc)) {
       failures.push(`src/App.tsx: ${path} is not wrapped in TrustFundOnly - it would show for the General Fund and SEF.`);
     }
   }
+  if (!/hiddenForFunds: \[TRUST_FUND_CODE\]/.test(nav)) {
+    failures.push('src/layout/navigation.ts: the Budget menu is no longer hidden for the Trust Fund (patch 137).');
+  }
+  // Patch 137: "JEV at save" - drawn by the engine, never brought by a browser.
+  const liqFn = readFileSync(resolve(root, 'functions/src/accounting/liquidation.ts'), 'utf8');
+  if (!/export const numberLiquidationEntry/.test(liqFn) || !/hasJevNumber\(liq\.jevNo\)/.test(liqFn)) {
+    failures.push('functions/src/accounting/liquidation.ts: a liquidation no longer takes its JEV number on saving, or posting ignores the number it took.');
+  }
+  const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
+  const liqRule = rules.slice(rules.indexOf('match /liquidations/{id}'), rules.indexOf('match /liquidations/{id}') + 1600);
+  if (!/hasAny\(\['jevNo', 'jevNoDrawnAt', 'jevId'\]\)/.test(liqRule) || !/'cashAdvanceId',\s*'jevNo', 'jevNoDrawnAt'/.test(liqRule)) {
+    failures.push('firestore.rules: a browser can write the JEV number of a liquidation report.');
+  }
   if (failures.length === before) {
-    console.log('trust accounts: a Trust Fund menu item, and its screens refuse the other funds');
+    console.log('trust accounts: a Trust Fund menu item, its screens refuse the other funds; Budget hidden for TF; liquidation JEV drawn by the engine at save');
   }
 }
 

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { NAVIGATION, childrenForFund, groupForPath, toBlocks, type NavChild } from './navigation';
+import {
+  NAVIGATION,
+  childrenForFund,
+  groupForPath,
+  sectionShownForFund,
+  toBlocks,
+  type NavChild,
+} from './navigation';
 import { TRUST_TABS } from '@/pages/accounting/trustTabs';
 import {
   PAYMENT_TABS,
@@ -564,6 +571,16 @@ describe('the menu itself', () => {
       'Registry of Special Trust Fund',
       'Fund Utilization Report',
     ]);
+  });
+
+  /** Patch 137: the Budget menu is hidden while the Trust Fund is selected. */
+  it('hides the Budget menu for the Trust Fund only', () => {
+    const budget = NAVIGATION.find((i) => i.to === '/budget')!;
+    expect(sectionShownForFund(budget, 'TF')).toBe(false);
+    expect(sectionShownForFund(budget, 'GF')).toBe(true);
+    expect(sectionShownForFund(budget, 'SEF')).toBe(true);
+    const accounting = NAVIGATION.find((i) => i.to === '/accounting')!;
+    expect(sectionShownForFund(accounting, 'TF')).toBe(true);
   });
 
   it('every heading holds at least one item', () => {

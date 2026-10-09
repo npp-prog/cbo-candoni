@@ -6,6 +6,8 @@ import { useToast } from '@/components/ui/Toast';
 import { AccountPicker } from '@/components/pickers';
 import { useAuth } from '@/auth/AuthProvider';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
+import { engine } from '@/lib/engine';
+import { hasJevNumber } from '@/lib/jevNumbers';
 import { Combobox } from '@/components/pickers/Combobox';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
@@ -133,6 +135,26 @@ export function LiquidationForm({
       (refundAmount ?? 0)
     : 0;
 
+  /*
+   * Patch 137 - "JEV at save". The report is saved here; the number is drawn
+   * by the engine from the JEV series straight after. If that fails the
+   * report is still saved, and the number is drawn on the next save or when
+   * the Accountant approves it.
+   */
+  const giveJevNumber = async (id: string, current?: string | null) => {
+    if (hasJevNumber(current)) return current as string;
+    try {
+      const res = await engine.numberLiquidationEntry({ liquidationId: id });
+      return res.jevNo;
+    } catch (err) {
+      toast.error(
+        'Saved, but no JEV number yet',
+        `${err instanceof Error ? err.message : String(err)} It will be given on the next save or when the report is approved.`,
+      );
+      return null;
+    }
+  };
+
   const save = async () => {
     if (!advance || amountLiquidated <= 0 || !user) {
       toast.error('Incomplete', 'Choose a cash advance and enter at least one expense line.');
@@ -184,7 +206,11 @@ export function LiquidationForm({
           },
           actor,
         );
-        toast.success('Liquidation report saved', 'It waits for the Accountant to approve it.');
+        const jevNo = await giveJevNumber(existing.id, existing.jevNo);
+        toast.success(
+          'Liquidation report saved',
+          `${jevNo ? `JEV ${jevNo}. ` : ''}It waits for the Accountant to approve it.`,
+        );
         onSaved(existing.id);
         return;
       }
@@ -221,6 +247,11 @@ export function LiquidationForm({
           status: 'DRAFT',
         },
         actor,
+      );
+      const jevNo = await giveJevNumber(newId, null);
+      toast.success(
+        'Liquidation report saved',
+        `${jevNo ? `JEV ${jevNo}. ` : ''}It waits for the Accountant to approve it.`,
       );
       onSaved(newId);
     } catch (err) {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { newestFirst } from '@/lib/registerOrder';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { isTrustFund, obligationForm } from '@/lib/obligationForm';
-import { Alert } from '@/components/ui/Layout';
 import { TrustTabs } from '../accounting/trustTabs';
 import { useAuth } from '@/auth/AuthProvider';
 import { useObligations } from '@/data/queries';
@@ -159,6 +158,13 @@ export default function Obligations({ trust = false }: { trust?: boolean } = {})
     },
   ];
 
+  /*
+   * Patch 137: the Budget menu is hidden for the Trust Fund, and its
+   * obligations are the FURS under Accounting > Trust Accounts. An old link
+   * or a fund changed while this is open lands there.
+   */
+  if (!trust && isTrustFund(fundCode)) return <Navigate to="/accounting/furs" replace />;
+
   return (
     <div>
       <PageHeader
@@ -184,15 +190,6 @@ export default function Obligations({ trust = false }: { trust?: boolean } = {})
       />
 
       {trust && <TrustTabs active="furs" />}
-      {!trust && isTrustFund(fundCode) && (
-        <Alert tone="info" className="mb-4" title="FURS are kept under Trust Accounts">
-          The Trust Fund&apos;s Funding Utilization Requests are worked in{' '}
-          <Link to="/accounting/furs" className="font-medium underline">
-            Accounting &gt; Trust Accounts &gt; FURS
-          </Link>
-          , beside the trust programmes they draw on. This list shows the same documents.
-        </Alert>
-      )}
 
       <DataTable
         rows={rows}

@@ -624,7 +624,9 @@ export interface Liquidation extends Partial<AuditStamps> {
 
   status: LiquidationStatus;
   jevId?: Id;
+  /** Patch 137: drawn when the report is saved; the entry is posted under it at approval. */
   jevNo?: string;
+  jevNoDrawnAt?: string;
   remarks?: string;
 
   attachmentCount?: number;

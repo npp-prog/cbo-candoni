@@ -736,13 +736,17 @@ service cloud.firestore {
         && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
         && createdByCaller()
         && request.resource.data.status == 'DRAFT'
-        && officeAllowed(request.resource.data.officeId);
+        && officeAllowed(request.resource.data.officeId)
+        // Patch 137: the JEV number is drawn by the engine (numberLiquidationEntry)
+        // on saving; a browser never brings one.
+        && !request.resource.data.keys().hasAny(['jevNo', 'jevNoDrawnAt', 'jevId']);
       allow update: if signedIn()
         && hasAny(accountingRoles().concat(['DEPARTMENT_USER']))
         && resource.data.status in ['DRAFT', 'RETURNED']
         && isClientWritableStatus(request.resource.data.status)
         && didNotChange([
           'liquidationNo', 'createdBy', 'approvedBy', 'jevId', 'cashAdvanceId',
+          'jevNo', 'jevNoDrawnAt',
           // Engine property; see the obligation rule above.
           'attachmentsLockedAt', 'attachmentsLockedBy'
         ]);

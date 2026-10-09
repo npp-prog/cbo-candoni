@@ -5,6 +5,7 @@ import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
 import { recordTransition } from '../lib/audit';
+import { hasJevNumber } from '../lib/jevNumbers';
 import {
   issueNumbers,
   loadNumberingConfig,
@@ -44,6 +45,8 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
 
     const liq = snap.data() as {
       liquidationNo?: string;
+      /** Patch 137: drawn when the report was saved (numberLiquidationEntry). */
+      jevNo?: string | null;
       liquidationDate: string;
       fiscalYear: number;
       fundCode: string;
@@ -249,8 +252,14 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       label: 'Liquidation report',
     });
 
-    const [issuedJevNo] = await issueNumbers(tx, [{ cfg: jevConfig, parts }]);
-    const jevNo = issuedJevNo as string;
+    /*
+     * Patch 137 - Neil: "JEV at save." The number was drawn when the report
+     * was saved and is used here as it stands. A report saved before patch
+     * 137 has none, and draws one now as before.
+     */
+    const jevNo = hasJevNumber(liq.jevNo)
+      ? String(liq.jevNo)
+      : ((await issueNumbers(tx, [{ cfg: jevConfig, parts }]))[0] as string);
     liqNumber.commit();
     const liquidationNo = liqNumber.number;
 
@@ -421,3 +430,83 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
  * deductions and the net, and it is what the RCDisb is built from. It posts
  * nothing by itself. See functions/src/treasury/reports.ts.
  */
+
+
+/**
+ * numberLiquidationEntry - gives a saved liquidation report its JEV number.
+ * Patch 137.
+ *
+ * Neil: "JEV at save." The report is saved in the browser (a draft the
+ * security rules let the office write); this, called straight after, draws
+ * the number from the JEV series in the engine - a browser never writes a
+ * document counter - and stores it on the report. The entry itself is still
+ * built and posted when the Accountant approves the report, under this
+ * number. Called again for a report that already has one, it returns it.
+ *
+ * The cost, accepted: a report saved and then discarded leaves its number
+ * unused in the series. The Approval history records the drawing.
+ */
+export const numberLiquidationEntry = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, [
+      'SUPER_ADMIN',
+      'MUNICIPAL_ACCOUNTANT',
+      'ACCOUNTING_REVIEWER',
+      'ACCOUNTING_ENCODER',
+      'DEPARTMENT_USER',
+    ]);
+    const { liquidationId } = (request.data ?? {}) as { liquidationId?: string };
+    if (!liquidationId) throw invalid('A liquidation id is required.');
+    const jevConfig = await loadNumberingConfig('JEV');
+
+    return db.runTransaction(async (tx) => {
+      const ref = db.collection(COL.liquidations).doc(liquidationId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The liquidation report');
+      const liq = snap.data() as {
+        jevNo?: string | null;
+        liquidationDate: string;
+        liquidationNo?: string;
+        fiscalYear: number;
+        fundCode: string;
+        status: string;
+      };
+      if (hasJevNumber(liq.jevNo)) return { liquidationId, jevNo: String(liq.jevNo) };
+      if (!['DRAFT', 'RETURNED', 'SUBMITTED', 'REVIEWED'].includes(liq.status)) {
+        throw new HttpsError(
+          'failed-precondition',
+          `This liquidation is ${liq.status.toLowerCase()}; its JEV number is given when it is posted.`,
+        );
+      }
+      const bookCode = await bookCodeForFund(liq.fundCode);
+      const [jevNo] = await issueNumbers(tx, [
+        {
+          cfg: jevConfig,
+          parts: {
+            bookCode,
+            fundCode: liq.fundCode,
+            fiscalYear: liq.fiscalYear,
+            month: periodOf(liq.liquidationDate),
+          },
+        },
+      ]);
+      const now = new Date().toISOString();
+      tx.update(ref, { jevNo, jevNoDrawnAt: now });
+      recordTransition(tx, {
+        caller,
+        event: 'EDIT',
+        entityType: COL.liquidations,
+        entityId: liquidationId,
+        entityRef: `Liquidation ${liq.liquidationNo ?? liquidationId}`,
+        fiscalYear: liq.fiscalYear,
+        fundCode: liq.fundCode,
+        action: 'CREATE',
+        previousStatus: liq.status,
+        newStatus: liq.status,
+        remarks: `JEV ${jevNo} given on saving; the entry is posted under it when the Accountant approves.`,
+      });
+      return { liquidationId, jevNo: jevNo as string };
+    });
+  },
+);

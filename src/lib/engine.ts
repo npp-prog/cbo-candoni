@@ -541,6 +541,13 @@ export const engine = {
 
   cancelAda: (p: { adaId: Id; reason: string }) => call<typeof p, { adaId: Id }>('cancelAda', p),
 
+  /**
+   * Patch 137: a saved liquidation report takes its JEV number now ("JEV at
+   * save"); the entry is posted under it when the Accountant approves.
+   */
+  numberLiquidationEntry: (p: { liquidationId: Id }) =>
+    call<typeof p, { liquidationId: Id; jevNo: string }>('numberLiquidationEntry', p),
+
   postLiquidation: (p: { liquidationId: Id }) =>
     call<typeof p, { liquidationId: Id; jevId: Id; jevNo?: string; outstandingBalance: Centavos }>(
       'postLiquidation',

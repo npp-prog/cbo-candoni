@@ -33,6 +33,13 @@ export interface NavItem {
    * Accounting and the other to Budget, and an officer looking for their own
    * office's output should not have to read the whole list to find it.
    */
+  /**
+   * Funds for which the whole section is left out of the menu. Patch 137:
+   * the Budget menu is hidden while the Trust Fund is selected - a trust is
+   * controlled by its programmes and FURS under Accounting > Trust Accounts,
+   * not by an appropriation, allotment and obligation.
+   */
+  hiddenForFunds?: string[];
   children?: Array<{
     label: string;
     to: string;
@@ -74,6 +81,7 @@ export const NAVIGATION: NavItem[] = [
     to: '/budget',
     module: 'budget',
     icon: 'budget',
+    hiddenForFunds: [TRUST_FUND_CODE],
     /*
      * Three headings, because the Budget menu had to be grouped once the
      * accountability reports arrived - the sidebar groups a section all or
@@ -510,4 +518,10 @@ export function childrenForFund(
   return (children ?? []).filter(
     (c) => !c.fund || c.fund.toUpperCase() === String(fundCode ?? '').toUpperCase(),
   );
+}
+
+/** Whether a whole section is shown for the selected fund. Patch 137. */
+export function sectionShownForFund(item: Pick<NavItem, 'hiddenForFunds'>, fundCode: string): boolean {
+  const f = String(fundCode ?? '').toUpperCase();
+  return !(item.hiddenForFunds ?? []).some((h) => h.toUpperCase() === f);
 }

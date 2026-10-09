@@ -63,7 +63,7 @@ export {
 } from './accounting/dv';
 export { postJev, reverseJev, correctJev, amendPostedJev } from './accounting/jev';
 export { issueCheck, cancelCheck, issueAda, cancelAda } from './accounting/payments';
-export { postLiquidation } from './accounting/liquidation';
+export { postLiquidation, numberLiquidationEntry } from './accounting/liquidation';
 
 // --- Treasury ----------------------------------------------------------------
 export { postRcd, recordDeposit } from './treasury/collections';

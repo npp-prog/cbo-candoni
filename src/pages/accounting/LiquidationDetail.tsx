@@ -256,6 +256,13 @@ export default function LiquidationDetail() {
         }
       />
 
+      {!posted && liq.jevNo && (
+        <Alert tone="info" className="mb-4">
+          JEV <span className="font-mono">{liq.jevNo}</span> - given when the report was saved.
+          The entry is posted under this number when the Accountant approves the report.
+        </Alert>
+      )}
+
       {!posted && attachmentCount === 0 && (
         <Alert tone="warning" className="mb-4" title="The signed report is not attached">
           A liquidation report is the document an accountable officer signs to account for public
@@ -423,13 +430,19 @@ export default function LiquidationDetail() {
         )}
 
         {tab === 'entry' && (
-          <Card title={posted ? 'The entry this report posted' : 'The entry this report will post'}>
+          <Card
+            title={
+              posted
+                ? `The entry this report posted${liq.jevNo ? ` - JEV ${liq.jevNo}` : ''}`
+                : `The entry this report will post${liq.jevNo ? ` - JEV ${liq.jevNo}` : ''}`
+            }
+          >
             <p className="mb-3 text-xs text-slate-500">
               Each expense is charged to its own account and the advance is credited with what the
               officer accounted for. A cash refund has no line here: the officer pays it to the
               Treasury, and it reaches the books with the Treasury&apos;s collections. The entry is
-              built by the engine from the figures above when the Accountant approves the report;
-              that is when it takes its JEV number.
+              given its JEV number when the report is saved, and posted under that number when the
+              Accountant approves the report.
             </p>
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -508,7 +521,8 @@ export default function LiquidationDetail() {
               Recognises {formatPeso(liq.amountLiquidated)} of expenses
               {liq.reimbursementAmount > 0 &&
                 `, and a reimbursement of ${formatPeso(liq.reimbursementAmount)} due to the officer`}
-              , and credits the cash advance. It is given its JEV number now.
+              , and credits the cash advance
+              {liq.jevNo ? ` - posted as JEV ${liq.jevNo}, the number it was given on saving.` : '.'}
               {liq.refundAmount > 0 &&
                 ` The refund of ${formatPeso(liq.refundAmount)} is not posted here - it reaches the books with the Treasury's collections.`}
             </p>
