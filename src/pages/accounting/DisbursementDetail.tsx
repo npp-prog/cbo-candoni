@@ -1119,6 +1119,8 @@ export default function DisbursementDetail() {
                 }}
                 netAmount={netAmount}
                 readOnly={!canEdit}
+                dvId={isNew ? undefined : id}
+                dvNo={dvNo}
               />
             )}
           </>

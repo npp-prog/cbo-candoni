@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchPayees, parsePayeeSheet } from './dvPayees';
+import { matchPayees, parseBankFileGrid, parsePayeeSheet } from './dvPayees';
 import { checkDvPayees, withEtAl, withoutEtAl } from '@/lib/accounting-rules';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { proposeDvEntry } from './proposeEntry';
@@ -81,8 +81,8 @@ describe('the payee list of a group voucher', () => {
 
   it('holds the list to the net amount, the master list and an account each', () => {
     const ok = [
-      { payeeId: 'p1', payeeName: 'A', accountNumber: '1', amount: 600 },
-      { payeeId: 'p2', payeeName: 'B', accountNumber: '2', amount: 400 },
+      { payeeId: 'p1', payeeName: 'A', accountNumber: '0011223344', amount: 600 },
+      { payeeId: 'p2', payeeName: 'B', accountNumber: '5566778899', amount: 400 },
     ];
     expect(checkDvPayees(ok, 1000).ok).toBe(true);
     expect(checkDvPayees(ok, 999).violations.map((v) => v.code)).toContain('PAYEES_NOT_NET');
@@ -140,7 +140,7 @@ describe('the payee list messages', () => {
   it('names a row with no payee by its line number', () => {
     const r = checkDvPayees(
       [
-        { payeeId: 'p1', payeeName: 'Ana', accountNumber: '1', amount: 100 },
+        { payeeId: 'p1', payeeName: 'Ana', accountNumber: '0011223344', amount: 100 },
         { payeeId: null, payeeName: '', accountNumber: '', amount: 0 },
       ],
       100,
@@ -150,5 +150,22 @@ describe('the payee list messages', () => {
     expect(text).toContain('No ATM / account number for line 2');
     expect(text).toContain('No share entered for line 2');
     expect(text).not.toContain('(no name)');
+  });
+});
+
+describe("reading the bank's own file back", () => {
+  it('recognises it by its first row and reads the amount as centavos', () => {
+    const rows = parseBankFileGrid([
+      ['0011223344', 'Ma Bella Dela Cruz', '1000010'],
+      ['5566778899', 'Juan Santos', '1000000'],
+    ]);
+    expect(rows).toEqual([
+      { lineNo: 1, accountNumber: '0011223344', name: 'Ma Bella Dela Cruz', tin: '', amount: 1000010 },
+      { lineNo: 2, accountNumber: '5566778899', name: 'Juan Santos', tin: '', amount: 1000000 },
+    ]);
+  });
+
+  it('leaves a list with headings to be read by its headings', () => {
+    expect(parseBankFileGrid([['Name', 'ATM No.', 'Amount'], ['Ana', '0011223344', '100.00']])).toBeNull();
   });
 });

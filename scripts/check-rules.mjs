@@ -3395,6 +3395,32 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 58. A group ADA goes to the bank with its List of Payees ------------
+
+/*
+ * Patch 140. The ADA form of a group voucher prints the List of Payees after
+ * it, the voucher has its own List of Payees page, and a group voucher cannot
+ * be submitted with an account the bank's file would reject (not 10 digits).
+ */
+{
+  const before = failures.length;
+  const ada = readFileSync(resolve(root, 'src/pages/treasury/AdaAppendix36.tsx'), 'utf8');
+  if (!/<PayeeListSheet\b/.test(ada)) {
+    failures.push('src/pages/treasury/AdaAppendix36.tsx: the ADA of a group voucher no longer prints its List of Payees.');
+  }
+  const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
+  if (!/path="\/accounting\/disbursements\/:id\/payees"/.test(app)) {
+    failures.push('src/App.tsx: the List of Payees page of a voucher has no route.');
+  }
+  const rules = readFileSync(resolve(root, 'src/lib/accounting-rules.ts'), 'utf8');
+  if (!/PAYEE_ACCOUNT_NOT_10_DIGITS/.test(rules)) {
+    failures.push('src/lib/accounting-rules.ts: checkDvPayees no longer holds a group voucher to 10-digit accounts - the bank file would be refused after approval.');
+  }
+  if (failures.length === before) {
+    console.log('group ADA: List of Payees printed with it; accounts held to 10 digits');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

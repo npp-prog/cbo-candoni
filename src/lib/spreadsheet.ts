@@ -29,6 +29,21 @@ export async function readSheet(file: File): Promise<SheetRow[]> {
 }
 
 /**
+ * The first sheet as rows of cell text, with no heading assumed. Patch 140:
+ * for files with no heading row, such as the bank's payee upload file.
+ */
+export async function readSheetGrid(file: File): Promise<string[][]> {
+  const buffer = await file.arrayBuffer();
+  // raw: false keeps "0011223344" as text where the file stored it as text.
+  const book = XLSX.read(buffer, { type: 'array', raw: false });
+  const sheet = book.Sheets[book.SheetNames[0]];
+  if (!sheet) return [];
+  return XLSX.utils
+    .sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: false })
+    .map((r) => r.map((c) => (c == null ? '' : String(c).trim())));
+}
+
+/**
  * The first cell in the row whose heading matches one of the patterns.
  *
  * Patterns are tried in order, so put the specific one first: `/dv\s*no/i`

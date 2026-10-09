@@ -8,6 +8,7 @@ import { formatLongDate } from '@/lib/dates';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import type { Ada } from '@/types/accounting';
 import { useEntity } from '@/data/useEntity';
+import { BankFileButtons, PayeeListSheet } from '../accounting/PayeeList';
 
 /**
  * The Authority to Debit Account - Appendix 36.
@@ -51,6 +52,9 @@ export default function AdaAppendix36() {
     );
   }
 
+  /** Patch 140: an advice for several payees prints its List of Payees after the form. */
+  const group = (ada.payees?.length ?? 0) > 0;
+
   return (
     <div>
       <div className="no-print">
@@ -67,6 +71,7 @@ export default function AdaAppendix36() {
               <Link to="/treasury/ada">
                 <Button variant="secondary">Back to the register</Button>
               </Link>
+              {group && <BankFileButtons payees={ada.payees ?? []} reference={ada.adaNo} size="md" />}
               <Button variant="primary" onClick={() => window.print()}>
                 Print
               </Button>
@@ -169,7 +174,14 @@ export default function AdaAppendix36() {
               one row, rather than stopping short.
             */}
             <tr>
-              <td className="border border-slate-400 px-1.5 py-1">{ada.payeeName}</td>
+              <td className="border border-slate-400 px-1.5 py-1">
+                {ada.payeeName}
+                {group && (
+                  <span className="block text-[9px] italic">
+                    {ada.payees!.length} payees - see the attached List of Payees
+                  </span>
+                )}
+              </td>
               <td className="border border-slate-400 px-1.5 py-1 font-mono">DV {ada.dvNo}</td>
               <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
                 {formatAmount(ada.amount, false)}
@@ -211,6 +223,32 @@ export default function AdaAppendix36() {
           </div>
         </div>
       </div>
+
+      {group && (
+        <div
+          className="cbo-card mt-6 px-6 py-6 print:mt-0 print:border-0 print:px-0 print:py-0"
+          style={{ breakBefore: 'page' }}
+        >
+          <PayeeListSheet
+            payees={ada.payees ?? []}
+            reference={[`ADA No. ${ada.adaNo}`, `DV ${ada.dvNo}`]}
+            date={ada.adaDate}
+            particulars={ada.particulars}
+            signatories={[
+              {
+                label: 'Agency authorized signatory 1',
+                name: entity.localTreasurer.name,
+                role: entity.localTreasurer.position,
+              },
+              {
+                label: 'Agency authorized signatory 2',
+                name: entity.municipalMayor.name,
+                role: entity.municipalMayor.position,
+              },
+            ]}
+          />
+        </div>
+      )}
     </div>
   );
 }

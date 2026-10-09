@@ -8,12 +8,14 @@ import { PayeePicker } from '@/components/pickers';
 import { NewPayeeModal } from '@/components/pickers/NewPayeeModal';
 import { useAuth } from '@/auth/AuthProvider';
 import { useEmployees, usePayees } from '@/data/queries';
-import { readSheet } from '@/lib/spreadsheet';
+import { readSheet, readSheetGrid } from '@/lib/spreadsheet';
 import { formatPeso } from '@/lib/money';
 import { checkDvPayees } from '@/lib/accounting-rules';
 import { PAYEE_CREATOR_ROLES } from '@/lib/payees';
-import { matchPayees, parsePayeeSheet } from './dvPayees';
+import { matchPayees, parseBankFileGrid, parsePayeeSheet } from './dvPayees';
 import { DvPayeeModal } from './DvPayeeModal';
+import { BankFileButtons } from './PayeeList';
+import { Link } from 'react-router-dom';
 
 /**
  * The payees of a "Payee, et al." voucher. Patch 138. See dvPayees.ts for the
@@ -37,7 +39,12 @@ export function DvPayeesCard({
   onChange,
   netAmount,
   readOnly,
+  dvId,
+  dvNo,
 }: {
+  /** The saved voucher, for the printed List of Payees (patch 140). */
+  dvId?: string;
+  dvNo?: string;
   rows: DvPayeeRow[];
   onChange: (rows: DvPayeeRow[]) => void;
   netAmount: number;
@@ -73,8 +80,16 @@ export function DvPayeesCard({
 
   const upload = async (file: File) => {
     try {
-      const sheet = await readSheet(file);
-      const parsed = parsePayeeSheet(sheet);
+      // The bank's own file (no headings, amount in centavos) or a list with headings.
+      const bank = parseBankFileGrid(await readSheetGrid(file));
+      const parsed = bank
+        ? {
+            rows: bank,
+            problems: bank
+              .filter((r) => !r.name || !(r.amount > 0))
+              .map((r) => `Line ${r.lineNo}: no name or amount.`),
+          }
+        : parsePayeeSheet(await readSheet(file));
       if (parsed.problems.length) {
         toast.error('Some lines were not read', parsed.problems.slice(0, 4).join(' '));
       }
@@ -118,30 +133,40 @@ export function DvPayeesCard({
       title={`Payees (et al.) - ${rows.length}`}
       subtitle="Each payee's share of the NET amount and the ATM / account the bank credits. The ADA pays the net; the bank splits it into these accounts."
       actions={
-        !readOnly ? (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="ghost" onClick={template}>
-              Template
-            </Button>
-            <Button size="sm" onClick={() => fileRef.current?.click()}>
-              Upload list
-            </Button>
-            <Button size="sm" variant="primary" onClick={() => setAddingNew(true)}>
-              Add a payee
-            </Button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void upload(f);
-                e.target.value = '';
-              }}
-            />
-          </div>
-        ) : undefined
+        <div className="flex flex-wrap gap-2">
+          {rows.length > 0 && (
+            <BankFileButtons payees={rows} reference={dvNo || dvId || 'voucher'} />
+          )}
+          {dvId && (
+            <Link to={`/accounting/disbursements/${dvId}/payees`}>
+              <Button size="sm">Print list</Button>
+            </Link>
+          )}
+          {!readOnly && (
+            <>
+              <Button size="sm" variant="ghost" onClick={template}>
+                Template
+              </Button>
+              <Button size="sm" onClick={() => fileRef.current?.click()}>
+                Upload list
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => setAddingNew(true)}>
+                Add a payee
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void upload(f);
+                  e.target.value = '';
+                }}
+              />
+            </>
+          )}
+        </div>
       }
     >
       <div className="overflow-x-auto">

@@ -87,6 +87,31 @@ const normName = (v: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/**
+ * Patch 140. The bank's own upload file read back: no heading row; column 1
+ * the 10-digit account, column 2 the name, column 3 the amount in centavos
+ * with no decimal point (1000010 is 10,000.10). Recognised by its first row -
+ * a 10-digit number, then a name, then a whole number. Returns null for any
+ * other file, which is then read by its headings.
+ */
+export function parseBankFileGrid(grid: string[][]): UploadedPayee[] | null {
+  const rows = grid.filter((r) => r.some((c) => String(c ?? '').trim() !== ''));
+  if (rows.length === 0) return null;
+  const [a, n, m] = rows[0];
+  const isBank =
+    /^\d{10}$/.test(String(a ?? '').trim()) &&
+    /[A-Za-z]/.test(String(n ?? '')) &&
+    /^\d+$/.test(String(m ?? '').trim());
+  if (!isBank) return null;
+  return rows.map((r, i) => ({
+    lineNo: i + 1,
+    accountNumber: String(r[0] ?? '').trim(),
+    name: String(r[1] ?? '').trim(),
+    tin: '',
+    amount: /^\d+$/.test(String(r[2] ?? '').trim()) ? Number(String(r[2]).trim()) : 0,
+  }));
+}
+
 /** The rows of the uploaded sheet: Name, ATM / Account No., Amount (TIN optional). */
 export function parsePayeeSheet(rows: SheetRow[]): { rows: UploadedPayee[]; problems: string[] } {
   const out: UploadedPayee[] = [];

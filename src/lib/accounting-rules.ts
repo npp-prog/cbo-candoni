@@ -1408,6 +1408,17 @@ export function checkDvPayees(payees: PayeeShare[], netAmount: number): CheckRes
       message: `No ATM / account number for ${list(noAccount)}. The bank file needs one for every payee.`,
     });
   }
+  // Patch 140: the bank's upload file takes a 10-digit account number.
+  const badAccount = payees.filter((p) => {
+    const d = String(p.accountNumber ?? '').replace(/\D/g, '');
+    return d.length > 0 && d.length !== 10;
+  });
+  if (badAccount.length) {
+    v.push({
+      code: 'PAYEE_ACCOUNT_NOT_10_DIGITS',
+      message: `The ATM / account number of ${list(badAccount)} is not 10 digits. The bank file takes exactly 10 - if Excel dropped the leading zeros, type them back.`,
+    });
+  }
   const seen = new Map<string, number>();
   for (const p of payees) {
     const k = String(p.payeeId ?? '').trim();

@@ -41,6 +41,7 @@ const DisbursementDetail = lazy(() => import('./pages/accounting/DisbursementDet
 const Jevs = lazy(() => import('./pages/accounting/Jevs'));
 const JevDetail = lazy(() => import('./pages/accounting/JevDetail'));
 const JevAppendix30 = lazy(() => import('./pages/accounting/JevAppendix30'));
+const DvPayeeListPrint = lazy(() => import('./pages/accounting/PayeeList'));
 const JournalEntriesRegister = lazy(() => import('./pages/accounting/JournalEntriesRegister'));
 const Checks = lazy(() => import('./pages/treasury/Checks'));
 const TreasuryDisbursements = lazy(() => import('./pages/treasury/Disbursements'));
@@ -211,6 +212,12 @@ export default function App() {
           <Route path="/accounting" element={<Navigate to="/accounting/disbursements" replace />} />
           <Route path="/accounting/disbursements" element={<Guard module="accounting"><Disbursements /></Guard>} />
           <Route path="/accounting/disbursements/new" element={<Guard module="accounting" action="create"><DisbursementDetail /></Guard>} />
+          {/* Patch 140: the List of Payees of a group voucher - before the
+              detail route, which would otherwise read "payees" as part of it. */}
+          <Route
+            path="/accounting/disbursements/:id/payees"
+            element={<Guard module="accounting"><DvPayeeListPrint /></Guard>}
+          />
           <Route path="/accounting/disbursements/:id" element={<Guard module="accounting"><DisbursementDetail /></Guard>} />
           {/* "Others": manual, adjusting, closing and prior-period entries - the
               journal entries that begin in Accounting rather than arriving on a
