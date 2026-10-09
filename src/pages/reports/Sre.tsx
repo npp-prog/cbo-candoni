@@ -13,8 +13,11 @@ import {
   useEstimatedReceipts,
   useLedgerEntries,
   useObligations,
+  useDisbursementVouchers,
+  useChecks,
+  useAda,
 } from '@/data/queries';
-import { figuresForPeriod, lineKey } from '@/lib/budgetPeriods';
+import { COMMITTED } from '@/lib/budgetPeriods';
 import { useDocument } from '@/hooks/useFirestore';
 import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
@@ -31,7 +34,11 @@ import {
   mappingConflicts,
   receiptsByLine,
   reconcileLedgerWithRegistry,
+  obligationTrail,
+  trailKey,
   type RegistryLine,
+  type TrailObligation,
+  type TrailVoucher,
   resolveTotals,
   unmappedReceipts,
   type ExpenditureTotals,
@@ -80,20 +87,22 @@ export default function Sre() {
 
   const [throughPeriod, setThroughPeriod] = useState<PeriodNo>(12);
   /*
-   * Patch 131. What the Actual column of the expenditure half reads.
+   * What the Actual column of the expenditure half reads. Patch 131, and since
+   * patch 134 always the OBLIGATION TRAIL, never the expense in the ledger -
+   * Neil: "Don't rely on expense account in the SRE but on the trail of the
+   * obligation until it is paid." A cash advance not yet liquidated, or a
+   * liquidation (posted with no budget line), cannot move it.
    *
-   * OBLIGATIONS - the obligations incurred, from the same figures as the
-   * Registry (RAAO), LBAc Form No. 2 and the SCBAA. The default: budget
-   * execution in an LGU is reported in obligations, and Neil compared this
-   * statement with the registry and expected them to agree.
+   * OBLIGATIONS - obligations incurred: the Registry (RAAO), LBAc Form No. 2
+   * and the SCBAA read the same figures. The default.
    *
-   * LEDGER - the expense charged to a budget line in the General Ledger, which
-   * is what this statement read until patch 131. It moves when a voucher is
-   * approved, not when the obligation is certified, so it lags the registry by
-   * whatever is obligated and not yet vouchered - and by anything posted to
-   * the wrong line. The reconciliation under the statement shows which.
+   * PAID - what checks and ADAs have paid on those obligations: the
+   * Registry's Disbursements column.
+   *
+   * Receipts are still read off the ledger: a collection is income when it
+   * is journalized.
    */
-  const [basis, setBasis] = useState<'OBLIGATIONS' | 'LEDGER'>('OBLIGATIONS');
+  const [basis, setBasis] = useState<'OBLIGATIONS' | 'PAID'>('OBLIGATIONS');
   const [showMapping, setShowMapping] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -103,6 +112,12 @@ export default function Sre() {
   const gf = useLedgerEntries(fiscalYear, 'GF', { throughPeriod });
   const sef = useLedgerEntries(fiscalYear, 'SEF', { throughPeriod });
   const tf = useLedgerEntries(fiscalYear, 'TF', { throughPeriod });
+
+  const gfVouchers = useDisbursementVouchers(fiscalYear, 'GF');
+  const sefVouchers = useDisbursementVouchers(fiscalYear, 'SEF');
+  const tfVouchers = useDisbursementVouchers(fiscalYear, 'TF');
+  const checks = useChecks();
+  const adas = useAda();
 
   const gfObligations = useObligations(fiscalYear, 'GF');
   const sefObligations = useObligations(fiscalYear, 'SEF');
@@ -150,87 +165,145 @@ export default function Sre() {
   const throughDate = `${fiscalYear}-${String(throughPeriod).padStart(2, '0')}-31`;
 
   /**
-   * Every General and Special Education Fund budget line with what was
-   * obligated on it up to the month chosen. For the whole year that is the
-   * registry's own running figure, so the two cannot differ; for part of the
-   * year it is computed from the obligations by their dates, as the registry
-   * does for a quarter.
+   * The obligation trail, up to the month chosen: obligated, vouchered and
+   * paid on every budget line, from the obligations, the vouchers and the
+   * checks and ADAs that paid them (src/lib/sre.ts, obligationTrail).
+   */
+  const trail = useMemo(() => {
+    const paidOn = new Map<string, string>();
+    for (const c of checks.data) {
+      if (c.status !== 'CANCELLED' && c.checkDate) paidOn.set(`c:${c.id}`, c.checkDate);
+    }
+    for (const a of adas.data) {
+      if (a.status !== 'CANCELLED' && a.adaDate) paidOn.set(`a:${a.id}`, a.adaDate);
+    }
+    const vouchers: TrailVoucher[] = [...gfVouchers.data, ...sefVouchers.data, ...tfVouchers.data].map(
+      (v) => ({
+        obligationId: v.obligationId ?? null,
+        fundCode: v.fundCode,
+        status: v.status,
+        dvDate: v.dvDate,
+        grossAmount: v.grossAmount,
+        paidOn: v.checkId
+          ? (paidOn.get(`c:${v.checkId}`) ?? null)
+          : v.adaId
+            ? (paidOn.get(`a:${v.adaId}`) ?? null)
+            : null,
+      }),
+    );
+    const obligations: TrailObligation[] = [
+      ...gfObligations.data,
+      ...sefObligations.data,
+      ...tfObligations.data,
+    ].map((o) => ({
+      id: o.id,
+      fundCode: o.fundCode,
+      status: o.status,
+      obrDate: o.obrDate,
+      totalAmount: o.totalAmount,
+      lines: (o.lines ?? []).map((l) => ({
+        officeId: l.officeId,
+        fppCode: l.fppCode,
+        appropriatedAccountCode: l.appropriatedAccountCode ?? '',
+        amount: l.amount,
+      })),
+    }));
+    return obligationTrail(obligations, vouchers, COMMITTED, throughDate);
+  }, [
+    checks.data,
+    adas.data,
+    gfVouchers.data,
+    sefVouchers.data,
+    tfVouchers.data,
+    gfObligations.data,
+    sefObligations.data,
+    tfObligations.data,
+    throughDate,
+  ]);
+
+  /**
+   * Every General and Special Education Fund budget line with its trail. For
+   * the whole year, obligated and paid are the registry's own running figures,
+   * so the statement and the RAAO cannot differ; for part of the year they
+   * come from the trail by date, as the registry does for a quarter.
    */
   const registryLines = useMemo<RegistryLine[]>(() => {
     const out: RegistryLine[] = [];
-    const funds = [
-      { balances: gfBudget.data, obligations: gfObligations.data },
-      { balances: sefBudget.data, obligations: sefObligations.data },
-    ];
-    for (const f of funds) {
-      const toDate =
-        throughPeriod === 12
-          ? null
-          : new Map(
-              figuresForPeriod([], f.obligations, `${fiscalYear}-01-01`, throughDate).map((x) => [
-                lineKey(x),
-                x.obligationPrevious + x.obligationThisPeriod,
-              ]),
-            );
-      for (const b of f.balances) {
-        const obligated = toDate
-          ? (toDate.get(
-              lineKey({ officeId: b.officeId, fppCode: b.fppCode, accountCode: b.accountCode }),
-            ) ?? 0)
-          : b.obligated;
-        out.push({
+    for (const b of [...gfBudget.data, ...sefBudget.data]) {
+      const t = trail.get(
+        trailKey({
           fundCode: b.fundCode,
           officeId: b.officeId,
-          officeName: b.officeName,
           fppCode: b.fppCode,
           accountCode: b.accountCode ?? '',
-          sector: b.sector,
-          serviceSector: b.serviceSector,
-          label: `${b.accountCode || b.fppCode} ${b.accountName || b.fppName || ''}`.trim(),
-          obligated,
-        });
-      }
+        }),
+      );
+      const whole = throughPeriod === 12;
+      out.push({
+        fundCode: b.fundCode,
+        officeId: b.officeId,
+        officeName: b.officeName,
+        fppCode: b.fppCode,
+        accountCode: b.accountCode ?? '',
+        sector: b.sector,
+        serviceSector: b.serviceSector,
+        label: `${b.accountCode || b.fppCode} ${b.accountName || b.fppName || ''}`.trim(),
+        obligated: whole ? b.obligated : (t?.obligated ?? 0),
+        vouchered: t?.vouchered ?? 0,
+        paid: whole ? b.disbursed : (t?.paid ?? 0),
+      });
     }
     return out;
-  }, [
-    gfBudget.data,
-    sefBudget.data,
-    gfObligations.data,
-    sefObligations.data,
-    throughPeriod,
-    throughDate,
-    fiscalYear,
-  ]);
+  }, [gfBudget.data, sefBudget.data, trail, throughPeriod]);
 
   /*
    * The Trust Fund is obligated against trust programmes, not budget lines, so
-   * its obligations are read off the obligations themselves.
+   * its figures are the trail's own, summed.
    */
-  const trustObligated = useMemo(
-    () =>
-      figuresForPeriod([], tfObligations.data, `${fiscalYear}-01-01`, throughDate).reduce(
-        (t, x) => t + x.obligationPrevious + x.obligationThisPeriod,
-        0,
-      ),
-    [tfObligations.data, fiscalYear, throughDate],
-  );
+  const trustTrail = useMemo(() => {
+    const t = { obligated: 0, vouchered: 0, paid: 0 };
+    for (const [k, f] of trail) {
+      if (!k.startsWith('TF|')) continue;
+      t.obligated += f.obligated;
+      t.vouchered += f.vouchered;
+      t.paid += f.paid;
+    }
+    return t;
+  }, [trail]);
 
-  const obligationExpenditures = useMemo<ExpenditureTotals>(() => {
-    const byLine = appropriationsByFund(
-      registryLines.map((l) => ({
-        fundCode: l.fundCode,
-        fppCode: l.fppCode,
-        sector: l.sector,
-        serviceSector: l.serviceSector,
-        appropriationRevised: l.obligated,
-      })),
-    );
-    return {
-      ...byLine,
-      trustFund: byLine.trustFund + trustObligated,
-      total: byLine.total + trustObligated,
+  const trailExpenditures = useMemo(() => {
+    const build = (field: 'obligated' | 'paid'): ExpenditureTotals => {
+      const byLine = appropriationsByFund(
+        registryLines.map((l) => ({
+          fundCode: l.fundCode,
+          fppCode: l.fppCode,
+          sector: l.sector,
+          serviceSector: l.serviceSector,
+          appropriationRevised: l[field],
+        })),
+      );
+      return {
+        ...byLine,
+        trustFund: byLine.trustFund + trustTrail[field],
+        total: byLine.total + trustTrail[field],
+      };
     };
-  }, [registryLines, trustObligated]);
+    return { OBLIGATIONS: build('obligated'), PAID: build('paid') };
+  }, [registryLines, trustTrail]);
+
+  /** General and Special Education Funds, for the reconciliation. */
+  const trailTotals = useMemo(
+    () =>
+      registryLines.reduce(
+        (t, l) => ({
+          obligated: t.obligated + l.obligated,
+          vouchered: t.vouchered + l.vouchered,
+          paid: t.paid + l.paid,
+        }),
+        { obligated: 0, vouchered: 0, paid: 0 },
+      ),
+    [registryLines],
+  );
 
   const reconciliation = useMemo(
     () =>
@@ -313,7 +386,7 @@ export default function Sre() {
     [entries, gfBudget.data],
   );
 
-  const expenditures = basis === 'OBLIGATIONS' ? obligationExpenditures : ledgerExpenditures;
+  const expenditures = trailExpenditures[basis];
 
   const canEditMapping = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'MUNICIPAL_TREASURER');
 
@@ -341,6 +414,11 @@ export default function Sre() {
     });
 
   const loading =
+    gfVouchers.loading ||
+    sefVouchers.loading ||
+    tfVouchers.loading ||
+    checks.loading ||
+    adas.loading ||
     gf.loading ||
     sef.loading ||
     tf.loading ||
@@ -355,6 +433,11 @@ export default function Sre() {
     sef.error ??
     tf.error ??
     accounts.error ??
+    gfVouchers.error ??
+    sefVouchers.error ??
+    tfVouchers.error ??
+    checks.error ??
+    adas.error ??
     gfObligations.error ??
     sefObligations.error ??
     tfObligations.error;
@@ -419,10 +502,10 @@ export default function Sre() {
             <Select
               id="sreBasis"
               value={basis}
-              onChange={(e) => setBasis(e.target.value as 'OBLIGATIONS' | 'LEDGER')}
+              onChange={(e) => setBasis(e.target.value as 'OBLIGATIONS' | 'PAID')}
             >
               <option value="OBLIGATIONS">Obligations incurred (as the Registry)</option>
-              <option value="LEDGER">Expense in the General Ledger</option>
+              <option value="PAID">Paid by check or ADA (Registry disbursements)</option>
             </Select>
           </Field>
         </div>
@@ -437,7 +520,7 @@ export default function Sre() {
           and bottom of the form.{' '}
           {basis === 'OBLIGATIONS'
             ? 'Actual expenditures are the obligations incurred, the same figures as the Registry of Appropriations, Allotments and Obligations. Receipts are the collections journalized in the General Ledger.'
-            : 'Actual expenditures are the expense charged to a budget line in the General Ledger, recognized when the voucher is approved. Receipts are the collections journalized in the General Ledger.'}
+            : 'Actual expenditures are the obligations paid by check or ADA, the Disbursements column of the Registry of Appropriations, Allotments and Obligations. Receipts are the collections journalized in the General Ledger.'}
         </>
       }
     >
@@ -613,22 +696,65 @@ export default function Sre() {
             </tbody>
           </table>
 
-          {reconciliation.length > 0 && (
-            <Card
-              title="The General Ledger against the Registry"
-              subtitle={`Obligations ${formatPeso(obligationExpenditures.total - trustObligated)} - expense charged in the ledger ${formatPeso(
-                ledgerExpenditures.total - ledgerExpenditures.trustFund,
-              )} (General and Special Education Funds). The budget lines where the two differ:`}
-              className="mt-6 no-print"
-            >
-              <div className="overflow-x-auto">
+          {/*
+            Patch 134. The obligation trail, and the books reconciled to it.
+            Screen only. The statement reads the trail; the ledger is used
+            here to prove it, never to make it.
+          */}
+          <Card
+            title="The obligation trail, and the books against it"
+            subtitle="General and Special Education Funds. The statement above is read off the trail; the General Ledger is used only to reconcile."
+            className="mt-6 no-print"
+          >
+            <table className="w-full max-w-2xl text-sm">
+              <tbody className="divide-y divide-slate-100">
+                <TrailRow label="Obligations incurred" amount={trailTotals.obligated} strong />
+                <TrailRow
+                  label="less: obligated, no approved voucher yet"
+                  amount={trailTotals.obligated - trailTotals.vouchered}
+                  indent
+                />
+                <TrailRow label="Vouchered (approved vouchers)" amount={trailTotals.vouchered} strong />
+                <TrailRow
+                  label="less: vouchered, no check or ADA yet"
+                  amount={trailTotals.vouchered - trailTotals.paid}
+                  indent
+                />
+                <TrailRow label="Paid by check or ADA" amount={trailTotals.paid} strong />
+                <TrailRow
+                  label="Charged to budget lines in the General Ledger"
+                  amount={ledgerExpenditures.total - ledgerExpenditures.trustFund}
+                  strong
+                />
+                <TrailRow
+                  label="Vouchered less charged in the ledger - should be nil"
+                  amount={
+                    trailTotals.vouchered - (ledgerExpenditures.total - ledgerExpenditures.trustFund)
+                  }
+                  indent
+                  warn
+                />
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs text-slate-500">
+              An approved voucher posts its expense - or, for a cash advance, the advance - to its
+              budget line in the same act, so the books should carry exactly what has been vouchered.
+              A liquidation is posted with no budget line and does not count here: the advance it
+              settles was already counted when its voucher was approved.
+            </p>
+
+            {reconciliation.length > 0 ? (
+              <div className="mt-4 overflow-x-auto">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-navy-800">
+                  The budget lines where the books differ from the vouchers
+                </p>
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-left text-slate-600">
                     <tr>
                       <th className="px-2 py-1.5 font-medium">Fund</th>
                       <th className="px-2 py-1.5 font-medium">Office</th>
                       <th className="px-2 py-1.5 font-medium">Budget line</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Obligated</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Vouchered</th>
                       <th className="px-2 py-1.5 text-right font-medium">In the ledger</th>
                       <th className="px-2 py-1.5 text-right font-medium">Difference</th>
                       <th className="px-2 py-1.5 font-medium">Journal entries charged</th>
@@ -641,7 +767,7 @@ export default function Sre() {
                         <td className="px-2 py-1.5">{r.officeName}</td>
                         <td className="px-2 py-1.5">{r.label}</td>
                         <td className="px-2 py-1.5 text-right font-mono tabular">
-                          {formatPeso(r.obligated, { symbol: false, dash: true })}
+                          {formatPeso(r.vouchered, { symbol: false, dash: true })}
                         </td>
                         <td className="px-2 py-1.5 text-right font-mono tabular">
                           {formatPeso(r.ledger, { symbol: false, dash: true })}
@@ -654,16 +780,19 @@ export default function Sre() {
                     ))}
                   </tbody>
                 </table>
+                <p className="mt-2 text-xs text-slate-500">
+                  Positive: vouchered and not in the books on that line - a voucher whose entry is
+                  not yet posted, or whose expense was charged to another line. Negative: in the
+                  books on that line with no voucher behind it - a voucher charged to the wrong line,
+                  or a General Transaction given a budget line. Open the journal entries named.
+                </p>
               </div>
-              <p className="mt-2 text-xs text-slate-500">
-                A positive difference is obligated and not yet in the books as expense - an
-                obligation with no approved voucher yet, or a voucher whose expense line was charged
-                to another budget line. A negative one is expense in the books with no obligation
-                behind it on that line - a voucher charged to the wrong line, or a journal entry
-                made in General Transactions. Open the journal entries named to see which.
+            ) : (
+              <p className="mt-4 text-xs text-emerald-700">
+                Every budget line in the books agrees with its vouchers.
               </p>
-            </Card>
-          )}
+            )}
+          </Card>
 
           {showMapping && canEditMapping && (
             <Card
@@ -750,6 +879,33 @@ function SectionRow({ label }: { label: string }) {
     <tr className="bg-slate-100">
       <td className="cbo-td text-sm font-semibold uppercase tracking-wide text-navy-900" colSpan={3}>
         {label}
+      </td>
+    </tr>
+  );
+}
+
+function TrailRow({
+  label,
+  amount,
+  strong,
+  indent,
+  warn,
+}: {
+  label: string;
+  amount: number;
+  strong?: boolean;
+  indent?: boolean;
+  warn?: boolean;
+}) {
+  return (
+    <tr className={strong ? 'font-semibold text-navy-900' : 'text-slate-600'}>
+      <td className="py-1.5" style={{ paddingLeft: indent ? '1.25rem' : undefined }}>
+        {label}
+      </td>
+      <td
+        className={`py-1.5 text-right font-mono tabular ${warn && amount !== 0 ? 'text-rose-600' : ''}`}
+      >
+        {formatPeso(amount, { symbol: false, dash: true })}
       </td>
     </tr>
   );

@@ -8,6 +8,8 @@ import {
   mappingConflicts,
   receiptsByLine,
   reconcileLedgerWithRegistry,
+  obligationTrail,
+  trailKey,
   resolveTotals,
   unmappedReceipts,
   type SreEntry,
@@ -324,8 +326,8 @@ describe('expenditure placed by its budget line', () => {
   it('names the budget lines where the ledger and the registry differ, with the entries', () => {
     const rows = reconcileLedgerWithRegistry(
       [
-        { ...lines[0], officeName: 'Mayor', label: 'Office Supplies', obligated: 12_000_00 },
-        { ...lines[1], officeName: 'Mayor', label: 'Donations', obligated: 0 },
+        { ...lines[0], officeName: 'Mayor', label: 'Office Supplies', obligated: 15_000_00, vouchered: 12_000_00, paid: 12_000_00 },
+        { ...lines[1], officeName: 'Mayor', label: 'Donations', obligated: 0, vouchered: 0, paid: 0 },
       ],
       [
         { ...e('MAYOR', '1011', '50203010', 10_000_00), jevNo: '100-2026-10-0001' },
@@ -335,7 +337,7 @@ describe('expenditure placed by its budget line', () => {
     expect(rows).toEqual([
       expect.objectContaining({
         label: 'Office Supplies',
-        obligated: 12_000_00,
+        vouchered: 12_000_00,
         ledger: 10_000_00,
         difference: 2_000_00,
         jevNos: ['100-2026-10-0001'],
@@ -346,5 +348,49 @@ describe('expenditure placed by its budget line', () => {
         jevNos: ['100-2026-10-0003'],
       }),
     ]);
+  });
+});
+
+/** Patch 134: the SRE follows the obligation until it is paid. */
+describe('obligationTrail', () => {
+  const COMMITTED = new Set(['CERTIFIED', 'WITH_DV', 'PAID', 'OBLIGATED']);
+  const obr = {
+    id: 'o1',
+    fundCode: 'GF',
+    status: 'OBLIGATED',
+    obrDate: '2026-09-10',
+    totalAmount: 30_000_00,
+    lines: [
+      { officeId: 'ACCT', fppCode: '50203010', appropriatedAccountCode: '50203010', amount: 20_000_00 },
+      { officeId: 'ACCT', fppCode: '50299080', appropriatedAccountCode: '50299080', amount: 10_000_00 },
+    ],
+  };
+  const k1 = trailKey({ fundCode: 'GF', officeId: 'ACCT', fppCode: '50203010', accountCode: '50203010' });
+  const k2 = trailKey({ fundCode: 'GF', officeId: 'ACCT', fppCode: '50299080', accountCode: '50299080' });
+
+  it('carries obligated, vouchered and paid onto each line, in proportion', () => {
+    const t = obligationTrail(
+      [obr],
+      [
+        { obligationId: 'o1', fundCode: 'GF', status: 'PAID', dvDate: '2026-09-20', grossAmount: 9_000_00, paidOn: '2026-09-25' },
+        { obligationId: 'o1', fundCode: 'GF', status: 'APPROVED', dvDate: '2026-10-02', grossAmount: 3_000_00, paidOn: null },
+        { obligationId: 'o1', fundCode: 'GF', status: 'CANCELLED', dvDate: '2026-10-03', grossAmount: 5_000_00 },
+      ],
+      COMMITTED,
+      '2026-12-31',
+    );
+    expect(t.get(k1)).toEqual({ obligated: 20_000_00, vouchered: 8_000_00, paid: 6_000_00 });
+    expect(t.get(k2)).toEqual({ obligated: 10_000_00, vouchered: 4_000_00, paid: 3_000_00 });
+  });
+
+  it('cuts each step at its own date', () => {
+    const t = obligationTrail(
+      [obr],
+      [{ obligationId: 'o1', fundCode: 'GF', status: 'PAID', dvDate: '2026-09-20', grossAmount: 9_000_00, paidOn: '2026-10-05' }],
+      COMMITTED,
+      '2026-09-31',
+    );
+    expect(t.get(k1)).toEqual({ obligated: 20_000_00, vouchered: 6_000_00, paid: 0 });
+    expect(obligationTrail([obr], [], COMMITTED, '2026-08-31').size).toBe(0);
   });
 });

@@ -3229,6 +3229,32 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 53. The SRE's expenditures follow the obligation trail ---------------
+
+/*
+ * Patch 134. Neil: "Don't rely on expense account in the SRE but on the trail
+ * of the obligation until it is paid ... for the receipts, follow the ledger."
+ * The Actual expenditures of the SRE are obligated or paid off the obligation
+ * trail; the ledger is used only to reconcile. This refuses an SRE whose
+ * expenditure column is the ledger again.
+ */
+{
+  const before = failures.length;
+  const sre = readFileSync(resolve(root, 'src/pages/reports/Sre.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/\/\/[^\n]*/g, '');
+  if (!/const expenditures = trailExpenditures\[basis\]/.test(sre) || /'LEDGER'/.test(sre)) {
+    failures.push('src/pages/reports/Sre.tsx: the SRE expenditure column is no longer read off the obligation trail - the expense in the ledger moves with advances and liquidations and must only reconcile.');
+  }
+  if (!/obligationTrail\(/.test(sre)) {
+    failures.push('src/pages/reports/Sre.tsx: the obligation trail (obligated, vouchered, paid) is no longer built.');
+  }
+  if (failures.length === before) {
+    console.log('sre: expenditures follow the obligation trail; the ledger only reconciles');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

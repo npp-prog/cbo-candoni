@@ -522,6 +522,135 @@ export function expendituresByFund(
 }
 
 // ---------------------------------------------------------------------------
+// PATCH 134 - THE OBLIGATION TRAIL, AND THE BOOKS AGAINST IT
+// ---------------------------------------------------------------------------
+// Neil: "Don't rely on expense account in the SRE but on the trail of the
+// obligation until it is paid ... for the receipts, follow the ledger."
+//
+// The expenditure half of the SRE is read off the obligation trail:
+// obligated -> vouchered (approved vouchers) -> paid (check or ADA). The
+// General Ledger is not read for expenditure at all, so a cash advance not
+// yet liquidated, or a liquidation with no budget line, cannot move it.
+//
+// The ledger is used for one thing only: to RECONCILE. An approved voucher
+// posts its expense (or the advance) to the budget line in the same act, so
+// what the ledger has charged to a budget line should equal what has been
+// vouchered on it. Where it does not, something is wrong in the books - an
+// entry not yet posted, a voucher charged to another line, a General
+// Transaction given an FPP - and the reconciliation names it.
+// ---------------------------------------------------------------------------
+
+export interface TrailObligation {
+  id: string;
+  fundCode: string;
+  status: string;
+  obrDate: string;
+  totalAmount: Centavos;
+  lines: Array<{
+    officeId: string;
+    fppCode: string;
+    appropriatedAccountCode?: string;
+    amount: Centavos;
+  }>;
+}
+
+export interface TrailVoucher {
+  obligationId?: string | null;
+  fundCode: string;
+  status: string;
+  dvDate: string;
+  grossAmount: Centavos;
+  /** The check or ADA date; null when not paid. */
+  paidOn?: string | null;
+}
+
+export interface TrailFigures {
+  obligated: Centavos;
+  vouchered: Centavos;
+  paid: Centavos;
+}
+
+/** A voucher that has been approved and not cancelled. */
+export const VOUCHERED = new Set(['APPROVED', 'PAID', 'CLOSED']);
+
+/** The budget line an obligation line commits: fund, office, FPP, appropriated object. */
+export const trailKey = (p: {
+  fundCode: string;
+  officeId: string;
+  fppCode: string;
+  accountCode: string;
+}) =>
+  `${p.fundCode.trim().toUpperCase()}|${p.officeId}|${p.fppCode}|${p.accountCode ?? ''}`;
+
+/**
+ * Spread an amount over an obligation's lines in proportion, the last line
+ * taking the remainder - the allocation the engine uses
+ * (functions/src/lib/dvShares.ts, allocateDvShares).
+ */
+function spread(lines: Array<{ amount: Centavos }>, total: Centavos, amount: Centavos): Centavos[] {
+  const base = total || lines.reduce((t, l) => t + l.amount, 0) || 1;
+  let given = 0;
+  return lines.map((l, i) => {
+    const share = i === lines.length - 1 ? amount - given : Math.round((amount * l.amount) / base);
+    given += share;
+    return share;
+  });
+}
+
+/**
+ * Obligated, vouchered and paid on each budget line, up to a date.
+ *
+ * Obligated: committed obligations dated on or before it. Vouchered: approved
+ * vouchers dated on or before it. Paid: vouchers whose check or ADA is dated
+ * on or before it. Both are spread over the obligation's lines.
+ */
+export function obligationTrail(
+  obligations: TrailObligation[],
+  vouchers: TrailVoucher[],
+  committed: Set<string>,
+  throughDate: string,
+): Map<string, TrailFigures> {
+  const out = new Map<string, TrailFigures>();
+  const at = (k: string) => {
+    const f = out.get(k) ?? { obligated: 0, vouchered: 0, paid: 0 };
+    out.set(k, f);
+    return f;
+  };
+  const vouchered = new Map<string, Centavos>();
+  const paid = new Map<string, Centavos>();
+  for (const v of vouchers) {
+    if (!v.obligationId || !VOUCHERED.has(v.status)) continue;
+    if (v.dvDate <= throughDate) {
+      vouchered.set(v.obligationId, (vouchered.get(v.obligationId) ?? 0) + v.grossAmount);
+    }
+    if (v.paidOn && v.paidOn <= throughDate) {
+      paid.set(v.obligationId, (paid.get(v.obligationId) ?? 0) + v.grossAmount);
+    }
+  }
+  for (const o of obligations) {
+    if (!committed.has(o.status) || o.obrDate > throughDate) continue;
+    const lines = o.lines ?? [];
+    if (lines.length === 0) continue;
+    const keys = lines.map((l) =>
+      trailKey({
+        fundCode: o.fundCode,
+        officeId: l.officeId,
+        fppCode: l.fppCode,
+        accountCode: l.appropriatedAccountCode ?? '',
+      }),
+    );
+    lines.forEach((l, i) => (at(keys[i]).obligated += l.amount));
+    const v = spread(lines, o.totalAmount, vouchered.get(o.id) ?? 0);
+    const p = spread(lines, o.totalAmount, paid.get(o.id) ?? 0);
+    keys.forEach((k, i) => {
+      at(k).vouchered += v[i];
+      at(k).paid += p[i];
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // PATCH 131 - THE LEDGER AGAINST THE REGISTRY
 // ---------------------------------------------------------------------------
 
@@ -533,28 +662,29 @@ export interface RegistryLine extends SectorOfFpp {
   label: string;
   /** Obligations incurred on the line, as the registry shows them. */
   obligated: Centavos;
+  /** Patch 134: approved vouchers on the line, and what checks and ADAs paid. */
+  vouchered: Centavos;
+  paid: Centavos;
 }
 
 export interface ReconcileRow {
   label: string;
   officeName: string;
   fundCode: string;
-  obligated: Centavos;
+  vouchered: Centavos;
   ledger: Centavos;
-  /** Obligated less charged in the ledger. */
+  /** Vouchered less charged in the ledger. */
   difference: Centavos;
   jevNos: string[];
 }
 
 /**
- * Each budget line: what the registry says was obligated, what the General
- * Ledger has charged to it, and the journal entries behind the charge. Only
- * the lines that differ, plus one row per FPP the ledger charged that matches
- * no line. Patch 131.
- *
- * A difference is not always an error - an obligation not yet vouchered has
- * no expense in the books - but it is always the first thing to look at when
- * the SRE and the registry disagree.
+ * Each budget line: what has been VOUCHERED on it, what the General Ledger
+ * has charged to it, and the journal entries behind the charge. Only the
+ * lines that differ, plus one row per FPP the ledger charged that matches no
+ * line. Patch 131; compared with the vouchered amount since patch 134, so the
+ * ordinary timing (obligated, not yet vouchered) is not reported as a
+ * difference - only what is wrong in the books is.
  */
 export function reconcileLedgerWithRegistry(
   lines: RegistryLine[],
@@ -585,14 +715,14 @@ export function reconcileLedgerWithRegistry(
   for (const l of lines) {
     const g = ledger.get(l);
     const charged = g?.amount ?? 0;
-    if (charged === l.obligated) continue;
+    if (charged === l.vouchered) continue;
     rows.push({
       label: l.label,
       officeName: l.officeName,
       fundCode: l.fundCode,
-      obligated: l.obligated,
+      vouchered: l.vouchered,
       ledger: charged,
-      difference: l.obligated - charged,
+      difference: l.vouchered - charged,
       jevNos: [...(g?.jevs ?? [])].sort(),
     });
   }
@@ -603,7 +733,7 @@ export function reconcileLedgerWithRegistry(
       label: `FPP ${fpp} - charged in the ledger, matching no budget line${office ? '' : ' (no office on the entry)'}`,
       officeName: '',
       fundCode: v.fundCode,
-      obligated: 0,
+      vouchered: 0,
       ledger: v.amount,
       difference: -v.amount,
       jevNos: [...v.jevs].sort(),
