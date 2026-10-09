@@ -11,7 +11,6 @@ import { useEntity } from '@/data/useEntity';
 import {
   buildBankFile,
   downloadBankCsv,
-  downloadBankXlsx,
   type BankFilePayee,
 } from '@/lib/bankFile';
 import type { DisbursementVoucher } from '@/types/accounting';
@@ -130,7 +129,7 @@ export function PayeeListSheet({
 }
 
 /**
- * "Bank file (Excel)" and "CSV". Refuses to download a file the bank would
+ * "Bank file (CSV)" - the bank takes CSV (patch 141). Refuses to download a file the bank would
  * reject - an account that is not 10 digits, a line with no name or amount -
  * and says which line.
  */
@@ -145,21 +144,17 @@ export function BankFileButtons({
   size?: 'sm' | 'md';
 }) {
   const toast = useToast();
-  const go = (kind: 'xlsx' | 'csv') => {
+  const go = () => {
     const { rows, problems } = buildBankFile(payees);
     if (problems.length) {
       toast.error('The bank file was not made', problems.slice(0, 4).join(' '));
       return;
     }
-    if (kind === 'xlsx') downloadBankXlsx(rows, reference);
-    else downloadBankCsv(rows, reference);
+    downloadBankCsv(rows, reference);
   };
   return (
     <>
-      <Button size={size} onClick={() => go('xlsx')}>
-        Bank file (Excel)
-      </Button>
-      <Button size={size} onClick={() => go('csv')}>
+      <Button size={size} onClick={go}>
         Bank file (CSV)
       </Button>
     </>

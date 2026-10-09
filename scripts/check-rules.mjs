@@ -3421,6 +3421,28 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 59. The RCI / RADAI pad only to the end of one sheet -----------------
+
+/*
+ * Patch 141. A fixed fourteen ruled rows pushed a one-line report onto two
+ * sheets with the certification alone on the second. The form now takes as
+ * many ruled rows as fill one sheet, measured (useFitRows), and its
+ * certification is never split across sheets.
+ */
+{
+  const before = failures.length;
+  const form = readFileSync(resolve(root, 'src/pages/treasury/TreasuryReportForm.tsx'), 'utf8');
+  if (/BLANK_ROWS\s*=/.test(form) || !/useFitRows\(/.test(form)) {
+    failures.push('src/pages/treasury/TreasuryReportForm.tsx: the RCI / RADAI pads to a fixed number of ruled rows again - a short report prints on two sheets.');
+  }
+  if (!/cbo-form-signatures mt-4/.test(form)) {
+    failures.push('src/pages/treasury/TreasuryReportForm.tsx: the certification may split across two sheets.');
+  }
+  if (failures.length === before) {
+    console.log('RCI / RADAI: ruled rows fill one sheet only; certification kept whole');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

@@ -10,7 +10,8 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
-import { FormPrintStyle, DraftBand } from '@/components/print/FormPrintStyle';
+import { FormPrintStyle, DraftBand, printableHeightMm } from '@/components/print/FormPrintStyle';
+import { useFitRows } from '@/components/print/fitRows';
 import { FormBackButton } from './FormBackButton';
 import {
   TREASURY_REPORT_LABELS,
@@ -120,8 +121,10 @@ const FORMS: Partial<Record<TreasuryReportType, FormSpec>> = {
   },
 };
 
-/** Minimum ruled rows, so a two-line report still fills the sheet. */
-const BLANK_ROWS = 14;
+/*
+ * Patch 141: no fixed number of ruled rows. As many as fill ONE sheet, and
+ * none on a report that already fills it - see useFitRows.
+ */
 
 export default function TreasuryReportForm() {
   const { id } = useParams<{ id: string }>();
@@ -179,6 +182,10 @@ export default function TreasuryReportForm() {
     [report],
   );
 
+  // Patch 141: the ruled rows that fill one landscape A4 sheet, measured.
+  const fitKey = useMemo(() => ({}), [rows, report?.status, report?.jevNo]);
+  const fit = useFitRows(printableHeightMm('landscape'), fitKey);
+
   if (loading) return <Spinner label="Loading the report" />;
 
   if (!report) {
@@ -225,46 +232,12 @@ export default function TreasuryReportForm() {
   /** Date, DV, CAFOA, Payee, Nature, Amount - plus two on the RCI, one on a serial. */
   const columns = (dated ? 6 : 7) + (form.wide ? 2 : 0);
 
-  return (
-    <div>
-      <FormPrintStyle />
-
-      <div className="no-print">
-        <PageHeader
-          title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} (draft)`}
-          subtitle={`${form.appendix} - the form as COA prints it`}
-          breadcrumbs={[
-            { label: 'Treasury' },
-            { label: short, to: `/treasury/reports/${report.id}` },
-            { label: 'Print' },
-          ]}
-          actions={
-            <>
-              <FormBackButton reportId={report.id} reportType={report.reportType} />
-              <Button variant="primary" onClick={() => window.print()}>
-                Print
-              </Button>
-            </>
-          }
-        />
-
-        {report.status === 'DRAFT' && (
-          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
-            Print it and check the figures against the vouchers before the Treasurer signs
-            anything - that is what it is for. It has no number yet and the figures can still
-            change, so every page carries a band saying it is not certified. A checking copy
-            cannot be signed by mistake or filed as the real one.
-          </Alert>
-        )}
-
-        {report.status === 'CANCELLED' && (
-          <Alert tone="error" title="This report was withdrawn" className="mb-4">
-            {report.cancelledReason ?? 'See the approval history for the reason.'}
-          </Alert>
-        )}
-      </div>
-
-      {/* --- the form ------------------------------------------------------- */}
+  /*
+   * The form, as a function of how many ruled rows it gets. Drawn twice: once
+   * to be seen and printed, and once out of sight, laid out as the paper is,
+   * to measure how many ruled rows fill one sheet (patch 141, useFitRows).
+   */
+  const renderSheet = (blank: number, probe: boolean) => (
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
         <DraftBand status={report.status} />
 
@@ -399,7 +372,17 @@ export default function TreasuryReportForm() {
               </tr>
             ))}
 
-            {blankRows(BLANK_ROWS - rows.length, columns, 'rep')}
+            {probe ? (
+              <tr data-fit-probe="">
+                {Array.from({ length: columns }, (_, j) => (
+                  <td key={j} className="border border-slate-400 px-1.5 py-[7px]">
+                    &nbsp;
+                  </td>
+                ))}
+              </tr>
+            ) : (
+              blankRows(blank, columns, 'rep')
+            )}
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 font-bold">
@@ -418,7 +401,7 @@ export default function TreasuryReportForm() {
 
         <p className="mt-1 text-[9px] italic text-slate-500">{CAFOA_NOTE}</p>
 
-        <div className={`mt-4 grid gap-0 ${form.receivedBy ? 'sm:grid-cols-2' : ''}`}>
+        <div className={`cbo-form-signatures mt-4 grid gap-0 ${form.receivedBy ? 'sm:grid-cols-2' : ''}`}>
           <div className="border border-slate-400 px-3 py-2">
             <p className="text-center text-2xs font-bold uppercase tracking-wide">Certification</p>
             <p className="mt-2 text-2xs leading-relaxed">
@@ -455,6 +438,52 @@ export default function TreasuryReportForm() {
             Taken up in the books as JV <span className="font-mono">{report.jevNo}</span>.
           </p>
         )}
+      </div>
+  );
+
+  return (
+    <div>
+      <FormPrintStyle />
+
+      <div className="no-print">
+        <PageHeader
+          title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} (draft)`}
+          subtitle={`${form.appendix} - the form as COA prints it`}
+          breadcrumbs={[
+            { label: 'Treasury' },
+            { label: short, to: `/treasury/reports/${report.id}` },
+            { label: 'Print' },
+          ]}
+          actions={
+            <>
+              <FormBackButton reportId={report.id} reportType={report.reportType} />
+              <Button variant="primary" onClick={() => window.print()}>
+                Print
+              </Button>
+            </>
+          }
+        />
+
+        {report.status === 'DRAFT' && (
+          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
+            Print it and check the figures against the vouchers before the Treasurer signs
+            anything - that is what it is for. It has no number yet and the figures can still
+            change, so every page carries a band saying it is not certified. A checking copy
+            cannot be signed by mistake or filed as the real one.
+          </Alert>
+        )}
+
+        {report.status === 'CANCELLED' && (
+          <Alert tone="error" title="This report was withdrawn" className="mb-4">
+            {report.cancelledReason ?? 'See the approval history for the reason.'}
+          </Alert>
+        )}
+      </div>
+
+      {/* --- the form ------------------------------------------------------- */}
+      {renderSheet(fit.blank, false)}
+      <div ref={fit.ref} className="cbo-form-measure no-print" aria-hidden="true">
+        {renderSheet(0, true)}
       </div>
     </div>
   );

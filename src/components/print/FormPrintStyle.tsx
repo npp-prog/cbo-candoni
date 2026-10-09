@@ -52,6 +52,11 @@
 /** A4, and the box the form is laid out in. */
 const MARGIN_MM = 8;
 
+/** The printable height of one A4 sheet, in millimetres. */
+export function printableHeightMm(orientation: 'landscape' | 'portrait' = 'landscape'): number {
+  return (orientation === 'landscape' ? 210 : 297) - MARGIN_MM * 2;
+}
+
 /**
  * Landscape for the wide treasury forms, as before. Since patch 117 the
  * Allotment Release Order and the Augmentation Form use the same machinery in
@@ -66,18 +71,21 @@ export function FormPrintStyle({
   fontPt?: number;
 } = {}) {
   const PRINTABLE_MM = (orientation === 'landscape' ? 297 : 210) - MARGIN_MM * 2;
-  const css = `
-@media print {
-  @page { size: A4 ${orientation}; margin: ${MARGIN_MM}mm; }
-
-  html, body { background: #fff !important; }
-
+  /*
+    The form's geometry, written once and used twice: for the printed page,
+    and (patch 141) for the hidden copy that measures how many ruled rows fit
+    on one page - see useFitRows. The copy must be laid out exactly as the
+    paper is, or the count is wrong.
+  */
+  const sheet = (scope: string) => `
   /* The form's own box: exactly the printable width, so nothing can exceed it. */
-  .cbo-form-sheet {
+  ${scope}.cbo-form-sheet {
     width: ${PRINTABLE_MM}mm !important;
     max-width: ${PRINTABLE_MM}mm !important;
     margin: 0 !important;
     padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
     font-size: ${fontPt}pt !important;
     line-height: 1.25 !important;
   }
@@ -87,14 +95,14 @@ export function FormPrintStyle({
     how wide they would like to be, so it cannot be wider than the sheet. This
     is the whole of "fit to width".
   */
-  .cbo-form-sheet table {
+  ${scope}.cbo-form-sheet table {
     width: 100% !important;
     max-width: 100% !important;
     table-layout: fixed !important;
   }
 
-  .cbo-form-sheet th,
-  .cbo-form-sheet td {
+  ${scope}.cbo-form-sheet th,
+  ${scope}.cbo-form-sheet td {
     overflow-wrap: anywhere;
     word-break: normal;
     padding-left: 2px !important;
@@ -102,17 +110,34 @@ export function FormPrintStyle({
   }
 
   /* A figure is read as one thing; it must not break across two lines. */
-  .cbo-form-sheet .tabular,
-  .cbo-form-sheet .font-mono,
-  .cbo-form-sheet td.text-right {
+  ${scope}.cbo-form-sheet .tabular,
+  ${scope}.cbo-form-sheet .font-mono,
+  ${scope}.cbo-form-sheet td.text-right {
     overflow-wrap: normal;
     word-break: keep-all;
     white-space: nowrap;
-  }
+  }`;
+  const css = `
+@media print {
+  @page { size: A4 ${orientation}; margin: ${MARGIN_MM}mm; }
+
+  html, body { background: #fff !important; }
+${sheet('')}
 
   /* The signature block is signed in ink; it is never split across a page. */
   .cbo-form-signatures { page-break-inside: avoid; break-inside: avoid; }
-}`;
+}
+
+/* The measuring copy: laid out as the paper is, out of sight, never printed. */
+.cbo-form-measure {
+  position: absolute !important;
+  left: -100000px !important;
+  top: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+${sheet('.cbo-form-measure ')}
+@media print { .cbo-form-measure { display: none !important; } }`;
   return <style>{css}</style>;
 }
 

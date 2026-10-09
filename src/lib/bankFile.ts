@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -7,8 +6,8 @@ import type { Centavos } from '@/types/common';
  * The format, as the bank takes it:
  *
  *   column 1  ATM / account number - 10 digits, leading zeros kept
- *   column 2  the payee's name - letters, digits and spaces only; no
- *             special character, not even a dot or a comma
+ *   column 2  the payee's name in CAPITAL letters - letters, digits and
+ *             spaces only; no special character, not even a dot or a comma
  *   column 3  the amount in centavos, with no decimal point - the last two
  *             digits are the centavos: 10,000.10 is 1000010, 10,000.00 is
  *             1000000
@@ -43,7 +42,8 @@ export function bankAccount(v: string | null | undefined): string {
  * The name as the bank reads it. Letters with an accent or tilde become the
  * plain letter (Pena for Pe\u00f1a); every other character that is not a letter,
  * a digit or a space - the dot of "Ma.", the comma of "Dela Cruz, Juan", a
- * hyphen - becomes a space, and runs of spaces become one.
+ * hyphen - becomes a space, and runs of spaces become one. In capitals
+ * (patch 141), as the bank asked.
  */
 export function bankName(v: string | null | undefined): string {
   return String(v ?? '')
@@ -51,7 +51,8 @@ export function bankName(v: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Za-z0-9 ]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .toUpperCase();
 }
 
 /** The amount as the bank reads it: whole centavos, no decimal point. */
@@ -97,20 +98,4 @@ export function downloadBankCsv(rows: BankFileRow[], ref: string): void {
   a.download = `${fileStem(ref)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/**
- * Downloads the file as .xlsx. The account number is written as TEXT, so
- * Excel keeps its leading zeros; the amount as a whole number.
- */
-export function downloadBankXlsx(rows: BankFileRow[], ref: string): void {
-  const sheet = XLSX.utils.aoa_to_sheet(rows.map((r) => [r.account, r.name, Number(r.amount)]));
-  rows.forEach((r, i) => {
-    const cell = XLSX.utils.encode_cell({ r: i, c: 0 });
-    sheet[cell] = { t: 's', v: r.account, z: '@' };
-  });
-  sheet['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 14 }];
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, 'Sheet1');
-  XLSX.writeFile(book, `${fileStem(ref)}.xlsx`);
 }

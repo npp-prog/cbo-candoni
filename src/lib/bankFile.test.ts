@@ -9,10 +9,10 @@ describe('the bank file', () => {
     expect(bankAmount(1000000)).toBe('1000000'); // 10,000.00
   });
 
-  it('takes every special character out of the name, the dot included', () => {
-    expect(bankName('Ma. Bella Dela Cruz')).toBe('Ma Bella Dela Cruz');
-    expect(bankName('Dela Cruz, Juan Jr.')).toBe('Dela Cruz Juan Jr');
-    expect(bankName('Pe\u00f1a-Santos')).toBe('Pena Santos');
+  it('takes every special character out of the name, the dot included, in capitals', () => {
+    expect(bankName('Ma. Bella Dela Cruz')).toBe('MA BELLA DELA CRUZ');
+    expect(bankName('Dela Cruz, Juan Jr.')).toBe('DELA CRUZ JUAN JR');
+    expect(bankName('Pe\u00f1a-Santos')).toBe('PENA SANTOS');
   });
 
   it('has no heading row: line 1 is the first payee', () => {
@@ -22,7 +22,7 @@ describe('the bank file', () => {
     ]);
     expect(problems).toEqual([]);
     expect(bankFileCsv(rows)).toBe(
-      '0011223344,Ma Bella Dela Cruz,400000\r\n5566778899,Juan Santos,600010\r\n',
+      '0011223344,MA BELLA DELA CRUZ,400000\r\n5566778899,JUAN SANTOS,600010\r\n',
     );
   });
 
