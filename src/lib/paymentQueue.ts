@@ -29,6 +29,9 @@ export interface PayableVoucher {
   checkId?: Id | null;
   /** Set once an advice has been prepared against it. */
   adaId?: Id | null;
+  /** Patch 154: carried forward from the opening balances, and on which liability. */
+  openingPayable?: boolean;
+  payableAccountCode?: string | null;
   /**
    * Approved, and Accounting has not sent it over yet.
    *
@@ -91,8 +94,24 @@ export function awaitingPayment<T extends PayableVoucher>(vouchers: T[]): T[] {
     .filter((v) => UNPAID_STATUSES.has(v.status))
     .filter((v) => !v.awaitingTransferToTreasury)
     .filter((v) => !v.checkId && !v.adaId)
+    .filter((v) => !isOtherCarriedForwardPayable(v))
     .slice()
     .sort(byOldestFirst);
+}
+
+/**
+ * Patch 154. Only Accounts Payable is a disbursement for payment. A voucher
+ * made from another payable carried forward (Due to BIR and the like) - which
+ * patch 153 created for a few days - is kept out of the queue; re-opening and
+ * posting the opening balances again removes it.
+ */
+export function isOtherCarriedForwardPayable(v: {
+  openingPayable?: boolean;
+  payableAccountCode?: string | null;
+}): boolean {
+  return Boolean(
+    v.openingPayable && v.payableAccountCode && v.payableAccountCode !== '20101010',
+  );
 }
 
 /**

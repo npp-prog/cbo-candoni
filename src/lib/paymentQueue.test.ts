@@ -169,3 +169,22 @@ describe('awaitingPayment: Accounting has to send it over', () => {
     expect(awaitingTransfer([paid])).toEqual([]);
   });
 });
+
+describe('only Accounts Payable carried forward is for payment (patch 154)', () => {
+  it('keeps a Due to BIR voucher out of the queue', () => {
+    const base = {
+      dvDate: '2025-12-31',
+      payeeName: 'BIR',
+      particulars: 'x',
+      netAmount: 100,
+      status: 'APPROVED',
+      awaitingTransferToTreasury: false,
+      openingPayable: true,
+    };
+    const out = awaitingPayment([
+      { ...base, id: 'a', dvNo: 'A', payableAccountCode: '20201010' },
+      { ...base, id: 'b', dvNo: 'B' },
+    ]);
+    expect(out.map((v) => v.id)).toEqual(['b']);
+  });
+});

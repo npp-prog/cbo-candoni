@@ -36,9 +36,10 @@ describe('openingPayableVouchers (patch 152)', () => {
     { accountCode: '20201010', accountName: 'Due to BIR', credit: 30_000, subsidiaryName: 'BIR' },
   ];
 
-  it('makes one voucher per payable credit, and nothing else', () => {
+  it('makes one voucher per Accounts Payable credit, and nothing else (patch 154)', () => {
     const out = openingPayableVouchers(lines, CTX);
-    expect(out).toHaveLength(3);
+    expect(out).toHaveLength(2);
+    expect(out.every((v) => v.accountCode === '20101010' && v.outstandingUnpaid)).toBe(true);
     expect(out[0]).toEqual({
       id: 'OB__2026__GF__0001',
       accountCode: '20101010',
@@ -70,8 +71,8 @@ describe('openingPayableVouchers (patch 152)', () => {
   });
 });
 
-describe('other payables carried forward (patch 153)', () => {
-  it('are vouchers too, but not tagged outstanding unpaid', () => {
+describe('other payables carried forward (patch 154)', () => {
+  it('are NOT made into vouchers - only Accounts Payable is', () => {
     const out = openingPayableVouchers(
       [
         {
@@ -80,14 +81,11 @@ describe('other payables carried forward (patch 153)', () => {
           credit: 30_000,
           subsidiaryName: 'BIR',
         },
+        { accountCode: '20101020', accountName: 'Due to Officers and Employees', credit: 10_000 },
       ],
       CTX,
     );
-    expect(out[0]).toMatchObject({
-      accountCode: '20201010',
-      accountName: 'Due to BIR',
-      outstandingUnpaid: false,
-    });
+    expect(out).toEqual([]);
   });
 
   it('knows a payable account', () => {

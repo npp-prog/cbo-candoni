@@ -12,9 +12,10 @@
  *
  * So each Accounts Payable line of the opening balances becomes a voucher in
  * Treasury's payment queue (Disbursements for Payment), approved and ready.
- * (Patch 153: so does every other payable carried forward - see
- * isPayableAccount - but only Accounts Payable is tagged an outstanding
- * unpaid voucher.)
+ * ONLY Accounts Payable (patch 154): the other payables carried forward - Due
+ * to Officers and Employees, Due to BIR, GSIS and the like - stay in the books
+ * as balances and are settled the ordinary way, by a voucher prepared for the
+ * remittance; they are not disbursements awaiting payment.
  *
  *   - its number is the old voucher's number (the line's Reference, "DV "
  *     dropped), or OB-<fund>-<year>-<n> where the line gave none;
@@ -32,11 +33,10 @@
  */
 
 /**
- * Patch 153: the liabilities a voucher pays. Payables (201: Accounts Payable,
- * Due to Officers and Employees, ...) and Inter-agency Payables (202: Due to
- * BIR, GSIS, Pag-IBIG, PhilHealth, ...). Every credit balance carried forward
- * on one of them becomes a voucher to pay; only Accounts Payable is tagged an
- * OUTSTANDING UNPAID VOUCHER.
+ * The payable accounts in the chart (201 Payables, 202 Inter-agency
+ * Payables). Patch 153 made a voucher of every one of them; patch 154 takes
+ * that back - only Accounts Payable is a disbursement for payment (see
+ * openingPayableVouchers). Kept as a plain test of the account code.
  */
 export function isPayableAccount(code: string): boolean {
   return /^20[12]\d{5}$/.test(String(code).trim());
@@ -85,7 +85,8 @@ export function openingPayableVouchers(
   const out: OpeningPayableVoucher[] = [];
   let n = 0;
   for (const l of lines) {
-    if (!isPayableAccount(l.accountCode)) continue;
+    // Patch 154: Accounts Payable only - the outstanding unpaid vouchers.
+    if (l.accountCode !== ctx.payableAccountCode) continue;
     if (!(l.credit > 0)) continue;
     n += 1;
     const seq = String(n).padStart(4, '0');
