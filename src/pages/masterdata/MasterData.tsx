@@ -16,6 +16,7 @@ import { COL } from '@/lib/collections';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import { FPP_CODES, fppLabel } from '@/lib/fppCodes';
 import { formatPeso } from '@/lib/money';
+import { liquidatableByDefault } from '@/lib/chartOfAccounts';
 import {
   ACCOUNT_CLASSES,
   CASH_FLOW_CLASSES,
@@ -60,6 +61,13 @@ interface FieldSpec {
    * error to explain why.
    */
   defaultValue?: boolean;
+  /**
+   * Patch 133. The value an EXISTING record shows while the field has never
+   * been set on it, worked out from the record itself. Without it a checkbox
+   * that defaults to ticked for some records would show unticked on the form,
+   * and saving the form for any other reason would quietly clear it.
+   */
+  whenUnset?: (record: Record<string, unknown>) => unknown;
 }
 
 interface EntityConfig {
@@ -266,6 +274,15 @@ const CONFIGS: Record<string, EntityConfig> = {
       },
       { key: 'isControl', label: 'Control account', type: 'checkbox', hint: 'Posts through a subsidiary ledger, e.g. Accounts Payable.' },
       { key: 'requiresSubsidiary', label: 'Requires a subsidiary on every line', type: 'checkbox' },
+      {
+        key: 'liquidatable',
+        label: 'Advance subject to liquidation',
+        type: 'checkbox',
+        inTable: true,
+        width: '8rem',
+        hint: 'Advance subject to liquidation. Money posted to this account is owed back by the officer named as its subsidiary, and is offered on the liquidation report. Ticked by default for Advances for Operating Expenses, Advances to Special Disbursing Officer, Advances to Officers and Employees and Other Receivables.',
+        whenUnset: (r) => liquidatableByDefault(String(r.code ?? ''), String(r.name ?? '')),
+      },
     ],
   },
 
@@ -652,7 +669,9 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
           return typeof v === 'number' || typeof v === 'string' ? v : '';
         },
         cell: (r) => {
-          const v = r[f.key];
+          const v = r[f.key] === undefined && f.whenUnset ? f.whenUnset(r) : r[f.key];
+          if (f.type === 'checkbox')
+            return v ? <Badge tone="emerald">Yes</Badge> : <span className="text-slate-400">-</span>;
           if (v === undefined || v === null || v === '') return <span className="text-slate-400">-</span>;
           if (f.type === 'amount') return <span className="cbo-amount block">{formatPeso(Number(v))}</span>;
           if (f.key === 'rate') return <span className="font-mono text-sm">{(Number(v) * 100).toFixed(2)}%</span>;
@@ -814,6 +833,9 @@ function EntityForm({
       for (const f of config.fields) {
         if (f.defaultValue !== undefined && seeded[f.key] === undefined) seeded[f.key] = f.defaultValue;
       }
+    }
+    for (const f of config.fields) {
+      if (f.whenUnset && seeded[f.key] === undefined && record.id) seeded[f.key] = f.whenUnset(record);
     }
     return seeded;
   });

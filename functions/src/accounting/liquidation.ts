@@ -1,6 +1,6 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { titleForAccountCode } from '../lib/accountTitles';
-import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
+import { CASH_LOCAL_TREASURY, isLiquidatableAccount } from '../lib/chartOfAccounts';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
@@ -48,6 +48,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       fiscalYear: number;
       fundCode: string;
       cashAdvanceId: string;
+      advanceSource?: string;
       accountableOfficerId: string;
       accountableOfficerName: string;
       officeId: string;
@@ -67,10 +68,20 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       );
     }
 
+    /*
+     * THE ADVANCE. Patch 133: read off the General Ledger.
+     *
+     * The `cashAdvances` register this used to read was never written by
+     * anything, so no liquidation could ever be posted. An advance is now the
+     * ledger entry that granted it - a debit to an account the Chart of
+     * Accounts marks "Advance subject to liquidation", naming the officer as
+     * its subsidiary - and what it may be relieved of is the officer's balance
+     * on that account in the General Ledger, read here, in the transaction,
+     * not taken from the report. An old `cashAdvances` record is still honoured.
+     */
     const caRef = db.collection(COL.cashAdvances).doc(liq.cashAdvanceId);
-    const caSnap = await tx.get(caRef);
-    if (!caSnap.exists) throw notFound('The cash advance');
-    const ca = caSnap.data() as {
+    const caSnap = liq.advanceSource === 'LEDGER' ? null : await tx.get(caRef);
+    let ca: {
       dvNo: string;
       amountGranted: number;
       amountLiquidated: number;
@@ -78,6 +89,82 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       glAccountCode: string;
       status: string;
     };
+    let officer: { type: string; id: string | null; name: string } = {
+      type: 'EMPLOYEE',
+      id: liq.accountableOfficerId,
+      name: liq.accountableOfficerName,
+    };
+    let fromLedger = false;
+    if (caSnap?.exists) {
+      ca = caSnap.data() as typeof ca;
+    } else {
+      const grantSnap = await tx.get(db.collection(COL.ledgerEntries).doc(liq.cashAdvanceId));
+      if (!grantSnap.exists) {
+        throw new HttpsError(
+          'failed-precondition',
+          'The advance this report liquidates is no longer in the General Ledger - its journal entry was corrected after the report was drafted. Raise the report again and choose the advance.',
+        );
+      }
+      const g = grantSnap.data() as {
+        fiscalYear: number;
+        fundCode: string;
+        accountCode: string;
+        debit: number;
+        jevNo: string;
+        referenceNo?: string | null;
+        subsidiaryType?: string | null;
+        subsidiaryId?: string | null;
+        subsidiaryName?: string | null;
+      };
+      if (g.fundCode !== liq.fundCode || g.fiscalYear !== liq.fiscalYear) {
+        throw invalid('The advance is in another fund or fiscal year than this report.');
+      }
+      if (!(g.debit > 0)) throw invalid('That ledger entry did not grant an advance.');
+      const acctSnap = await tx.get(db.collection(COL.accounts).doc(g.accountCode));
+      const acct = acctSnap.exists
+        ? (acctSnap.data() as { code?: string; name?: string; liquidatable?: boolean | null })
+        : null;
+      if (!isLiquidatableAccount({ code: g.accountCode, name: acct?.name ?? '', liquidatable: acct?.liquidatable })) {
+        throw new HttpsError(
+          'failed-precondition',
+          `Account ${g.accountCode} is not marked "Advance subject to liquidation" in the Chart of Accounts, so nothing posted to it is liquidated.`,
+        );
+      }
+      if (!g.subsidiaryId && !g.subsidiaryName) {
+        throw new HttpsError(
+          'failed-precondition',
+          'The advance was posted with no accountable officer as its subsidiary, so there is nobody to liquidate it. Correct its journal entry first.',
+        );
+      }
+      // The officer's balance on the account, this fiscal year, from the ledger.
+      let q = db
+        .collection(COL.ledgerEntries)
+        .where('fiscalYear', '==', g.fiscalYear)
+        .where('fundCode', '==', g.fundCode)
+        .where('accountCode', '==', g.accountCode);
+      q = g.subsidiaryId
+        ? q.where('subsidiaryId', '==', g.subsidiaryId)
+        : q.where('subsidiaryName', '==', g.subsidiaryName);
+      const officerEntries = await tx.get(q);
+      const balance = officerEntries.docs.reduce(
+        (t, d) => t + Number(d.get('debit') ?? 0) - Number(d.get('credit') ?? 0),
+        0,
+      );
+      ca = {
+        dvNo: g.referenceNo || g.jevNo,
+        amountGranted: balance,
+        amountLiquidated: 0,
+        amountRefunded: 0,
+        glAccountCode: g.accountCode,
+        status: 'OUTSTANDING',
+      };
+      officer = {
+        type: g.subsidiaryType || 'EMPLOYEE',
+        id: g.subsidiaryId ?? null,
+        name: g.subsidiaryName ?? liq.accountableOfficerName,
+      };
+      fromLedger = true;
+    }
 
     /*
      * The titles of the two accounts whose CODE comes from a record rather
@@ -196,9 +283,9 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
         accountName: 'Due to Officers and Employees',
         debit: 0,
         credit: liq.reimbursementAmount,
-        subsidiaryType: 'EMPLOYEE',
-        subsidiaryId: liq.accountableOfficerId,
-        subsidiaryName: liq.accountableOfficerName,
+        subsidiaryType: officer.type,
+        subsidiaryId: officer.id ?? undefined,
+        subsidiaryName: officer.name,
         officeId: liq.officeId,
         officeName: liq.officeName,
         cashFlowClass: 'OPERATING',
@@ -218,13 +305,15 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       accountName: advanceTitle,
       debit: 0,
       credit: advanceSettled,
-      subsidiaryType: 'EMPLOYEE',
-      subsidiaryId: liq.accountableOfficerId,
-      subsidiaryName: liq.accountableOfficerName,
+      // The SAME subsidiary the advance was granted under, so the officer's
+      // balance on the account goes down - not a second officer of the same name.
+      subsidiaryType: officer.type,
+      subsidiaryId: officer.id ?? undefined,
+      subsidiaryName: officer.name,
       officeId: liq.officeId,
       officeName: liq.officeName,
       cashFlowClass: 'OPERATING',
-      particulars: `Liquidation of cash advance under DV ${ca.dvNo}`,
+      particulars: `Liquidation of cash advance ${fromLedger ? 'granted by' : 'under DV'} ${ca.dvNo}`,
     });
 
     const { jevId } = createJevInTransaction(tx, caller, {
@@ -270,7 +359,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       amountRefunded: newRefunded,
     });
 
-    tx.update(caRef, {
+    if (!fromLedger) tx.update(caRef, {
       amountLiquidated: newLiquidated,
       amountRefunded: newRefunded,
       outstandingBalance: outstanding,

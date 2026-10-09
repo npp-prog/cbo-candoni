@@ -567,6 +567,16 @@ export interface CashAdvance extends Partial<AuditStamps> {
 
   status: 'OUTSTANDING' | 'PARTIALLY_LIQUIDATED' | 'FULLY_LIQUIDATED' | 'WRITTEN_OFF';
   glAccountCode: string;
+  /*
+   * Patch 133. An advance read off the General Ledger (src/lib/advances.ts)
+   * rather than stored in `cashAdvances`: the id is the ledger entry that
+   * granted it, amountLiquidated is everything credited against it (oldest
+   * advance first), and there is no due date because the ledger records none.
+   */
+  source?: 'LEDGER';
+  jevNo?: string;
+  glAccountName?: string;
+  subsidiaryType?: string | null;
 }
 
 export interface LiquidationLine {
@@ -590,6 +600,11 @@ export interface Liquidation extends Partial<AuditStamps> {
 
   cashAdvanceId: Id;
   dvNo: string;
+  /** Patch 133: an advance read off the General Ledger; cashAdvanceId is then its ledger entry. */
+  advanceSource?: 'LEDGER';
+  advanceAccountCode?: string;
+  advanceAccountName?: string;
+  advanceSubsidiaryType?: string | null;
   accountableOfficerId: Id;
   accountableOfficerName: string;
   officeId: Id;

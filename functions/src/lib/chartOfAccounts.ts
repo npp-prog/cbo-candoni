@@ -291,6 +291,54 @@ export function requiresSubsidiaryFor(code: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Advances subject to liquidation - patch 133
+// ---------------------------------------------------------------------------
+
+/**
+ * Which accounts hold money an officer must liquidate.
+ *
+ * The Accountant decides, on Master Data > Chart of Accounts ("Advance subject
+ * to liquidation"). Neil: "all Accounts under Advances to Officers and
+ * Employees, Advances for Operating Expenses, Advances to Special Disbursing
+ * Officer and Other Receivables are subject for liquidation ... create a
+ * master data that will select which accounts."
+ *
+ * Until an account has been ticked or cleared there, it follows this default:
+ * those four by title - whichever code the chart gives them (the 2015 chart
+ * kept the advances under 1-03-05, the current one under 1-99-01). Advances
+ * for Payroll is left out on purpose: a payroll advance is liquidated by the
+ * Report of Cash Disbursement, not by a liquidation report.
+ */
+const LIQUIDATABLE_TITLES = new Set([
+  'ADVANCES FOR OPERATING EXPENSES',
+  'ADVANCES TO SPECIAL DISBURSING OFFICER',
+  'ADVANCES TO SPECIAL DISBURSING OFFICERS',
+  'ADVANCES TO OFFICERS AND EMPLOYEES',
+  'OTHER RECEIVABLES',
+]);
+
+export function liquidatableByDefault(code: string, name: string): boolean {
+  const title = String(name ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (title) return LIQUIDATABLE_TITLES.has(title);
+  const c = String(code ?? '').trim();
+  return ['19901010', '19901030', '19901040', '10305010', '10305030', '10305040', '10305990'].includes(c);
+}
+
+/** The Accountant's choice where one was made; the default where not. */
+export function isLiquidatableAccount(a: {
+  code: string;
+  name?: string | null;
+  liquidatable?: boolean | null;
+}): boolean {
+  if (typeof a.liquidatable === 'boolean') return a.liquidatable;
+  return liquidatableByDefault(a.code, a.name ?? '');
+}
+
+// ---------------------------------------------------------------------------
 // Putting it together
 // ---------------------------------------------------------------------------
 

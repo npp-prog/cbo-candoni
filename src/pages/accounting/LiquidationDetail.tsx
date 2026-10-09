@@ -20,7 +20,7 @@ import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { Liquidation } from '@/types/accounting';
 import { useFilters } from '@/context/FilterContext';
-import { useCashAdvances } from '@/data/queries';
+import { useAdvances } from '@/data/useAdvances';
 import { LiquidationForm } from './liquidationForm';
 import { fundLabel } from '../budget/Obligations';
 
@@ -58,11 +58,11 @@ export default function LiquidationDetail() {
     isNew ? null : id,
   );
   const { fiscalYear, fundCode } = useFilters();
-  const advances = useCashAdvances(fiscalYear);
+  const advances = useAdvances(fiscalYear, fundCode);
   /* The advance tells the entry which account to relieve. */
   const { data: advance } = useDocument<{ glAccountCode?: string }>(
     COL.cashAdvances,
-    liq?.cashAdvanceId ?? null,
+    liq && liq.advanceSource !== 'LEDGER' ? liq.cashAdvanceId : null,
   );
 
   const accounts = useAccounts();
@@ -117,7 +117,7 @@ export default function LiquidationDetail() {
      * the cash advance record, so the title is looked up rather than written
      * out - the same rule the engine follows when it posts this.
      */
-    const advanceCode = advance?.glAccountCode ?? '';
+    const advanceCode = liq.advanceAccountCode ?? advance?.glAccountCode ?? '';
     rows.push({
       code: advanceCode,
       name: accountTitle(advanceCode) ?? 'the cash advance account',
@@ -165,7 +165,8 @@ export default function LiquidationDetail() {
             <LiquidationForm
               fiscalYear={fiscalYear}
               fundCode={fundCode}
-              advances={advances.data.filter((a) => a.fundCode === fundCode)}
+              advances={advances.data}
+              unassignedCount={advances.unassigned.length}
               onCancel={() => navigate('/accounting/liquidation')}
               onSaved={(newId) =>
                 navigate(keepReturn(`/accounting/liquidation/${newId}`, location.search), {
@@ -294,9 +295,18 @@ export default function LiquidationDetail() {
               <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <DetailField label="Accountable officer">{liq.accountableOfficerName}</DetailField>
                 <DetailField label="Office">{liq.officeName}</DetailField>
-                <DetailField label="Cash advance voucher" mono>
+                <DetailField
+                  label={liq.advanceSource === 'LEDGER' ? 'Granted by' : 'Cash advance voucher'}
+                  mono
+                >
                   {liq.dvNo}
                 </DetailField>
+                {liq.advanceAccountCode && (
+                  <DetailField label="Advance account">
+                    <span className="font-mono text-xs">{liq.advanceAccountCode}</span>{' '}
+                    {liq.advanceAccountName ?? accountTitle(liq.advanceAccountCode) ?? ''}
+                  </DetailField>
+                )}
                 <DetailField label="Granted">
                   <span className="cbo-amount">{formatPeso(liq.amountGranted)}</span>
                 </DetailField>

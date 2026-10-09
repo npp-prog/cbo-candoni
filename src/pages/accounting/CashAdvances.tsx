@@ -5,7 +5,7 @@ import { Badge, StatusBadge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Field';
 import { AgingChart } from '@/components/charts/Charts';
 import { useFilters } from '@/context/FilterContext';
-import { useCashAdvances } from '@/data/queries';
+import { useAdvances } from '@/data/useAdvances';
 import { formatPeso } from '@/lib/money';
 import { AGING_LABELS, agingBucket, daysBetween, formatShortDate, todayPh } from '@/lib/dates';
 import type { CashAdvance } from '@/types/accounting';
@@ -23,18 +23,24 @@ import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
  * job notifies the Accountant daily about advances past their deadline rather
  * than waiting for someone to open it.
  *
- * Cash advances are created by the accounting engine when a cash-advance
- * voucher is posted, so the outstanding balance here can never begin life out
- * of step with the ledger.
+ * Since patch 133 the advances are read off the General Ledger: every debit
+ * to an account marked "Advance subject to liquidation" in the Chart of
+ * Accounts, with the officer as its subsidiary. (The engine-created register
+ * this comment used to promise was never built, so this screen was empty.)
  */
 export default function CashAdvances() {
   const { fiscalYear, fundCode } = useFilters();
   const [scope, setScope] = useState<'outstanding' | 'all'>('outstanding');
 
-  const { data, loading, error } = useCashAdvances(fiscalYear, scope === 'outstanding');
+  // Patch 133: read off the General Ledger (src/lib/advances.ts), plus any old record.
+  const { data, loading, error, unassigned } = useAdvances(
+    fiscalYear,
+    fundCode,
+    scope === 'outstanding',
+  );
   const today = todayPh();
 
-  const rows = useMemo(() => data.filter((ca) => ca.fundCode === fundCode), [data, fundCode]);
+  const rows = data;
 
   const aging = useMemo(() => {
     const buckets: Record<string, Centavos> = {
@@ -45,8 +51,10 @@ export default function CashAdvances() {
       OVER_90: 0,
     };
     for (const ca of rows) {
-      if (!ca.dueDate) continue;
-      buckets[agingBucket(ca.dueDate, today)] += ca.outstandingBalance ?? 0;
+      // No due date on an advance read off the ledger: aged from the day granted.
+      const from = ca.dueDate || ca.dateGranted;
+      if (!from) continue;
+      buckets[agingBucket(from, today)] += ca.outstandingBalance ?? 0;
     }
     return (Object.keys(buckets) as Array<keyof typeof AGING_LABELS>).map((k) => ({
       label: AGING_LABELS[k],
@@ -61,7 +69,7 @@ export default function CashAdvances() {
   const columns: Column<CashAdvance>[] = [
     {
       key: 'dvNo',
-      header: 'DV No.',
+      header: 'Reference',
       width: '10rem',
       value: (ca) => ca.dvNo,
       cell: (ca) => <span className="font-mono text-xs">{ca.dvNo}</span>,
@@ -79,10 +87,12 @@ export default function CashAdvances() {
     },
     {
       key: 'type',
-      header: 'Type',
+      header: 'Account / type',
       width: '9rem',
-      value: (ca) => ca.caType,
-      cell: (ca) => <span className="text-xs">{ca.caType.replace(/_/g, ' ')}</span>,
+      value: (ca) => ca.glAccountName ?? ca.caType,
+      cell: (ca) => (
+        <span className="text-xs">{ca.glAccountName ?? ca.caType.replace(/_/g, ' ')}</span>
+      ),
     },
     {
       key: 'purpose',
@@ -141,7 +151,10 @@ export default function CashAdvances() {
       width: '11rem',
       value: (ca) => (ca.dueDate ? daysBetween(ca.dueDate, today) : 0),
       cell: (ca) => {
-        if (!ca.dueDate) return <span className="text-xs text-slate-400">-</span>;
+        if (!ca.dueDate) {
+          const age = ca.dateGranted ? daysBetween(ca.dateGranted, today) : 0;
+          return <span className="text-2xs text-slate-500">{age} days since granted</span>;
+        }
         const overdueDays = daysBetween(ca.dueDate, today);
         const bucket = agingBucket(ca.dueDate, today);
         return (
@@ -185,6 +198,19 @@ export default function CashAdvances() {
         </Alert>
       )}
 
+      {unassigned.length > 0 && (
+        <Alert tone="warning" title="Advances with no accountable officer" className="mb-4">
+          {unassigned.length} posting{unassigned.length === 1 ? '' : 's'} to an advance account
+          name{unassigned.length === 1 ? 's' : ''} no officer as subsidiary (
+          {unassigned
+            .slice(0, 6)
+            .map((e) => `JEV ${e.jevNo}`)
+            .join(', ')}
+          ). Nobody can liquidate {unassigned.length === 1 ? 'it' : 'them'} until the entry names
+          one - correct the entry in the Journal Entries Register.
+        </Alert>
+      )}
+
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         <Card title="Ageing" className="lg:col-span-1">
           <AgingChart data={aging} height={180} />
@@ -203,7 +229,7 @@ export default function CashAdvances() {
         error={error}
         searchPlaceholder="Officer, DV number or purpose"
         emptyTitle="No cash advances"
-        emptyMessage="Cash advances appear here when a cash-advance disbursement voucher is posted."
+        emptyMessage='An advance appears here once it is posted to an account marked "Advance subject to liquidation" in Master Data > Chart of Accounts, with the accountable officer as its subsidiary.'
         filters={
           <Select
             value={scope}

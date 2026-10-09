@@ -30,12 +30,15 @@ export function LiquidationForm({
   fiscalYear,
   fundCode,
   advances,
+  unassignedCount = 0,
   onCancel,
   onSaved,
 }: {
   fiscalYear: number;
   fundCode: string;
   advances: CashAdvance[];
+  /** Advances posted with no officer named - shown, since nobody can liquidate them. */
+  unassignedCount?: number;
   onCancel: () => void;
   /** Given the new report's id, so the page can open it properly. */
   onSaved: (id: string) => void;
@@ -103,6 +106,14 @@ export function LiquidationForm({
           fundCode,
           cashAdvanceId: advance.id,
           dvNo: advance.dvNo,
+          ...(advance.source === 'LEDGER'
+            ? {
+                advanceSource: 'LEDGER',
+                advanceAccountCode: advance.glAccountCode,
+                advanceAccountName: advance.glAccountName ?? null,
+                advanceSubsidiaryType: advance.subsidiaryType ?? null,
+              }
+            : {}),
           accountableOfficerId: advance.accountableOfficerId,
           accountableOfficerName: advance.accountableOfficerName,
           officeId: advance.officeId,
@@ -148,10 +159,25 @@ export function LiquidationForm({
             <option value="">Select the advance being liquidated</option>
             {advances.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.dvNo} - {a.accountableOfficerName} - {formatPeso(a.outstandingBalance)} outstanding
+                {a.dvNo} - {a.accountableOfficerName}
+                {a.glAccountName ? ` - ${a.glAccountName}` : ''} - {formatPeso(a.outstandingBalance)}{' '}
+                outstanding
               </option>
             ))}
           </Select>
+          {advances.length === 0 && (
+            <p className="mt-1 text-xs text-amber-700">
+              No advance is outstanding in this fund and year. An advance appears here once it is
+              posted to an account marked "Advance subject to liquidation" (Master Data &gt; Chart of
+              Accounts) with the accountable officer as its subsidiary.
+            </p>
+          )}
+          {unassignedCount > 0 && (
+            <p className="mt-1 text-xs text-amber-700">
+              {unassignedCount} advance{unassignedCount === 1 ? ' was' : 's were'} posted with no
+              accountable officer named and cannot be liquidated until the entry names one.
+            </p>
+          )}
         </Field>
 
         <Field
@@ -178,13 +204,21 @@ export function LiquidationForm({
         <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
           <dl className="grid gap-3 sm:grid-cols-4">
             <Fig label="Granted" value={advance.amountGranted} />
-            <Fig label="Previously liquidated" value={advance.amountLiquidated ?? 0} />
-            <Fig label="Previously refunded" value={advance.amountRefunded ?? 0} />
+            {advance.source === 'LEDGER' ? (
+              <Fig label="Already settled" value={advance.amountLiquidated ?? 0} />
+            ) : (
+              <>
+                <Fig label="Previously liquidated" value={advance.amountLiquidated ?? 0} />
+                <Fig label="Previously refunded" value={advance.amountRefunded ?? 0} />
+              </>
+            )}
             <Fig label="Still to account for" value={advance.outstandingBalance} />
           </dl>
           <p className="mt-2 text-xs text-slate-500">
-            {advance.purpose} - granted {formatShortDate(advance.dateGranted)}, due{' '}
-            {formatShortDate(advance.dueDate)}
+            {advance.purpose} - granted {formatShortDate(advance.dateGranted)}
+            {advance.jevNo ? `, JEV ${advance.jevNo}` : ''}
+            {advance.glAccountCode ? `, ${advance.glAccountCode} ${advance.glAccountName ?? ''}` : ''}
+            {advance.dueDate ? `, due ${formatShortDate(advance.dueDate)}` : ''}
           </p>
         </div>
       )}

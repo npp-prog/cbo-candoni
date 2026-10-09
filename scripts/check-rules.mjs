@@ -3194,6 +3194,41 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 52. Advances to be liquidated come from the General Ledger -----------
+
+/*
+ * Patch 133. The liquidation report picked from a `cashAdvances` register that
+ * nothing ever wrote, so no posted advance could be liquidated. The advances
+ * are now read off the ledger (useAdvances / buildAdvanceRegister) for the
+ * accounts the Chart of Accounts marks "Advance subject to liquidation", and
+ * postLiquidation checks the officer's ledger balance itself.
+ */
+{
+  const before = failures.length;
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  for (const f of ['src/pages/accounting/LiquidationDetail.tsx', 'src/pages/accounting/CashAdvances.tsx']) {
+    const src = strip(readFileSync(resolve(root, f), 'utf8'));
+    if (/\buseCashAdvances\(/.test(src) || !/\buseAdvances\(/.test(src)) {
+      failures.push(`${f}: reads the old cashAdvances register instead of useAdvances - advances posted to the ledger are missed.`);
+    }
+  }
+  const hook = strip(readFileSync(resolve(root, 'src/data/useAdvances.ts'), 'utf8'));
+  if (!/buildAdvanceRegister\(/.test(hook) || !/isLiquidatableAccount\(/.test(hook)) {
+    failures.push('src/data/useAdvances.ts: no longer reads the advances off the ledger for the accounts marked subject to liquidation.');
+  }
+  const liq = strip(readFileSync(resolve(root, 'functions/src/accounting/liquidation.ts'), 'utf8'));
+  if (!/isLiquidatableAccount\(/.test(liq) || !/collection\(COL\.ledgerEntries\)/.test(liq)) {
+    failures.push('functions/src/accounting/liquidation.ts: postLiquidation no longer checks the advance against the General Ledger.');
+  }
+  const md = readFileSync(resolve(root, 'src/pages/masterdata/MasterData.tsx'), 'utf8');
+  if (!/key: 'liquidatable'/.test(md)) {
+    failures.push('src/pages/masterdata/MasterData.tsx: the Chart of Accounts no longer lets the Accountant mark an account "Advance subject to liquidation".');
+  }
+  if (failures.length === before) {
+    console.log('advances: liquidation reads the ledger for the accounts marked subject to liquidation');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*
