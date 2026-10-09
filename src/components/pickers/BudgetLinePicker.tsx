@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Select } from '@/components/ui/Field';
 import { formatPeso } from '@/lib/money';
+import { realignableBalance } from '@/lib/accounting-rules';
 import type { BudgetBalance } from '@/types/budget';
 
 /**
@@ -37,7 +38,14 @@ export function BudgetLinePicker({
   onChange,
   disabled,
   id,
+  measure = 'allotment',
 }: {
+  /**
+   * Which balance the label shows. `allotment` - what may still be
+   * obligated - for an obligation. `unobligated` - the appropriation less
+   * obligations, all a realignment or augmentation may take (patch 128).
+   */
+  measure?: 'allotment' | 'unobligated';
   /** Every running balance for the fiscal year and fund in view. */
   balances: BudgetBalance[];
   /** Narrows to one office; null offers every office's lines. */
@@ -76,16 +84,20 @@ export function BudgetLinePicker({
       <option value="">Choose an appropriated line&hellip;</option>
       {options.map((b) => (
         <option key={b.id} value={b.id}>
-          {label(b)}
+          {label(b, measure)}
         </option>
       ))}
     </Select>
   );
 }
 
-function label(b: BudgetBalance): string {
+function label(b: BudgetBalance, measure: 'allotment' | 'unobligated'): string {
   const name = b.fppName || b.accountName || b.fppCode;
   const object = b.accountCode ? ` · ${b.accountCode}` : '';
+  if (measure === 'unobligated') {
+    const free = formatPeso(realignableBalance(b), { symbol: false });
+    return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${free} unobligated)`;
+  }
   const available = formatPeso(b.availableAllotment, { symbol: false });
   return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${available} available)`;
 }

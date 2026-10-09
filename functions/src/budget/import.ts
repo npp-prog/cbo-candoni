@@ -20,6 +20,7 @@ import {
   checkAugmentationExpenseClass,
   checkRealignmentSet,
   planAugmentationAllotment,
+  checkRealignableBalances,
 } from '../lib/rules';
 import { findSector } from '../lib/sectors';
 import { postingFromPreparedSet, preparedSetId, type PreparedSet } from './preparedSets';
@@ -748,6 +749,31 @@ export const importBudgetLines = onCall(
        * all-or-nothing: if any line cannot give up or take on its allotment,
        * nothing is posted.
        */
+      /*
+       * Patch 128: a source gives up no more than its appropriation less what
+       * is already obligated against it - the unobligated balance - whichever
+       * act this is. Checked before the allotment plan, so the office reads
+       * the reason in those words rather than as an allotment shortfall.
+       */
+      if (kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT') {
+        const within = checkRealignableBalances(
+          lines.map((l, i) => ({
+            lineNo: i,
+            label: `${l.rows[0].accountCode || l.rows[0].fppCode} ${l.rows[0].accountName || l.rows[0].fppName || ''} in ${l.rows[0].officeName}`.replace(/\s+/g, ' ').trim(),
+            amount: l.amount,
+            appropriationRevised: balances[i].appropriationRevised,
+            obligated: balances[i].obligated,
+          })),
+        );
+        if (!within.ok) {
+          throw new HttpsError(
+            'failed-precondition',
+            `${within.violations[0].message} Nothing was posted.`,
+            within.violations[0].details,
+          );
+        }
+      }
+
       const allotmentPlan =
         kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT'
           ? planAugmentationAllotment(

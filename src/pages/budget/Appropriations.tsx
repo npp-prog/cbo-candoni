@@ -26,6 +26,7 @@ import { formatPeso } from '@/lib/money';
 import {
   checkAugmentationExpenseClass,
   checkRealignmentSet,
+  checkRealignableBalances,
   type RealignmentInstrument,
 } from '@/lib/accounting-rules';
 import { SECTORS, SERVICE_SECTORS, findSector } from '@/lib/sectors';
@@ -48,6 +49,7 @@ import { uploadedDrafts, type UploadGroup } from './uploadedDrafts';
 import { fundLabel } from './Obligations';
 import { RecordOrdinanceDialog } from './RecordOrdinanceDialog';
 import { ordinanceId } from './ordinanceModel';
+import { ledgerRows, type LedgerRow } from './ledgerRows';
 import { actKindOfInstrument, type ActKind } from '@/lib/budgetActs';
 import { useEntity } from '@/data/useEntity';
 import { buildAugmentationSheet, type AugmentationSheet } from './augmentationForm';
@@ -379,7 +381,20 @@ export default function Appropriations() {
     }
   };
 
-  const columns: Column<Appropriation>[] = [
+  /* Patch 128: a realignment or augmentation is one row per authority. */
+  const rows = useMemo(() => ledgerRows(data), [data]);
+  const openRow = (r: LedgerRow) => {
+    if (!r.lump) return setViewing(r);
+    const act = acts.data.find(
+      (x) =>
+        x.id ===
+        ordinanceId({ fiscalYear, fundCode, kind: r.lump!.actKind, reference: r.authorityReference ?? '' }),
+    );
+    if (act) navigate(`/budget/appropriations/ordinances/${act.id}`);
+    else setViewing(r.lump.lines[0]);
+  };
+
+  const columns: Column<LedgerRow>[] = [
     {
       key: 'kind',
       header: 'Type',
@@ -432,7 +447,18 @@ export default function Appropriations() {
        * actually appropriated to, and says which kind of line it is.
        */
       cell: (a) =>
-        a.accountCode ? (
+        a.lump ? (
+          <div>
+            <span className="text-sm">
+              {a.lump.lines.length} item{a.lump.lines.length === 1 ? '' : 's'} -{' '}
+              {formatPeso(a.lump.moved, { symbol: false })} moved
+            </span>
+            <span className="block text-2xs text-slate-500">
+              {a.lump.actKind === 'AUGMENTATION' ? 'Savings moved within one class' : 'Authority moved between items'}
+              {' '}- no net effect. Open it for its lines.
+            </span>
+          </div>
+        ) : a.accountCode ? (
           <div>
             <span className="font-mono text-xs text-slate-500">{a.accountCode}</span>{' '}
             <span className="text-sm">{a.accountName}</span>
@@ -474,6 +500,8 @@ export default function Appropriations() {
       cell: (a) => (
         <div className="flex items-center gap-2">
           <StatusBadge status={a.status} />
+          {a.lump ? null : (
+          <>
           {/*
             CORRECT, then APPROVE, in that order on the row because that is
             the order of the acts. Both are offered only while the line is
@@ -503,6 +531,8 @@ export default function Appropriations() {
             >
               Approve
             </Button>
+          )}
+          </>
           )}
         </div>
       ),
@@ -805,10 +835,10 @@ export default function Appropriations() {
       )}
 
       <DataTable
-        rows={data}
+        rows={rows}
         columns={columns}
         rowKey={(a) => a.id}
-        onRowClick={(a) => setViewing(a)}
+        onRowClick={openRow}
         loading={loading}
         error={error}
         searchPlaceholder="Account, office or authority reference"
@@ -1331,6 +1361,34 @@ export function AppropriationForm({
   );
 
   /**
+   * Patch 128: each source within its unobligated balance - appropriation
+   * less obligations. The same rule the engine runs at posting; here it is
+   * shown while the amounts are typed, and saving is refused while it fails,
+   * because no amount of finishing the draft later makes it possible.
+   */
+  const realignableCheck = useMemo(() => {
+    if (!isRealignment || filledLines.length === 0) return null;
+    const byLine = new Map<string, number>();
+    for (const l of filledLines) {
+      if (l.lineId) byLine.set(l.lineId, (byLine.get(l.lineId) ?? 0) + (l.amount ?? 0));
+    }
+    return checkRealignableBalances(
+      [...byLine].map(([id, amount], i) => {
+        const b = balances.data.find((x) => x.id === id);
+        return {
+          lineNo: i + 1,
+          label: b
+            ? `${b.accountCode || b.fppCode} ${b.accountName || b.fppName || ''} in ${b.officeName}`
+            : id,
+          amount,
+          appropriationRevised: b?.appropriationRevised ?? 0,
+          obligated: b?.obligated ?? 0,
+        };
+      }),
+    );
+  }, [isRealignment, filledLines, balances.data]);
+
+  /**
    * ---------------------------------------------------------------------------
    * PREPARING AN AUGMENTATION OR A REALIGNMENT, rather than posting it
    * ---------------------------------------------------------------------------
@@ -1359,6 +1417,10 @@ export function AppropriationForm({
       where the prepared list says it is missing and the engine refuses
       without it (`postingFromPreparedSet`).
     */
+    if (realignableCheck && !realignableCheck.ok) {
+      toast.error('More than the unobligated balance', realignableCheck.violations[0].message);
+      return;
+    }
     setSaving(true);
     try {
       const record = {
@@ -1795,6 +1857,13 @@ export function AppropriationForm({
             expense class, the authority and the savings, and its refusals say
             which rule a set broke. The Type's own hint names the act.
           */}
+          {realignableCheck && !realignableCheck.ok && (
+            <Alert tone="error" title="More than the unobligated balance" className="mb-4">
+              {realignableCheck.violations.map((v) => (
+                <p key={String(v.details?.lineNo)}>{v.message}</p>
+              ))}
+            </Alert>
+          )}
           {classCheck && !classCheck.ok && (
             <Alert tone="error" title="An augmentation cannot cross an expense class" className="mb-4">
               {classCheck.violations[0].message}
@@ -1859,6 +1928,7 @@ export function AppropriationForm({
                     <td className="px-2 py-1.5">
                       <BudgetLinePicker
                         balances={balances.data}
+                        measure="unobligated"
                         officeId={line.officeId}
                         value={line.lineId}
                         onChange={(id, chosen) =>

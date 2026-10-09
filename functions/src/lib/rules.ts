@@ -648,6 +648,55 @@ export function checkAugmentationExpenseClass(lines: AugmentationLine[]): CheckR
   );
 }
 
+/**
+ * What a budget line can give up to a realignment or an augmentation: its
+ * appropriation less what is already obligated against it. Patch 128.
+ *
+ * Neil: "make sure that the balance of appro minus the obligated is positive
+ * and only the balance is available for realignment or augmentation." An
+ * obligation is a commitment already made against the appropriation; moving
+ * that part away would leave the line owing more than it holds.
+ */
+export const realignableBalance = (b: { appropriationRevised: number; obligated: number }): number =>
+  Math.max(0, b.appropriationRevised - b.obligated);
+
+export interface RealignableSource {
+  lineNo: number;
+  /** How the line is named in a message - office and object. */
+  label: string;
+  /** Negative on the side the authority is taken from. Several lines on one budget line are summed by the caller. */
+  amount: number;
+  appropriationRevised: number;
+  obligated: number;
+}
+
+/**
+ * Every source of a realignment or augmentation within its unobligated
+ * balance. Checked when the set is prepared and again when it is posted.
+ */
+export function checkRealignableBalances(lines: RealignableSource[]): CheckResult {
+  const violations: Violation[] = [];
+  for (const l of lines) {
+    if (l.amount >= 0) continue;
+    const taken = -l.amount;
+    const available = realignableBalance(l);
+    const php = (c: number) =>
+      (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (taken > available) {
+      violations.push({
+        code: 'REALIGNMENT_EXCEEDS_UNOBLIGATED',
+        message:
+          `${l.label} can give up at most ${php(available)} - its appropriation of ` +
+          `${php(l.appropriationRevised)} less ${php(l.obligated)} already ` +
+          `obligated - and this takes ${php(taken)}. Only the unobligated balance can be ` +
+          'realigned or augmented from.',
+        details: { lineNo: l.lineNo, taken, available, appropriationRevised: l.appropriationRevised, obligated: l.obligated },
+      });
+    }
+  }
+  return violations.length ? { ok: false, violations } : ok;
+}
+
 export function checkRealignmentSet(lines: RealignmentLine[]): CheckResult {
   if (lines.length < 2) {
     return fail(

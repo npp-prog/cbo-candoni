@@ -3095,6 +3095,28 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 49. Only the unobligated balance is realigned or augmented from -------
+
+/*
+ * Patch 128. A source of a realignment or augmentation gives up no more than
+ * its appropriation less its obligations. The engine must check it when the
+ * set is posted (import.ts), and the form when it is prepared.
+ */
+{
+  const before = failures.length;
+  const imp = readFileSync(resolve(root, 'functions/src/budget/import.ts'), 'utf8');
+  if (!/checkRealignableBalances\(/.test(imp)) {
+    failures.push('functions/src/budget/import.ts: a realignment or augmentation is posted without checking each source against its unobligated balance.');
+  }
+  const form = readFileSync(resolve(root, 'src/pages/budget/Appropriations.tsx'), 'utf8');
+  if (!/checkRealignableBalances\(/.test(form)) {
+    failures.push('src/pages/budget/Appropriations.tsx: the realignment form no longer checks each source against its unobligated balance.');
+  }
+  if (failures.length === before) {
+    console.log('realignment: each source within its unobligated balance, on the form and in the engine');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*
