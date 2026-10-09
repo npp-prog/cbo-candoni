@@ -367,7 +367,7 @@ export function ObligationPicker({
           value: o.id,
           code: o.obrNo,
           label: o.payeeName,
-          detail: `${formatPeso(o.unpaidAmount)} unpaid of ${formatPeso(o.totalAmount)} - ${formatShortDate(o.obrDate)} - ${o.particulars?.slice(0, 50) ?? ''}`,
+          detail: `${formatPeso(o.unpaidAmount)} open to a voucher of ${formatPeso(o.totalAmount)} - ${formatShortDate(o.obrDate)} - ${o.particulars?.slice(0, 50) ?? ''}`,
         })),
     [data],
   );

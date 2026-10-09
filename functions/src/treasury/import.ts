@@ -9,6 +9,7 @@ import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, assertFundInScope, type Role } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
+import { planPayments, applyPaymentPlan } from '../lib/paymentBudget';
 
 /**
  * Uploading the Treasurer's RCI and RADAI.
@@ -125,6 +126,7 @@ interface Dv {
   checkId?: string;
   adaId?: string;
   obrNo?: string;
+  obligationId?: string;
 }
 
 const peso = (centavos: number) => (centavos / 100).toFixed(2);
@@ -372,7 +374,30 @@ export const importTreasuryPayments = onCall(
         return { row, dvId: inFund.id, dv };
       });
 
+      /*
+       * The disbursement each matched payment makes - obligation, budget line,
+       * fund summary, programme - read now, all of it, before the first write
+       * (patch 121). One plan for the whole file: two checks paying vouchers
+       * on the same budget line add up, rather than the second overwriting
+       * the first.
+       */
+      const payment = await planPayments(
+        tx,
+        decisions
+          .filter((d) => !d.reason && d.dv && d.dvId)
+          .map((d) => ({
+            dvNo: d.dv!.dvNo,
+            fiscalYear: d.dv!.fiscalYear,
+            fundCode: d.dv!.fundCode,
+            grossAmount: d.dv!.grossAmount,
+            obligationId: d.dv!.obligationId ?? null,
+          })),
+        1,
+      );
+
       // ---- writes ----------------------------------------------------------
+
+      applyPaymentPlan(tx, payment);
 
       const reportLines: Array<Record<string, unknown>> = [];
       const importRows: Array<Record<string, unknown>> = [];
@@ -818,6 +843,23 @@ export const resolveImportRow = onCall(
             );
           }
         }
+
+        // The disbursement this one payment makes, read before the writes
+        // below (patch 121).
+        const payment = await planPayments(
+          tx,
+          [
+            {
+              dvNo: dv.dvNo,
+              fiscalYear: dv.fiscalYear,
+              fundCode: dv.fundCode,
+              grossAmount: dv.grossAmount,
+              obligationId: dv.obligationId ?? null,
+            },
+          ],
+          1,
+        );
+        applyPaymentPlan(tx, payment);
 
         const common = {
           fiscalYear: batch.fiscalYear,

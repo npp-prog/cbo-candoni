@@ -46,11 +46,14 @@ export default function Obligations() {
         (acc, o) => {
           if (o.status === 'CANCELLED') return acc;
           acc.obligated += o.totalAmount ?? 0;
-          acc.disbursed += o.disbursedAmount ?? 0;
-          acc.unpaid += o.unpaidAmount ?? 0;
+          acc.vouchered += o.disbursedAmount ?? 0;
+          acc.paid += o.paidAmount ?? 0;
+          // Unpaid is what no check or ADA has paid yet - a voucher waiting
+          // in the Treasurer's queue is still unpaid (patch 121).
+          acc.unpaid += (o.totalAmount ?? 0) - (o.paidAmount ?? 0);
           return acc;
         },
-        { obligated: 0, disbursed: 0, unpaid: 0 },
+        { obligated: 0, vouchered: 0, paid: 0, unpaid: 0 },
       ),
     [rows],
   );
@@ -108,17 +111,24 @@ export default function Obligations() {
     },
     {
       key: 'disbursedAmount',
-      header: 'Disbursed',
+      header: 'With DV',
       kind: 'amount',
       value: (o) => o.disbursedAmount ?? 0,
       cell: (o) => formatPeso(o.disbursedAmount ?? 0, { symbol: false, dash: true }),
     },
     {
-      key: 'unpaidAmount',
+      key: 'paidAmount',
+      header: 'Paid',
+      kind: 'amount',
+      value: (o) => o.paidAmount ?? 0,
+      cell: (o) => formatPeso(o.paidAmount ?? 0, { symbol: false, dash: true }),
+    },
+    {
+      key: 'unpaid',
       header: 'Unpaid',
       kind: 'amount',
-      value: (o) => o.unpaidAmount ?? 0,
-      cell: (o) => formatPeso(o.unpaidAmount ?? 0, { symbol: false, dash: true }),
+      value: (o) => (o.totalAmount ?? 0) - (o.paidAmount ?? 0),
+      cell: (o) => formatPeso((o.totalAmount ?? 0) - (o.paidAmount ?? 0), { symbol: false, dash: true }),
     },
     {
       key: 'status',
@@ -203,7 +213,8 @@ export default function Obligations() {
               Total ({rows.filter((o) => o.status !== 'CANCELLED').length} obligations)
             </td>
             <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.obligated, { symbol: false })}</td>
-            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.disbursed, { symbol: false })}</td>
+            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.vouchered, { symbol: false })}</td>
+            <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.paid, { symbol: false })}</td>
             <td className="cbo-td cbo-amount font-semibold">{formatPeso(totals.unpaid, { symbol: false })}</td>
             <td className="cbo-td" />
           </tr>

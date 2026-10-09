@@ -35,7 +35,7 @@ export const verifyBudgetBalances = onSchedule(
      * callable - patch 120 - so what the repair writes is exactly what this
      * job checks the next night.
      */
-    const rebuilt = await rebuildBudgetFigures(year);
+    const { balances: rebuilt } = await rebuildBudgetFigures(year);
 
     const stored = await db.collection(COL.budgetBalances).where('fiscalYear', '==', year).get();
     const discrepancies: Array<Record<string, unknown>> = [];

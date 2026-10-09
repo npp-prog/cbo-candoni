@@ -435,9 +435,21 @@ export interface Obligation extends Partial<AuditStamps> {
    * Amounts consumed by downstream documents. Maintained only by Cloud
    * Functions so the registry can never drift from the vouchers.
    */
+  /**
+   * What approved VOUCHERS have drawn. The old name is kept; it is the
+   * figure that stops two vouchers drawing the same money, not a
+   * disbursement.
+   */
   disbursedAmount: Centavos;
-  /** totalAmount - disbursedAmount; an unpaid obligation balance. */
+  /** totalAmount - disbursedAmount; what is still open to a voucher. */
   unpaidAmount: Centavos;
+  /**
+   * Patch 121: what checks and ADAs have paid. THIS is the disbursement -
+   * the registry's Disbursements column is the obligations' paidAmount spread
+   * over their lines. Absent on an obligation written before the patch until
+   * the administrator runs the repair.
+   */
+  paidAmount?: Centavos;
 
   /**
    * Set when an authorised administrator deliberately obligated beyond the

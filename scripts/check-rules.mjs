@@ -2970,53 +2970,84 @@ if (existsSync(functionsSrc)) {
   }
 }
 
-// --- 47. What a voucher takes from a budget line, its cancellation gives back
+// --- 47. A disbursement is a check or an ADA ------------------------------
 
 /*
- * Patch 120: approving a voucher adds its share to each budget line's
- * `disbursed`. Cancelling or un-approving it gave the money back to the
- * obligation and to the fund summary - and not to the budget line, so the
- * registry showed more disbursed than obligated and an unpaid figure below
- * zero. The nightly verifier rebuilt `disbursed` and never compared it.
+ * Patch 120 found a cancelled voucher leaving its share on the budget line.
+ * Patch 121 moved the disbursement altogether: the budget line's `disbursed`,
+ * the fund summary and a trust programme's disbursed figure move when the
+ * CHECK or the ADA is issued (lib/paymentBudget.ts) and move back when it is
+ * cancelled. Voucher approval only VOUCHERS the obligation.
  *
- * Three things this refuses: a dv.ts whose reversal (applyDvConsumption) does
- * not write the budget line; a share allocation hand-rolled anywhere outside
- * lib/dvShares.ts, which is how approval and reversal come to differ by a
- * centavo; and a verifier that leaves `disbursed` off its comparison.
+ * This refuses: a dv.ts that writes a disbursed figure again; an issue or
+ * cancel of a check or an ADA - in payments.ts and in the treasury import -
+ * that does not apply the payment plan; a share allocation hand-rolled
+ * outside lib/dvShares.ts; a rebuild that reads the vouchered figure as the
+ * disbursement; and a nightly verifier that leaves `disbursed` off its
+ * comparison.
  */
 {
   const before = failures.length;
-  const dvTs = resolve(root, 'functions/src/accounting/dv.ts');
-  if (existsSync(dvTs)) {
-    const src = readFileSync(dvTs, 'utf8');
-    const reversal = src.match(/function applyDvConsumption\([\s\S]*?\n\}/);
-    if (!reversal || !/applyBudgetDelta\(/.test(reversal[0])) {
-      failures.push(
-        'functions/src/accounting/dv.ts: applyDvConsumption no longer gives the budget line back what the voucher took (patch 120).',
-      );
+  const read = (rel) => {
+    const full = resolve(root, rel);
+    return existsSync(full) ? readFileSync(full, 'utf8') : null;
+  };
+
+  const dv = read('functions/src/accounting/dv.ts');
+  if (dv && /\{\s*disbursed:/.test(dv)) {
+    failures.push(
+      'functions/src/accounting/dv.ts writes a disbursed figure. Approval vouchers the obligation; the check or the ADA disburses (patch 121).',
+    );
+  }
+
+  const payments = read('functions/src/accounting/payments.ts');
+  if (payments) {
+    for (const name of ['issueCheck', 'issueAda', 'cancelCheck', 'cancelAda']) {
+      const body = payments.slice(payments.indexOf(`export const ${name} =`));
+      const end = body.indexOf('\n});');
+      const fn = end > 0 ? body.slice(0, end) : body;
+      if (!payments.includes(`export const ${name} =`) || !/applyPaymentPlan\(/.test(fn)) {
+        failures.push(`functions/src/accounting/payments.ts: ${name} no longer moves the disbursement (applyPaymentPlan).`);
+      }
     }
   }
+  const imp = read('functions/src/treasury/import.ts');
+  if (imp && (imp.match(/applyPaymentPlan\(/g) ?? []).length < 2) {
+    failures.push('functions/src/treasury/import.ts: an imported check or ADA no longer moves the disbursement in both the batch and the manual match.');
+  }
+
   const HAND_ROLLED_SHARE = /Math\.round\(\s*\(\s*line\.amount\s*\/\s*\w+\s*\)\s*\*/;
   for (const rel of [
     'functions/src/accounting/dv.ts',
+    'functions/src/accounting/payments.ts',
+    'functions/src/treasury/import.ts',
+    'functions/src/lib/paymentBudget.ts',
     'functions/src/admin/scheduled.ts',
     'functions/src/admin/budgetRebuild.ts',
   ]) {
-    const full = resolve(root, rel);
-    if (existsSync(full) && HAND_ROLLED_SHARE.test(readFileSync(full, 'utf8'))) {
+    const src = read(rel);
+    if (src && HAND_ROLLED_SHARE.test(src)) {
       failures.push(`${rel} allocates a voucher over obligation lines by hand. Use allocateDvShares from lib/dvShares.ts.`);
     }
   }
-  const sched = resolve(root, 'functions/src/admin/scheduled.ts');
-  if (existsSync(sched)) {
-    const src = readFileSync(sched, 'utf8');
-    const checks = src.match(/const checks: Array<\[string, number, number\]> = \[([\s\S]*?)\];/);
+
+  const rebuild = read('functions/src/admin/budgetRebuild.ts');
+  if (rebuild) {
+    const fn = rebuild.slice(rebuild.indexOf('export async function rebuildBudgetFigures'), rebuild.indexOf('export interface Drift'));
+    if (/disbursedAmount/.test(fn) || !/paidAmount/.test(fn)) {
+      failures.push('functions/src/admin/budgetRebuild.ts rebuilds the disbursement from the vouchered figure rather than from paidAmount.');
+    }
+  }
+
+  const sched = read('functions/src/admin/scheduled.ts');
+  if (sched) {
+    const checks = sched.match(/const checks: Array<\[string, number, number\]> = \[([\s\S]*?)\];/);
     if (!checks || !/\['disbursed'/.test(checks[1])) {
       failures.push('functions/src/admin/scheduled.ts: the nightly verifier no longer compares `disbursed`.');
     }
   }
   if (failures.length === before) {
-    console.log('vouchers: a cancelled voucher gives its budget line back, one allocation, verifier compares disbursed');
+    console.log('disbursements: a check or an ADA disburses and its cancellation takes it back; one allocation; verifier compares disbursed');
   }
 }
 

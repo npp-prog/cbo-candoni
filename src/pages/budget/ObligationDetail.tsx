@@ -852,15 +852,18 @@ export default function ObligationDetail() {
 
             {existing && (
               <Card title="Consumption">
-                <dl className="grid gap-4 sm:grid-cols-4">
+                <dl className="grid gap-4 sm:grid-cols-5">
                   <DetailField label="Obligated" mono>
                     {formatPeso(existing.totalAmount)}
                   </DetailField>
-                  <DetailField label="Disbursed" mono>
+                  <DetailField label="With DV" mono>
                     {formatPeso(existing.disbursedAmount ?? 0)}
                   </DetailField>
+                  <DetailField label="Paid (check or ADA)" mono>
+                    {formatPeso(existing.paidAmount ?? 0)}
+                  </DetailField>
                   <DetailField label="Unpaid balance" mono>
-                    {formatPeso(existing.unpaidAmount ?? 0)}
+                    {formatPeso(existing.totalAmount - (existing.paidAmount ?? 0))}
                   </DetailField>
                   <DetailField label="Certified by">
                     {existing.certifiedBy ? (

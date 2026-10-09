@@ -2,6 +2,16 @@ import { httpsCallable, type HttpsCallableResult } from 'firebase/functions';
 import { functions } from './firebase';
 import type { Centavos, Id, IsoDate } from '@/types/common';
 
+/** One figure the budget repair found to differ from its documents. */
+export interface RepairDrift {
+  id: string;
+  label: string;
+  fundCode: string;
+  stored: Centavos;
+  rebuilt: Centavos;
+  obligated?: Centavos;
+}
+
 /**
  * Typed client for the CFMS accounting engine (Cloud Functions).
  *
@@ -775,9 +785,10 @@ export const engine = {
     ),
 
   /**
-   * Patch 120: put every budget line's `disbursed` back to what its
-   * obligations say. `apply: false` only reports the lines that differ.
-   * Super Administrator only; every line changed is in the audit trail.
+   * Patch 121: put every disbursed figure of a year back to what the checks
+   * and ADAs say - obligations' paidAmount, budget lines, fund summaries,
+   * trust programmes. `apply: false` only reports what differs. Super
+   * Administrator only; every document changed is in the audit trail.
    */
   repairBudgetDisbursed: (p: { fiscalYear: number; apply: boolean }) =>
     call<
@@ -786,17 +797,10 @@ export const engine = {
         fiscalYear: number;
         applied: boolean;
         repaired?: number;
-        drifts: Array<{
-          budgetKey: string;
-          fundCode: string;
-          officeName: string;
-          fppCode: string;
-          accountCode: string;
-          accountName: string;
-          obligated: Centavos;
-          stored: Centavos;
-          rebuilt: Centavos;
-        }>;
+        obligations: RepairDrift[];
+        lines: RepairDrift[];
+        summaries: RepairDrift[];
+        programmes: RepairDrift[];
       }
     >('repairBudgetDisbursed', p),
 

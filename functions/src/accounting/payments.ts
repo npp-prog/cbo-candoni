@@ -3,30 +3,31 @@ import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '../lib/clearing';
-import type { Transaction, DocumentReference, DocumentSnapshot } from 'firebase-admin/firestore';
+import type { Transaction } from 'firebase-admin/firestore';
 import { recordTransition, auditInTransaction } from '../lib/audit';
 import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
 import { periodOf } from '../lib/period';
+import { planPayments, applyPaymentPlan, type PaidDv } from '../lib/paymentBudget';
 
 const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT'];
 
-/**
- * The obligation is paid when the instrument is drawn, not when the voucher
- * was approved.
- *
- * Called from issueCheck and issueAda with the obligation already read in the
- * read phase. It only advances an obligation that is WITH_DV - the state
- * approveDv leaves it in once a voucher covers it in full. A partly covered
- * obligation stays OBLIGATED, because part of it is still unspoken for.
+/*
+ * The obligation is paid - and the budget line, the fund summary and a trust
+ * programme are DISBURSED - when the instrument is drawn, not when the
+ * voucher was approved. Patch 121: a disbursement is a check or an ADA, and
+ * cancelling the instrument takes the disbursement back. The arithmetic is
+ * in lib/paymentBudget.ts, shared with the treasury import.
  */
-function markObligationPaid(
-  tx: Transaction,
-  ref: DocumentReference | null,
-  snap: DocumentSnapshot | null,
-): void {
-  if (!ref || !snap?.exists) return;
-  if ((snap.data() as { status?: string }).status !== 'WITH_DV') return;
-  tx.update(ref, { status: 'PAID' });
+
+/** The slice of a voucher the payment plan needs. */
+function dvAsPaid(dv: PaidDv & { dvNo?: string }, dvId: string): PaidDv {
+  return {
+    dvNo: dv.dvNo ?? dvId,
+    fiscalYear: dv.fiscalYear,
+    fundCode: dv.fundCode,
+    grossAmount: dv.grossAmount,
+    obligationId: dv.obligationId ?? null,
+  };
 }
 
 export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
@@ -143,8 +144,7 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
      * "With DV" and becomes paid. Read in the read phase, like everything
      * else the decision needs.
      */
-    const obrRef = dv.obligationId ? db.collection(COL.obligations).doc(dv.obligationId) : null;
-    const obrSnap = obrRef ? await tx.get(obrRef) : null;
+    const payment = await planPayments(tx, [dvAsPaid(dv, dvId)], 1);
 
     const checkRef = db.collection(COL.checks).doc(checkDocId);
     const existing = await tx.get(checkRef);
@@ -219,7 +219,7 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       });
     }
 
-    markObligationPaid(tx, obrRef, obrSnap);
+    applyPaymentPlan(tx, payment);
 
     recordTransition(tx, {
       caller,
@@ -313,6 +313,12 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
     // updates below even though it reads as part of the cancellation.
     await assertNotReported(tx, check.treasuryReportId, `Check ${check.checkNo}`);
 
+    // The disbursement this check made, to be taken back below (patch 121).
+    const dvSnap = await tx.get(db.collection(COL.disbursementVouchers).doc(check.dvId));
+    const reversal = dvSnap.exists
+      ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, check.dvId)], -1)
+      : null;
+
     /**
      * A cancelled check stays on its draft report, at nil.
      *
@@ -358,6 +364,9 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
       checkNo: null,
       status: 'APPROVED',
     });
+    // And the registry, the fund summary and the obligation stop counting
+    // it as disbursed. A cancelled check is not a disbursement.
+    if (reversal) applyPaymentPlan(tx, reversal);
 
     recordTransition(tx, {
       caller,
@@ -409,6 +418,7 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       payeeId: string;
       payeeName: string;
       particulars: string;
+      grossAmount: number;
       netAmount: number;
       status: string;
       adaId?: string;
@@ -451,11 +461,9 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       );
     }
 
-    // Read in the read phase so the obligation can be marked paid below.
-    const adaObrRef = dv.obligationId
-      ? db.collection(COL.obligations).doc(dv.obligationId)
-      : null;
-    const adaObrSnap = adaObrRef ? await tx.get(adaObrRef) : null;
+    // Read in the read phase: the obligation, budget lines and programmes
+    // this advice disburses.
+    const payment = await planPayments(tx, [dvAsPaid(dv, dvId)], 1);
 
     const bookCode = await bookCodeForFund(dv.fundCode);
 
@@ -552,7 +560,7 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       });
     }
 
-    markObligationPaid(tx, adaObrRef, adaObrSnap);
+    applyPaymentPlan(tx, payment);
 
     recordTransition(tx, {
       caller,
@@ -599,6 +607,12 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
 
     await assertNotReported(tx, ada.treasuryReportId, `ADA ${ada.adaNo}`);
 
+    // The disbursement this advice made, to be taken back below (patch 121).
+    const dvSnap = await tx.get(db.collection(COL.disbursementVouchers).doc(ada.dvId));
+    const reversal = dvSnap.exists
+      ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, ada.dvId)], -1)
+      : null;
+
     const now = new Date().toISOString();
     tx.update(ref, {
       status: 'CANCELLED',
@@ -610,6 +624,7 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       adaNo: null,
       status: 'APPROVED',
     });
+    if (reversal) applyPaymentPlan(tx, reversal);
 
     recordTransition(tx, {
       caller,

@@ -13,8 +13,8 @@ import {
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf, todayPh } from '../lib/period';
-import { readBudgetBalance, applyBudgetDelta, applySummaryDelta, type BudgetKey } from '../lib/budget';
-import { allocateDvShares, obligationLineKey } from '../lib/dvShares';
+import type { BudgetKey } from '../lib/budget';
+import { obligationStatusFor } from '../lib/paymentBudget';
 import { checkDvCategory, checkDvMath } from '../lib/rules';
 import {
   createJevInTransaction,
@@ -23,11 +23,6 @@ import {
   type JevLineData,
 } from '../lib/ledger';
 import { loadNumberingConfig, issueNumbers, bookCodeForFund } from '../lib/numbering';
-import {
-  readTrustProgram,
-  applyTrustDelta,
-  type TrustProgramData,
-} from './trustPrograms';
 
 const ENCODERS: Role[] = [
   'SUPER_ADMIN',
@@ -163,6 +158,8 @@ interface ObligationDoc {
   status: string;
   totalAmount: number;
   disbursedAmount: number;
+  /** Patch 121: what checks and ADAs have paid. */
+  paidAmount?: number;
   lines: Array<
     BudgetKey & {
       lineNo: number;
@@ -454,19 +451,8 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       });
     }
 
-    // Obligation consumption: read the OBR and every budget line it touches.
+    // Obligation consumption: read the OBR the voucher draws on.
     let obligation: ObligationDoc | null = null;
-    const obligationBalances = new Map<number, Awaited<ReturnType<typeof readBudgetBalance>>>();
-
-    /*
-     * Trust Fund only.
-     *
-     * A utilisation consumes its programme, not a budget line - there is no
-     * appropriation behind it. Read here, in the read phase, exactly as the
-     * budget balances are.
-     */
-    const obligationIsTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
-    const trustPrograms = new Map<string, TrustProgramData>();
 
     if (dv.obligationId) {
       const obrRef = db.collection(COL.obligations).doc(dv.obligationId);
@@ -490,18 +476,6 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
         );
       }
 
-      for (const line of obligationIsTrust ? [] : obligation.lines ?? []) {
-        // Keyed on the object the APPROPRIATION carried - see obligationLineKey.
-        obligationBalances.set(line.lineNo, await readBudgetBalance(tx, obligationLineKey(obligation, line)));
-      }
-
-      if (obligationIsTrust) {
-        for (const line of obligation.lines ?? []) {
-          const programId = String(line.trustProgramId ?? '').trim();
-          if (!programId || trustPrograms.has(programId)) continue;
-          trustPrograms.set(programId, await readTrustProgram(tx, programId));
-        }
-      }
     }
 
     /*
@@ -666,45 +640,15 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     if (obligation) {
       const obr = obligation;
 
-      /** Trust Fund only: what this voucher pays per programme. */
-      const trustShares = new Map<string, number>();
-
-      // The same allocation cancelDv, unapproveDv and the nightly verifier
-      // use - patch 120. It must be, or the shares given back differ from the
-      // shares taken by a centavo and the budget line drifts.
-      for (const { line, share } of allocateDvShares(obr.lines ?? [], obr.totalAmount, dv.grossAmount)) {
-        if (obligationIsTrust) {
-          const programId = String(line.trustProgramId ?? '').trim();
-          if (programId) {
-            trustShares.set(programId, (trustShares.get(programId) ?? 0) + share);
-          }
-          continue;
-        }
-
-        applyBudgetDelta(
-          tx,
-          obligationLineKey(obr, line),
-          obligationBalances.get(line.lineNo)!,
-          { disbursed: share },
-          { officeName: line.officeName, accountName: line.accountName, expenseClass: line.expenseClass },
-        );
-      }
-
       /*
-       * A trust voucher moves the programme and nothing in the budget.
+       * Patch 121: approval VOUCHERS the obligation and nothing else.
        *
-       * No budget balance and no budget summary: writing one would put trust
-       * spending into the Statement of Comparison of Budget and Actual Amounts
-       * against an appropriation that does not exist.
+       * The budget line's disbursed figure, the fund summary and a trust
+       * programme's disbursed figure no longer move here. They move when the
+       * check or the ADA is issued - lib/paymentBudget.ts - because a
+       * disbursement is a check or an ADA, and a voucher waiting in the
+       * Treasurer's queue is not one.
        */
-      for (const [programId, share] of trustShares) {
-        applyTrustDelta(tx, programId, trustPrograms.get(programId)!, { disbursed: share });
-      }
-
-      if (!obligationIsTrust) {
-        applySummaryDelta(tx, dv.fiscalYear, dv.fundCode, { disbursed: dv.grossAmount });
-      }
-
       const newDisbursed = (obr.disbursedAmount ?? 0) + dv.grossAmount;
       /*
        * WITH_DV, not PAID.
@@ -721,7 +665,7 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       tx.update(db.collection(COL.obligations).doc(dv.obligationId!), {
         disbursedAmount: newDisbursed,
         unpaidAmount: obr.totalAmount - newDisbursed,
-        status: newDisbursed >= obr.totalAmount ? 'WITH_DV' : 'OBLIGATED',
+        status: obligationStatusFor(obr.status, obr.totalAmount, newDisbursed, obr.paidAmount ?? 0),
       });
     }
 
@@ -920,6 +864,19 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
 
     if (dv.status === 'CANCELLED') {
       throw new HttpsError('failed-precondition', 'This voucher is already cancelled.');
+    }
+    /*
+     * Patch 121: the check or the ADA is the disbursement. A voucher with one
+     * still live cannot be cancelled around it - the instrument would go on
+     * saying the money left for a voucher that denies it. Cancel the
+     * instrument in Treasury first; that takes the disbursement back and
+     * returns the voucher to the queue, and it can be cancelled from there.
+     */
+    if (dv.checkId || dv.adaId) {
+      throw new HttpsError(
+        'failed-precondition',
+        `DV ${dv.dvNo} has ${dv.checkId ? 'a check' : 'an ADA'} drawn against it. Cancel the ${dv.checkId ? 'check' : 'ADA'} in Treasury first; the voucher then returns to the payment queue and can be cancelled.`,
+      );
     }
 
     // A voucher whose JEV is posted has already moved the books. Cancelling it
@@ -1241,73 +1198,21 @@ export const unapproveDv = onCall(
 );
 
 /**
- * What an approved voucher consumed, read in the read phase.
+ * What an approved voucher VOUCHERED, read in the read phase.
  *
- * Used by unapproveDv and by cancelDv. Those two were doing different things
- * to the same figures, and only one of them was right: cancelling an APPROVED
- * voucher left the obligation still showing the money as disbursed, so the
- * balance could never be drawn on again and nothing said why.
+ * Used by unapproveDv and by cancelDv. Since patch 121 this is the
+ * obligation alone: the budget line, the fund summary and the trust
+ * programme move with the check or the ADA (lib/paymentBudget.ts), and a
+ * voucher that has one cannot be cancelled or un-approved until it is
+ * cancelled - so there is never a payment to give back here.
  */
 async function readDvConsumption(
   tx: FirebaseFirestore.Transaction,
   dv: DvDoc,
-): Promise<{
-  obrSnap: FirebaseFirestore.DocumentSnapshot | null;
-  trust: Map<string, TrustProgramData>;
-  shares: Map<string, number>;
-  /**
-   * Every budget line the voucher's approval added to, with its stored
-   * balance and the share it was given - read here so the write phase can
-   * take exactly that share back. Empty for a trust voucher, which moved
-   * programmes and no budget line.
-   */
-  budgetLines: Array<{
-    key: BudgetKey;
-    balance: Awaited<ReturnType<typeof readBudgetBalance>>;
-    share: number;
-    labels: { officeName: string; accountName: string; expenseClass: string };
-  }>;
-}> {
-  const trust = new Map<string, TrustProgramData>();
-  const shares = new Map<string, number>();
-  const budgetLines: Awaited<ReturnType<typeof readDvConsumption>>['budgetLines'] = [];
-
-  if (!dv.obligationId) return { obrSnap: null, trust, shares, budgetLines };
-
+): Promise<{ obrSnap: FirebaseFirestore.DocumentSnapshot | null }> {
+  if (!dv.obligationId) return { obrSnap: null };
   const obrSnap = await tx.get(db.collection(COL.obligations).doc(dv.obligationId));
-  if (!obrSnap.exists) return { obrSnap: null, trust, shares, budgetLines };
-
-  const obr = obrSnap.data() as ObligationDoc;
-  const isTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
-
-  for (const { line, share } of allocateDvShares(obr.lines ?? [], obr.totalAmount, dv.grossAmount)) {
-    if (isTrust) {
-      const programId = String(line.trustProgramId ?? '').trim();
-      if (programId) shares.set(programId, (shares.get(programId) ?? 0) + share);
-      continue;
-    }
-    /*
-     * This read was missing. Cancelling an approved voucher gave the money
-     * back to the obligation and to the fund summary, and left the BUDGET
-     * LINE still showing it disbursed. Cancel the obligation after that and
-     * the registry read more disbursed than obligated - Neil's screenshot of
-     * 09 Oct 2026: obligations 37,000.00, disbursements 51,000.00, unpaid
-     * -14,000.00 on the Accountant's office supplies line.
-     */
-    const key = obligationLineKey(obr, line);
-    budgetLines.push({
-      key,
-      balance: await readBudgetBalance(tx, key),
-      share,
-      labels: { officeName: line.officeName, accountName: line.accountName, expenseClass: line.expenseClass },
-    });
-  }
-
-  for (const programId of shares.keys()) {
-    trust.set(programId, await readTrustProgram(tx, programId));
-  }
-
-  return { obrSnap, trust, shares, budgetLines };
+  return { obrSnap: obrSnap.exists ? obrSnap : null };
 }
 
 /** `sign` is -1 to give it all back, which is the only use today. */
@@ -1317,29 +1222,14 @@ function applyDvConsumption(
   read: Awaited<ReturnType<typeof readDvConsumption>>,
   sign: 1 | -1,
 ): void {
-  const { obrSnap, trust, shares, budgetLines } = read;
+  const { obrSnap } = read;
   if (!obrSnap?.exists) return;
 
   const obr = obrSnap.data() as ObligationDoc;
-  const isTrust = String(dv.fundCode ?? '').trim().toUpperCase() === 'TF';
-
-  for (const [programId, share] of shares) {
-    applyTrustDelta(tx, programId, trust.get(programId)!, { disbursed: sign * share });
-  }
-
-  // The budget lines: the same shares approval added, with the sign turned.
-  for (const { key, balance, share, labels } of budgetLines) {
-    applyBudgetDelta(tx, key, balance, { disbursed: sign * share }, labels);
-  }
-
-  if (!isTrust) {
-    applySummaryDelta(tx, dv.fiscalYear, dv.fundCode, { disbursed: sign * dv.grossAmount });
-  }
-
   const newDisbursed = Math.max(0, (obr.disbursedAmount ?? 0) + sign * dv.grossAmount);
   tx.update(obrSnap.ref, {
     disbursedAmount: newDisbursed,
     unpaidAmount: obr.totalAmount - newDisbursed,
-    status: newDisbursed >= obr.totalAmount ? 'WITH_DV' : 'OBLIGATED',
+    status: obligationStatusFor(obr.status, obr.totalAmount, newDisbursed, obr.paidAmount ?? 0),
   });
 }
