@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Alert, Card } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -1150,11 +1150,18 @@ export function AppropriationForm({
   existing,
   draft,
   ordinance,
+  inline,
 }: {
   fiscalYear: number;
   fundCode: string;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * Drawn in the page, in place of the lines it edits, rather than as a
+   * window over it. Patch 125: on an act's page the form is part of the
+   * Lines tab - Neil, "it should not be a pop-up window".
+   */
+  inline?: boolean;
   actor: ReturnType<typeof actorStamp> | null;
   /**
    * The draft being corrected, or nothing when recording a new one.
@@ -1534,8 +1541,8 @@ export function AppropriationForm({
   };
 
   return (
-    <Modal
-      open
+    <FormFrame
+      inline={inline}
       onClose={onClose}
       title={
         editingDraft
@@ -1991,6 +1998,50 @@ export function AppropriationForm({
           An adjustment may be negative. Enter a minus amount to reduce the line.
         </Alert>
       )}
-    </Modal>
+    </FormFrame>
+  );
+}
+
+/**
+ * The form's frame: a window over the page, or - `inline` - a panel in it,
+ * with the same title, description and buttons. Patch 125.
+ */
+function FormFrame({
+  inline,
+  onClose,
+  title,
+  description,
+  size,
+  footer,
+  children,
+}: {
+  inline?: boolean;
+  onClose: () => void;
+  title: string;
+  description: string;
+  size: 'full' | 'lg';
+  footer: ReactNode;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (inline) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [inline]);
+  if (!inline) {
+    return (
+      <Modal open onClose={onClose} title={title} description={description} size={size} footer={footer}>
+        {children}
+      </Modal>
+    );
+  }
+  return (
+    <section ref={ref} className="cbo-card mb-4 border-brand-300 ring-1 ring-brand-200" aria-label={title}>
+      <header className="border-b border-slate-200 px-5 py-3">
+        <h2 className="text-base font-semibold text-navy-900">{title}</h2>
+        <p className="mt-0.5 text-sm text-slate-600">{description}</p>
+      </header>
+      <div className="px-5 py-4">{children}</div>
+      <footer className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">{footer}</footer>
+    </section>
   );
 }

@@ -428,7 +428,37 @@ export default function OrdinanceDetail() {
               )}
             </div>
 
-            {realign && waitingSet && (
+            {/* Patch 125: the form is part of the Lines tab, in place of what it edits - not a window over the page. */}
+            {(adding || editing || editingSet) && (
+              <AppropriationForm
+                key={editing?.id ?? editingSet?.id ?? 'new'}
+                fiscalYear={fy}
+                fundCode={fund}
+                ordinance={ordinance}
+                existing={editing}
+                draft={editingSet}
+                actor={actor}
+                inline
+                onClose={() => {
+                  setAdding(false);
+                  setEditing(null);
+                  setEditingSet(null);
+                }}
+                onSaved={() => {
+                  setAdding(false);
+                  setEditing(null);
+                  setEditingSet(null);
+                  toast.success(
+                    realign ? `${isAug ? 'Augmentation' : 'Realignment'} prepared` : editing ? 'Line corrected' : 'Line recorded',
+                    realign
+                      ? 'Print it for signature, then approve and post it.'
+                      : 'Still a draft. Approve the ordinance when all its lines are in.',
+                  );
+                }}
+              />
+            )}
+
+            {realign && waitingSet && !editingSet && (
               <Card className="mb-4 border-amber-300 bg-amber-50/40" bodyClassName="p-0">
                 <div className="px-4 py-3">
                   <p className="text-sm font-semibold text-navy-900">
@@ -603,34 +633,6 @@ export default function OrdinanceDetail() {
               readOnly={!can('budget', 'edit')}
             />
           </div>
-        )}
-
-        {(adding || editing || editingSet) && (
-          <AppropriationForm
-            key={editing?.id ?? editingSet?.id ?? 'new'}
-            fiscalYear={fy}
-            fundCode={fund}
-            ordinance={ordinance}
-            existing={editing}
-            draft={editingSet}
-            actor={actor}
-            onClose={() => {
-              setAdding(false);
-              setEditing(null);
-              setEditingSet(null);
-            }}
-            onSaved={() => {
-              setAdding(false);
-              setEditing(null);
-              setEditingSet(null);
-              toast.success(
-                realign ? `${isAug ? 'Augmentation' : 'Realignment'} prepared` : editing ? 'Line corrected' : 'Line recorded',
-                realign
-                  ? 'Print it for signature, then approve and post it.'
-                  : 'Still a draft. Approve the ordinance when all its lines are in.',
-              );
-            }}
-          />
         )}
 
         <ConfirmDialog
