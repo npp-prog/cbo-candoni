@@ -46,14 +46,21 @@ export function Letterhead({
   title: string;
   lines: string[];
   subtitle?: string;
-  seal?: boolean;
+  /**
+   * The municipal seal. `true` or 'center' centres it above the heading (the
+   * ARO, the Augmentation Form, the ADA); 'left' puts it at the left of the
+   * heading lines (patch 142: the RCI, RADAI and RCDisb), leaving the heading
+   * itself centred on the page.
+   */
+  seal?: boolean | 'center' | 'left';
 }) {
   return (
     <div className="relative mb-4 text-center">
       {appendix && (
         <span className="absolute right-0 top-0 text-2xs italic text-slate-500">{appendix}</span>
       )}
-      {seal && <Seal className="mx-auto mb-1.5 h-16 w-16" />}
+      {seal === 'left' && <Seal className="absolute left-0 top-0 h-16 w-16" />}
+      {seal && seal !== 'left' && <Seal className="mx-auto mb-1.5 h-16 w-16" />}
       {lines.map((line, i) => (
         <p
           key={i}

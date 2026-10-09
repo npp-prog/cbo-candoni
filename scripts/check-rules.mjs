@@ -3443,6 +3443,37 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 60. One bank format; no draft band; the seal on the treasury forms ---
+
+/*
+ * Patch 142. "Download for the bank" on the RADAI writes the bank's format
+ * (no heading, 10-digit account, name in capitals with no special character,
+ * amount in centavos) through the same builder as the voucher's bank file.
+ * The "Draft for checking" band is gone from every printed report. The RCI /
+ * RADAI carry the seal at the left, the ADA at the centre.
+ */
+{
+  const before = failures.length;
+  const upload = readFileSync(resolve(root, 'src/lib/bankUpload.ts'), 'utf8');
+  if (/ATM Number,Name,Amount/.test(upload) || !/buildBankFile\(/.test(upload)) {
+    failures.push('src/lib/bankUpload.ts: the RADAI bank download no longer writes the bank format of src/lib/bankFile.ts.');
+  }
+  for (const f of ['src/pages/treasury/TreasuryReportForm.tsx', 'src/pages/treasury/RcdAppendix34.tsx', 'src/pages/treasury/ECollectionReportForm.tsx']) {
+    if (/<DraftBand\b/.test(readFileSync(resolve(root, f), 'utf8'))) {
+      failures.push(`${f}: prints the "Draft for checking" band again.`);
+    }
+  }
+  if (!/seal="left"/.test(readFileSync(resolve(root, 'src/pages/treasury/TreasuryReportForm.tsx'), 'utf8'))) {
+    failures.push('src/pages/treasury/TreasuryReportForm.tsx: the RCI / RADAI lost the seal at the left.');
+  }
+  if (!/seal="center"/.test(readFileSync(resolve(root, 'src/pages/treasury/AdaAppendix36.tsx'), 'utf8'))) {
+    failures.push('src/pages/treasury/AdaAppendix36.tsx: the ADA lost the seal at the centre.');
+  }
+  if (failures.length === before) {
+    console.log('treasury forms: one bank format, no draft band, the seal where the office wants it');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

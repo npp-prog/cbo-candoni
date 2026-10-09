@@ -10,7 +10,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
-import { FormPrintStyle, DraftBand, printableHeightMm } from '@/components/print/FormPrintStyle';
+import { FormPrintStyle, printableHeightMm } from '@/components/print/FormPrintStyle';
 import { useFitRows } from '@/components/print/fitRows';
 import { FormBackButton } from './FormBackButton';
 import {
@@ -239,9 +239,13 @@ export default function TreasuryReportForm() {
    */
   const renderSheet = (blank: number, probe: boolean) => (
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <DraftBand status={report.status} />
 
-        <Letterhead appendix={form.appendix} title={form.title} lines={entity.headingLines} />
+        <Letterhead
+          appendix={form.appendix}
+          title={form.title}
+          lines={entity.headingLines}
+          seal="left"
+        />
 
         <p className="mb-2 text-center text-2xs">
           Period Covered: <span className="font-semibold">{formatShortDate(report.reportDate)}</span>
@@ -465,11 +469,10 @@ export default function TreasuryReportForm() {
         />
 
         {report.status === 'DRAFT' && (
-          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
-            Print it and check the figures against the vouchers before the Treasurer signs
-            anything - that is what it is for. It has no number yet and the figures can still
-            change, so every page carries a band saying it is not certified. A checking copy
-            cannot be signed by mistake or filed as the real one.
+          <Alert tone="info" title="This report is still a draft" className="mb-4">
+            It has no number yet and the figures can still change. Check the printed copy against
+            the vouchers before the Treasurer signs it, and certify the report in CFMS when it is
+            signed.
           </Alert>
         )}
 

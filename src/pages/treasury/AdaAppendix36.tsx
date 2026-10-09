@@ -93,6 +93,7 @@ export default function AdaAppendix36() {
           appendix="Appendix 36"
           title="Authority to Debit Account (ADA)"
           lines={entity.headingLines}
+          seal="center"
         />
 
         {/*

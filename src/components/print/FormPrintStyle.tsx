@@ -141,32 +141,10 @@ ${sheet('.cbo-form-measure ')}
   return <style>{css}</style>;
 }
 
-/**
- * The band that says a printed form is not the certified one.
- *
- * ---------------------------------------------------------------------------
- * WHY PRINTING A DRAFT IS ALLOWED, AND WHY IT IS STAMPED
- * ---------------------------------------------------------------------------
- * Until patch 104 these screens printed a draft without a word on the paper to
- * say so, and warned on screen that doing it at all was a bad idea. Both halves
- * of that were wrong.
- *
- * THE WARNING WAS WRONG because checking a report on paper before signing it is
- * how the work is actually done. The Treasurer reads the figures against the
- * receipts in front of them, and reading forty lines off a monitor is not the
- * same act. Refusing to print until after certification asks the office to
- * certify first and check afterwards, which is the wrong way round and is the
- * one order these screens exist to prevent.
- *
- * THE SILENCE WAS THE REAL RISK. A draft printed on the prescribed form is
- * indistinguishable from the certified one: same letterhead, same certification
- * paragraph, same signature lines. Left on a desk it can be signed, and then a
- * form exists saying the Treasurer certified a report that CFMS has no record
- * of them certifying - and whose figures have since moved.
- *
- * So the paper says what it is, in a band across the top of every page and
- * again over the certification. It cannot be mistaken for the final form and it
- * cannot be quietly photocopied into one.
+/*
+ * Patch 142: the "Draft for checking - not yet certified - do not sign" band
+ * printed across a draft report is gone, at the office's request. The screen
+ * still says, above the form, when a report is a draft or was withdrawn.
  */
 /**
  * The statuses in which the form on screen IS the certified document.
@@ -194,22 +172,4 @@ const CERTIFIED_STATUSES = ['CERTIFIED', 'JOURNALIZED', 'POSTED'];
 /** Whether the form on screen is the finished document rather than a checking copy. */
 export function isCertifiedCopy(status?: string | null): boolean {
   return CERTIFIED_STATUSES.includes(String(status ?? ''));
-}
-
-export function DraftBand({ status }: { status?: string | null }) {
-  if (isCertifiedCopy(status)) return null;
-
-  const withdrawn = status === 'CANCELLED';
-
-  return (
-    <div
-      className={`mb-2 border-2 border-dashed px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-widest ${
-        withdrawn ? 'border-rose-700 text-rose-700' : 'border-slate-700 text-slate-700'
-      }`}
-    >
-      {withdrawn
-        ? 'Withdrawn - not a valid report'
-        : 'Draft for checking - not yet certified - do not sign'}
-    </div>
-  );
 }

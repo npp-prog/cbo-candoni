@@ -25,7 +25,7 @@ import {
 } from '@/components/print/formParts';
 import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
 import { useEntity } from '@/data/useEntity';
-import { FormPrintStyle, DraftBand, isCertifiedCopy } from '@/components/print/FormPrintStyle';
+import { FormPrintStyle, isCertifiedCopy } from '@/components/print/FormPrintStyle';
 import { FormBackButton } from './FormBackButton';
 import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
@@ -304,16 +304,14 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
         />
 
         {!certified && (
-          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
-            Print it and check the figures against the receipts before the Treasurer signs
-            anything - that is what it is for. Every page carries a band saying it is not
-            certified, so a checking copy cannot be signed by mistake or filed as the real one.
+          <Alert tone="info" title="This report is still a draft" className="mb-4">
+            Check the printed copy against the receipts before the Treasurer signs it, and certify
+            the report in CFMS when it is signed.
           </Alert>
         )}
       </div>
 
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <DraftBand status={status} />
 
         <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" lines={entity.headingLines} />
 

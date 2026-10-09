@@ -7,7 +7,7 @@ import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
-import { FormPrintStyle, DraftBand } from '@/components/print/FormPrintStyle';
+import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { FormBackButton } from './FormBackButton';
 import { TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { ECollectionReportType } from '@/types/enums';
@@ -265,11 +265,9 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
         />
 
         {report.status === 'DRAFT' && (
-          <Alert tone="info" title="This copy is marked as a draft" className="mb-4">
-            Print it and check the figures against the intermediary's remittance before anyone
-            signs - that is what it is for. It has no number yet and the figures can still change,
-            so every page carries a band saying it is not certified. A checking copy cannot be
-            signed by mistake or filed as the real one.
+          <Alert tone="info" title="This report is still a draft" className="mb-4">
+            It has no number yet and the figures can still change. Check the printed copy against
+            the intermediary's remittance before anyone signs it.
           </Alert>
         )}
 
@@ -292,7 +290,6 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
 
       {/* --- the form ------------------------------------------------------- */}
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <DraftBand status={report.status} />
 
         <Letterhead
           appendix={spec.annex}

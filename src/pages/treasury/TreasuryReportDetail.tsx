@@ -185,8 +185,12 @@ export default function TreasuryReportDetail() {
    * the bank rejects after the upload.
    */
   const downloadBankFile = () => {
-    if (!bankFile.content || !report) return;
-    const blob = new Blob([bankFile.content], { type: 'text/csv;charset=utf-8;' });
+    if (!report) return;
+    if (!bankFile.content) {
+      toast.error('The bank file was not made', bankFile.problems.slice(0, 4).join(' '));
+      return;
+    }
+    const blob = new Blob([bankFile.content], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -485,14 +489,8 @@ export default function TreasuryReportDetail() {
             {isRadai && bankRows.length > 0 && (
               <Button
                 variant="secondary"
-                disabled={!bankFile.content || lookupsLoading}
-                title={
-                  bankFile.content
-                    ? 'ATM number, name and amount, for the bank application'
-                    : `${bankFile.missing.length} ${
-                        bankFile.missing.length === 1 ? 'payee has' : 'payees have'
-                      } no account number on file`
-                }
+                disabled={lookupsLoading}
+                title="ATM number (10 digits), name in capitals, amount in centavos - no heading row"
                 onClick={downloadBankFile}
               >
                 Download for the bank

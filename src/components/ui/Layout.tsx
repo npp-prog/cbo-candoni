@@ -22,12 +22,21 @@ export function PageHeader({
   return (
     <div className="mb-5 no-print">
       {breadcrumbs && breadcrumbs.length > 0 && <Breadcrumbs items={breadcrumbs} />}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/*
+        Patch 142: on a wide screen the actions stay at the top right, beside
+        the title, however long the subtitle - they used to drop under a long
+        one, which made the header taller and moved the tabs below it.
+      */}
+      <div className="flex flex-wrap items-start justify-between gap-3 md:flex-nowrap">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-navy-900">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 md:max-w-[65%]">
+            {actions}
+          </div>
+        )}
       </div>
     </div>
   );

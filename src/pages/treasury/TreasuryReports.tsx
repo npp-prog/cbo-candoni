@@ -205,7 +205,7 @@ export default function TreasuryReports({
     {
       key: 'status',
       header: '',
-      width: '20rem',
+      width: '15rem',
       sortable: false,
       fixed: true,
       value: (r) => r.status,
@@ -223,6 +223,8 @@ export default function TreasuryReports({
           patch 105 the form was two presses away through the report's own
           page, which is two presses for the most ordinary errand on the
           screen: somebody asks what is on RCI 2026-10-0003 and you print it.
+
+          OPEN is gone (patch 142): the whole row already opens the report.
         */
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={r.status} />
@@ -235,16 +237,6 @@ export default function TreasuryReports({
             }}
           >
             View report
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={(e) => {
-              e.stopPropagation();
-              openReport(r.id);
-            }}
-          >
-            Open
           </Button>
         </div>
       ),
@@ -260,7 +252,7 @@ export default function TreasuryReports({
         breadcrumbs={[{ label: 'Treasury' }, { label: short }]}
         subtitle={
           reportType === 'RCI'
-            ? 'The checks drawn in the period, gathered for certification and forwarded to Accounting. One journal entry is raised from the report as a whole, so the Check Disbursements Journal agrees with the check register line for line.'
+            ? 'The checks drawn in the period, certified and forwarded to Accounting for journalizing.'
             : reportType === 'RADAI'
               ? 'The advices to debit account sent to the bank in the period, certified and forwarded to Accounting for journalizing.'
               : reportType === 'RCD'
@@ -272,7 +264,16 @@ export default function TreasuryReports({
                     : 'Cash paid out in the period - a cash payroll, for instance - certified by the disbursing officer and forwarded to Accounting.'
         }
         actions={
-          canPrepare ? <Button onClick={() => setShowForm(true)}>Prepare {short}</Button> : undefined
+          /*
+            Patch 142: the same size and colour as Print on the Claim Sheet,
+            in the same place, so moving between the tabs of this strip does
+            not move the tabs.
+          */
+          canPrepare ? (
+            <Button size="sm" variant="primary" onClick={() => setShowForm(true)}>
+              Prepare {short}
+            </Button>
+          ) : undefined
         }
       />
 
