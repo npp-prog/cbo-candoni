@@ -6,6 +6,8 @@ import { SignIn, AwaitingAccess } from './pages/SignIn';
 import { Spinner, EmptyState } from './components/ui/Layout';
 import { Button } from './components/ui/Button';
 import type { Action, Module } from './types/system';
+// Patch 136: small and needed by five routes, so imported directly rather than lazily.
+import { TrustFundOnly } from './pages/accounting/trustTabs';
 
 /**
  * Routing.
@@ -194,7 +196,11 @@ export default function App() {
           {/* Appendix 23: the income side of the same pair of books. */}
           <Route path="/budget/registry-income" element={<Guard module="budget"><Reairr /></Guard>} />
           {/* Appendix 18. Accounting's book, not the Budget Office's. */}
-          <Route path="/accounting/trust-registry" element={<Guard module="accounting"><Rstf /></Guard>} />
+          <Route path="/accounting/trust-registry" element={<Guard module="accounting"><TrustFundOnly><Rstf /></TrustFundOnly></Guard>} />
+          {/* Patch 136: Accounting > Trust Accounts > FURS - the obligation register, for the Trust Fund. */}
+          <Route path="/accounting/furs" element={<Guard module="accounting"><TrustFundOnly><Obligations trust /></TrustFundOnly></Guard>} />
+          <Route path="/accounting/furs/new" element={<Guard module="budget" action="create"><TrustFundOnly><ObligationDetail /></TrustFundOnly></Guard>} />
+          <Route path="/accounting/furs/:id" element={<Guard module="accounting"><TrustFundOnly><ObligationDetail /></TrustFundOnly></Guard>} />
           {/* Appendix 42, drawn off the check register it sits beside. */}
           <Route path="/treasury/checks/unreleased" element={<Guard module="treasury"><UnreleasedChecks /></Guard>} />
           {/* Appendix 26, the third cash book beside Cash in Bank and Cash in Treasury. */}
@@ -462,11 +468,11 @@ export default function App() {
               there is no ordinance behind a trust programme. */}
           <Route
             path="/accounting/trust-programs"
-            element={<Guard module="accounting"><TrustPrograms /></Guard>}
+            element={<Guard module="accounting"><TrustFundOnly><TrustPrograms /></TrustFundOnly></Guard>}
           />
           <Route
             path="/accounting/fund-utilization"
-            element={<Guard module="accounting"><FundUtilization /></Guard>}
+            element={<Guard module="accounting"><TrustFundOnly><FundUtilization /></TrustFundOnly></Guard>}
           />
           <Route
             path="/accounting/opening-balances"

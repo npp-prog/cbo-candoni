@@ -1,67 +1,72 @@
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Tabs } from '@/components/ui/Layout';
+import { useNavigate } from 'react-router-dom';
+import { Alert } from '@/components/ui/Layout';
+import { Button } from '@/components/ui/Button';
 import { SectionTabs } from '@/components/ui/SectionTabs';
-import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
+import { useFilters } from '@/context/FilterContext';
+import { TRUST_ACCOUNT_TABS, TRUST_FUND_CODE } from '@/layout/sections';
+import type { ReactNode } from 'react';
 
 /**
- * The Trust Fund's three screens, on one menu item.
+ * Accounting > Trust Accounts. Patch 136.
  *
  * ---------------------------------------------------------------------------
- * WHY THEY ARE TABS AND NOT THREE ENTRIES
+ * A MENU ITEM OF ITS OWN, FOR THE TRUST FUND ONLY
  * ---------------------------------------------------------------------------
- * They were three, sitting in a row under Monitoring and Setup, and they are
- * one subject seen three ways: the programmes are what the municipality agreed
- * to hold money for, the registry is what has been committed against them, and
- * the utilization report is what the source of the money is told.
+ * Until patch 136 the trust screens were the first tab of Accounting >
+ * Monitoring, with three sub-tabs under it. Neil asked for a separate menu,
+ * after the Journal Entries Register, holding four screens - and only for the
+ * Trust Fund:
  *
- * Three entries made the officer pick one before knowing what was in any of
- * them, and they pushed the rest of Monitoring and Setup down the menu - so
- * the Trust Fund, which is the smallest of the three funds, took the most
- * room in the list.
+ *   FURS                          the Funding Utilization Request and Status,
+ *                                 what an Obligation Request is in the Budget
+ *   Trust Fund Programmes         what a budget programme is in the Budget
+ *   Registry of Special Trust Fund
+ *   Fund Utilization Report
  *
- * ---------------------------------------------------------------------------
- * WHY THE PROGRAMMES ARE FIRST
- * ---------------------------------------------------------------------------
- * Nothing else here means anything until a programme exists: the registry is
- * kept per programme and the report is drawn per programme. The menu lands on
- * the one the others depend on.
- *
- * The three addresses are unchanged, so an old bookmark still works and the
- * strip appears whichever one it lands on.
+ * So there is ONE strip of four now (TRUST_ACCOUNT_TABS in
+ * src/layout/sections.ts), drawn by every one of the four screens, and no
+ * sub-tabs. The addresses of the three older screens are unchanged.
  */
 
 export const TRUST_TABS = [
+  { id: 'furs', label: 'FURS', to: '/accounting/furs' },
   { id: 'programs', label: 'Trust Fund Programmes', to: '/accounting/trust-programs' },
   { id: 'registry', label: 'Registry of Special Trust Fund', to: '/accounting/trust-registry' },
   { id: 'utilization', label: 'Fund Utilization Report', to: '/accounting/fund-utilization' },
 ];
 
-export type TrustTab = 'programs' | 'registry' | 'utilization';
+export type TrustTab = 'furs' | 'programs' | 'registry' | 'utilization';
 
-export function TrustTabs({ active }: { active: TrustTab }) {
+/** The Trust Accounts strip. `active` is kept for the callers; the strip lights itself. */
+export function TrustTabs(_props: { active?: TrustTab }) {
+  return <SectionTabs tabs={TRUST_ACCOUNT_TABS} />;
+}
+
+/**
+ * A Trust Accounts screen, only while the Trust Fund is selected.
+ *
+ * The menu item is hidden for the General Fund and the Special Education
+ * Fund; this covers a bookmark, a typed address, or the fund being changed at
+ * the top of the screen while one of these is open.
+ */
+export function TrustFundOnly({ children }: { children: ReactNode }) {
+  const { fundCode, setFundCode } = useFilters();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
-
-  /*
-    THE MAIN TABS COME WITH THE SUB-TABS, ALWAYS.
-
-    Each screen used to draw the strip above it for itself, and only the first
-    one did - so the moment the officer moved to the second sub-tab the main
-    tabs vanished, and with them the only way across to the next main tab
-    without going back to the menu. Drawing both here means a screen cannot
-    show these sub-tabs without the strip they sit under. Patch 111.
-  */
+  if (String(fundCode).toUpperCase() === TRUST_FUND_CODE) return <>{children}</>;
   return (
-    <>
-      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
-      <Tabs
-        tabs={TRUST_TABS.map((t) => ({ id: t.id, label: t.label }))}
-        active={active}
-        onChange={(id) => {
-          const tab = TRUST_TABS.find((t) => t.id === id);
-          if (tab && tab.to !== pathname) navigate(tab.to);
-        }}
-      />
-    </>
+    <Alert tone="info" title="Trust Accounts are kept in the Trust Fund">
+      <p>
+        FURS, Trust Fund Programmes, the Registry of Special Trust Fund and the Fund Utilization
+        Report belong to the Trust Fund. The {fundCode} fund has none of them.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <Button variant="primary" size="sm" onClick={() => setFundCode(TRUST_FUND_CODE)}>
+          Switch to the Trust Fund
+        </Button>
+        <Button size="sm" onClick={() => navigate('/accounting/journal-entries')}>
+          Back to Accounting
+        </Button>
+      </div>
+    </Alert>
   );
 }

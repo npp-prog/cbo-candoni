@@ -2,6 +2,8 @@ import { registerForPath } from '@/pages/treasury/sections';
 import {
   ACCOUNTING_MONITORING_TABS,
   ACCOUNTING_SETUP_TABS,
+  TRUST_ACCOUNT_TABS,
+  TRUST_FUND_CODE,
   BUDGET_MONITORING_TABS,
   BUDGET_REPORT_TABS,
   CASH_BOOK_TABS,
@@ -31,7 +33,13 @@ export interface NavItem {
    * Accounting and the other to Budget, and an officer looking for their own
    * office's output should not have to read the whole list to find it.
    */
-  children?: Array<{ label: string; to: string; group?: string }>;
+  children?: Array<{
+    label: string;
+    to: string;
+    group?: string;
+    /** Shown only while this fund is selected at the top of the screen. Patch 136. */
+    fund?: string;
+  }>;
   icon: string;
 }
 
@@ -191,6 +199,13 @@ export const NAVIGATION: NavItem[] = [
        */
       { label: 'Journal Entries Register', to: '/accounting/journal-entries' },
 
+      /*
+       * TRUST ACCOUNTS, after the register and only for the Trust Fund.
+       * Patch 136 - FURS, Trust Fund Programmes, Registry of Special Trust
+       * Fund, Fund Utilization Report. See TRUST_ACCOUNT_TABS.
+       */
+      { label: 'Trust Accounts', to: TRUST_ACCOUNT_TABS[0].to, fund: TRUST_FUND_CODE },
+
       // Everything below is looked at or set up, never posted. The heading is
       // not decoration: without it these would sit directly under the group
       // above and read as though they too journalized something.
@@ -230,8 +245,9 @@ export const NAVIGATION: NavItem[] = [
        * monitored on the setup screen and nothing is set up on the monitoring
        * ones. Addresses are unchanged.
        *
-       *   Monitoring   Trust Accounts, Cash Advance Summary,
-       *                Index of Payment, Aging Reports
+       *   Monitoring   Cash Advance Summary, Index of Payment,
+       *                Aging Reports (Trust Accounts has its own item
+       *                since patch 136)
        *   Setup        Opening Balances
        *
        * Aging Reports keeps its /reports/ address, which is where it was
@@ -480,4 +496,18 @@ function matchMenuItem(pathname: string): { sectionTo: string; group: string } |
     }
   }
   return best ? { sectionTo: best.sectionTo, group: best.group } : null;
+}
+
+/**
+ * The menu items to show for the fund selected at the top of the screen.
+ * Patch 136: Trust Accounts belongs to the Trust Fund and is hidden for the
+ * General Fund and the Special Education Fund.
+ */
+export function childrenForFund(
+  children: readonly NavChild[] | undefined,
+  fundCode: string,
+): NavChild[] {
+  return (children ?? []).filter(
+    (c) => !c.fund || c.fund.toUpperCase() === String(fundCode ?? '').toUpperCase(),
+  );
 }

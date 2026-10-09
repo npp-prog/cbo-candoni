@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NAVIGATION, groupForPath, toBlocks, type NavChild } from './navigation';
+import { NAVIGATION, childrenForFund, groupForPath, toBlocks, type NavChild } from './navigation';
 import { TRUST_TABS } from '@/pages/accounting/trustTabs';
 import {
   PAYMENT_TABS,
@@ -16,6 +16,7 @@ import {
   PRINTING_TABS,
   REPORT_TABS,
   sectionHeadForPath,
+  TRUST_ACCOUNT_TABS,
   TRUST_SCREENS,
 } from './sections';
 import { REGISTRY_TABS } from '@/pages/budget/registryTabs';
@@ -251,7 +252,10 @@ describe('the menu itself', () => {
      * wrong neighbour.
      */
     expect(children[register].group, 'the register is back inside a heading').toBeUndefined();
-    expect(monitoring, 'Monitoring is not in the Accounting menu').toBe(register + 1);
+    // Patch 136: Trust Accounts sits between the register and Monitoring.
+    const trust = children.findIndex((c) => c.to === TRUST_ACCOUNT_TABS[0].to);
+    expect(trust, 'Trust Accounts is not straight after the register').toBe(register + 1);
+    expect(monitoring, 'Monitoring is not in the Accounting menu').toBe(register + 2);
   });
 
   it('keeps the Treasury registers to the books the office writes in', () => {
@@ -524,33 +528,42 @@ describe('the menu itself', () => {
       ).toBe(false);
     }
 
-    // Reached from Accounting > Monitoring, whose first tab it is.
-    expect(ACCOUNTING_MONITORING_TABS[0].label).toBe('Trust Accounts');
-    expect(TRUST_TABS.some((t) => t.to === ACCOUNTING_MONITORING_TABS[0].to)).toBe(true);
-
+    // Patch 136: reached from Accounting > Trust Accounts, its own item.
     const accounting = NAVIGATION.find((i) => i.to === '/accounting');
     expect(
-      (accounting?.children ?? []).some((c) => c.to === ACCOUNTING_MONITORING_TABS[0].to),
+      (accounting?.children ?? []).some((c) => c.to === TRUST_ACCOUNT_TABS[0].to),
       'the Accounting menu does not reach Trust Accounts',
     ).toBe(true);
+    expect(ACCOUNTING_MONITORING_TABS.some((t) => t.label === 'Trust Accounts')).toBe(false);
   });
 
   /**
-   * The three trust screens are inside Trust Accounts, not beside it.
-   *
-   * Three entries in a row made the officer pick one before knowing what was
-   * in any of them, and they pushed the rest of Monitoring and Setup down the
-   * menu - so the smallest of the three funds took the most room in the list.
+   * Patch 136. Trust Accounts is ONE menu item - its four screens are its
+   * strip - and it is shown only while the Trust Fund is selected.
    */
-  it('lists no trust screen as a menu entry of its own', () => {
+  it('lists Trust Accounts once, for the Trust Fund only', () => {
     const accounting = NAVIGATION.find((i) => i.to === '/accounting');
     const entries = (accounting?.children ?? []).filter((c) =>
       TRUST_TABS.some((t) => t.to === c.to),
     );
-    // Exactly one, and it is the Monitoring item - whose first tab is Trust
-    // Accounts - not three entries in a row.
     expect(entries).toHaveLength(1);
-    expect(entries[0].label).toBe('Monitoring');
+    expect(entries[0].label).toBe('Trust Accounts');
+    expect(entries[0].fund).toBe('TF');
+    for (const fund of ['GF', 'SEF']) {
+      expect(
+        childrenForFund(accounting?.children, fund).some((c) => c.label === 'Trust Accounts'),
+        `Trust Accounts shows for ${fund}`,
+      ).toBe(false);
+    }
+    expect(
+      childrenForFund(accounting?.children, 'TF').some((c) => c.label === 'Trust Accounts'),
+    ).toBe(true);
+    expect(TRUST_ACCOUNT_TABS.map((t) => t.label)).toEqual([
+      'FURS',
+      'Trust Fund Programmes',
+      'Registry of Special Trust Fund',
+      'Fund Utilization Report',
+    ]);
   });
 
   it('every heading holds at least one item', () => {
@@ -691,6 +704,7 @@ describe('the headings that left the menu in patch 94', () => {
     'Budget > Reports': BUDGET_REPORT_TABS,
     'Accounting > Monitoring': ACCOUNTING_MONITORING_TABS,
     'Accounting > Setup': ACCOUNTING_SETUP_TABS,
+    'Accounting > Trust Accounts': TRUST_ACCOUNT_TABS,
     'Treasury > Cash Books': CASH_BOOK_TABS,
     'Treasury > Printing': PRINTING_TABS,
     Reports: REPORT_TABS,
@@ -742,7 +756,7 @@ describe('the headings that left the menu in patch 94', () => {
       expect(sectionHeadForPath(tab.to), tab.label).toBe(BUDGET_MONITORING_TABS[0].to);
     }
     for (const tab of TRUST_TABS) {
-      expect(sectionHeadForPath(tab.to), tab.label).toBe(ACCOUNTING_MONITORING_TABS[0].to);
+      expect(sectionHeadForPath(tab.to), tab.label).toBe(TRUST_ACCOUNT_TABS[0].to);
     }
   });
 
@@ -753,8 +767,7 @@ describe('the headings that left the menu in patch 94', () => {
    */
   it('keeps TRUST_SCREENS equal to the trust sub-tabs', () => {
     expect([...TRUST_SCREENS].sort()).toEqual(TRUST_TABS.map((t) => t.to).sort());
-    const trust = ACCOUNTING_MONITORING_TABS.find((t) => t.label === 'Trust Accounts');
-    expect(trust?.includes).toEqual(TRUST_SCREENS);
+    expect(TRUST_ACCOUNT_TABS.map((t) => t.to)).toEqual([...TRUST_SCREENS]);
   });
 
   it('claims nothing it does not own', () => {

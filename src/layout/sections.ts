@@ -42,16 +42,37 @@ export interface SectionTab {
 }
 
 /*
- * The Trust Fund's three screens, by address. Written here rather than
- * imported from trustTabs.tsx so that this file - which the sidebar reads on
- * every screen - does not pull a page's components into the menu. A test
- * holds the two lists to each other.
+ * TRUST ACCOUNTS - its own menu item since patch 136, Trust Fund only.
+ *
+ * Neil: "create a separate menu for trust accounts, after Journal Entries
+ * Register. It has FURS ... the same function as Obligation in Budget. Then
+ * Trust Fund Programme (same function with Budget Program in Budget Menu),
+ * registry of Special Trust Fund and also Fund Utilization Report. It can be
+ * available only to Trust Fund."
+ *
+ * It was the first tab of Accounting > Monitoring, with three sub-tabs. A
+ * trust is run the way the budget is - a programme authorises, a FURS commits
+ * against it, the registry records it, the report answers the source - so it
+ * gets a strip of its own, in that order, with the FURS first because it is
+ * the screen worked in every day.
  */
+export const TRUST_ACCOUNT_TABS: SectionTab[] = [
+  { label: 'FURS', to: '/accounting/furs' },
+  { label: 'Trust Fund Programmes', to: '/accounting/trust-programs' },
+  { label: 'Registry of Special Trust Fund', to: '/accounting/trust-registry' },
+  { label: 'Fund Utilization Report', to: '/accounting/fund-utilization' },
+];
+
+/** The Trust Accounts screens, by address. A test holds it to the strip and to trustTabs.tsx. */
 export const TRUST_SCREENS = [
+  '/accounting/furs',
   '/accounting/trust-programs',
   '/accounting/trust-registry',
   '/accounting/fund-utilization',
 ] as const;
+
+/** The fund the Trust Accounts menu belongs to; it is hidden for every other fund. */
+export const TRUST_FUND_CODE = 'TF';
 
 // ---------------------------------------------------------------------------
 // Budget
@@ -106,14 +127,8 @@ export const BUDGET_REPORT_TABS: SectionTab[] = [
  * and nothing is set up on these.
  */
 export const ACCOUNTING_MONITORING_TABS: SectionTab[] = [
-  /*
-    Trust Accounts is three screens - the programmes, the registry, the
-    utilization report - at three addresses that do not share a beginning.
-    `includes` is what keeps this tab lit, and this strip on the screen, on
-    all three. Without it the strip vanished the moment the officer opened
-    the registry, which is the fault patch 111 fixed.
-  */
-  { label: 'Trust Accounts', to: '/accounting/trust-programs', includes: TRUST_SCREENS },
+  // Trust Accounts left this strip in patch 136 for a menu item of its own
+  // (TRUST_ACCOUNT_TABS), shown only while the Trust Fund is selected.
   { label: 'Cash Advance Summary', to: '/accounting/cash-advances' },
   { label: 'Index of Payment', to: '/accounting/index-of-payments' },
   // Lives under /reports/ because it was built there. The address is kept so
@@ -225,6 +240,7 @@ const ALL_STRIPS: SectionTab[][] = [
   BUDGET_REPORT_TABS,
   ACCOUNTING_MONITORING_TABS,
   ACCOUNTING_SETUP_TABS,
+  TRUST_ACCOUNT_TABS,
   CASH_BOOK_TABS,
   PRINTING_TABS,
   REPORT_TABS,

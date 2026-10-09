@@ -8,7 +8,9 @@ import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
-import { obligationForm } from '@/lib/obligationForm';
+import { isTrustFund, obligationForm } from '@/lib/obligationForm';
+import { Alert } from '@/components/ui/Layout';
+import { TrustTabs } from '../accounting/trustTabs';
 import { useAuth } from '@/auth/AuthProvider';
 import { useObligations } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
@@ -23,8 +25,17 @@ import type { Obligation } from '@/types/budget';
  * Obligations when exported: the columns are the RAAO columns, and the export
  * carries the official heading.
  */
-export default function Obligations() {
+/**
+ * Patch 136: the same register serves Accounting > Trust Accounts > FURS.
+ *
+ * Neil: the FURS "has the same function as Obligation in Budget". So it is
+ * this screen, with the Trust Accounts strip above it and addresses under
+ * /accounting/furs - not a copy of it, which would be two registers of the
+ * same documents that drift apart.
+ */
+export default function Obligations({ trust = false }: { trust?: boolean } = {}) {
   const { fiscalYear, fundCode, period } = useFilters();
+  const base = trust ? '/accounting/furs' : '/budget/obligations';
   const form = obligationForm(fundCode);
   const { can } = useAuth();
   /* Opens a document remembering this table, so its Back button returns here. */
@@ -151,22 +162,37 @@ export default function Obligations() {
   return (
     <div>
       <PageHeader
-        title="Obligations"
-        subtitle={`Obligation Requests and Status - ${fundCode}, fiscal year ${fiscalYear}${period ? `, ${monthName(period)}` : ''}`}
-        breadcrumbs={[{ label: 'Budget' }, { label: 'Obligations' }]}
+        title={trust ? 'FURS' : 'Obligations'}
+        subtitle={`${trust ? 'Funding Utilization Requests and Status' : 'Obligation Requests and Status'} - ${fundCode}, fiscal year ${fiscalYear}${period ? `, ${monthName(period)}` : ''}`}
+        breadcrumbs={
+          trust
+            ? [{ label: 'Accounting' }, { label: 'Trust Accounts' }, { label: 'FURS' }]
+            : [{ label: 'Budget' }, { label: 'Obligations' }]
+        }
         actions={
           <>
-            <Link to="/budget/registry">
-              <Button size="sm">Registry (RAAO)</Button>
+            <Link to={trust ? '/accounting/trust-registry' : '/budget/registry'}>
+              <Button size="sm">{trust ? 'Registry of Special Trust Fund' : 'Registry (RAAO)'}</Button>
             </Link>
             {can('budget', 'create') && (
-              <Button variant="primary" size="sm" onClick={() => open('/budget/obligations/new')}>
-                New obligation
+              <Button variant="primary" size="sm" onClick={() => open(`${base}/new`)}>
+                {trust ? 'New FURS' : 'New obligation'}
               </Button>
             )}
           </>
         }
       />
+
+      {trust && <TrustTabs active="furs" />}
+      {!trust && isTrustFund(fundCode) && (
+        <Alert tone="info" className="mb-4" title="FURS are kept under Trust Accounts">
+          The Trust Fund&apos;s Funding Utilization Requests are worked in{' '}
+          <Link to="/accounting/furs" className="font-medium underline">
+            Accounting &gt; Trust Accounts &gt; FURS
+          </Link>
+          , beside the trust programmes they draw on. This list shows the same documents.
+        </Alert>
+      )}
 
       <DataTable
         rows={rows}
@@ -174,14 +200,14 @@ export default function Obligations() {
         rowKey={(o) => o.id}
         loading={loading}
         error={error}
-        onRowClick={(o) => open(`/budget/obligations/${o.id}`)}
+        onRowClick={(o) => open(`${base}/${o.id}`)}
         searchPlaceholder={`${form.short} number, payee or particulars`}
-        emptyTitle="No obligations recorded"
+        emptyTitle={trust ? 'No FURS recorded' : 'No obligations recorded'}
         emptyMessage={`Nothing has been obligated against the ${fundCode} fund for fiscal year ${fiscalYear} yet.`}
         emptyAction={
           can('budget', 'create') ? (
-            <Button variant="primary" onClick={() => open('/budget/obligations/new')}>
-              Record the first obligation
+            <Button variant="primary" onClick={() => open(`${base}/new`)}>
+              {trust ? 'Record the first FURS' : 'Record the first obligation'}
             </Button>
           ) : undefined
         }

@@ -56,6 +56,10 @@ export default function ObligationDetail() {
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const location = useLocation();
+  /** Patch 136: the FURS is opened from Accounting > Trust Accounts as well. */
+  const base = location.pathname.startsWith('/accounting/furs')
+    ? '/accounting/furs'
+    : '/budget/obligations';
   const toast = useToast();
   const { fiscalYear, fundCode } = useFilters();
   // OBR in the General and Special Education Funds; FURS in the Trust Fund,
@@ -362,7 +366,7 @@ export default function ObligationDetail() {
       if (isNew) {
         const newId = await createDraft(COL.obligations, buildPayload(), actor);
         toast.success('Obligation saved as a draft', `It has no ${form.short} number until it is certified.`);
-        navigate(keepReturn(`/budget/obligations/${newId}`, location.search), { replace: true });
+        navigate(keepReturn(`${base}/${newId}`, location.search), { replace: true });
       } else {
         await updateDraft(COL.obligations, id!, buildPayload(), actor);
         toast.success('Draft saved');
@@ -464,15 +468,25 @@ export default function ObligationDetail() {
               : `${form.short} (draft)`
         }
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
-        breadcrumbs={[
-          { label: 'Budget' },
-          { label: 'Obligations', to: '/budget/obligations' },
-          { label: existing?.obrNo ?? 'New' },
-        ]}
+        breadcrumbs={
+          base === '/accounting/furs'
+            ? [
+                { label: 'Accounting' },
+                { label: 'Trust Accounts', to: base },
+                { label: existing?.obrNo ?? 'New' },
+              ]
+            : [
+                { label: 'Budget' },
+                { label: 'Obligations', to: base },
+                { label: existing?.obrNo ?? 'New' },
+              ]
+        }
         actions={
           <>
             {/* Back to the table it was opened from. Patch 114. */}
-            <BackButton list={{ to: '/budget/obligations', label: 'Obligations' }} />
+            <BackButton
+              list={{ to: base, label: base === '/accounting/furs' ? 'FURS' : 'Obligations' }}
+            />
             <StatusBadge status={status} className="mr-1" />
             {canEdit && (
               <Button variant="secondary" loading={saving} onClick={() => void save()}>

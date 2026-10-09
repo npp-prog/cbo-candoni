@@ -3289,6 +3289,33 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 55. Trust Accounts is the Trust Fund's alone --------------------------
+
+/*
+ * Patch 136. Accounting > Trust Accounts (FURS, Trust Fund Programmes,
+ * Registry of Special Trust Fund, Fund Utilization Report) is shown only
+ * while the Trust Fund is selected, and each of its screens refuses to show
+ * another fund's data if reached by address.
+ */
+{
+  const before = failures.length;
+  const nav = readFileSync(resolve(root, 'src/layout/navigation.ts'), 'utf8');
+  if (!/label: 'Trust Accounts', to: TRUST_ACCOUNT_TABS\[0\]\.to, fund: TRUST_FUND_CODE/.test(nav)) {
+    failures.push('src/layout/navigation.ts: Trust Accounts is no longer a Trust-Fund-only menu item.');
+  }
+  const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
+  for (const path of ['/accounting/furs', '/accounting/furs/:id', '/accounting/trust-registry', '/accounting/trust-programs', '/accounting/fund-utilization']) {
+    const at = app.indexOf(`path="${path}"`);
+    const slice = at >= 0 ? app.slice(at, at + 260) : '';
+    if (!/<TrustFundOnly>/.test(slice)) {
+      failures.push(`src/App.tsx: ${path} is not wrapped in TrustFundOnly - it would show for the General Fund and SEF.`);
+    }
+  }
+  if (failures.length === before) {
+    console.log('trust accounts: a Trust Fund menu item, and its screens refuse the other funds');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

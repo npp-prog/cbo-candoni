@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
-import { NAVIGATION, ICONS, toBlocks, groupForPath, type NavChild } from './navigation';
+import {
+  NAVIGATION,
+  ICONS,
+  childrenForFund,
+  toBlocks,
+  groupForPath,
+  type NavChild,
+} from './navigation';
+import { useFilters } from '@/context/FilterContext';
 import { sectionHeadForPath } from './sections';
 import { originPathname } from '@/lib/returnTo';
 import { useAuth } from '@/auth/AuthProvider';
@@ -102,7 +110,18 @@ export function Sidebar({
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(readOpenGroups);
 
-  const visible = useMemo(() => NAVIGATION.filter((item) => can(item.module, 'view')), [can]);
+  const { fundCode } = useFilters();
+  /*
+   * Patch 136: an item may belong to one fund - Trust Accounts to the Trust
+   * Fund - and is left out of the menu while another fund is selected.
+   */
+  const visible = useMemo(
+    () =>
+      NAVIGATION.filter((item) => can(item.module, 'view')).map((item) =>
+        item.children ? { ...item, children: childrenForFund(item.children, fundCode) } : item,
+      ),
+    [can, fundCode],
+  );
 
   /*
    * THE MENU ITEM HOLDING THE CURRENT SCREEN, WHERE THE ADDRESS DOES NOT SAY.
