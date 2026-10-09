@@ -77,6 +77,7 @@ export default function UnreleasedChecks() {
 
   return (
     <ReportShell
+      seal
       meta={{
         title: 'Schedule of Unreleased Checks',
         fundLabel: fundLabel(fundCode),
@@ -107,7 +108,7 @@ export default function UnreleasedChecks() {
       footnote={
         <>
           <p>
-            <strong>SUC</strong> - GAM for Local Government Units, Appendix 42. Prepared by the
+            <strong>SUC</strong> - GAM for Local Government Units. Prepared by the
             Treasurer and submitted to the Accounting Unit, which raises the journal voucher that
             restores the cash and recognises the payable. One sheet per bank account, one voucher
             per sheet.
@@ -116,7 +117,7 @@ export default function UnreleasedChecks() {
             A check counts here when it was drawn on or before the date and was still in the
             Treasury then - including one handed over afterwards, which is marked. The reference
             column holds the obligation number: the manual names the CAFOA there, and the CAFOA
-            (Appendix 28) is suspended.
+            is suspended.
           </p>
           {/*
             What was said here in patch 45 was wrong, and the corrected rule is

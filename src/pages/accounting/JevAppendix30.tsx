@@ -103,7 +103,7 @@ export default function JevAppendix30() {
       <div className="no-print">
         <PageHeader
           title={hasJevNumber(jev.jevNo) ? `JV ${jev.jevNo}` : "Journal voucher (unnumbered)"}
-          subtitle="Appendix 30 - the form as COA prints it"
+          subtitle="The form as COA prints it"
           breadcrumbs={[
             { label: 'Accounting' },
             { label: 'Journal entries', to: '/accounting/journal-entries' },

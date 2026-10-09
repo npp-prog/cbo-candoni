@@ -63,6 +63,7 @@ export default function CancelledChecks() {
 
   return (
     <ReportShell
+      seal
       meta={{
         title: 'Report of Cancelled Checks',
         fundLabel: fundLabel(fundCode),

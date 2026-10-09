@@ -285,7 +285,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       <div className="no-print">
         <PageHeader
           title={`RCD ${rcd.rcdNo}`}
-          subtitle="Appendix 34 - the form as COA prints it. A4 landscape."
+          subtitle="The form as COA prints it. A4 landscape."
           breadcrumbs={[
             { label: 'Treasury', to: '/treasury' },
             { label: 'RCD', to: '/treasury/collections/rcd' },

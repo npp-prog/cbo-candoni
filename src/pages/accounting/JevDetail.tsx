@@ -88,6 +88,10 @@ export default function JevDetail() {
         debit: l.debit,
         credit: l.credit,
         particulars: l.particulars ?? undefined,
+        // Patch 145: the subsidiary's type and id, not only its name - without
+        // them the picker showed "None" and saving dropped the subsidiary.
+        subsidiaryType: l.subsidiaryType ?? undefined,
+        subsidiaryId: l.subsidiaryId ?? undefined,
         subsidiaryName: l.subsidiaryName ?? undefined,
       })),
     );
@@ -213,6 +217,9 @@ export default function JevDetail() {
           debit: l.debit,
           credit: l.credit,
           particulars: l.particulars ?? null,
+          subsidiaryType: l.subsidiaryType ?? null,
+          subsidiaryId: l.subsidiaryId ?? null,
+          subsidiaryName: l.subsidiaryName ?? null,
         })),
         totalDebit,
         totalCredit: totalDebit,

@@ -76,7 +76,7 @@ import RcdAppendix34 from './RcdAppendix34';
  * Registry of Appropriations, Allotments and Obligations for the same reason.
  */
 const CAFOA_NOTE =
-  'CAFOA (Appendix 28) is suspended. The column carries the Obligation Request number.';
+  'CAFOA is suspended. The column carries the Obligation Request number.';
 
 interface FormSpec {
   appendix: string;
@@ -251,43 +251,41 @@ export default function TreasuryReportForm() {
           Period Covered: <span className="font-semibold">{formatShortDate(report.reportDate)}</span>
         </p>
 
-        <table className="mb-2 w-full">
-          <tbody>
-            <tr>
-              <td className="w-1/2 py-0.5">
-                <span className="text-slate-500">Fund :</span>{' '}
-                <span className="font-semibold">{fundLabel(report.fundCode)}</span>
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">Report No.:</span>{' '}
-                <span className="font-mono font-semibold">
-                  {hasDocumentNumber(report.reportNo) ? report.reportNo : ''}
-                </span>
-              </td>
-            </tr>
-            <tr>
-              <td className="py-0.5">
-                {!dated && (
-                  <>
-                    <span className="text-slate-500">Bank Name/Account No. :</span>{' '}
-                    <span className="font-semibold">{report.bankName ?? ''}</span>{' '}
-                    <span className="font-mono">{report.bankAccountNumber ?? ''}</span>
-                  </>
-                )}
-              </td>
-              <td className="py-0.5">
-                {/*
-                  One sheet. CFMS prints the whole report on one continuous
-                  page and lets the browser break it; a sheet number counted
-                  from a page break the printer decides would be wrong as often
-                  as it was right.
-                */}
-                <span className="text-slate-500">Sheet No. :</span>{' '}
-                <span className="font-semibold">1 of 1</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        {/*
+          Patch 145: the report's particulars in two compact blocks side by
+          side - fund and bank, then the report and sheet numbers right after
+          them - rather than spread across the two halves of the sheet.
+        */}
+        <div className="mb-2 space-y-0.5">
+          <p className="flex flex-wrap" style={{ columnGap: '3rem' }}>
+            <span>
+              <span className="text-slate-500">Fund:</span>{' '}
+              <span className="font-semibold">{fundLabel(report.fundCode)}</span>
+            </span>
+            <span>
+              <span className="text-slate-500">Report No.:</span>{' '}
+              <span className="font-mono font-semibold">
+                {hasDocumentNumber(report.reportNo) ? report.reportNo : ''}
+              </span>
+            </span>
+            {/*
+              One sheet. CFMS prints the whole report on one continuous page
+              and lets the browser break it; a sheet number counted from a page
+              break the printer decides would be wrong as often as it was right.
+            */}
+            <span>
+              <span className="text-slate-500">Sheet No.:</span>{' '}
+              <span className="font-semibold">1 of 1</span>
+            </span>
+          </p>
+          {!dated && (
+            <p>
+              <span className="text-slate-500">Bank Name/Account No.:</span>{' '}
+              <span className="font-semibold">{report.bankName ?? ''}</span>{' '}
+              <span className="font-mono">{report.bankAccountNumber ?? ''}</span>
+            </p>
+          )}
+        </div>
 
         <table className="w-full border-collapse text-2xs">
           <thead>
@@ -415,23 +413,36 @@ export default function TreasuryReportForm() {
                 to: report.serialTo ?? '________',
               })}
             </p>
-            <div className="mt-8">
+            {/*
+              Patch 145: the signature, the official designation and the date
+              as one centred block, every line the same width.
+            */}
+            <div className="mx-auto mt-8" style={{ width: '20rem', maxWidth: '100%' }}>
               <p className="border-t border-slate-500 pt-1 text-center text-2xs font-semibold">
                 {report.accountableOfficerName || entity.localTreasurer.name || ' '}
               </p>
               <p className="text-center text-[9px] text-slate-500">{form.signerLabel}</p>
-              <p className="mt-3 text-[9px] text-slate-500">Official Designation ____________</p>
-              <p className="mt-2 text-[9px] text-slate-500">Date ____________</p>
+              <div className="mt-4 flex items-end gap-2 text-[9px] text-slate-500">
+                <span className="whitespace-nowrap">Official Designation</span>
+                <span className="flex-1 border-b border-slate-500">&nbsp;</span>
+              </div>
+              <div className="mt-3 flex items-end gap-2 text-[9px] text-slate-500">
+                <span className="whitespace-nowrap">Date</span>
+                <span className="flex-1 border-b border-slate-500">&nbsp;</span>
+              </div>
             </div>
           </div>
 
           {form.receivedBy && (
             <div className="border border-l-0 border-slate-400 px-3 py-2">
               <p className="text-center text-2xs font-bold uppercase tracking-wide">Received by:</p>
-              <div className="mt-16">
+              <div className="mx-auto mt-16" style={{ width: '20rem', maxWidth: '100%' }}>
                 <p className="border-t border-slate-500 pt-1 text-center text-2xs">&nbsp;</p>
                 <p className="text-center text-[9px] text-slate-500">Signature over Printed Name</p>
-                <p className="mt-3 text-[9px] text-slate-500">Date ____________</p>
+                <div className="mt-4 flex items-end gap-2 text-[9px] text-slate-500">
+                  <span className="whitespace-nowrap">Date</span>
+                  <span className="flex-1 border-b border-slate-500">&nbsp;</span>
+                </div>
               </div>
             </div>
           )}
@@ -452,7 +463,7 @@ export default function TreasuryReportForm() {
       <div className="no-print">
         <PageHeader
           title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} (draft)`}
-          subtitle={`${form.appendix} - the form as COA prints it`}
+          subtitle="The form as COA prints it"
           breadcrumbs={[
             { label: 'Treasury' },
             { label: short, to: `/treasury/reports/${report.id}` },

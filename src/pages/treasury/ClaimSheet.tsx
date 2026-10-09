@@ -75,6 +75,7 @@ export default function ClaimSheet() {
 
   return (
     <ReportShell
+      seal
       meta={{
         title: 'Check Release / Claim Sheet',
         fundLabel: fundLabel(fundCode),

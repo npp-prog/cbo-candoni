@@ -36,6 +36,7 @@ export function ReportShell<T>({
   footnote,
   actions,
   printLayout,
+  seal,
 }: {
   meta: ReportMeta;
   breadcrumbs?: Array<{ label: string; to?: string }>;
@@ -60,6 +61,8 @@ export function ReportShell<T>({
    * Omitted, a report prints as it always has.
    */
   printLayout?: 'portrait' | 'landscape';
+  /** Patch 145: the municipal seal at the left of the heading, without changing the print layout. */
+  seal?: boolean;
 }) {
   const canExport = Boolean(rows && exportColumns);
 
@@ -112,7 +115,7 @@ export function ReportShell<T>({
           printLayout ? ' cbo-report-sheet' : ''
         }`}
       >
-        <ReportHeading meta={meta} seal={Boolean(printLayout)} />
+        <ReportHeading meta={meta} seal={seal ?? Boolean(printLayout)} />
         {children}
         {footnote && <div className="mt-4 text-xs text-slate-500">{footnote}</div>}
         <SignatureBlock meta={meta} />

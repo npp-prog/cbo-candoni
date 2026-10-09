@@ -3405,8 +3405,9 @@ if (existsSync(functionsSrc)) {
 {
   const before = failures.length;
   const ada = readFileSync(resolve(root, 'src/pages/treasury/AdaAppendix36.tsx'), 'utf8');
-  if (!/<PayeeListSheet\b/.test(ada)) {
-    failures.push('src/pages/treasury/AdaAppendix36.tsx: the ADA of a group voucher no longer prints its List of Payees.');
+  // Patch 145: each payee on the form itself, not "<first payee>, et al."
+  if (!/\(ada\.payees \?\? \[\]\)\.map\(/.test(ada)) {
+    failures.push('src/pages/treasury/AdaAppendix36.tsx: the ADA of a group voucher no longer lists each payee on the form.');
   }
   const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
   if (!/path="\/accounting\/disbursements\/:id\/payees"/.test(app)) {

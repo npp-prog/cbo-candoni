@@ -427,11 +427,11 @@ describe('cashInBankLine', () => {
     expect(line?.accountName).not.toBe('General Fund');
   });
 
-  it("puts the office's own name in the subsidiary ledger, where it belongs", () => {
+  it('names the bank account - bank and number - in the subsidiary ledger (patch 145)', () => {
     const line = cashInBankLine(bank);
     expect(line?.subsidiaryType).toBe('BANK_ACCOUNT');
     expect(line?.subsidiaryId).toBe('bank1');
-    expect(line?.subsidiaryName).toBe('General Fund');
+    expect(line?.subsidiaryName).toBe('Land Bank of the Philippines Kabankalan');
   });
 
   it('prefers the loaded chart over the built-in titles', () => {
@@ -455,9 +455,9 @@ describe('cashInBankLine', () => {
     expect(cashInBankLine({ ...bank, glAccountCode: null })).toBeNull();
   });
 
-  it('falls back to bank and number when the account has no name of its own', () => {
-    const line = cashInBankLine({ ...bank, accountName: '  ' });
-    expect(line?.subsidiaryName).toBe('Land Bank of the Philippines Kabankalan');
+  it("falls back to the office's name when there is no bank or number", () => {
+    const line = cashInBankLine({ ...bank, bankName: '', accountNumber: '' });
+    expect(line?.subsidiaryName).toBe('General Fund');
   });
 });
 

@@ -56,10 +56,9 @@ export function Letterhead({
 }) {
   return (
     <div className="relative mb-4 text-center">
-      {appendix && (
-        <span className="absolute right-0 top-0 text-2xs italic text-slate-500">{appendix}</span>
-      )}
-      {seal === 'left' && <Seal className="absolute left-0 top-0 h-16 w-16" />}
+      {/* Patch 145: the appendix number is no longer printed on any form. */}
+      {/* Patch 145: larger on the RCI / RADAI, beside the heading lines. */}
+      {seal === 'left' && <Seal className="absolute left-2 top-0 h-24 w-24" />}
       {seal && seal !== 'left' && <Seal className="mx-auto mb-1.5 h-16 w-16" />}
       {lines.map((line, i) => (
         <p

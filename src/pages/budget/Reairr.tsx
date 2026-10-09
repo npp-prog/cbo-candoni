@@ -81,7 +81,7 @@ export default function Reairr() {
       footnote={
         <>
           <p>
-            <strong>REAIRR</strong> - GAM for Local Government Units, Appendix 23. Maintained by the
+            <strong>REAIRR</strong> - GAM for Local Government Units. Maintained by the
             Accounting Unit.
           </p>
           {/*

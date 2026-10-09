@@ -8,7 +8,7 @@ import { formatLongDate } from '@/lib/dates';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import type { Ada } from '@/types/accounting';
 import { useEntity } from '@/data/useEntity';
-import { BankFileButtons, PayeeListSheet } from '../accounting/PayeeList';
+import { BankFileButtons } from '../accounting/PayeeList';
 
 /**
  * The Authority to Debit Account - Appendix 36.
@@ -52,7 +52,7 @@ export default function AdaAppendix36() {
     );
   }
 
-  /** Patch 140: an advice for several payees prints its List of Payees after the form. */
+  /** Patch 140/145: an advice for several payees lists each of them on the form. */
   const group = (ada.payees?.length ?? 0) > 0;
 
   return (
@@ -60,7 +60,7 @@ export default function AdaAppendix36() {
       <div className="no-print">
         <PageHeader
           title={`ADA ${ada.adaNo}`}
-          subtitle="Appendix 36 - the form as COA prints it"
+          subtitle="The form as COA prints it"
           breadcrumbs={[
             { label: 'Treasury' },
             { label: 'ADA', to: '/treasury/ada' },
@@ -158,7 +158,7 @@ export default function AdaAppendix36() {
               <th className="border border-slate-400 px-1.5 py-1 text-left">
                 Office/Department/Payee
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '12rem' }}>
+              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '18rem' }}>
                 Reference
               </th>
               <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '9rem' }}>
@@ -174,21 +174,27 @@ export default function AdaAppendix36() {
               ruled blanks below say the sheet was considered and found to have
               one row, rather than stopping short.
             */}
-            <tr>
-              <td className="border border-slate-400 px-1.5 py-1">
-                {ada.payeeName}
-                {group && (
-                  <span className="block text-[9px] italic">
-                    {ada.payees!.length} payees - see the attached List of Payees
-                  </span>
-                )}
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1 font-mono">DV {ada.dvNo}</td>
-              <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                {formatAmount(ada.amount, false)}
-              </td>
-            </tr>
-            {blankRows(5, 3, 'ada')}
+            {/*
+              Patch 145: every payee of a group advice on its own line - name,
+              ATM number and share - not "<first payee>, et al.".
+            */}
+            {(group
+              ? (ada.payees ?? []).map((p) => ({
+                  name: p.payeeName,
+                  reference: `DV ${ada.dvNo} - ATM ${p.accountNumber}`,
+                  amount: p.amount,
+                }))
+              : [{ name: ada.payeeName, reference: `DV ${ada.dvNo}`, amount: ada.amount }]
+            ).map((r, i) => (
+              <tr key={i} style={{ breakInside: 'avoid' }}>
+                <td className="border border-slate-400 px-1.5 py-1">{r.name}</td>
+                <td className="border border-slate-400 px-1.5 py-1 font-mono">{r.reference}</td>
+                <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
+                  {formatAmount(r.amount, false)}
+                </td>
+              </tr>
+            ))}
+            {blankRows(Math.max(0, 6 - (group ? (ada.payees ?? []).length : 1)), 3, 'ada')}
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 font-bold">
@@ -225,31 +231,6 @@ export default function AdaAppendix36() {
         </div>
       </div>
 
-      {group && (
-        <div
-          className="cbo-card mt-6 px-6 py-6 print:mt-0 print:border-0 print:px-0 print:py-0"
-          style={{ breakBefore: 'page' }}
-        >
-          <PayeeListSheet
-            payees={ada.payees ?? []}
-            reference={[`ADA No. ${ada.adaNo}`, `DV ${ada.dvNo}`]}
-            date={ada.adaDate}
-            particulars={ada.particulars}
-            signatories={[
-              {
-                label: 'Agency authorized signatory 1',
-                name: entity.localTreasurer.name,
-                role: entity.localTreasurer.position,
-              },
-              {
-                label: 'Agency authorized signatory 2',
-                name: entity.municipalMayor.name,
-                role: entity.municipalMayor.position,
-              },
-            ]}
-          />
-        </div>
-      )}
     </div>
   );
 }

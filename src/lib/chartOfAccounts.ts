@@ -620,11 +620,10 @@ export interface BankAccountRef {
  * ---------------------------------------------------------------------------
  * AND THE NAME IS NOT WASTED
  * ---------------------------------------------------------------------------
- * "General Fund" is the right answer to a different question. Cash in Bank is
- * a control account kept per bank account, so the office's own name for the
- * account is exactly what belongs in the SUBSIDIARY ledger - which is where
- * this now puts it, and where the Subsidiary Ledger report can make it agree
- * with the control account.
+ * Cash in Bank is a control account kept per bank account, so the SUBSIDIARY
+ * ledger names the bank account: since patch 145 the bank and its number
+ * ("Land Bank of the Philippines 1172-1020-22"); the office's own name
+ * ("General Fund") only where there is no number.
  *
  * Returns null when the title cannot be established, because a line posted to
  * a code under the wrong title is the fault being fixed. The caller says so to
@@ -647,9 +646,15 @@ export function cashInBankLine(
   const title = resolveTitle?.(code) || namedAccountTitle(code);
   if (!title) return null;
 
+  /*
+   * Patch 145: the subsidiary is the BANK ACCOUNT - the bank and its number,
+   * "Land Bank of the Philippines 1172-1020-22" - not the office's name for
+   * it ("General Fund"), which names the fund and says nothing about which
+   * account. The office's name is the fallback when there is no number.
+   */
   const ownName =
-    String(bank.accountName ?? '').trim() ||
-    `${bank.bankName ?? ''} ${bank.accountNumber ?? ''}`.trim();
+    `${bank.bankName ?? ''} ${bank.accountNumber ?? ''}`.trim() ||
+    String(bank.accountName ?? '').trim();
 
   return {
     accountCode: code,

@@ -104,7 +104,7 @@ export default function PrimaryAppendix34() {
     <div>
       <PageHeader
         title={primary.primaryNo ? `Primary ${primary.primaryNo}` : 'Primary report (open)'}
-        subtitle={`Appendix 34 — ${PRIMARY_REPORT_TYPE_LABELS[primary.reportType]}`}
+        subtitle={PRIMARY_REPORT_TYPE_LABELS[primary.reportType]}
         breadcrumbs={[
           { label: 'Treasury', to: '/treasury' },
           { label: 'Primary Reports', to: '/treasury/collections/primary' },

@@ -100,7 +100,7 @@ export default function Rstf() {
       footnote={
         <>
           <p>
-            <strong>RSTF</strong> - GAM for Local Government Units, Appendix 18. One sheet per trust
+            <strong>RSTF</strong> - GAM for Local Government Units. One sheet per trust
             receipt for a specific purpose.
           </p>
           {/*

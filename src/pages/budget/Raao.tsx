@@ -126,8 +126,8 @@ export default function Raao() {
       footnote={
         <>
           <p>
-            <strong>{form.acronym}</strong> - GAM for Local Government Units, Appendix{' '}
-            {form.appendix}. Maintained by the Accounting Unit.
+            <strong>{form.acronym}</strong> - GAM for Local Government Units. Maintained by the
+            Accounting Unit.
           </p>
           {/*
             Said here and not left to be discovered. The manual's reference
@@ -137,7 +137,7 @@ export default function Raao() {
           */}
           <p className="mt-1">
             The reference in Section B is the Obligation Request number. The manual names the CAFOA
-            there; the CAFOA (Appendix 28) is suspended and CFMS does not raise one.
+            there; the CAFOA is suspended and CFMS does not raise one.
           </p>
         </>
       }
