@@ -12,6 +12,7 @@ import {
   DUE_TO_OFFICERS_AND_EMPLOYEES,
 } from '@/lib/chartOfAccounts';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { awaitingForward } from '@/lib/treasuryForwarding';
 import { GroupedSectionTabs, SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -227,7 +228,10 @@ export default function TreasuryReports({
           OPEN is gone (patch 142): the whole row already opens the report.
         */
         <div className="flex items-center justify-end gap-1.5">
-          <StatusBadge status={r.status} />
+          <StatusBadge
+            status={r.status}
+            label={awaitingForward(r) ? 'Certified - not forwarded' : undefined}
+          />
           <Button
             size="sm"
             variant="secondary"
@@ -252,9 +256,9 @@ export default function TreasuryReports({
         breadcrumbs={[{ label: 'Treasury' }, { label: short }]}
         subtitle={
           reportType === 'RCI'
-            ? 'The checks drawn in the period, certified and forwarded to Accounting for journalizing.'
+            ? 'The checks drawn in the period, certified, then forwarded to Accounting for journalizing.'
             : reportType === 'RADAI'
-              ? 'The advices to debit account sent to the bank in the period, certified and forwarded to Accounting for journalizing.'
+              ? 'The advices to debit account sent to the bank in the period, certified, then forwarded to Accounting for journalizing.'
               : reportType === 'RCD'
                 ? "A collecting officer's receipts for the period with the deposits made against them, certified and forwarded to Accounting."
                 : reportType === 'ERCD_AR'

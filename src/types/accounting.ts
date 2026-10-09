@@ -496,10 +496,21 @@ export interface Ada extends Partial<AuditStamps> {
   treasuryReportNo?: string;
 
   status: AdaStatus;
+  /** Patch 143: shown as "Posted online" - the date the bank posted it. */
   dateSubmittedToBank?: IsoDate;
   bankReferenceNo?: string;
   dateDebited?: IsoDate;
   bankTransactionId?: Id;
+
+  /**
+   * Patch 143. The credits the bank did NOT post online, as the Treasury
+   * recorded them when marking the advice posted. Each became a trust
+   * liability (adjusting entry `notPostedJevId`) to be repaid by a new voucher.
+   */
+  notPosted?: DvPayee[];
+  notPostedAmount?: Centavos;
+  notPostedJevId?: Id;
+  postedOnlineBy?: { uid: string; name: string; position?: string | null; at: string };
 
   rejectedReason?: string;
   cancelledReason?: string;

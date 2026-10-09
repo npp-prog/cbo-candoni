@@ -18,6 +18,7 @@ import {
   TREASURY_REPORT_TYPES,
 } from '@/types/enums';
 import type { TreasuryReport } from '@/types/treasury';
+import { isForwarded } from '@/lib/treasuryForwarding';
 import { newestFirst } from '@/lib/registerOrder';
 import type { TreasuryReportType } from '@/types/enums';
 
@@ -108,7 +109,8 @@ export default function TreasuryReportJev() {
    * is waiting is in the status filter instead.
    */
   const rows = useMemo(() => {
-    let out = tab ? data.filter((r) => r.reportType === tab) : data;
+    // Patch 143: a certified report reaches Accounting only once forwarded.
+    let out = (tab ? data.filter((r) => r.reportType === tab) : data).filter(isForwarded);
     if (status) out = out.filter((r) => r.status === status);
     return newestFirst(out, (r) => ({ ref: r.reportNo, date: r.reportDate }));
   }, [data, tab, status]);
@@ -234,21 +236,21 @@ export default function TreasuryReportJev() {
             View report
           </Button>
           {/*
-            And the report's own page, where the entry is adjusted and posted,
-            beside the documents it covers and the signed form attached to it.
-            Called "Open" rather than "View" now that the form beside it is
-            the thing being viewed.
+            Journalize, where it is waiting. "Open" is gone (patch 143): the
+            whole line opens the report.
           */}
-          <Button
-            size="sm"
-            variant={r.status === 'CERTIFIED' ? 'primary' : 'ghost'}
-            onClick={(e) => {
-              e.stopPropagation();
-              openReport(r.id);
-            }}
-          >
-            {r.status === 'CERTIFIED' && canPost ? 'Journalize' : 'Open'}
-          </Button>
+          {r.status === 'CERTIFIED' && canPost && (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                openReport(r.id);
+              }}
+            >
+              Journalize
+            </Button>
+          )}
         </div>
       ),
     },

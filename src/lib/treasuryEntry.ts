@@ -229,3 +229,64 @@ export function rebuildPaymentEntry(input: {
     documents: input.documents,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Patch 143 - an ADA "posted online" with some credits not posted
+// ---------------------------------------------------------------------------
+
+/** One payee of an ADA as the bank's online posting reported it. */
+export interface UnpostedCredit {
+  payeeId?: string | null;
+  payeeName: string;
+  accountNumber?: string | null;
+  amount: number;
+}
+
+/**
+ * The adjusting entry for the credits the bank did not post.
+ *
+ * The RADAI's entry paid the whole advice out of Cash in Bank (Dr payable per
+ * payee, Cr Cash). A credit the bank did not post never left the account, and
+ * the municipality still owes that payee - but no longer as an ordinary
+ * payable: it is money held for them until a new voucher repays it. So:
+ *
+ *   Dr  Cash in Bank (the advice's account)          the total not posted
+ *       Cr  Trust Liabilities - <payee>              each payee's amount
+ *
+ * The new voucher (category "Trust liability") then debits Trust Liabilities
+ * for that payee when it is paid again.
+ */
+export function proposeNotPostedEntry(input: {
+  adaNo: string;
+  cash: CashLine;
+  trustLiability: { code: string; name: string };
+  credits: UnpostedCredit[];
+}): ProposedEntryLine[] {
+  const credits = input.credits.filter((c) => c.amount > 0);
+  const total = credits.reduce((t, c) => t + c.amount, 0);
+  if (total <= 0) return [];
+  return [
+    {
+      accountCode: input.cash.accountCode,
+      accountName: input.cash.accountName,
+      debit: total,
+      credit: 0,
+      subsidiaryType: input.cash.subsidiaryType ?? null,
+      subsidiaryId: input.cash.subsidiaryId ?? null,
+      subsidiaryName: input.cash.subsidiaryName ?? null,
+      particulars: `ADA ${input.adaNo} - credits not posted online by the bank`,
+    },
+    ...credits.map((c) => ({
+      accountCode: input.trustLiability.code,
+      accountName: input.trustLiability.name,
+      debit: 0,
+      credit: c.amount,
+      subsidiaryType: c.payeeId ? 'PAYEE' : null,
+      subsidiaryId: c.payeeId ?? null,
+      subsidiaryName: c.payeeName,
+      particulars: `ADA ${input.adaNo} not posted to ${c.payeeName}${
+        c.accountNumber ? ` (ATM ${c.accountNumber})` : ''
+      } - to be repaid by a new voucher`,
+    })),
+  ];
+}

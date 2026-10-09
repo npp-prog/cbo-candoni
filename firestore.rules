@@ -690,12 +690,11 @@ service cloud.firestore {
     match /ada/{id} {
       allow read: if canRead();
       allow create: if false;
-      allow update: if signedIn()
-        && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
-        && onlyChanged(['status', 'dateSubmittedToBank', 'bankReferenceNo', 'updatedBy'])
-        && request.resource.data.status in ['PREPARED', 'SUBMITTED']
-        // An advice does not go to the bank until it is on a certified RADAI.
-        && (request.resource.data.status != 'SUBMITTED' || isOnCertifiedReport());
+      // Patch 143: "Posted online" is recorded by the engine (postAdaOnline),
+      // which also takes up the credits the bank did not post as trust
+      // liabilities. A browser marking an advice posted would skip that, so
+      // the advice is now written by the engine alone.
+      allow update: if false;
       allow delete: if false;
     }
 

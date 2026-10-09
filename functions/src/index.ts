@@ -62,7 +62,7 @@ export {
   correctDvEntry,
 } from './accounting/dv';
 export { postJev, reverseJev, correctJev, amendPostedJev } from './accounting/jev';
-export { issueCheck, cancelCheck, issueAda, cancelAda } from './accounting/payments';
+export { issueCheck, cancelCheck, issueAda, cancelAda, postAdaOnline } from './accounting/payments';
 export { postLiquidation, numberLiquidationEntry } from './accounting/liquidation';
 
 // --- Treasury ----------------------------------------------------------------
@@ -70,6 +70,7 @@ export { postRcd, recordDeposit } from './treasury/collections';
 export { postOpeningBalances, reopenOpeningBalances } from './accounting/opening';
 export {
   certifyTreasuryReport,
+  forwardTreasuryReport,
   journalizeTreasuryReport,
   cancelTreasuryReport,
 } from './treasury/reports';

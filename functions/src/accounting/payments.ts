@@ -1,12 +1,17 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, notFound, invalid, type Role } from '../lib/context';
+import { requireCaller, notFound, invalid, assertFundInScope, type Role } from '../lib/context';
+import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
+import { createJevInTransaction, type JevLineData } from '../lib/ledger';
+import { titleForAccountCode } from '../lib/accountTitles';
+import { TRUST_LIABILITIES, cashInBankLine } from '../lib/chartOfAccounts';
+import { proposeNotPostedEntry } from '../lib/treasuryEntry';
+import { UNNUMBERED_JEV } from '../lib/jevNumbers';
 import { clearingObjection, CLEARING_OVERRIDE_MIN_LENGTH } from '../lib/clearing';
 import type { Transaction } from 'firebase-admin/firestore';
-import { recordTransition, auditInTransaction } from '../lib/audit';
+import { recordTransition, auditInTransaction, notifyInTransaction } from '../lib/audit';
 import { issueNumbers, loadNumberingConfig, bookCodeForFund } from '../lib/numbering';
-import { periodOf } from '../lib/period';
 import { planPayments, applyPaymentPlan, type PaidDv } from '../lib/paymentBudget';
 
 const TREASURY: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF', 'MUNICIPAL_ACCOUNTANT'];
@@ -669,5 +674,201 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     });
 
     return { adaId };
+  });
+});
+
+/**
+ * postAdaOnline - patch 143. "Submit to bank" became "Posted online".
+ *
+ * The Treasury marks the advice posted once the bank's online posting is
+ * done, and says which credits the bank did NOT post (an ATM account closed,
+ * a wrong number). Every payee is listed - each one of a group advice, or the
+ * single payee - and the ones left unticked are recorded on the advice.
+ *
+ * Those credits never left the bank account, and the municipality still owes
+ * the payees - now as money held for them. So an ADJUSTING entry is raised as
+ * a DRAFT journal entry for the Accountant to review and post:
+ *
+ *   Dr Cash in Bank (the advice's account)     total not posted
+ *       Cr Trust Liabilities - <payee>         each payee's amount
+ *
+ * and each payee is repaid by a new voucher of the "Trust liability" kind.
+ *
+ * Every figure comes from the advice itself; the browser sends only WHICH
+ * lines were not posted.
+ */
+export const postAdaOnline = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+  const caller = await requireCaller(request, TREASURY);
+  const { adaId, postedDate, bankReferenceNo, notPostedLineNos } = (request.data ?? {}) as {
+    adaId?: string;
+    postedDate?: string;
+    bankReferenceNo?: string;
+    notPostedLineNos?: number[];
+  };
+  if (!adaId) throw invalid('An ADA id is required.');
+  if (!postedDate || !/^\d{4}-\d{2}-\d{2}$/.test(postedDate)) {
+    throw invalid('The date the bank posted the advice is required.');
+  }
+  const unposted = new Set((notPostedLineNos ?? []).map((n) => Number(n)));
+
+  // Titles are read before the transaction: they are reference data.
+  const trustTitle = (await titleForAccountCode(TRUST_LIABILITIES.code)) ?? TRUST_LIABILITIES.name;
+
+  return db.runTransaction(async (tx) => {
+    // ---- READS ------------------------------------------------------------
+    const ref = db.collection(COL.ada).doc(adaId);
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw notFound('The ADA');
+    const ada = snap.data() as {
+      adaNo: string;
+      status: string;
+      fiscalYear: number;
+      fundCode: string;
+      bankAccountId: string;
+      payeeId?: string;
+      payeeName: string;
+      amount: number;
+      payees?: Array<{ lineNo: number; payeeId: string | null; payeeName: string; accountNumber: string; amount: number }>;
+      treasuryReportId?: string;
+      dvNo?: string;
+    };
+    assertFundInScope(caller, ada.fundCode);
+
+    if (ada.status !== 'PREPARED') {
+      throw new HttpsError(
+        'failed-precondition',
+        `ADA ${ada.adaNo} is ${ada.status.toLowerCase()} and cannot be marked posted online.`,
+      );
+    }
+    if (!ada.treasuryReportId) {
+      throw new HttpsError(
+        'failed-precondition',
+        `ADA ${ada.adaNo} is not on a certified Report of ADA Issued yet. Prepare the RADAI and have it certified first.`,
+      );
+    }
+
+    const rows =
+      ada.payees && ada.payees.length > 0
+        ? ada.payees.map((p, i) => ({ ...p, lineNo: p.lineNo ?? i + 1 }))
+        : [
+            {
+              lineNo: 1,
+              payeeId: ada.payeeId ?? null,
+              payeeName: ada.payeeName,
+              accountNumber: '',
+              amount: ada.amount,
+            },
+          ];
+    for (const n of unposted) {
+      if (!rows.some((r) => r.lineNo === n)) throw invalid(`ADA ${ada.adaNo} has no line ${n}.`);
+    }
+    const notPosted = rows.filter((r) => unposted.has(r.lineNo));
+    const notPostedAmount = notPosted.reduce((t, r) => t + r.amount, 0);
+
+    let cash: ReturnType<typeof cashInBankLine> = null;
+    if (notPosted.length > 0) {
+      const period = periodOf(postedDate);
+      await assertFiscalYearOpen(ada.fiscalYear, tx);
+      await assertPeriodOpen(ada.fiscalYear, period, ada.fundCode, `ADA ${ada.adaNo}`, tx);
+      const bankSnap = await tx.get(db.collection(COL.bankAccounts).doc(ada.bankAccountId));
+      if (!bankSnap.exists) throw notFound('The bank account of the advice');
+      const bank = {
+        ...(bankSnap.data() as {
+          glAccountCode?: string;
+          bankName?: string;
+          accountNumber?: string;
+          accountName?: string;
+        }),
+        id: bankSnap.id,
+      };
+      const glTitle = bank.glAccountCode ? await titleForAccountCode(bank.glAccountCode) : null;
+      cash = cashInBankLine(bank, () => glTitle);
+      if (!cash) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${bank.bankName ?? 'The bank account'} has no General Ledger account. Set it under Master Data > Banks; the adjusting entry needs it.`,
+        );
+      }
+    }
+
+    // ---- WRITES -----------------------------------------------------------
+    const now = new Date().toISOString();
+    const by = { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now };
+
+    let notPostedJevId: string | null = null;
+    if (notPosted.length > 0 && cash) {
+      const proposed = proposeNotPostedEntry({
+        adaNo: ada.adaNo,
+        cash,
+        trustLiability: { code: TRUST_LIABILITIES.code, name: trustTitle },
+        credits: notPosted,
+      });
+      const lines: JevLineData[] = proposed.map((l, i) => ({
+        lineNo: i + 1,
+        accountCode: l.accountCode,
+        accountName: l.accountName,
+        debit: l.debit,
+        credit: l.credit,
+        subsidiaryType: l.subsidiaryType ?? null,
+        subsidiaryId: l.subsidiaryId ?? null,
+        subsidiaryName: l.subsidiaryName ?? null,
+        cashFlowClass: 'OPERATING',
+        particulars: l.particulars ?? null,
+      }));
+      const created = createJevInTransaction(tx, caller, {
+        jevNo: UNNUMBERED_JEV,
+        jevDate: postedDate,
+        fiscalYear: ada.fiscalYear,
+        period: periodOf(postedDate),
+        fundCode: ada.fundCode,
+        book: 'GENERAL_JOURNAL',
+        sourceType: 'ADA',
+        sourceId: adaId,
+        referenceNo: ada.adaNo,
+        payeeName: ada.payeeName,
+        particulars: `To take up ADA ${ada.adaNo} credits not posted online by the bank as trust liabilities, to be repaid by a new voucher.`,
+        lines,
+      });
+      notPostedJevId = created.jevId;
+
+      notifyInTransaction(tx, {
+        recipientRole: 'MUNICIPAL_ACCOUNTANT',
+        kind: 'ADA_NOT_POSTED',
+        title: `ADA ${ada.adaNo}: ${notPosted.length} credit${notPosted.length === 1 ? '' : 's'} not posted`,
+        body: `${(notPostedAmount / 100).toFixed(2)} was not posted online by the bank. An adjusting entry to Trust Liabilities is waiting to be posted; repay by a new voucher of the Trust liability kind.`,
+        entityType: COL.jevs,
+        entityId: created.jevId,
+        link: `/accounting/general-transactions/${created.jevId}`,
+        severity: 'WARNING',
+      });
+    }
+
+    tx.update(ref, {
+      status: 'SUBMITTED',
+      dateSubmittedToBank: postedDate,
+      ...(bankReferenceNo?.trim() ? { bankReferenceNo: bankReferenceNo.trim() } : {}),
+      notPosted,
+      notPostedAmount,
+      notPostedJevId,
+      postedOnlineBy: by,
+    });
+
+    recordTransition(tx, {
+      caller,
+      event: 'SUBMIT',
+      entityType: COL.ada,
+      entityId: adaId,
+      entityRef: `ADA ${ada.adaNo}`,
+      fiscalYear: ada.fiscalYear,
+      fundCode: ada.fundCode,
+      action: 'SUBMIT',
+      previousStatus: 'PREPARED',
+      newStatus: 'SUBMITTED',
+      remarks: notPosted.length
+        ? `Posted online on ${postedDate}; ${notPosted.length} credit(s), ${(notPostedAmount / 100).toFixed(2)}, not posted - taken up as trust liabilities.`
+        : `Posted online on ${postedDate}; every credit posted.`,
+    });
+
+    return { adaId, notPostedAmount, notPostedJevId };
   });
 });

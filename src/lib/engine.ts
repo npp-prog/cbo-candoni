@@ -542,6 +542,21 @@ export const engine = {
   cancelAda: (p: { adaId: Id; reason: string }) => call<typeof p, { adaId: Id }>('cancelAda', p),
 
   /**
+   * Patch 143. The advice is posted online by the bank; the lines NOT posted
+   * become trust liabilities through a draft adjusting entry.
+   */
+  postAdaOnline: (p: {
+    adaId: Id;
+    postedDate: string;
+    bankReferenceNo?: string;
+    notPostedLineNos: number[];
+  }) =>
+    call<typeof p, { adaId: Id; notPostedAmount: number; notPostedJevId: Id | null }>(
+      'postAdaOnline',
+      p,
+    ),
+
+  /**
    * Patch 137: a saved liquidation report takes its JEV number now ("JEV at
    * save"); the entry is posted under it when the Accountant approves.
    */
@@ -578,6 +593,10 @@ export const engine = {
       'certifyTreasuryReport',
       p,
     ),
+
+  /** Patch 143: the Treasurer forwards a certified report to Accounting. */
+  forwardTreasuryReport: (p: { reportId: Id }) =>
+    call<typeof p, { reportId: Id }>('forwardTreasuryReport', p),
 
   /**
    * The Accountant raises the report's journal entry and posts it. An adjusted

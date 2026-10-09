@@ -3474,6 +3474,44 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 61. Certify then forward; posted online with trust liabilities -------
+
+/*
+ * Patch 143. Certifying a treasury report no longer forwards it: the report
+ * reaches Accounting only by forwardTreasuryReport, and journalizing refuses
+ * one not forwarded. An ADA is marked "posted online" by the engine alone
+ * (postAdaOnline), which takes the credits the bank did not post up as trust
+ * liabilities; the security rules no longer let a browser write an advice.
+ */
+{
+  const before = failures.length;
+  const reports = readFileSync(resolve(root, 'functions/src/treasury/reports.ts'), 'utf8');
+  const certify = reports.slice(reports.indexOf('export const certifyTreasuryReport'), reports.indexOf('export const forwardTreasuryReport'));
+  if (!/forwardedAt: null/.test(certify) || /TREASURY_REPORT_FORWARDED/.test(certify)) {
+    failures.push('functions/src/treasury/reports.ts: certifying forwards the report to Accounting again - the two acts were separated in patch 143.');
+  }
+  const journalize = reports.slice(reports.indexOf('export const journalizeTreasuryReport'));
+  if (!/report\.forwardedAt === null/.test(journalize)) {
+    failures.push('functions/src/treasury/reports.ts: journalizeTreasuryReport no longer refuses a report not yet forwarded.');
+  }
+  const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
+  const adaBlock = rules.slice(rules.indexOf('match /ada/{id}'), rules.indexOf('match /payrolls/{id}'));
+  if (!/allow update: if false;/.test(adaBlock)) {
+    failures.push('firestore.rules: a browser may write an ADA again - "posted online" must go through postAdaOnline, which records the credits not posted.');
+  }
+  const payments = readFileSync(resolve(root, 'functions/src/accounting/payments.ts'), 'utf8');
+  if (!/export const postAdaOnline/.test(payments) || !/proposeNotPostedEntry\(/.test(payments)) {
+    failures.push('functions/src/accounting/payments.ts: postAdaOnline no longer takes unposted credits up as trust liabilities.');
+  }
+  const adaPage = readFileSync(resolve(root, 'src/pages/treasury/Ada.tsx'), 'utf8');
+  if (/\/form`\}/.test(adaPage)) {
+    failures.push('src/pages/treasury/Ada.tsx: the ADA Form link is back on the register line; it lives in the advice window.');
+  }
+  if (failures.length === before) {
+    console.log('treasury: certify and forward are two acts; posted online records credits not posted');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

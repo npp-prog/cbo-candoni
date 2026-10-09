@@ -139,6 +139,13 @@ interface ReportDoc {
   totalDeductions?: number;
   entry?: EntryLine[];
   status: string;
+  /**
+   * Patch 143. Certifying and forwarding are two acts. A report certified
+   * from patch 143 on carries `forwardedAt: null` until the Treasurer forwards
+   * it; a report certified before carries no field at all, and was forwarded
+   * in the same act.
+   */
+  forwardedAt?: string | null;
   jevId?: string;
   /** Set when the report was built from an uploaded RCI or RADAI file. */
   importId?: string;
@@ -278,7 +285,7 @@ export const certifyTreasuryReport = onCall(
       if (attached.empty) {
         throw new HttpsError(
           'failed-precondition',
-          `Attach the signed ${label} before certifying. Certifying forwards it to Accounting, locks the documents it covers to it and reserves its number; the signed copy is the evidence that what CFMS holds is what was signed.`,
+          `Attach the signed ${label} before certifying. Certifying locks the documents it covers to it and reserves its number; the signed copy is the evidence that what CFMS holds is what was signed.`,
         );
       }
 
@@ -541,17 +548,12 @@ export const certifyTreasuryReport = onCall(
           position: caller.position ?? null,
           at: now,
         },
-      });
-
-      notifyInTransaction(tx, {
-        recipientRole: 'MUNICIPAL_ACCOUNTANT',
-        kind: 'TREASURY_REPORT_FORWARDED',
-        title: `${type} ${reportNo} forwarded for journalizing`,
-        body: `${label} ${reportNo} covering ${lines.length} document${lines.length === 1 ? '' : 's'}, ${(verifiedTotal / 100).toFixed(2)}, has been certified and is awaiting its journal entry.`,
-        entityType: COL.treasuryReports,
-        entityId: reportId,
-        link: `/accounting/treasury-reports/${reportId}`,
-        severity: 'INFO',
+        /*
+         * Patch 143: certified is not forwarded. Accounting receives the
+         * report only when the Treasurer forwards it (forwardTreasuryReport).
+         */
+        forwardedAt: null,
+        forwardedBy: null,
       });
 
       recordTransition(tx, {
@@ -565,11 +567,91 @@ export const certifyTreasuryReport = onCall(
         action: 'CERTIFY',
         previousStatus: 'DRAFT',
         newStatus: 'CERTIFIED',
-        assignedToRole: 'MUNICIPAL_ACCOUNTANT',
-        remarks: `${lines.length} documents, ${(verifiedTotal / 100).toFixed(2)}.`,
+        remarks: `${lines.length} documents, ${(verifiedTotal / 100).toFixed(2)}. Not yet forwarded to Accounting.`,
       });
 
       return { reportId, reportNo, totalAmount: verifiedTotal, documentCount: lines.length };
+    });
+  },
+);
+
+/**
+ * forwardTreasuryReport - patch 143. The Treasurer forwards a CERTIFIED
+ * report to Accounting.
+ *
+ * Neil: "Separate the Certify and Forward to Accounting. It doesn't mean
+ * certified is automatically forwarded to accounting." Certifying is the
+ * Treasurer's statement about the report; forwarding is handing it to another
+ * office. Accounting sees the report - and can journalize it - only from here.
+ */
+export const forwardTreasuryReport = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, TREASURY);
+    const { reportId } = (request.data ?? {}) as { reportId?: string };
+    if (!reportId) throw invalid('A report id is required.');
+
+    return db.runTransaction(async (tx) => {
+      const ref = db.collection(COL.treasuryReports).doc(reportId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The treasury report');
+      const report = snap.data() as ReportDoc & { reportNo?: string; totalAmount?: number };
+      const type = assertReportType(report.reportType);
+      const label = REPORT_LABEL[type];
+      assertFundInScope(caller, report.fundCode);
+
+      if (report.status !== 'CERTIFIED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `This ${label} is ${report.status.toLowerCase()}. Only a certified report is forwarded to Accounting.`,
+        );
+      }
+      if (report.forwardedAt !== null) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${type} ${report.reportNo ?? ''} has already been forwarded to Accounting.`,
+        );
+      }
+
+      const now = new Date().toISOString();
+      tx.update(ref, {
+        forwardedAt: now,
+        forwardedBy: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: now,
+        },
+      });
+
+      const count = (report.lines ?? []).filter((l) => !l.excluded).length;
+      notifyInTransaction(tx, {
+        recipientRole: 'MUNICIPAL_ACCOUNTANT',
+        kind: 'TREASURY_REPORT_FORWARDED',
+        title: `${type} ${report.reportNo ?? ''} forwarded for journalizing`,
+        body: `${label} ${report.reportNo ?? ''} covering ${count} document${count === 1 ? '' : 's'}, ${((report.totalAmount ?? 0) / 100).toFixed(2)}, has been certified and forwarded, and is awaiting its journal entry.`,
+        entityType: COL.treasuryReports,
+        entityId: reportId,
+        link: `/accounting/treasury-reports/${reportId}`,
+        severity: 'INFO',
+      });
+
+      recordTransition(tx, {
+        caller,
+        event: 'SUBMIT',
+        entityType: COL.treasuryReports,
+        entityId: reportId,
+        entityRef: `${type} ${report.reportNo ?? ''}`,
+        fiscalYear: report.fiscalYear,
+        fundCode: report.fundCode,
+        action: 'FORWARD',
+        previousStatus: 'CERTIFIED',
+        newStatus: 'CERTIFIED',
+        assignedToRole: 'MUNICIPAL_ACCOUNTANT',
+        remarks: 'Forwarded to Accounting for journalizing.',
+      });
+
+      return { reportId };
     });
   },
 );
@@ -618,6 +700,12 @@ export const journalizeTreasuryReport = onCall(
         throw new HttpsError(
           'failed-precondition',
           `${label} ${report.reportNo ?? ''} is ${report.status.toLowerCase()}. Only a report the Treasurer has certified can be journalized.`,
+        );
+      }
+      if (report.forwardedAt === null) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${label} ${report.reportNo ?? ''} is certified but has not been forwarded to Accounting yet. The Treasurer forwards it first.`,
         );
       }
       if (!report.reportNo) {

@@ -79,9 +79,18 @@ const STATUS_TONES: Record<string, Tone> = {
   DEPOSIT_IN_TRANSIT: 'amber',
 };
 
-export function StatusBadge({ status, className }: { status: string; className?: string }) {
+export function StatusBadge({
+  status,
+  className,
+  label: labelOverride,
+}: {
+  status: string;
+  className?: string;
+  /** A screen's own word for the status (patch 143: an ADA's SUBMITTED is "Posted online"). */
+  label?: string;
+}) {
   const tone = STATUS_TONES[status] ?? 'slate';
-  const label = STATUS_LABELS[status] ?? humanise(status);
+  const label = labelOverride ?? STATUS_LABELS[status] ?? humanise(status);
   return (
     <span
       className={clsx(

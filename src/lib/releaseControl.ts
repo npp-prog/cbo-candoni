@@ -74,7 +74,7 @@ export function canSubmitAda(ada: ReportableDocument): ReleaseCheckResult {
     return {
       ok: false,
       message:
-        'This advice is not on a certified Report of ADA Issued yet. The bank would debit the account on a payment Accounting has no record of. Prepare the RADAI, have it certified, then submit.',
+        'This advice is not on a certified Report of ADA Issued yet. The bank would debit the account on a payment Accounting has no record of. Prepare the RADAI, have it certified, then mark it posted online.',
     };
   }
   return { ok: true };

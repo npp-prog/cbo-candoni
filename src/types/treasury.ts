@@ -552,6 +552,13 @@ export interface TreasuryReport extends Partial<AuditStamps> {
   status: TreasuryReportStatus;
 
   certifiedAt?: string;
+  /**
+   * Patch 143. Null while certified but not yet forwarded to Accounting; a
+   * date once forwarded. Absent on reports certified before patch 143, which
+   * were forwarded in the same act.
+   */
+  forwardedAt?: string | null;
+  forwardedBy?: { uid: string; name: string; position?: string | null; at: string } | null;
   /** The JEV raised from this report. Set once, when journalized. */
   jevId?: Id;
   jevNo?: string;

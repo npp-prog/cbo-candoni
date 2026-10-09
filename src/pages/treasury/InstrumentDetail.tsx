@@ -62,12 +62,28 @@ export function InstrumentDetail({
       title={`${isCheck ? 'Check' : 'ADA'} ${serial}`}
       description={`${formatPeso(amount)} to ${instrument.payeeName}`}
       size="lg"
-      footer={<Button onClick={onClose}>Close</Button>}
+      footer={
+        <>
+          {/*
+            Patch 143: the ADA Form opens from here, not from the register's
+            line - the line was crowded.
+          */}
+          {!isCheck && (
+            <Link to={`/treasury/ada/${instrument.id}/form`}>
+              <Button variant="primary">ADA Form</Button>
+            </Link>
+          )}
+          <Button onClick={onClose}>Close</Button>
+        </>
+      }
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <DetailField label="Date">{formatShortDate(date)}</DetailField>
         <DetailField label="Status">
-          <StatusBadge status={instrument.status} />
+          <StatusBadge
+            status={instrument.status}
+            label={!isCheck && instrument.status === 'SUBMITTED' ? 'Posted online' : undefined}
+          />
         </DetailField>
         <DetailField label="Fund">{instrument.fundCode}</DetailField>
 
@@ -169,11 +185,11 @@ export function InstrumentDetail({
             </>
           ) : (
             <>
-              <DetailField label="Sent to the bank">
+              <DetailField label="Posted online">
                 {instrument.dateSubmittedToBank ? (
                   formatShortDate(instrument.dateSubmittedToBank)
                 ) : (
-                  <span className="text-slate-500">Not yet sent</span>
+                  <span className="text-slate-500">Not yet posted</span>
                 )}
               </DetailField>
               <DetailField label="Debited">
@@ -186,6 +202,26 @@ export function InstrumentDetail({
               <DetailField label="Bank reference">
                 {instrument.bankReferenceNo ?? <span className="text-slate-400">&mdash;</span>}
               </DetailField>
+              {(instrument.notPosted?.length ?? 0) > 0 && (
+                <DetailField label="Not posted by the bank - trust liabilities" className="sm:col-span-3">
+                  <ul className="space-y-0.5 text-sm text-amber-900">
+                    {instrument.notPosted!.map((p, i) => (
+                      <li key={i}>
+                        <span className="font-mono text-xs">{p.accountNumber || '-'}</span>{' '}
+                        {p.payeeName} - {formatPeso(p.amount)}
+                      </li>
+                    ))}
+                  </ul>
+                  {instrument.notPostedJevId && (
+                    <Link
+                      to={`/accounting/general-transactions/${instrument.notPostedJevId}`}
+                      className="mt-1 inline-block text-xs text-brand-700 underline"
+                    >
+                      The adjusting entry
+                    </Link>
+                  )}
+                </DetailField>
+              )}
               {instrument.rejectedReason && (
                 <DetailField label="Rejected by the bank" className="sm:col-span-3">
                   <span className="text-rose-800">{instrument.rejectedReason}</span>

@@ -16,6 +16,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
 import { useAttachments, usePayees, useEmployees, useAda } from '@/data/queries';
 import { buildBankPayrollFile } from '@/lib/bankUpload';
+import { awaitingForward, isForwarded } from '@/lib/treasuryForwarding';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { attachmentTypesFor } from '@/lib/attachmentTypes';
@@ -203,7 +204,7 @@ export default function TreasuryReportDetail() {
 
   const [tab, setTab] = useState<'coverage' | 'entry' | 'attachments' | 'history'>('coverage');
   const [confirm, setConfirm] = useState<
-    null | 'certify' | 'withdraw' | 'journalize' | 'amend'
+    null | 'certify' | 'forward' | 'withdraw' | 'journalize' | 'amend'
   >(null);
   /** The Accountant's working copy, once they start adjusting the entry. */
   const [draftEntry, setDraftEntry] = useState<GridLine[] | null>(null);
@@ -275,7 +276,8 @@ export default function TreasuryReportDetail() {
    * The TOTAL is locked either way. A treasury report is a figure the
    * Treasurer signed; if that is wrong the report is withdrawn and redone.
    */
-  const awaitingEntry = canJournalize && report?.status === 'CERTIFIED';
+  // Patch 143: Accounting works on a report only once it has been forwarded.
+  const awaitingEntry = canJournalize && report?.status === 'CERTIFIED' && isForwarded(report);
   const correctable = canJournalize && report?.status === 'JOURNALIZED' && Boolean(report?.jevId);
   const entryEditable = awaitingEntry || (correctable && amendingEntry);
 
@@ -315,11 +317,27 @@ export default function TreasuryReportDetail() {
       });
       toast.success(
         `${short} ${res.reportNo} certified`,
-        `${res.documentCount} document${res.documentCount === 1 ? '' : 's'}, ${formatPeso(res.totalAmount)}. Accounting has been notified.`,
+        `${res.documentCount} document${res.documentCount === 1 ? '' : 's'}, ${formatPeso(res.totalAmount)}. Forward it to Accounting when it is ready to go.`,
       );
       setConfirm(null);
     } catch (err) {
       toast.error('Could not certify', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forward = async () => {
+    setBusy(true);
+    try {
+      await engine.forwardTreasuryReport({ reportId: report.id });
+      toast.success(
+        `${short} ${report.reportNo ?? ''} forwarded`,
+        'Accounting has been notified and can now journalize it.',
+      );
+      setConfirm(null);
+    } catch (err) {
+      toast.error('Could not forward', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -440,7 +458,11 @@ export default function TreasuryReportDetail() {
             <Button variant="ghost" onClick={() => navigate(origin.to)}>
               &larr; Back to {origin.label}
             </Button>
-            <StatusBadge status={report.status} className="mr-1" />
+            <StatusBadge
+              status={report.status}
+              label={awaitingForward(report) ? 'Certified - not forwarded' : undefined}
+              className="mr-1"
+            />
             {isDraft && canCertify && (
               <Button
                 variant="primary"
@@ -450,7 +472,15 @@ export default function TreasuryReportDetail() {
                   setConfirm('certify');
                 }}
               >
-                Certify and forward
+                Certify
+              </Button>
+            )}
+            {/*
+              Patch 143: forwarding is its own act, after certifying.
+            */}
+            {awaitingForward(report) && canCertify && (
+              <Button variant="primary" onClick={() => setConfirm('forward')}>
+                Forward to Accounting
               </Button>
             )}
             {/*
@@ -508,8 +538,8 @@ export default function TreasuryReportDetail() {
       {isDraft && !hasSignedForm && (
         <Alert tone="warning" className="mb-4" title="Attach the signed form before certifying">
           <p>
-            What CFMS holds is an encoding of the {short}. Certifying forwards it to Accounting,
-            locks the documents it covers to it and reserves its number; the signed copy is the
+            What CFMS holds is an encoding of the {short}. Certifying locks the documents it covers
+            to it and reserves its number (forwarding to Accounting is a separate step); the signed copy is the
             evidence that the encoding is true, and it belongs on the record before the
             certificate, not after it.
           </p>
@@ -521,7 +551,7 @@ export default function TreasuryReportDetail() {
             >
               Attach it on the Supporting documents tab
             </button>
-            . Certify and forward is refused until then, by the server as well as by this screen.
+            . Certify is refused until then, by the server as well as by this screen.
           </p>
         </Alert>
       )}
@@ -808,7 +838,7 @@ export default function TreasuryReportDetail() {
         onConfirm={() => void certify()}
         loading={busy}
         title={`Certify ${short}`}
-        confirmLabel="Certify and forward"
+        confirmLabel="Certify"
         message={
           <>
             <p>
@@ -816,8 +846,9 @@ export default function TreasuryReportDetail() {
               {report.reportType === 'RCDISB' ? 'payroll' : 'document'}
               {report.lines.length === 1 ? '' : 's'} totalling{' '}
               <strong>{formatPeso(report.totalAmount)}</strong>
-              {report.reportType === 'RCDISB' ? ' paid in cash' : ''} and forwards the report to the
-              Municipal Accounting Office.
+              {report.reportType === 'RCDISB' ? ' paid in cash' : ''}. It is NOT forwarded to
+              Accounting yet - that is a separate step, &quot;Forward to Accounting&quot;, once
+              certified.
             </p>
             <div className="mt-3">
               <Field label={`${short} number`} required hint="From the Treasurer's own book.">
@@ -834,6 +865,21 @@ export default function TreasuryReportDetail() {
               cancelled without withdrawing it, and this number is reserved against the report.
             </p>
           </>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirm === 'forward'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void forward()}
+        loading={busy}
+        title={`Forward ${short} ${report.reportNo ?? ''} to Accounting`}
+        confirmLabel="Forward to Accounting"
+        message={
+          <p>
+            The certified report goes to the Municipal Accounting Office for its journal entry, and
+            the Accountant is notified. Once forwarded it is Accounting&apos;s to journalize.
+          </p>
         }
       />
 

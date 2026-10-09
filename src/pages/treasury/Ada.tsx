@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { newestFirst } from '@/lib/registerOrder';
-import { PageHeader, Tabs } from '@/components/ui/Layout';
+import { PageHeader, Tabs, Alert } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -12,10 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAda } from '@/data/queries';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { COL } from '@/lib/collections';
+import { useAda, useEmployees, usePayees } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
@@ -150,22 +147,26 @@ export default function Ada() {
       fixed: true,
       cell: (a) => (
         <div className="flex flex-wrap items-center gap-1.5">
-          <StatusBadge status={a.status} />
+          <StatusBadge status={a.status} label={adaStatusLabel(a.status)} />
           {canManage &&
             a.status === 'PREPARED' &&
             /*
-              Offered only once the advice is on a certified RADAI. The
-              security rules refuse the submission otherwise; saying why here
-              is better than a button that fails when it is pressed.
+              Offered only once the advice is on a certified RADAI - the
+              engine refuses it otherwise; saying why here is better than a
+              button that fails when it is pressed.
             */
             (() => {
               const gate = canSubmitAda(a);
               return gate.ok ? (
-                <Button size="sm" variant="primary" onClick={(e) => {
-                e.stopPropagation();
-                setSubmitting(a);
-              }}>
-                  Submit to bank
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSubmitting(a);
+                  }}
+                >
+                  Posted online
                 </Button>
               ) : (
                 <span className="text-2xs text-amber-700" title={gate.message}>
@@ -173,23 +174,24 @@ export default function Ada() {
                 </span>
               );
             })()}
+          {(a.notPostedAmount ?? 0) > 0 && (
+            <span className="text-2xs text-amber-700">
+              {formatPeso(a.notPostedAmount ?? 0, { symbol: false })} not posted
+            </span>
+          )}
           {/*
-            The ADA form itself. On the row rather than behind
-            an Open button, because unlike a report there is no page to open:
-            an advice is one line in this register and one sheet for the bank.
+            Patch 143: the ADA Form is in the advice's own window (click the
+            line), not on the line - the row was crowded.
           */}
-          <Link
-            to={`/treasury/ada/${a.id}/form`}
-            className="text-2xs font-medium underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            ADA Form
-          </Link>
           {canManage && can('accounting', 'cancel') && !['DEBITED', 'CANCELLED'].includes(a.status) && (
-            <Button size="sm" variant="ghost" onClick={(e) => {
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(e) => {
                 e.stopPropagation();
                 setCancelling(a);
-              }}>
+              }}
+            >
               {canUndoOutright(a) ? 'Undo' : 'Cancel'}
             </Button>
           )}
@@ -264,25 +266,29 @@ export default function Ada() {
       )}
 
       {submitting && (
-        <SubmitDialog
+        <PostedOnlineDialog
           ada={submitting}
           busy={busy}
           onClose={() => setSubmitting(null)}
-          onSubmit={(reference, date) => {
+          onSubmit={({ reference, date, notPostedLineNos }) => {
             setBusy(true);
-            void updateDoc(doc(db, COL.ada, submitting.id), {
-              status: 'SUBMITTED',
-              dateSubmittedToBank: date,
-              bankReferenceNo: reference,
-            })
-              .then(() => {
+            void engine
+              .postAdaOnline({
+                adaId: submitting.id,
+                postedDate: date,
+                bankReferenceNo: reference || undefined,
+                notPostedLineNos,
+              })
+              .then((r) => {
                 toast.success(
-                  `ADA ${submitting.adaNo} submitted`,
-                  'The bank reference will be matched against the statement during reconciliation.',
+                  `ADA ${submitting.adaNo} posted online`,
+                  r.notPostedAmount > 0
+                    ? `${formatPeso(r.notPostedAmount)} not posted - an adjusting entry to Trust Liabilities is waiting in General Transactions for the Accountant to post. Repay by a new voucher of the Trust liability kind.`
+                    : 'Every credit was posted.',
                 );
                 setSubmitting(null);
               })
-              .catch((err) => toast.error('Could not update the ADA', err.message))
+              .catch((err) => toast.error('Could not record the posting', err.message))
               .finally(() => setBusy(false));
           }}
         />
@@ -341,7 +347,22 @@ export default function Ada() {
   );
 }
 
-function SubmitDialog({
+/** Patch 143: an ADA's SUBMITTED reads "Posted online" on this screen. */
+export function adaStatusLabel(status: string): string | undefined {
+  return status === 'SUBMITTED' ? 'Posted online' : undefined;
+}
+
+/**
+ * "Posted online" - patch 143 (it was "Submit to bank").
+ *
+ * Lists every credit of the advice - each payee of a group advice, or the one
+ * payee - with the ATM number and the amount, ticked as posted. The Treasury
+ * unticks any the bank did not post. Those become trust liabilities: the
+ * engine raises a draft adjusting entry (Dr Cash in Bank, Cr Trust
+ * Liabilities per payee) for the Accountant, and each is repaid by a new
+ * voucher.
+ */
+function PostedOnlineDialog({
   ada,
   busy,
   onClose,
@@ -350,32 +371,144 @@ function SubmitDialog({
   ada: AdaRecord;
   busy: boolean;
   onClose: () => void;
-  onSubmit: (reference: string, date: string) => void;
+  onSubmit: (v: { reference: string; date: string; notPostedLineNos: number[] }) => void;
 }) {
+  const payees = usePayees();
+  const employees = useEmployees();
   const [reference, setReference] = useState('');
   const [date, setDate] = useState(todayPh());
+
+  const rows = useMemo(() => {
+    if (ada.payees && ada.payees.length > 0) {
+      return ada.payees.map((p, i) => ({ ...p, lineNo: p.lineNo ?? i + 1 }));
+    }
+    const payee = payees.data.find((p) => p.id === ada.payeeId);
+    const employee = payee?.employeeId
+      ? employees.data.find((e) => e.id === payee.employeeId)
+      : undefined;
+    return [
+      {
+        lineNo: 1,
+        payeeId: ada.payeeId,
+        payeeName: ada.payeeName,
+        accountNumber: employee?.bankAccountNumber || payee?.bankAccountNumber || '',
+        amount: ada.amount,
+      },
+    ];
+  }, [ada, payees.data, employees.data]);
+
+  const [notPosted, setNotPosted] = useState<Set<number>>(new Set());
+  const toggle = (n: number) =>
+    setNotPosted((prev) => {
+      const next = new Set(prev);
+      if (next.has(n)) next.delete(n);
+      else next.add(n);
+      return next;
+    });
+  const notPostedAmount = rows
+    .filter((r) => notPosted.has(r.lineNo))
+    .reduce((t, r) => t + r.amount, 0);
 
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Submit ADA ${ada.adaNo} to the bank`}
-      description={`${formatPeso(ada.amount)} to ${ada.payeeName}`}
-      size="sm"
+      title={`ADA ${ada.adaNo} - posted online`}
+      description={`${formatPeso(ada.amount)} - ${ada.payeeName} - untick any credit the bank did NOT post.`}
+      size="lg"
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={() => onSubmit(reference.trim(), date)}>
-            Record submission
+          <Button
+            variant="primary"
+            loading={busy}
+            onClick={() =>
+              onSubmit({ reference: reference.trim(), date, notPostedLineNos: [...notPosted] })
+            }
+          >
+            {notPosted.size > 0 ? 'Record posting and trust liabilities' : 'Record posting'}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs text-slate-600">
+            <tr>
+              <th className="w-20 px-2 py-1.5 font-medium">Posted</th>
+              <th className="px-2 py-1.5 font-medium">ATM / account no.</th>
+              <th className="px-2 py-1.5 font-medium">Payee</th>
+              <th className="px-2 py-1.5 text-right font-medium">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r) => {
+              const off = notPosted.has(r.lineNo);
+              return (
+                <tr key={r.lineNo} className={off ? 'bg-amber-50' : undefined}>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={!off}
+                      onChange={() => toggle(r.lineNo)}
+                      aria-label={`Posted to ${r.payeeName}`}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 font-mono text-xs">{r.accountNumber || '-'}</td>
+                  <td className="px-2 py-1.5">
+                    {r.payeeName}
+                    {off && (
+                      <span className="ml-2 text-2xs font-semibold text-amber-800">
+                        NOT POSTED - trust liability
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-mono">
+                    {formatPeso(r.amount, { symbol: false })}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="border-t-2 border-navy-800 text-sm font-semibold">
+            <tr>
+              <td className="px-2 py-1.5" colSpan={3}>
+                Posted
+              </td>
+              <td className="px-2 py-1.5 text-right font-mono">
+                {formatPeso(ada.amount - notPostedAmount, { symbol: false })}
+              </td>
+            </tr>
+            {notPostedAmount > 0 && (
+              <tr className="text-amber-800">
+                <td className="px-2 py-1.5" colSpan={3}>
+                  Not posted - to Trust Liabilities
+                </td>
+                <td className="px-2 py-1.5 text-right font-mono">
+                  {formatPeso(notPostedAmount, { symbol: false })}
+                </td>
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      </div>
+
+      {notPostedAmount > 0 && (
+        <Alert tone="warning" className="mt-3" title="What happens to the credits not posted">
+          An adjusting entry is prepared for the Accountant - Dr Cash in Bank, Cr Trust Liabilities
+          for each payee not posted - and waits in General Transactions to be posted. Each payee is
+          then repaid by a new disbursement voucher of the &quot;Trust liability&quot; kind.
+        </Alert>
+      )}
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Field label="Date posted online" required htmlFor="postedDate">
+          <DateInput id="postedDate" value={date} onChange={setDate} />
+        </Field>
         <Field
           label="Bank reference number"
           htmlFor="bankRef"
-          hint="The reference the bank gives on acknowledgement. Automatic reconciliation matches on this."
+          hint="The reference of the bank's online posting. Reconciliation matches on this."
         >
           <TextInput
             id="bankRef"
@@ -383,9 +516,6 @@ function SubmitDialog({
             onChange={(e) => setReference(e.target.value)}
             className="font-mono"
           />
-        </Field>
-        <Field label="Date submitted" required htmlFor="submitDate">
-          <DateInput id="submitDate" value={date} onChange={setDate} />
         </Field>
       </div>
     </Modal>

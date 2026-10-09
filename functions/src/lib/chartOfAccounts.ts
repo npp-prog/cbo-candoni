@@ -526,6 +526,15 @@ export const ACCOUNTS_PAYABLE: NamedAccount = {
   name: 'Accounts Payable',
 };
 
+/**
+ * 2-04-01-010. Patch 143: what an ADA credit the bank did not post becomes -
+ * money held for the payee until a new voucher repays it.
+ */
+export const TRUST_LIABILITIES: NamedAccount = {
+  code: '20401010',
+  name: 'Trust Liabilities',
+};
+
 export const DUE_TO_OFFICERS_AND_EMPLOYEES: NamedAccount = {
   code: '20101020',
   name: 'Due to Officers and Employees',
@@ -567,6 +576,7 @@ export const NAMED_ACCOUNTS: readonly NamedAccount[] = [
   ACCOUNTS_PAYABLE,
   DUE_TO_OFFICERS_AND_EMPLOYEES,
   DUE_TO_BIR,
+  TRUST_LIABILITIES,
 ];
 
 /**
