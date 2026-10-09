@@ -63,20 +63,11 @@ import RcdAppendix34 from './RcdAppendix34';
  * far fuller form. A second one would be a second answer to the same question.
  */
 
-/**
- * The CAFOA column, on all three forms, with no CAFOA behind it.
- *
- * Appendix 28 is SUSPENDED and Candoni does not raise one - that was settled
- * when the GAM forms were first mapped. What sits in the column is the
- * Obligation Request number, which is the document that did the CAFOA's job.
- *
- * Said on the face of the form rather than only in code: an auditor reading a
- * column headed for one document and finding an entry from another will ask,
- * and the answer has to be visible from the page. The same footnote is on the
- * Registry of Appropriations, Allotments and Obligations for the same reason.
+/*
+ * The OBR No. column (patch 146 - headed "CAFOA No." until then). The CAFOA is
+ * suspended at Candoni and the column has always held the Obligation Request
+ * number, so it is now called what it holds.
  */
-const CAFOA_NOTE =
-  'CAFOA is suspended. The column carries the Obligation Request number.';
 
 interface FormSpec {
   appendix: string;
@@ -256,86 +247,118 @@ export default function TreasuryReportForm() {
           side - fund and bank, then the report and sheet numbers right after
           them - rather than spread across the two halves of the sheet.
         */}
-        <div className="mb-2 space-y-0.5">
-          <p className="flex flex-wrap" style={{ columnGap: '3rem' }}>
-            <span>
+        {/*
+          Patch 146: fund and bank at the left; Report No. and Sheet No. at
+          the far right, one under the other, labels and values aligned.
+        */}
+        <div className="mb-2 flex items-start justify-between gap-6">
+          <div className="space-y-0.5">
+            <p>
               <span className="text-slate-500">Fund:</span>{' '}
               <span className="font-semibold">{fundLabel(report.fundCode)}</span>
-            </span>
-            <span>
-              <span className="text-slate-500">Report No.:</span>{' '}
-              <span className="font-mono font-semibold">
-                {hasDocumentNumber(report.reportNo) ? report.reportNo : ''}
-              </span>
-            </span>
-            {/*
-              One sheet. CFMS prints the whole report on one continuous page
-              and lets the browser break it; a sheet number counted from a page
-              break the printer decides would be wrong as often as it was right.
-            */}
-            <span>
-              <span className="text-slate-500">Sheet No.:</span>{' '}
-              <span className="font-semibold">1 of 1</span>
-            </span>
-          </p>
-          {!dated && (
-            <p>
-              <span className="text-slate-500">Bank Name/Account No.:</span>{' '}
-              <span className="font-semibold">{report.bankName ?? ''}</span>{' '}
-              <span className="font-mono">{report.bankAccountNumber ?? ''}</span>
             </p>
-          )}
+            {!dated && (
+              <p>
+                <span className="text-slate-500">Bank Name/Account No.:</span>{' '}
+                <span className="font-semibold">{report.bankName ?? ''}</span>{' '}
+                <span className="font-mono">{report.bankAccountNumber ?? ''}</span>
+              </p>
+            )}
+          </div>
+          {/*
+            One sheet. CFMS prints the whole report on one continuous page and
+            lets the browser break it; a sheet number counted from a page break
+            the printer decides would be wrong as often as it was right.
+          */}
+          <table className="cbo-form-inline shrink-0" style={{ width: 'auto' }}>
+            <tbody>
+              <tr>
+                <td className="pr-2 text-slate-500" style={{ padding: 0, paddingRight: '0.5rem' }}>
+                  Report No.:
+                </td>
+                <td className="font-mono font-semibold" style={{ padding: 0 }}>
+                  {hasDocumentNumber(report.reportNo) ? report.reportNo : ''}
+                </td>
+              </tr>
+              <tr>
+                <td className="pr-2 text-slate-500" style={{ padding: 0, paddingRight: '0.5rem' }}>
+                  Sheet No.:
+                </td>
+                <td className="font-semibold" style={{ padding: 0 }}>
+                  1 of 1
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <table className="w-full border-collapse text-2xs">
+          {/*
+            Patch 146: the widths on a colgroup, so the two header rows can
+            merge cells (rowSpan) and a fixed-layout table still knows how wide
+            each column is.
+          */}
+          <colgroup>
+            {dated ? (
+              <col style={{ width: '6rem' }} />
+            ) : (
+              <>
+                <col style={{ width: '5.5rem' }} />
+                <col style={{ width: '7rem' }} />
+              </>
+            )}
+            <col style={{ width: '8rem' }} />
+            <col style={{ width: '8rem' }} />
+            {form.wide && <col style={{ width: '8rem' }} />}
+            <col />
+            {form.wide && <col style={{ width: '6rem' }} />}
+            <col />
+            <col style={{ width: '7rem' }} />
+          </colgroup>
+          {/*
+            Patch 146: every heading but the instrument's spans both header
+            rows - one merged cell, as the office's own form draws it - and the
+            header is shaded on paper too (print-color-adjust, FormPrintStyle).
+          */}
           <thead>
             <tr className="bg-slate-100">
               {dated ? (
-                <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '6rem' }}>
-                  Date
-                </th>
+                <th className="border border-slate-400 px-1.5 py-1 text-left align-middle">Date</th>
               ) : (
                 <th className="border border-slate-400 px-1.5 py-1 text-center" colSpan={2}>
                   {form.instrument}
                 </th>
               )}
-              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '8rem' }}>
+              <th className="border border-slate-400 px-1.5 py-1 text-left align-middle" rowSpan={dated ? 1 : 2}>
                 DV/Payroll No.
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '8rem' }}>
-                CAFOA No.
+              <th className="border border-slate-400 px-1.5 py-1 text-left align-middle" rowSpan={dated ? 1 : 2}>
+                OBR No.
               </th>
               {form.wide && (
-                <th
-                  className="border border-slate-400 px-1.5 py-1 text-left"
-                  style={{ width: '8rem' }}
-                >
+                <th className="border border-slate-400 px-1.5 py-1 text-left align-middle" rowSpan={dated ? 1 : 2}>
                   Responsibility Center Code
                 </th>
               )}
-              <th className="border border-slate-400 px-1.5 py-1 text-left">Payee</th>
+              <th className="border border-slate-400 px-1.5 py-1 text-left align-middle" rowSpan={dated ? 1 : 2}>
+                Payee
+              </th>
               {form.wide && (
-                <th
-                  className="border border-slate-400 px-1.5 py-1 text-left"
-                  style={{ width: '6rem' }}
-                >
+                <th className="border border-slate-400 px-1.5 py-1 text-left align-middle" rowSpan={dated ? 1 : 2}>
                   Account Code
                 </th>
               )}
-              <th className="border border-slate-400 px-1.5 py-1 text-left">Nature of Payment</th>
-              <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '7rem' }}>
+              <th className="border border-slate-400 px-1.5 py-1 text-left align-middle" rowSpan={dated ? 1 : 2}>
+                Nature of Payment
+              </th>
+              <th className="border border-slate-400 px-1.5 py-1 text-right align-middle" rowSpan={dated ? 1 : 2}>
                 Amount
               </th>
             </tr>
             {!dated && (
               <tr className="bg-slate-100">
-                <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '5rem' }}>
-                  Date
-                </th>
-                <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '7rem' }}>
-                  Serial No.
-                </th>
-                <th className="border border-slate-400 px-1.5 py-1" colSpan={columns - 2} />
+                <th className="border border-slate-400 px-1.5 py-1 text-left">Date</th>
+                <th className="border border-slate-400 px-1.5 py-1 text-left">Serial No.</th>
               </tr>
             )}
           </thead>
@@ -387,7 +410,7 @@ export default function TreasuryReportForm() {
             )}
           </tbody>
           <tfoot>
-            <tr className="bg-slate-50 font-bold">
+            <tr className="bg-slate-100 font-bold">
               <td
                 className="border border-slate-400 px-1.5 py-1 text-right"
                 colSpan={columns - 1}
@@ -401,7 +424,6 @@ export default function TreasuryReportForm() {
           </tfoot>
         </table>
 
-        <p className="mt-1 text-[9px] italic text-slate-500">{CAFOA_NOTE}</p>
 
         <div className={`cbo-form-signatures mt-4 grid gap-0 ${form.receivedBy ? 'sm:grid-cols-2' : ''}`}>
           <div className="border border-slate-400 px-3 py-2">

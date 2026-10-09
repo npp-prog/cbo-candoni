@@ -95,10 +95,21 @@ export function FormPrintStyle({
     how wide they would like to be, so it cannot be wider than the sheet. This
     is the whole of "fit to width".
   */
-  ${scope}.cbo-form-sheet table {
+  ${scope}.cbo-form-sheet table:not(.cbo-form-inline) {
     width: 100% !important;
     max-width: 100% !important;
     table-layout: fixed !important;
+  }
+
+  /*
+    Patch 146: shading prints. A browser leaves background colours off paper
+    unless told otherwise ("Background graphics" in the dialog), so the shaded
+    header and total rows came out white. This asks for them exactly.
+  */
+  ${scope}.cbo-form-sheet,
+  ${scope}.cbo-form-sheet * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   ${scope}.cbo-form-sheet th,

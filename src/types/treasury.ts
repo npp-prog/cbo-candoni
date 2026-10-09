@@ -324,7 +324,7 @@ export interface BankTransaction {
 
   /** Reconciliation state. */
   matchStatus: MatchStatus;
-  matchedType?: 'CHECK' | 'ADA' | 'DEPOSIT' | 'COLLECTION' | 'PAYROLL' | 'OTHER';
+  matchedType?: 'CHECK' | 'ADA' | 'RADAI' | 'DEPOSIT' | 'COLLECTION' | 'PAYROLL' | 'OTHER';
   matchedId?: Id;
   matchedRef?: string;
   matchConfidence?: number;

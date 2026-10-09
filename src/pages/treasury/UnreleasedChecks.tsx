@@ -116,8 +116,7 @@ export default function UnreleasedChecks() {
           <p className="mt-1">
             A check counts here when it was drawn on or before the date and was still in the
             Treasury then - including one handed over afterwards, which is marked. The reference
-            column holds the obligation number: the manual names the CAFOA there, and the CAFOA
-            is suspended.
+            column holds the OBR number.
           </p>
           {/*
             What was said here in patch 45 was wrong, and the corrected rule is

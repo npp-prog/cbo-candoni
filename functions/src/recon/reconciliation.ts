@@ -183,7 +183,9 @@ function rowFingerprint(bankAccountId: string, row: StatementRow): string {
  * Matching is graded, and nothing is ever auto-confirmed on a weak signal:
  *
  *   check number found in the description + exact amount  -> MATCHED
- *   ADA reference + exact amount                          -> MATCHED
+ *   RADAI bank ref / number + posted amount (patch 146)   -> MATCHED
+ *   RADAI posted amount within 10 days                    -> SUGGESTED
+ *   ADA reference + exact amount (less not posted)        -> MATCHED
  *   deposit slip number + exact amount                    -> MATCHED
  *   exact amount within 5 days, single candidate          -> SUGGESTED
  *   exact amount, several candidates                      -> SUGGESTED (first)
@@ -202,7 +204,7 @@ export const autoMatchBankTransactions = onCall(
     };
     if (!bankAccountId) throw invalid('A bank account is required.');
 
-    const [txSnap, checkSnap, adaSnap, depositSnap] = await Promise.all([
+    const [txSnap, checkSnap, adaSnap, depositSnap, radaiSnap] = await Promise.all([
       db
         .collection(COL.bankTransactions)
         .where('bankAccountId', '==', bankAccountId)
@@ -223,6 +225,12 @@ export const autoMatchBankTransactions = onCall(
         .where('bankAccountId', '==', bankAccountId)
         .where('status', 'in', ['IN_TRANSIT', 'RECORDED'])
         .get(),
+      // Patch 146: the RADAIs posted online, matched at their POSTED amount.
+      db
+        .collection(COL.treasuryReports)
+        .where('bankAccountId', '==', bankAccountId)
+        .where('reportType', '==', 'RADAI')
+        .get(),
     ]);
 
     const checks = checkSnap.docs.map((d) => ({
@@ -232,13 +240,36 @@ export const autoMatchBankTransactions = onCall(
       date: (d.data().checkDate as string) ?? '',
       payeeName: (d.data().payeeName as string) ?? '',
     }));
+    /*
+     * Patch 146: an advice is matched at what the bank POSTED - its amount
+     * less the credits the bank did not post (taken up as trust liabilities).
+     */
     const adas = adaSnap.docs.map((d) => ({
       id: d.id,
       adaNo: (d.data().adaNo as string) ?? '',
-      amount: (d.data().amount as number) ?? 0,
+      amount: ((d.data().amount as number) ?? 0) - ((d.data().notPostedAmount as number) ?? 0),
       date: (d.data().adaDate as string) ?? '',
       payeeName: (d.data().payeeName as string) ?? '',
     }));
+    /*
+     * Patch 146: the bank posts a RADAI's file as one debit, so the RADAI is
+     * matched as a whole at its POSTED amount - the report total less the
+     * credits not posted - by its bank reference or number, or by amount and
+     * date. Only RADAIs posted online and not yet matched.
+     */
+    const radais = radaiSnap.docs
+      .map((d) => ({
+        id: d.id,
+        reportNo: (d.data().reportNo as string) ?? '',
+        bankRef: (d.data().bankReferenceNo as string) ?? '',
+        amount: ((d.data().totalAmount as number) ?? 0) - ((d.data().notPostedAmount as number) ?? 0),
+        date: (d.data().postedOnlineDate as string) ?? '',
+        posted: Boolean(d.data().postedOnlineAt),
+        debited: Boolean(d.data().bankDebitedAt),
+        status: (d.data().status as string) ?? '',
+      }))
+      .filter((r) => r.posted && !r.debited && r.status !== 'CANCELLED' && r.amount > 0);
+    const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const deposits = depositSnap.docs.map((d) => ({
       id: d.id,
       slipNo: (d.data().depositSlipNo as string) ?? '',
@@ -282,6 +313,41 @@ export const autoMatchBankTransactions = onCall(
             method: 'CHECK_NO',
             confidence: 1,
           };
+        }
+
+        if (!result) {
+          const byRadai = radais.find(
+            (r) =>
+              r.amount === amount &&
+              ((r.bankRef && haystack.includes(norm(r.bankRef))) ||
+                (r.reportNo && haystack.includes(norm(r.reportNo)))),
+          );
+          if (byRadai) {
+            result = {
+              status: 'MATCHED',
+              type: 'RADAI',
+              id: byRadai.id,
+              ref: byRadai.reportNo,
+              method: 'RADAI_REF',
+              confidence: 1,
+            };
+          }
+        }
+
+        if (!result) {
+          const candidates = radais.filter(
+            (r) => r.amount === amount && withinDays(r.date, t.transactionDate, 10),
+          );
+          if (candidates.length > 0) {
+            result = {
+              status: 'SUGGESTED',
+              type: 'RADAI',
+              id: candidates[0].id,
+              ref: candidates[0].reportNo,
+              method: 'AMOUNT_DATE',
+              confidence: candidates.length === 1 ? 0.75 : 0.4,
+            };
+          }
         }
 
         if (!result) {
@@ -580,6 +646,23 @@ export const finalizeReconciliation = onCall(
           dateDebited: d.transactionDate,
           bankTransactionId: doc.id,
         });
+      }
+      // Patch 146: a RADAI matched as one debit clears every advice on it.
+      if (d.matchedType === 'RADAI' && d.matchedId) {
+        const reportRef = db.collection(COL.treasuryReports).doc(d.matchedId as string);
+        const report = await reportRef.get();
+        clearBatch.update(reportRef, {
+          bankDebitedAt: d.transactionDate,
+          bankTransactionId: doc.id,
+        });
+        const lines = (report.data()?.lines ?? []) as Array<{ sourceId: string; excluded?: boolean }>;
+        for (const l of lines.filter((x) => !x.excluded)) {
+          clearBatch.update(db.collection(COL.ada).doc(l.sourceId), {
+            status: 'DEBITED',
+            dateDebited: d.transactionDate,
+            bankTransactionId: doc.id,
+          });
+        }
       }
       if (d.matchedType === 'DEPOSIT' && d.matchedId) {
         clearBatch.update(db.collection(COL.deposits).doc(d.matchedId as string), {

@@ -135,10 +135,7 @@ export default function Raao() {
             so what is in that column is an Obligation Request number. An
             auditor who reads the column head and the entry will ask.
           */}
-          <p className="mt-1">
-            The reference in Section B is the Obligation Request number. The manual names the CAFOA
-            there; the CAFOA is suspended and CFMS does not raise one.
-          </p>
+          <p className="mt-1">The reference in Section B is the OBR number.</p>
         </>
       }
     >
