@@ -4,7 +4,16 @@ import { BackButton, keepReturn } from '@/components/ui/BackButton';
 import clsx from 'clsx';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, TextInput, TextArea, DateInput, AmountInput, Select } from '@/components/ui/Field';
+import {
+  Field,
+  TextInput,
+  TextArea,
+  DateInput,
+  AmountInput,
+  Select,
+  Checkbox,
+} from '@/components/ui/Field';
+import { withEtAl, withoutEtAl } from '@/lib/accounting-rules';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -116,6 +125,12 @@ export default function ObligationDetail() {
   const [obrDate, setObrDate] = useState(todayPh());
   const [payeeId, setPayeeId] = useState<string | null>(null);
   const [payeeName, setPayeeName] = useState('');
+  /**
+   * Patch 138: a group request - "Juan Dela Cruz, et al." The obligation is
+   * one request against the budget; the list of payees, their accounts and
+   * shares is kept on the voucher that pays them.
+   */
+  const [severalPayees, setSeveralPayees] = useState(false);
   const [payeeTin, setPayeeTin] = useState('');
   const [officeId, setOfficeId] = useState<string | null>(null);
   const [officeName, setOfficeName] = useState('');
@@ -130,6 +145,7 @@ export default function ObligationDetail() {
     setObrNo(existing.obrNo ?? '');
     setPayeeId(existing.payeeId);
     setPayeeName(existing.payeeName);
+    setSeveralPayees(Boolean(existing.severalPayees));
     setPayeeTin(existing.payeeTin ?? '');
     setOfficeId(existing.officeId);
     setOfficeName(existing.officeName);
@@ -310,7 +326,8 @@ export default function ObligationDetail() {
     fiscalYear,
     fundCode,
     payeeId: payeeId!,
-    payeeName,
+    payeeName: severalPayees ? withEtAl(payeeName) : withoutEtAl(payeeName),
+    severalPayees,
     payeeTin: payeeTin || null,
     officeId: officeId!,
     officeName,
@@ -583,6 +600,19 @@ export default function ObligationDetail() {
                       setPayeeTin(p?.tin ?? '');
                     }}
                   />
+                  <div className="mt-1.5">
+                    <Checkbox
+                      checked={severalPayees}
+                      disabled={!canEdit}
+                      onChange={setSeveralPayees}
+                      label="Several payees (et al.) - the payees are listed on the voucher"
+                    />
+                  </div>
+                  {severalPayees && payeeName && (
+                    <p className="mt-1 text-2xs text-slate-500">
+                      Recorded as <strong>{withEtAl(payeeName)}</strong>.
+                    </p>
+                  )}
                 </Field>
 
                 <Field label="TIN" htmlFor="tin">

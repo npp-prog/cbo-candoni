@@ -20,6 +20,7 @@ import {
   checkDvMath,
   checkDoubleEntry,
   checkExpenseDebitsHaveFpp,
+  checkDvPayees,
 } from '../lib/rules';
 import {
   createJevInTransaction,
@@ -56,6 +57,21 @@ const REVIEWERS: Role[] = ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_RE
  * The Chart of Accounts is read only when a trust-liability voucher has a
  * debit to check. An obligated voucher never needs it.
  */
+/**
+ * Patch 138. A voucher for several payees is held to its list: at least two,
+ * each on the payee master list with an account number, none twice, and the
+ * shares adding up to the net - checked at submission and again at approval.
+ */
+function assertDvPayees(dv: DvDoc): void {
+  if (!dv.severalPayees) return;
+  const check = checkDvPayees(dv.payees ?? [], dv.netAmount ?? 0);
+  if (!check.ok) {
+    throw new HttpsError('failed-precondition', check.violations[0].message, {
+      violations: check.violations,
+    });
+  }
+}
+
 async function assertDvCategory(dv: DvDoc): Promise<void> {
   const lines = (dv.accountLines ?? []).map((l) => ({
     lineNo: l.lineNo,
@@ -148,6 +164,9 @@ interface DvDoc {
   }>;
   status: string;
   attachmentCount: number;
+  /** Patch 138: "Payee, et al." */
+  severalPayees?: boolean;
+  payees?: Array<{ payeeId?: string | null; payeeName: string; accountNumber?: string; amount: number }>;
   createdBy?: { uid: string };
   jevId?: string;
   jevNo?: string;
@@ -241,6 +260,7 @@ export const submitDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     // first - attaching documents to a voucher of the wrong kind is wasted
     // work.
     await assertDvCategory(dv);
+    assertDvPayees(dv);
 
     if ((dv.attachmentCount ?? 0) === 0) {
       throw new HttpsError(
@@ -434,6 +454,7 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
      * verified an hour ago says nothing about the document being approved now.
      */
     await assertDvCategory(dv);
+    assertDvPayees(dv);
 
     const period = periodOf(dv.dvDate);
     await assertFiscalYearOpen(dv.fiscalYear, tx);

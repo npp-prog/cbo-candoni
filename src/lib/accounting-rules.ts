@@ -1295,3 +1295,95 @@ export function checkTrialBalance(
   }
   return ok;
 }
+
+// ---------------------------------------------------------------------------
+// "Payee, et al." - one voucher, several payees, one ADA. Patch 138.
+// ---------------------------------------------------------------------------
+
+/**
+ * The suffix a group request carries on its payee name, the way the office
+ * writes it on the OBR and the voucher: "Juan Dela Cruz, et al."
+ */
+export const ET_AL = ', et al.';
+
+/** The name with the suffix, once. */
+export const withEtAl = (name: string): string => {
+  const base = withoutEtAl(name);
+  return base ? `${base}${ET_AL}` : '';
+};
+
+/** The name without it. */
+export const withoutEtAl = (name: string): string =>
+  String(name ?? '')
+    .replace(/,?\s*et\.?\s*al\.?\s*$/i, '')
+    .trim();
+
+export interface PayeeShare {
+  payeeId?: string | null;
+  payeeName: string;
+  accountNumber?: string | null;
+  amount: number;
+}
+
+/**
+ * The payees of a group voucher, before it may be submitted or approved.
+ *
+ * At least two (one payee is an ordinary voucher); each a payee on the
+ * master list (so the payable is kept per person); each with an account
+ * number (the bank file has a row per payee and a blank one is either
+ * rejected or, on a careless bank application, paid into the row above); no
+ * payee twice; every share above zero; and the shares adding up to the net
+ * amount exactly - the ADA pays the net, and the bank credits the shares.
+ */
+export function checkDvPayees(payees: PayeeShare[], netAmount: number): CheckResult {
+  const v: Violation[] = [];
+  const php = (c: number) =>
+    (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (payees.length < 2) {
+    v.push({
+      code: 'PAYEES_TOO_FEW',
+      message: 'A voucher for several payees lists at least two. For one payee, clear "Several payees".',
+    });
+  }
+  const unlisted = payees.filter((p) => !String(p.payeeId ?? '').trim());
+  if (unlisted.length) {
+    v.push({
+      code: 'PAYEE_NOT_ON_FILE',
+      message: `${unlisted.map((p) => p.payeeName || '(no name)').slice(0, 5).join(', ')}${unlisted.length > 5 ? ' and others' : ''} ${unlisted.length === 1 ? 'is' : 'are'} not on the payee master list. Add ${unlisted.length === 1 ? 'them' : 'each'} first, so what is owed is kept per person.`,
+    });
+  }
+  const noAccount = payees.filter((p) => !String(p.accountNumber ?? '').trim());
+  if (noAccount.length) {
+    v.push({
+      code: 'PAYEE_NO_ACCOUNT',
+      message: `No ATM / account number for ${noAccount.map((p) => p.payeeName).slice(0, 5).join(', ')}${noAccount.length > 5 ? ' and others' : ''}. The bank file needs one for every payee.`,
+    });
+  }
+  const seen = new Map<string, number>();
+  for (const p of payees) {
+    const k = String(p.payeeId ?? '').trim();
+    if (k) seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
+  const twice = payees.filter((p, i) => {
+    const k = String(p.payeeId ?? '').trim();
+    return k && (seen.get(k) ?? 0) > 1 && payees.findIndex((q) => q.payeeId === p.payeeId) === i;
+  });
+  if (twice.length) {
+    v.push({
+      code: 'PAYEE_TWICE',
+      message: `${twice.map((p) => p.payeeName).join(', ')} ${twice.length === 1 ? 'is' : 'are'} listed twice. Put each payee once, with the whole of their share.`,
+    });
+  }
+  if (payees.some((p) => !(p.amount > 0))) {
+    v.push({ code: 'PAYEE_ZERO', message: 'Every payee is paid more than zero.' });
+  }
+  const total = payees.reduce((t, p) => t + (p.amount ?? 0), 0);
+  if (payees.length && total !== netAmount) {
+    v.push({
+      code: 'PAYEES_NOT_NET',
+      message: `The payees add up to ${php(total)}; the net amount of the voucher is ${php(netAmount)}. The ADA pays the net, so the shares must add up to it exactly.`,
+      details: { total, netAmount },
+    });
+  }
+  return v.length ? { ok: false, violations: v } : ok;
+}

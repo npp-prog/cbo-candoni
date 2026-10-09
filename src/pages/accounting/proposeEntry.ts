@@ -121,6 +121,13 @@ export function proposeDvEntry(input: {
    * exactly when they should.
    */
   payee?: { id: string; name: string } | null;
+  /**
+   * Patch 138 - several payees ("Payee, et al."). When given, and their
+   * shares add up to the net, the net is credited to the payable PER PAYEE,
+   * each line naming its payee: what is owed is kept per person, and the ADA
+   * that pays them clears it per person.
+   */
+  payees?: Array<{ payeeId: string; payeeName: string; amount: Centavos }> | null;
   particulars?: string;
 }): GridLine[] {
   const lines: GridLine[] = [];
@@ -199,6 +206,28 @@ export function proposeDvEntry(input: {
   // --- Credit: the net payable ---------------------------------------------
 
   const credit = input.creditAccount ?? ACCOUNTS_PAYABLE;
+
+  const shares = (input.payees ?? []).filter((p) => p.payeeId && p.amount > 0);
+  if (
+    shares.length > 1 &&
+    shares.reduce((t, p) => t + p.amount, 0) === input.netAmount
+  ) {
+    for (const p of shares) {
+      lines.push({
+        lineNo: lineNo++,
+        accountCode: credit.code,
+        accountName: credit.name,
+        debit: 0,
+        credit: p.amount,
+        subsidiaryType: 'PAYEE',
+        subsidiaryId: p.payeeId,
+        subsidiaryName: p.payeeName,
+        particulars: input.particulars,
+      });
+    }
+    return lines;
+  }
+
   /*
    * Only where the account is actually kept per party. `requiresSubsidiaryFor`
    * is the same list the Chart of Accounts screen and the posting check read,

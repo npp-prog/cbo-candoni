@@ -39,23 +39,43 @@ import { findPayeeDuplicates, missingPayeeFields, type PayeeLike } from '@/lib/p
  */
 export function NewPayeeModal({
   initialName,
+  initialTin = '',
+  initialAccountNumber,
+  initialPayeeType,
   existing,
   onClose,
   onCreated,
 }: {
   /** Whatever had been typed into the picker. */
   initialName: string;
+  /** Patch 138: from an uploaded list of payees. */
+  initialTin?: string;
+  /**
+   * Patch 138: the ATM / bank account from an uploaded list of payees. When
+   * given (even blank), the window asks for it and saves it to the master
+   * record - the payee is about to be paid by ADA.
+   */
+  initialAccountNumber?: string;
+  initialPayeeType?: string;
   /** The payees already on file, for the duplicate check. */
   existing: PayeeLike[];
   onClose: () => void;
-  onCreated: (payee: { id: string; name: string; tin?: string; address?: string }) => void;
+  onCreated: (payee: {
+    id: string;
+    name: string;
+    tin?: string;
+    address?: string;
+    bankAccountNumber?: string;
+  }) => void;
 }) {
   const toast = useToast();
   const { user, profile } = useAuth();
 
   const [name, setName] = useState(initialName);
-  const [payeeType, setPayeeType] = useState<string>('SUPPLIER');
-  const [tin, setTin] = useState('');
+  const [payeeType, setPayeeType] = useState<string>(initialPayeeType ?? 'SUPPLIER');
+  const [tin, setTin] = useState(initialTin);
+  const askAccount = initialAccountNumber !== undefined;
+  const [bankAccountNumber, setBankAccountNumber] = useState(initialAccountNumber ?? '');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -84,6 +104,7 @@ export function NewPayeeModal({
         // checked.
         ...(tin.trim() ? { tin: tin.trim() } : {}),
         ...(address.trim() ? { address: address.trim() } : {}),
+        ...(bankAccountNumber.trim() ? { bankAccountNumber: bankAccountNumber.trim() } : {}),
         active: true,
       };
 
@@ -102,7 +123,13 @@ export function NewPayeeModal({
         'Payee added',
         'Complete the bank and contact details under Master Data > Payees before paying them by ADA.',
       );
-      onCreated({ id, name: payee.name, tin: payee.tin, address: payee.address });
+      onCreated({
+        id,
+        name: payee.name,
+        tin: payee.tin,
+        address: payee.address,
+        bankAccountNumber: bankAccountNumber.trim() || undefined,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(
@@ -206,6 +233,22 @@ export function NewPayeeModal({
             className="font-mono"
           />
         </Field>
+
+        {askAccount && (
+          <Field
+            label="ATM / bank account number"
+            htmlFor="new-payee-account"
+            className="sm:col-span-2"
+            hint="The account the bank credits on an ADA. Saved to the payee's record."
+          >
+            <TextInput
+              id="new-payee-account"
+              value={bankAccountNumber}
+              onChange={(e) => setBankAccountNumber(e.target.value)}
+              className="font-mono"
+            />
+          </Field>
+        )}
 
         <Field label="Address" htmlFor="new-payee-address" className="sm:col-span-2">
           <TextInput

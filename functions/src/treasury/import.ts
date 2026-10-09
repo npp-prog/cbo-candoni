@@ -439,6 +439,17 @@ export const importTreasuryPayments = onCall(
             ? db.collection(COL.checks).doc(`${bankAccountId}__${row.serialNo}`)
             : db.collection(COL.ada).doc();
 
+        const groupPayees =
+          (dv as { severalPayees?: boolean }).severalPayees &&
+          ((dv as { payees?: unknown[] }).payees ?? []).length
+            ? ((dv as { payees?: Array<{ payeeId: string; payeeName: string; accountNumber: string; amount: number }> })
+                .payees ?? []).map((p) => ({
+                payeeId: p.payeeId,
+                payeeName: p.payeeName,
+                accountNumber: p.accountNumber,
+                amount: p.amount,
+              }))
+            : null;
         const common = {
           fiscalYear,
           fundCode,
@@ -491,6 +502,8 @@ export const importTreasuryPayments = onCall(
             adaNo,
             adaDate: row.date,
             amount,
+            // Patch 138: a voucher for several payees keeps its list on the advice.
+            ...(groupPayees ? { payees: groupPayees } : {}),
             status: 'SUBMITTED',
             dateSubmittedToBank: row.date,
           });
@@ -505,6 +518,7 @@ export const importTreasuryPayments = onCall(
           sourceId: sourceRef.id,
           sourceNo,
           date: row.date,
+          ...(groupPayees && importType !== 'RCI' ? { payees: groupPayees } : {}),
           // So the entry can settle Accounts Payable by creditor rather than
           // in a lump - see src/lib/treasuryEntry.ts.
           payeeId: dv.payeeId ?? null,
@@ -682,6 +696,7 @@ function buildEntry(
       particulars: l.particulars ?? null,
       amount: l.amount,
       excluded: l.excluded,
+      payees: (l as { payees?: Array<{ payeeId: string; payeeName: string; amount: number }> }).payees ?? null,
     })),
   });
 }

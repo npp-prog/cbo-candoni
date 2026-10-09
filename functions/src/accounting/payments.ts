@@ -70,6 +70,7 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       totalDeductions: number;
       netAmount: number;
       status: string;
+      severalPayees?: boolean;
       checkId?: string;
       obligationId?: string;
       officeId?: string;
@@ -93,6 +94,18 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
     // The clearing house refuses "CASH" and "and/or" payees outright. Caught
     // here, it costs a retype; caught by the bank, it costs three offices a
     // morning each, weeks later, with the RCI already certified.
+    /*
+     * Patch 138. A check is drawn to one payee. A voucher for several payees
+     * ("Payee, et al.") is paid by ADA, which the bank splits into each
+     * payee's own account.
+     */
+    if (dv.severalPayees) {
+      throw new HttpsError(
+        'failed-precondition',
+        `DV ${dv.dvNo} is for several payees (${dv.payeeName}). A check pays one payee - pay it by ADA, which the bank credits to each payee's own account.`,
+      );
+    }
+
     const objection = clearingObjection(dv.payeeName);
     const acknowledgement = String(payeeAcknowledgement ?? '').trim();
     if (objection && acknowledgement.length < CLEARING_OVERRIDE_MIN_LENGTH) {
@@ -421,6 +434,8 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       grossAmount: number;
       netAmount: number;
       status: string;
+      severalPayees?: boolean;
+      payees?: Array<{ payeeId: string; payeeName: string; accountNumber: string; amount: number }>;
       adaId?: string;
       obligationId?: string;
       officeId?: string;
@@ -540,6 +555,18 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       payeeName: dv.payeeName,
       particulars: dv.particulars,
       amount: dv.netAmount,
+      // Patch 138: the voucher's payees travel with the advice - the RADAI
+      // clears the payable per payee and the bank file has a row each.
+      ...(dv.severalPayees && dv.payees?.length
+        ? {
+            payees: dv.payees.map((p) => ({
+              payeeId: p.payeeId,
+              payeeName: p.payeeName,
+              accountNumber: p.accountNumber,
+              amount: p.amount,
+            })),
+          }
+        : {}),
       status: 'PREPARED',
       createdBy: {
         uid: caller.uid,

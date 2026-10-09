@@ -452,6 +452,8 @@ export interface TreasuryReportLine {
    */
   payeeId?: Id | null;
   payeeName?: string | null;
+  /** Patch 138: an ADA paying several payees - one bank row and one payable line each. */
+  payees?: Array<{ payeeId: Id; payeeName: string; accountNumber: string; amount: Centavos }>;
   particulars?: string | null;
   /**
    * What the report reports. For a check, ADA or receipt that is the face

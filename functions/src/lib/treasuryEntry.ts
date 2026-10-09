@@ -67,6 +67,13 @@ export interface PaidDocument {
   amount: number;
   /** A cancelled check: reported, footed around, and not an entry line. */
   excluded?: boolean;
+  /**
+   * Patch 138 - an ADA paying a voucher of several payees ("Payee, et al.").
+   * The voucher credited Accounts Payable per payee, so the payment debits it
+   * per payee too: one line each, naming them. Without this the payable
+   * would be credited to forty people and cleared against one.
+   */
+  payees?: Array<{ payeeId?: string | null; payeeName: string; amount: number }> | null;
 }
 
 /** The credit side, worked out by the caller from the bank account. */
@@ -138,7 +145,23 @@ export function proposePaymentEntry(input: {
 
   const total = live.reduce((sum, d) => sum + (d.amount ?? 0), 0);
 
-  const debits: ProposedEntryLine[] = live.map((d) => ({
+  const debits: ProposedEntryLine[] = live.flatMap((d) =>
+    d.payees && d.payees.length > 0
+      ? d.payees.map((p) => ({
+          accountCode: input.payable.code,
+          accountName: input.payable.name,
+          debit: p.amount,
+          credit: 0,
+          subsidiaryType: p.payeeId ? 'PAYEE' : null,
+          subsidiaryId: p.payeeId ?? null,
+          subsidiaryName: p.payeeId ? p.payeeName : null,
+          particulars: paymentParticulars(input.kind, d.sourceNo, d.particulars),
+        }))
+      : [single(d)],
+  );
+
+  function single(d: PaidDocument): ProposedEntryLine {
+    return {
     accountCode: input.payable.code,
     accountName: input.payable.name,
     debit: d.amount,
@@ -154,7 +177,8 @@ export function proposePaymentEntry(input: {
     subsidiaryId: d.payeeId ?? null,
     subsidiaryName: d.payeeId ? (d.payeeName ?? null) : null,
     particulars: paymentParticulars(input.kind, d.sourceNo, d.particulars),
-  }));
+    };
+  }
 
   return [
     ...debits,

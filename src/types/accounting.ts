@@ -78,6 +78,18 @@ export interface DvDeduction {
   amount: Centavos;
 }
 
+/** One of several payees on a voucher. Patch 138. */
+export interface DvPayee {
+  lineNo: number;
+  /** Null only on a draft, for a name not yet on the master list; refused at submission. */
+  payeeId: Id | null;
+  payeeName: string;
+  /** The ATM / bank account the bank credits, as at the voucher. */
+  accountNumber: string;
+  /** Their share of the net amount, in centavos. */
+  amount: Centavos;
+}
+
 export interface DisbursementVoucher extends Partial<AuditStamps> {
   id: Id;
   dvNo: string;
@@ -106,9 +118,19 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
   responsibilityCenterId?: Id;
 
   payeeId: Id;
+  /** "Juan Dela Cruz, et al." when the voucher pays several payees (patch 138). */
   payeeName: string;
   payeeTin?: string;
   payeeAddress?: string;
+  /**
+   * Patch 138 - "Payee, et al." One voucher, several payees, paid by ONE ADA
+   * into each payee's own account. The header payee is the first of them and
+   * the name carries ", et al."; the list is the payees and what each is paid
+   * (their share of the net). The entry credits Accounts Payable per payee,
+   * the ADA carries the list, and the bank file has a row per payee.
+   */
+  severalPayees?: boolean;
+  payees?: DvPayee[];
 
   particulars: string;
 
@@ -463,6 +485,8 @@ export interface Ada extends Partial<AuditStamps> {
   payeeName: string;
   particulars: string;
   amount: Centavos;
+  /** Patch 138: the voucher's payees, copied when the advice is issued. */
+  payees?: DvPayee[];
 
   /**
    * The Report of ADA Issued that covers this advice. The ADA reaches the

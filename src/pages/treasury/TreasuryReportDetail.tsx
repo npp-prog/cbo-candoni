@@ -23,7 +23,7 @@ import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, formatInstant, monthName } from '@/lib/dates';
 import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
-import type { TreasuryReport } from '@/types/treasury';
+import type { TreasuryReport, TreasuryReportLine } from '@/types/treasury';
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { SECTION_TABS } from './sections';
 import { CoveredDocument } from './CoveredDocument';
@@ -117,7 +117,29 @@ export default function TreasuryReportDetail() {
 
     return report.lines
       .filter((l) => !l.excluded)
-      .map((l) => {
+      .flatMap((l) => {
+        /*
+         * Patch 138 - an ADA for several payees ("Payee, et al."): one row
+         * per payee, each with the account number the voucher carried.
+         */
+        const group = l.payees ?? adaById.get(l.sourceId)?.payees ?? null;
+        if (group && group.length) {
+          return group.map((p) => {
+            const payee = p.payeeId ? payeeById.get(p.payeeId) : undefined;
+            const employee = payee?.employeeId ? employeeById.get(payee.employeeId) : undefined;
+            return {
+              accountNumber:
+                p.accountNumber || employee?.bankAccountNumber || payee?.bankAccountNumber || '',
+              name: p.payeeName,
+              amount: p.amount,
+            };
+          });
+        }
+        return [bankRowFor(l)];
+      });
+
+    function bankRowFor(l: TreasuryReportLine) {
+      {
         /*
          * ---- WHICH PAYEE RECORD THIS LINE WAS PAID TO --------------------
          *
@@ -146,7 +168,8 @@ export default function TreasuryReportDetail() {
           name: l.payeeName ?? payee?.name ?? '',
           amount: l.amount,
         };
-      });
+      }
+    }
   }, [isRadai, report, payees.data, employees.data, ada.data]);
 
   const bankFile = useMemo(() => buildBankPayrollFile(bankRows), [bankRows]);

@@ -3329,6 +3329,37 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 56. "Payee, et al." - several payees, one ADA ------------------------
+
+/*
+ * Patch 138. A voucher for several payees credits Accounts Payable per payee;
+ * so the engine must hold its list (submit and approve), refuse a check for
+ * it, copy the list onto the ADA, and the RADAI entry must clear the payable
+ * per payee - otherwise the payable is credited to forty people and cleared
+ * against one.
+ */
+{
+  const before = failures.length;
+  const dv = readFileSync(resolve(root, 'functions/src/accounting/dv.ts'), 'utf8');
+  if ((dv.match(/assertDvPayees\(dv\)/g) ?? []).length < 2) {
+    failures.push('functions/src/accounting/dv.ts: a voucher for several payees is no longer checked against its list at both submission and approval.');
+  }
+  const pay = readFileSync(resolve(root, 'functions/src/accounting/payments.ts'), 'utf8');
+  if (!/if \(dv\.severalPayees\) \{/.test(pay)) {
+    failures.push('functions/src/accounting/payments.ts: a check can be drawn for a voucher of several payees.');
+  }
+  if (!/payees: dv\.payees\.map/.test(pay)) {
+    failures.push('functions/src/accounting/payments.ts: issueAda no longer carries the voucher\'s payees onto the advice.');
+  }
+  const te = readFileSync(resolve(root, 'src/lib/treasuryEntry.ts'), 'utf8');
+  if (!/d\.payees && d\.payees\.length > 0/.test(te)) {
+    failures.push('src/lib/treasuryEntry.ts: the payment entry no longer clears the payable per payee for an ADA of several payees.');
+  }
+  if (failures.length === before) {
+    console.log('payee et al.: list held at submit and approve, ADA only, payable cleared per payee');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

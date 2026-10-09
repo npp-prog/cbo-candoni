@@ -447,8 +447,11 @@ export interface Obligation extends Partial<AuditStamps> {
   fundCode: string;
 
   payeeId: Id;
+  /** "Juan Dela Cruz, et al." when the request is for several payees (patch 138). */
   payeeName: string;
   payeeTin?: string;
+  /** Patch 138: a group request. The list of payees is kept on the voucher. */
+  severalPayees?: boolean;
 
   officeId: Id;
   officeName: string;

@@ -79,6 +79,8 @@ interface SourceDoc {
   /** RCDisb only - the payroll figures behind the net, shown but not posted. */
   gross?: number;
   deductions?: number;
+  /** Patch 138: an ADA for several payees - its list, for the entry and the bank file. */
+  payees?: Array<{ payeeId: string; payeeName: string; accountNumber: string; amount: number }>;
   treasuryReportId?: string;
   status?: string;
 }
@@ -427,6 +429,14 @@ function PrepareReport({
           payeeName: a.payeeName,
           particulars: a.particulars,
           amount: a.amount,
+          payees: (a.payees ?? [])
+            .filter((p) => p.payeeId)
+            .map((p) => ({
+              payeeId: p.payeeId as string,
+              payeeName: p.payeeName,
+              accountNumber: p.accountNumber,
+              amount: p.amount,
+            })),
         }));
     }
     /*
@@ -534,6 +544,7 @@ function PrepareReport({
           payeeName: d.payeeName ?? null,
           particulars: d.particulars ?? null,
           amount: d.amount,
+          payees: d.payees && d.payees.length ? d.payees : null,
         })),
       });
     }
@@ -732,6 +743,7 @@ function PrepareReport({
         payeeName: d.payeeName ?? null,
         particulars: d.particulars ?? null,
         amount: d.amount,
+        ...(d.payees && d.payees.length ? { payees: d.payees } : {}),
         ...(reportType === 'RCDISB'
           ? { gross: d.gross ?? 0, deductions: d.deductions ?? 0 }
           : {}),

@@ -3,7 +3,15 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { BackButton, ReturnLink, keepReturn } from '@/components/ui/BackButton';
 import { PageHeader, Card, Alert, Spinner, DetailField, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, TextInput, TextArea, DateInput, AmountInput, Select } from '@/components/ui/Field';
+import {
+  Field,
+  TextInput,
+  TextArea,
+  DateInput,
+  AmountInput,
+  Select,
+  Checkbox,
+} from '@/components/ui/Field';
 import { StatusBadge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -51,6 +59,8 @@ import {
 import { fundLabel } from '../budget/Obligations';
 import { isTrustFund, obligationForm } from '@/lib/obligationForm';
 import { useFppOptions } from '@/data/useFppOptions';
+import { DvPayeesCard, type DvPayeeRow } from './DvPayeesCard';
+import { withEtAl, withoutEtAl } from '@/lib/accounting-rules';
 
 /**
  * The Disbursement Voucher.
@@ -152,6 +162,9 @@ export default function DisbursementDetail() {
   const [payeeName, setPayeeName] = useState('');
   const [payeeTin, setPayeeTin] = useState('');
   const [payeeAddress, setPayeeAddress] = useState('');
+  /** Patch 138: "Payee, et al." - several payees, one ADA. See dvPayees.ts. */
+  const [severalPayees, setSeveralPayees] = useState(false);
+  const [payeeRows, setPayeeRows] = useState<DvPayeeRow[]>([]);
   /*
    * Whether the TIN on this screen is the encoder's own typing.
    *
@@ -190,6 +203,15 @@ export default function DisbursementDetail() {
     setPayeeName(existing.payeeName);
     setPayeeTin(existing.payeeTin ?? '');
     setPayeeAddress(existing.payeeAddress ?? '');
+    setSeveralPayees(Boolean(existing.severalPayees));
+    setPayeeRows(
+      (existing.payees ?? []).map((p) => ({
+        payeeId: p.payeeId,
+        payeeName: p.payeeName,
+        accountNumber: p.accountNumber,
+        amount: p.amount,
+      })),
+    );
     setTinTouched(true);
     setOfficeId(existing.officeId);
     setOfficeName(existing.officeName);
@@ -253,6 +275,25 @@ export default function DisbursementDetail() {
   const totalDeductions = useMemo(() => deductions.reduce((s, d) => s + d.amount, 0), [deductions]);
   const netAmount = (grossAmount ?? 0) - totalDeductions;
 
+  /*
+   * Patch 138. On a group voucher the header payee is the FIRST listed payee,
+   * written "Name, et al." - what the office writes on the papers, and what
+   * the ADA, the registers and the prints show.
+   */
+  useEffect(() => {
+    if (!severalPayees) {
+      setPayeeName((n) => withoutEtAl(n));
+      return;
+    }
+    const first = payeeRows.find((r) => r.payeeId);
+    if (first) {
+      setPayeeId(first.payeeId);
+      setPayeeName(withEtAl(first.payeeName));
+    } else {
+      setPayeeName((n) => (n ? withEtAl(n) : n));
+    }
+  }, [severalPayees, payeeRows]);
+
   // Re-propose the entry whenever its inputs change, until the encoder edits
   // it themselves - at which point their version is kept.
   useEffect(() => {
@@ -268,10 +309,18 @@ export default function DisbursementDetail() {
         // recognises the liability; the check or ADA credits cash and clears it.
         // See the note at the top of proposeEntry.ts.
         payee: payeeId && payeeName ? { id: payeeId, name: payeeName } : null,
+        // Patch 138: credited per payee on a group voucher.
+        payees: severalPayees
+          ? payeeRows
+              .filter((r) => r.payeeId)
+              .map((r) => ({ payeeId: r.payeeId as string, payeeName: r.payeeName, amount: r.amount }))
+          : null,
         particulars: particulars || undefined,
       }),
     );
   }, [
+    severalPayees,
+    payeeRows,
     grossAmount,
     deductions,
     netAmount,
@@ -499,6 +548,16 @@ export default function DisbursementDetail() {
     payeeName,
     payeeTin: payeeTin || null,
     payeeAddress: payeeAddress || null,
+    severalPayees,
+    payees: severalPayees
+      ? payeeRows.map((r, i) => ({
+          lineNo: i + 1,
+          payeeId: r.payeeId ?? null,
+          payeeName: r.payeeName || r.sheetName || '',
+          accountNumber: r.accountNumber.trim(),
+          amount: r.amount ?? 0,
+        }))
+      : [],
     particulars: particulars.trim(),
     grossAmount: grossAmount ?? 0,
     deductions: deductions.map((d, i) => ({ ...d, lineNo: i + 1 })),
@@ -849,6 +908,8 @@ export default function DisbursementDetail() {
                         if (obr) {
                           setPayeeId(obr.payeeId);
                           setPayeeName(obr.payeeName);
+                          // Patch 138: a group request makes a group voucher.
+                          if ((obr as { severalPayees?: boolean }).severalPayees) setSeveralPayees(true);
                           // Let the master data answer for the TIN again.
                           setTinTouched(false);
                           setOfficeId(obr.officeId);
@@ -885,11 +946,27 @@ export default function DisbursementDetail() {
                       // The TIN and the address are filled by the effect above,
                       // which also covers the payee arriving with an obligation.
                       setPayeeId(v);
-                      setPayeeName(p?.name ?? '');
+                      setPayeeName(severalPayees ? withEtAl(p?.name ?? '') : (p?.name ?? ''));
                       setTinTouched(false);
                       setPayeeAddress('');
                     }}
                   />
+                  <div className="mt-1.5">
+                    <Checkbox
+                      checked={severalPayees}
+                      disabled={!canEdit}
+                      onChange={(c) => {
+                        setSeveralPayees(c);
+                        setEntryTouched(false);
+                      }}
+                      label="Several payees (et al.) - one ADA into each payee's own account"
+                    />
+                  </div>
+                  {severalPayees && payeeName && (
+                    <p className="mt-1 text-2xs text-slate-500">
+                      Shown as <strong>{payeeName}</strong>. The payees are listed below the amounts.
+                    </p>
+                  )}
                 </Field>
 
                 <Field label="TIN" htmlFor="tin">
@@ -1032,6 +1109,18 @@ export default function DisbursementDetail() {
                 </dl>
               )}
             </Card>
+
+            {severalPayees && (
+              <DvPayeesCard
+                rows={payeeRows}
+                onChange={(r) => {
+                  setPayeeRows(r);
+                  setEntryTouched(false);
+                }}
+                netAmount={netAmount}
+                readOnly={!canEdit}
+              />
+            )}
           </>
         )}
 
