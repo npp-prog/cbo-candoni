@@ -287,7 +287,9 @@ async function assertNotReported(
   if (report.status === 'JOURNALIZED') {
     throw new HttpsError(
       'failed-precondition',
-      `${label} has already been journalized as part of ${report.reportType} ${report.reportNo}. Reverse that report's journal entry first; the ledger has already reported this payment.`,
+      report.reportType === 'RCI'
+        ? `${label} has already been journalized as part of RCI ${report.reportNo}. Reverse this check in that report's journal entry first - open the JEV, Reverse, and choose this check; the ledger has already reported this payment.`
+        : `${label} has already been journalized as part of ${report.reportType} ${report.reportNo}. Reverse that report's journal entry first; the ledger has already reported this payment.`,
     );
   }
 
@@ -315,6 +317,8 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
       fiscalYear: number;
       fundCode: string;
       treasuryReportId?: string;
+      /** Patch 151: its lines of the RCI's entry have been reversed. */
+      entryReversedByJevId?: string;
     };
 
     if (check.status === 'CANCELLED') {
@@ -329,7 +333,13 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
 
     // Read phase must finish before any write, so this comes before the
     // updates below even though it reads as part of the cancellation.
-    await assertNotReported(tx, check.treasuryReportId, `Check ${check.checkNo}`);
+    //
+    // Patch 151: a check whose own lines of the RCI's entry have been
+    // reversed (reverseRciChecks) is no longer in the books as paid, and may
+    // be cancelled even though its RCI is journalized.
+    if (!check.entryReversedByJevId) {
+      await assertNotReported(tx, check.treasuryReportId, `Check ${check.checkNo}`);
+    }
 
     // The disbursement this check made, to be taken back below (patch 121).
     const dvSnap = await tx.get(db.collection(COL.disbursementVouchers).doc(check.dvId));

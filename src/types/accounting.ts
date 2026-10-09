@@ -343,6 +343,20 @@ export interface JournalEntryVoucher extends Partial<AuditStamps> {
   /** When this JEV reverses another, and when it has itself been reversed. */
   reversesJevId?: Id;
   reversedByJevId?: Id;
+  /**
+   * Patch 151: checks of an RCI entry reversed on their own (reverseRciChecks),
+   * each reversal with its own JEV. Written by the engine only.
+   */
+  checkReversals?: Array<{
+    jevId: Id;
+    jevNo: string;
+    date: IsoDate;
+    checkIds: Id[];
+    checkNos: string[];
+    amount: Centavos;
+    reason: string;
+    at: string;
+  }>;
 
   cancelledReason?: string;
   remarks?: string;
@@ -443,6 +457,9 @@ export interface Check extends Partial<AuditStamps> {
    */
   treasuryReportId?: Id;
   treasuryReportNo?: string;
+  /** Patch 151: its lines of the RCI's entry were reversed by this JEV. */
+  entryReversedByJevId?: Id;
+  entryReversedByJevNo?: string;
 
   status: CheckStatus;
   dateReleased?: IsoDate;

@@ -61,7 +61,13 @@ export {
   cancelDv,
   correctDvEntry,
 } from './accounting/dv';
-export { postJev, reverseJev, correctJev, amendPostedJev } from './accounting/jev';
+export {
+  postJev,
+  reverseJev,
+  reverseRciChecks,
+  correctJev,
+  amendPostedJev,
+} from './accounting/jev';
 export { issueCheck, cancelCheck, issueAda, cancelAda, postRadaiOnline } from './accounting/payments';
 export { postLiquidation, numberLiquidationEntry } from './accounting/liquidation';
 

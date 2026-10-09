@@ -179,6 +179,15 @@ export default function Checks() {
                 : c.status
             }
           />
+          {/* Patch 151: its lines of the RCI's entry reversed - it may now be cancelled. */}
+          {c.entryReversedByJevNo && c.status !== 'CANCELLED' && (
+            <span
+              className="text-2xs text-amber-700"
+              title={`Reversed in the books by JEV ${c.entryReversedByJevNo}`}
+            >
+              Entry reversed
+            </span>
+          )}
           {canManage && c.status === 'PREPARED' && (
             <Button size="sm" onClick={(e) => {
                 e.stopPropagation();

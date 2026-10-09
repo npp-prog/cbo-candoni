@@ -461,6 +461,20 @@ export const engine = {
       p,
     ),
 
+  /** Patch 151: reverse the chosen checks of an RCI's entry. */
+  reverseRciChecks: (p: { jevId: Id; checkIds: Id[]; reason: string; reversalDate?: IsoDate }) =>
+    call<
+      typeof p,
+      {
+        originalJevId: Id;
+        reversingJevId: Id;
+        reversingJevNo: string;
+        checkNos: string[];
+        amount: number;
+        fullyReversed: boolean;
+      }
+    >('reverseRciChecks', p),
+
   issueCheck: (p: {
     dvId: Id;
     bankAccountId: Id;

@@ -21,6 +21,7 @@ import {
   todayPh,
 } from '../lib/period';
 import { isDirectEntry } from '../lib/jevSourceKinds';
+import { rciCheckReversalLines } from '../lib/rciReversal';
 import {
   postJevInTransaction,
   replaceLedgerLines,
@@ -192,6 +193,7 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
         `JEV ${original.jevNo} has already been reversed. Reversing it twice would double the correction.`,
       );
     }
+    assertNoCheckReversed(original);
 
     assertFundInScope(caller, original.fundCode);
 
@@ -282,6 +284,250 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
 });
 
 /**
+ * Patch 151. An RCI entry some of whose checks have already been reversed
+ * one by one (reverseRciChecks) cannot be reversed, corrected or amended as a
+ * whole: those checks would be undone twice. The rest of its checks are
+ * reversed the same way, one by one.
+ */
+function assertNoCheckReversed(jev: {
+  jevNo?: string;
+  checkReversals?: Array<{ checkNos?: string[] }>;
+}): void {
+  const done = (jev.checkReversals ?? []).flatMap((r) => r.checkNos ?? []);
+  if (done.length > 0) {
+    throw new HttpsError(
+      'failed-precondition',
+      `Check No. ${done.join(', ')} of JEV ${jev.jevNo ?? ''} ${done.length === 1 ? 'has' : 'have'} already been reversed on ${done.length === 1 ? 'its' : 'their'} own. Reverse the other checks the same way - Reverse, then choose the checks - so no check is reversed twice.`,
+    );
+  }
+}
+
+/**
+ * reverseRciChecks - reverse the CHOSEN checks of an RCI entry. Patch 151.
+ *
+ * An RCI is journalized as one entry for all its checks. When one of them is
+ * to be cancelled or replaced, only that check's lines are reversed: the cash
+ * goes back to its bank account and the payable is owed again to its payee.
+ * The checks properly paid stay paid. See lib/rciReversal.ts for the lines.
+ *
+ * The amounts come from the CHECKS, read here - not from the browser.
+ *
+ * Afterwards each reversed check carries the reversing JEV, which is what lets
+ * the Treasurer cancel it (cancelCheck refuses a check whose RCI is in the
+ * books unless its entry has been reversed). When every check of the report
+ * has been reversed, the original entry is marked REVERSED, as a whole
+ * reversal would have left it.
+ */
+export const reverseRciChecks = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, POSTING_ROLES);
+    const { jevId, checkIds, reason, reversalDate } = (request.data ?? {}) as {
+      jevId?: string;
+      checkIds?: string[];
+      reason?: string;
+      reversalDate?: string;
+    };
+
+    if (!jevId) throw invalid('A journal entry voucher id is required.');
+    const ids = [...new Set((checkIds ?? []).filter((x) => typeof x === 'string' && x))];
+    if (ids.length === 0) throw invalid('Choose at least one check to reverse.');
+    if (!reason?.trim()) {
+      throw invalid(
+        'A reason for the reversal is required. It is printed on the reversing entry and recorded in the audit trail.',
+      );
+    }
+
+    const jevConfig = await loadNumberingConfig('JEV');
+
+    return db.runTransaction(async (tx) => {
+      // ---- reads -----------------------------------------------------------
+      const ref = db.collection(COL.jevs).doc(jevId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw notFound('The journal entry voucher');
+      const original = snap.data() as JevData & {
+        reversedByJevId?: string;
+        checkReversals?: Array<{ checkIds?: string[]; checkNos?: string[] }>;
+      };
+
+      if (original.sourceType !== 'RCI' || !original.sourceId) {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} is not the entry of a Report of Checks Issued. Reverse it as a whole.`,
+        );
+      }
+      if (original.status !== 'POSTED') {
+        throw new HttpsError(
+          'failed-precondition',
+          `Only a posted entry can be reversed. JEV ${original.jevNo} is ${String(original.status).toLowerCase()}.`,
+        );
+      }
+      if (original.reversedByJevId) {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} has already been reversed in full.`,
+        );
+      }
+      assertFundInScope(caller, original.fundCode);
+
+      const reportSnap = await tx.get(db.collection(COL.treasuryReports).doc(original.sourceId));
+      if (!reportSnap.exists) throw notFound('The RCI behind this entry');
+      const report = reportSnap.data() as {
+        reportNo?: string;
+        lines?: Array<{ sourceId: string; sourceNo: string; excluded?: boolean }>;
+      };
+      const onReport = new Map(
+        (report.lines ?? []).filter((l) => !l.excluded).map((l) => [l.sourceId, l]),
+      );
+      const already = new Set((original.checkReversals ?? []).flatMap((r) => r.checkIds ?? []));
+
+      const checkRefs = ids.map((id) => db.collection(COL.checks).doc(id));
+      const checkSnaps = await Promise.all(checkRefs.map((r) => tx.get(r)));
+      const checks = checkSnaps.map((cs, i) => {
+        if (!cs.exists) throw notFound('A chosen check');
+        const c = cs.data() as {
+          checkNo: string;
+          status: string;
+          netAmount: number;
+          entryReversedByJevId?: string;
+        };
+        const id = ids[i];
+        if (!onReport.has(id)) {
+          throw invalid(`Check No. ${c.checkNo} is not on RCI ${report.reportNo ?? ''}.`);
+        }
+        if (already.has(id) || c.entryReversedByJevId) {
+          throw new HttpsError(
+            'failed-precondition',
+            `Check No. ${c.checkNo} has already been reversed.`,
+          );
+        }
+        if (c.status === 'CLEARED') {
+          throw new HttpsError(
+            'failed-precondition',
+            `Check No. ${c.checkNo} has cleared the bank - the payee has been paid, and there is nothing to reverse. If the payment was wrong, record the refund and an adjusting entry.`,
+          );
+        }
+        if (c.status === 'CANCELLED') {
+          throw new HttpsError('failed-precondition', `Check No. ${c.checkNo} is cancelled.`);
+        }
+        return { id, ref: checkRefs[i], checkNo: c.checkNo, amount: Number(c.netAmount) || 0 };
+      });
+
+      let lines: JevLineData[];
+      try {
+        lines = rciCheckReversalLines(
+          original.lines,
+          checks.map((c) => ({ checkNo: c.checkNo, amount: c.amount })),
+        );
+      } catch (err) {
+        throw invalid(err instanceof Error ? err.message : String(err));
+      }
+      const total = lines.reduce((s, l) => s + (l.debit || 0), 0);
+
+      const revDate = reversalDate ?? todayPh();
+      const revPeriod = periodOf(revDate);
+      const revYear = Number(revDate.slice(0, 4));
+      await assertFiscalYearOpen(revYear, tx);
+      await assertPeriodOpen(revYear, revPeriod, original.fundCode, `Reversal dated ${revDate}`, tx);
+
+      const bookCode = await bookCodeForFund(original.fundCode);
+      const reversingNo = await issueNumber(tx, jevConfig, {
+        bookCode,
+        fundCode: original.fundCode,
+        fiscalYear: revYear,
+        month: revPeriod,
+      });
+
+      // ---- writes ----------------------------------------------------------
+      const checkNos = checks.map((c) => c.checkNo);
+      const particulars = `Reversal of JEV ${original.jevNo} (RCI ${report.reportNo ?? ''}) - Check No. ${checkNos.join(', ')}. ${reason.trim()}`;
+
+      const reversingJev: JevData = {
+        jevNo: reversingNo,
+        jevDate: revDate,
+        fiscalYear: revYear,
+        period: revPeriod,
+        fundCode: original.fundCode,
+        book: original.book,
+        sourceType: 'REVERSING',
+        sourceId: jevId,
+        referenceNo: original.jevNo,
+        payeeId: null,
+        payeeName: null,
+        particulars,
+        lines,
+        totalDebit: total,
+        totalCredit: total,
+        status: 'DRAFT',
+      };
+      const { jevId: reversingJevId } = createJevInTransaction(tx, caller, reversingJev);
+      postJevInTransaction(tx, caller, reversingJevId, reversingJev, { isReversal: true });
+      tx.update(db.collection(COL.jevs).doc(reversingJevId), {
+        reversesJevId: jevId,
+        reversesCheckIds: checks.map((c) => c.id),
+      });
+
+      const now = new Date().toISOString();
+      const record = {
+        jevId: reversingJevId,
+        jevNo: reversingNo,
+        date: revDate,
+        checkIds: checks.map((c) => c.id),
+        checkNos,
+        amount: total,
+        reason: reason.trim(),
+        at: now,
+      };
+      const allDone = [...onReport.keys()].every(
+        (id) => already.has(id) || checks.some((c) => c.id === id),
+      );
+      tx.update(ref, {
+        checkReversals: FieldValue.arrayUnion(record),
+        ...(allDone
+          ? {
+              status: 'REVERSED',
+              reversedByJevId: reversingJevId,
+              remarks: `Every check reversed; the last by JEV ${reversingNo} on ${revDate}.`,
+            }
+          : {}),
+      });
+
+      for (const c of checks) {
+        tx.update(c.ref, {
+          entryReversedByJevId: reversingJevId,
+          entryReversedByJevNo: reversingNo,
+          entryReversedAt: now,
+        });
+      }
+
+      recordTransition(tx, {
+        caller,
+        event: 'REVERSE',
+        entityType: COL.jevs,
+        entityId: jevId,
+        entityRef: `JEV ${original.jevNo}`,
+        fiscalYear: original.fiscalYear,
+        fundCode: original.fundCode,
+        action: 'REVERSE',
+        previousStatus: 'POSTED',
+        newStatus: allDone ? 'REVERSED' : 'POSTED',
+        remarks: `Check No. ${checkNos.join(', ')} reversed by JEV ${reversingNo}. ${reason.trim()}`,
+        severity: 'CRITICAL',
+      });
+
+      return {
+        originalJevId: jevId,
+        reversingJevId,
+        reversingJevNo: reversingNo,
+        checkNos,
+        amount: total,
+        fullyReversed: allDone,
+      };
+    });
+  },
+);
+
+/**
  * correctJev - reverse a posted entry and open an editable copy of it.
  *
  * ---------------------------------------------------------------------------
@@ -344,6 +590,7 @@ export const correctJev = onCall(
           `JEV ${original.jevNo} has already been reversed. Correct the entry that replaced it.`,
         );
       }
+      assertNoCheckReversed(original as never);
 
       assertFundInScope(caller, original.fundCode);
 
@@ -572,6 +819,7 @@ export const amendPostedJev = onCall(
           `JEV ${original.jevNo} has been reversed. Correct the entry that replaced it.`,
         );
       }
+      assertNoCheckReversed(original as never);
 
       assertFundInScope(caller, original.fundCode);
 

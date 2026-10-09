@@ -25,6 +25,8 @@ import { formatPeso } from '@/lib/money';
 import { formatInstant, formatLongDate, formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { checkDoubleEntry } from '@/lib/accounting-rules';
 import type { JournalEntryVoucher } from '@/types/accounting';
+import { JevLink } from '@/components/JevLink';
+import { RciReverseDialog } from './RciReverseDialog';
 import { fundLabel } from '../budget/Obligations';
 
 /**
@@ -60,6 +62,8 @@ export default function JevDetail() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<null | 'post' | 'reverse' | 'correct' | 'amend'>(null);
+  /** Patch 151: the RCI's checks, to choose which to reverse. */
+  const [choosingChecks, setChoosingChecks] = useState(false);
   /** Editing a posted entry in place, rather than only reading it. */
   const [amending, setAmending] = useState(false);
 
@@ -122,8 +126,16 @@ export default function JevDetail() {
     (isNew || existing?.sourceType !== 'DV');
   const canPost = !isNew && ['DRAFT', 'FOR_REVIEW', 'REVIEWED', 'APPROVED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
   const canReverse = isPosted && isAccountant && !existing?.reversedByJevId;
+  /*
+   * Patch 151. The entry of an RCI is reversed CHECK BY CHECK: Reverse opens
+   * the list of its checks. Once any check has been reversed on its own, the
+   * entry can no longer be reversed, copied or amended as a whole - that
+   * check would be undone twice.
+   */
+  const isRciEntry = existing?.sourceType === 'RCI';
+  const checksReversed = (existing?.checkReversals ?? []).length > 0;
   /** Reverse it AND open a corrected copy - one act instead of three. */
-  const canCorrect = canReverse;
+  const canCorrect = canReverse && !checksReversed;
 
   /*
    * Correcting a POSTED entry in place, while its month is still open.
@@ -134,7 +146,7 @@ export default function JevDetail() {
    * closed one. So the button is shown to the Accountant on any posted entry
    * and a closed month comes back as a refusal naming the month.
    */
-  const canAmend = isPosted && isAccountant && !existing?.reversedByJevId;
+  const canAmend = isPosted && isAccountant && !existing?.reversedByJevId && !checksReversed;
 
 
   const check = useMemo(
@@ -360,8 +372,11 @@ export default function JevDetail() {
               </Button>
             )}
             {canReverse && (
-              <Button variant="danger" onClick={() => setConfirm('reverse')}>
-                Reverse
+              <Button
+                variant="danger"
+                onClick={() => (isRciEntry ? setChoosingChecks(true) : setConfirm('reverse'))}
+              >
+                {isRciEntry ? 'Reverse checks' : 'Reverse'}
               </Button>
             )}
           </>
@@ -448,6 +463,26 @@ export default function JevDetail() {
           {canCorrect
             ? 'Correct this entry reverses it and opens an editable copy, so the books carry the mistake, the reversal and the correction.'
             : 'It is corrected by reversing it and posting a replacement.'}
+        </Alert>
+      )}
+
+      {/* Patch 151: the checks of this RCI entry reversed on their own. */}
+      {checksReversed && (
+        <Alert tone="warning" title="Checks reversed from this entry" className="mb-4">
+          <ul className="list-disc pl-5">
+            {(existing?.checkReversals ?? []).map((r) => (
+              <li key={r.jevId}>
+                Check No. {r.checkNos.join(', ')} ({formatPeso(r.amount)}) - reversed by{' '}
+                <JevLink jevId={r.jevId} jevNo={r.jevNo} className="font-mono">
+                  JEV {r.jevNo}
+                </JevLink>{' '}
+                on {r.date}. {r.reason}
+              </li>
+            ))}
+          </ul>
+          {existing?.status === 'POSTED' && (
+            <p className="mt-1">The other checks stay paid. Reverse more of them with Reverse checks.</p>
+          )}
         </Alert>
       )}
 
@@ -692,6 +727,14 @@ export default function JevDetail() {
           </>
         }
       />
+
+      {existing && isRciEntry && (
+        <RciReverseDialog
+          open={choosingChecks}
+          onClose={() => setChoosingChecks(false)}
+          jev={existing}
+        />
+      )}
 
       <ConfirmDialog
         open={confirm === 'reverse'}
