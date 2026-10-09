@@ -30,6 +30,7 @@ import type { TreasuryReport, TreasuryReportLine } from '@/types/treasury';
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { SECTION_TABS } from './sections';
 import { CoveredDocument } from './CoveredDocument';
+import { ReportNumberEdit } from './ReportNumberEdit';
 
 /**
  * One treasury report, on a page of its own.
@@ -663,7 +664,13 @@ export default function TreasuryReportDetail() {
       <Card className="mb-4">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <DetailField label={`${short} number`} mono>
-            {hasDocumentNumber(report.reportNo) ? report.reportNo : 'Not yet assigned'}
+            {/* Patch 149: editable while the report is a draft. */}
+            <ReportNumberEdit
+              key={report.reportNo ?? ''}
+              report={report}
+              short={short}
+              editable={isDraft && can('treasury', 'edit')}
+            />
           </DetailField>
           <DetailField label="Report date">{formatShortDate(report.reportDate)}</DetailField>
           <DetailField label="Fund">{report.fundCode}</DetailField>
