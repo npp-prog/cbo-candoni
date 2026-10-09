@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { PageHeader, Card, Alert, Tabs, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
@@ -34,6 +34,10 @@ import { AppropriationForm } from './Appropriations';
 import { fundLabel } from './Obligations';
 import { STAGE_LABELS, actReadiness, isSetAct, slugReference, summariseOrdinance } from './ordinanceModel';
 import { FundingSourceDialog, FundingSourceList } from './FundingSourceDialog';
+import { LbpForm8Sheet } from './LbpForm8Sheet';
+import { buildFundingSources, sourcesForAct, type FundingSourcesSheet } from './fundingSources';
+import { ReportPrintStyle } from '@/components/print/ReportPrintStyle';
+import type { ReportMeta } from '@/lib/export';
 import { buildAugmentationSheet, type AugmentationSheet } from './augmentationForm';
 import { AugmentationFormSheet, usePrintAugmentation } from './AugmentationFormSheet';
 import { buildLbpForm2, type Form2Sheet } from './lbpForm2';
@@ -93,6 +97,18 @@ export default function OrdinanceDetail() {
   const [tab, setTab] = useState<'lines' | 'sources' | 'attachments'>('lines');
   const [sourceEditing, setSourceEditing] = useState<FundingSource | 'new' | null>(null);
   const [augSheet, setAugSheet] = useState<AugmentationSheet | null>(null);
+  /* Patch 129: a supplemental ordinance prints its own LBP Form No. 8. */
+  const [form8, setForm8] = useState<{ sheet: FundingSourcesSheet; meta: ReportMeta } | null>(null);
+  useEffect(() => {
+    if (!form8) return;
+    const clear = () => setForm8(null);
+    window.addEventListener('afterprint', clear);
+    const t = window.setTimeout(() => window.print(), 80);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('afterprint', clear);
+    };
+  }, [form8]);
   const clearAug = useCallback(() => setAugSheet(null), []);
   usePrintAugmentation(augSheet, clearAug);
   const [adding, setAdding] = useState(false);
@@ -159,6 +175,25 @@ export default function OrdinanceDetail() {
   ];
   const drafts = summary.lines.filter((l) => l.status === 'DRAFT');
   const waitingSet = summary.sets.find((s) => augmentationDraftEditable(s)) ?? null;
+
+  /** LBP Form No. 8 for this supplemental budget alone - its sources. */
+  const printForm8 = () => {
+    if (!readiness.cover) return;
+    const mine = sourcesForAct({
+      actId: ordinance.id,
+      sources: sources.data,
+      needed: readiness.cover.needed,
+      openAvailable: readiness.cover.open,
+    });
+    setForm8({
+      sheet: buildFundingSources([], mine),
+      meta: {
+        title: 'Statement of Funding Sources (Supplemental Budget)',
+        fundLabel: fundLabel(fund),
+        periodLabel: `${ordinance.reference} - FY ${fy}`,
+      },
+    });
+  };
 
   /** An augmentation prints on the Augmentation Form (patch 116), not LBP Form No. 2. */
   const printAugmentation = () =>
@@ -285,7 +320,7 @@ export default function OrdinanceDetail() {
 
   return (
     <>
-      <div className={sheet || augSheet ? 'no-print' : undefined}>
+      <div className={sheet || augSheet || form8 ? 'no-print' : undefined}>
         <PageHeader
           title={`${kindLabel} - ${ordinance.reference}`}
           subtitle={`${ordinance.title ? `${ordinance.title} - ` : ''}${fundLabel(fund)} - fiscal year ${fy} - dated ${formatLongDate(ordinance.date)}`}
@@ -315,6 +350,11 @@ export default function OrdinanceDetail() {
               >
                 {isAug ? 'Print the Augmentation Form' : 'Print LBP Form No. 2'}
               </Button>
+              {ordinance.kind === 'SUPPLEMENTAL' && (
+                <Button variant="secondary" onClick={printForm8} disabled={!readiness.cover}>
+                  Print LBP Form No. 8
+                </Button>
+              )}
               {!realign && canApprove && drafts.length > 0 && (
                 <Button
                   variant="primary"
@@ -704,6 +744,12 @@ export default function OrdinanceDetail() {
 
       {sheet && <LbpForm2Sheet sheet={sheet} />}
       {augSheet && <AugmentationFormSheet sheet={augSheet} />}
+      {form8 && (
+        <>
+          <ReportPrintStyle orientation="portrait" />
+          <LbpForm8Sheet sheet={form8.sheet} meta={form8.meta} />
+        </>
+      )}
     </>
   );
 }

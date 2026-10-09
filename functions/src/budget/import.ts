@@ -255,9 +255,7 @@ export const importBudgetLines = onCall(
     const appropriationKind = String(data.appropriationKind ?? 'ORIGINAL').toUpperCase();
     if (
       kind === 'APPROPRIATION' &&
-      !['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT', 'ADJUSTMENT'].includes(
-        appropriationKind,
-      )
+      !['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT'].includes(appropriationKind)
     ) {
       // TRANSFER is deliberately absent. It was withdrawn from the screen as a
       // choice, and a kind the office cannot pick but the server still accepts
@@ -267,10 +265,13 @@ export const importBudgetLines = onCall(
       throw invalid(
         appropriationKind === 'TRANSFER'
           ? 'Transfers are no longer recorded as an appropriation type. A movement of authority between offices is a realignment, which must come to zero.'
-          : `Unknown appropriation type ${appropriationKind}.`,
+          : appropriationKind === 'ADJUSTMENT'
+            ? // Patch 129: withdrawn at the office's request, as TRANSFER was.
+              'Adjustments are no longer recorded. Authority changes by an act - an ordinance, an augmentation or a continuing appropriation - recorded under Appropriations > Authorities.'
+            : `Unknown appropriation type ${appropriationKind}.`,
       );
     }
-    const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
+    const signed = appropriationKind === 'REALIGNMENT';
     const isRealignment = kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT';
     /** An appropriation call that is not the approval of a prepared set: it prepares. */
     const preparing = kind === 'APPROPRIATION' && !fromDraft;

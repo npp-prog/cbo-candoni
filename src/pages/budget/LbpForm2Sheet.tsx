@@ -160,10 +160,9 @@ export function LbpForm2Sheet({ sheet }: { sheet: Form2Sheet }) {
 
           <p className="mt-4 text-[6.5pt] text-slate-600">
             Columns 3 and 4 are obligations in the books of the past year and of the first semester
-            of the current year. Column 5 is the current year&rsquo;s revised appropriation less its
-            first-semester obligations - what the office may still spend - offered as the estimate
-            and to be corrected by the Department Head where another figure is expected. Column 7 is
-            the ordinance as recorded in CFMS.
+            of the current year. Columns 5 and 6 - the second-semester estimate and the current
+            year&rsquo;s total - are left blank for the Department Head. Column 7 is the ordinance as
+            recorded in CFMS.
           </p>
         </section>
       ))}
@@ -195,8 +194,9 @@ function Row({ row, bold, indent }: { row: Form2Row; bold?: boolean; indent?: bo
       <td className={`${cell} font-mono`}>{row.accountCode}</td>
       <td className={amt}>{dash(row.pastYear)}</td>
       <td className={amt}>{dash(row.firstSemester)}</td>
-      <td className={amt}>{dash(row.secondSemester)}</td>
-      <td className={amt}>{dash(row.currentTotal)}</td>
+      {/* Columns 5 and 6: blank, written in by hand (patch 129). */}
+      <td className={amt} />
+      <td className={amt} />
       <td className={amt}>{dash(row.proposed)}</td>
     </tr>
   );

@@ -225,8 +225,14 @@ export function buildLbpForm2(input: {
        */
       row.pastYear = past.get(key) ?? 0;
       row.firstSemester = first.get(key) ?? 0;
-      row.secondSemester = Math.max(0, (revised.get(key) ?? 0) - row.firstSemester);
-      row.currentTotal = row.firstSemester + row.secondSemester;
+      /*
+       * Columns 5 and 6 are left BLANK (patch 129, Neil). The second
+       * semester is an estimate the Department Head makes, and the total
+       * cannot be added up without it - so both are written in by hand.
+       */
+      row.secondSemester = 0;
+      row.currentTotal = 0;
+      void revised;
       group.rows.push(row);
     }
     row.proposed += l.amount;

@@ -124,7 +124,18 @@ export const approveAppropriation = onCall(
        * An adjustment is a correction, not an act, and is not gated.
        */
       const act = actKindOfLine(a);
-      if (act) {
+      if (!act) {
+        /*
+         * Patch 129: adjustments (and transfers before them) are withdrawn.
+         * Every appropriation is now made by an act, and an act is checked;
+         * a draft of another kind would be authority that nothing checked.
+         */
+        throw new HttpsError(
+          'failed-precondition',
+          `${a.kind === 'ADJUSTMENT' ? 'Adjustments are' : `${a.kind} lines are`} no longer approved. Authority changes by an act - an ordinance, an augmentation or a continuing appropriation - recorded under Appropriations > Authorities. Discard this draft.`,
+        );
+      }
+      {
         await assertActReady(
           { fiscalYear: a.fiscalYear, fundCode: a.fundCode, kind: act, reference: a.authorityReference ?? '' },
           a.amount,
@@ -485,15 +496,21 @@ async function approveUploadedOrdinance(
     for (const d of all.docs) {
       const a = d.data() as StoredLine & { instrument?: string; importReference?: string };
       const kind = actKindOfLine(a);
-      if (!kind) continue;
+      if (!kind) {
+        // Patch 129: no ungated kind becomes authority.
+        problems.push(`row ${a.importLineNo ?? d.id} is a ${a.kind.toLowerCase()}, which is no longer approved`);
+        continue;
+      }
       const ref = (a.authorityReference ?? a.importReference ?? reference).trim();
       const k = `${kind}|${ref}`;
       const cur = acts.get(k) ?? { kind, reference: ref, adding: 0 };
       cur.adding += a.amount ?? 0;
       acts.set(k, cur);
     }
-    for (const act of acts.values()) {
-      await assertActReady({ fiscalYear, fundCode, kind: act.kind!, reference: act.reference }, act.adding);
+    if (!problems.length) {
+      for (const act of acts.values()) {
+        await assertActReady({ fiscalYear, fundCode, kind: act.kind!, reference: act.reference }, act.adding);
+      }
     }
   }
 

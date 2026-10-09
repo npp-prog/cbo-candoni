@@ -3,23 +3,22 @@ import { Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { ReportHeading } from '@/components/ReportShell';
 import { ReportPrintStyle } from '@/components/print/ReportPrintStyle';
 import { useAppropriations, useFundingSources } from '@/data/queries';
 import { useAuth } from '@/auth/AuthProvider';
 import { engine } from '@/lib/engine';
 import type { FundingSource } from '@/types/budget';
 import { FundingSourceDialog, FundingSourceList } from './FundingSourceDialog';
-import { formatAmount, formatPeso } from '@/lib/money';
+import { formatPeso } from '@/lib/money';
 import { printReport } from '@/lib/export';
 import { sectionLabel } from '@/lib/budgetActs';
 import { fundLabel } from './Obligations';
 import {
   buildFundingSources,
   buildSourceRegister,
-  type FundingSourceRow,
   type RegisterRow,
 } from './fundingSources';
+import { LbpForm8Sheet } from './LbpForm8Sheet';
 
 const ENCODERS = [
   'SUPER_ADMIN',
@@ -86,8 +85,6 @@ export function FundingSourcesTab({
     }
   };
 
-  const cell = 'border border-slate-400 px-2 py-1.5';
-  const head = `${cell} bg-slate-50 text-center font-semibold`;
   const totals: Array<[string, number]> = [
     ['1.0 New Revenue', sheet.totalNewRevenue],
     ['2.0 Excess Collection', sheet.totalExcess],
@@ -216,60 +213,7 @@ export function FundingSourcesTab({
       </div>
 
       {/* LBP Form No. 8 - on paper only. */}
-      <div className="print-only">
-        <div className="cbo-report-sheet">
-          <p className="mb-2 text-xs font-semibold">LBP Form No. 8</p>
-          <ReportHeading meta={meta} seal />
-
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr>
-                <th className={head}>Particulars</th>
-                <th className={head} style={{ width: '16rem' }}>
-                  Account Classification
-                </th>
-                <th className={head} style={{ width: '10rem' }}>
-                  Amounts
-                </th>
-              </tr>
-              <tr>
-                <th className={`${cell} text-center font-normal`}>(1)</th>
-                <th className={`${cell} text-center font-normal`}>(2)</th>
-                <th className={`${cell} text-center font-normal`}>(3)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <Section label="1.0 New Revenue Sources" amount={sheet.totalNewRevenue} />
-              <Rows rows={sheet.newRevenue} />
-              <Section
-                label="2.0 Actual Collection in Excess of the Estimated Income"
-                amount={sheet.totalExcess}
-              />
-              <Rows rows={sheet.excess} />
-              <Section label="3.0 Savings" amount={sheet.totalSavings} />
-              <Rows rows={sheet.savings} />
-              <Section label="4.0 Realignment" amount={sheet.totalRealignment} />
-              <Rows rows={sheet.realignment} particulars="Appropriation realigned from" />
-              <tr className="font-bold">
-                <td className={cell} colSpan={2}>
-                  TOTAL
-                </td>
-                <td className={`${cell} cbo-amount text-right`}>
-                  {formatAmount(sheet.total, false)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div className="mt-8">
-            <p className="text-xs font-semibold">Certified Correct by:</p>
-            <div className="mt-2 grid grid-cols-2 gap-10">
-              <Signature position="Local Treasurer" />
-              <Signature position="Local Accountant" />
-            </div>
-          </div>
-        </div>
-      </div>
+      <LbpForm8Sheet sheet={sheet} meta={meta} />
 
       {editing && (
         <FundingSourceDialog
@@ -359,53 +303,3 @@ export function ContinuingSourcesTab({
   );
 }
 
-function Section({ label, amount }: { label: string; amount?: number }) {
-  return (
-    <tr className="font-semibold">
-      <td className="border border-slate-400 px-2 py-1.5">{label}</td>
-      <td className="border border-slate-400 px-2 py-1.5" />
-      <td className="border border-slate-400 px-2 py-1.5 cbo-amount text-right">
-        {amount !== undefined && amount > 0 ? formatAmount(amount, false) : ''}
-      </td>
-    </tr>
-  );
-}
-
-function Rows({ rows, particulars }: { rows: FundingSourceRow[]; particulars?: string }) {
-  if (rows.length === 0) return <Blank />;
-  return (
-    <>
-      {rows.map((r, i) => (
-        <tr key={`${r.accountCode}-${r.classification}-${i}`}>
-          <td className="border border-slate-400 px-2 py-1.5 pl-6 text-slate-600">
-            {r.particulars ?? particulars ?? ''}
-          </td>
-          <td className="border border-slate-400 px-2 py-1.5">{r.classification}</td>
-          <td className="border border-slate-400 px-2 py-1.5 cbo-amount text-right">
-            {formatAmount(r.amount, false)}
-          </td>
-        </tr>
-      ))}
-    </>
-  );
-}
-
-function Blank({ label }: { label?: string }) {
-  return (
-    <tr>
-      <td className="border border-slate-400 px-2 py-1.5 pl-6 text-slate-600">{label ?? ' '}</td>
-      <td className="border border-slate-400 px-2 py-1.5" />
-      <td className="border border-slate-400 px-2 py-1.5" />
-    </tr>
-  );
-}
-
-function Signature({ position }: { position: string }) {
-  return (
-    <div>
-      <div className="mt-8 border-t border-black pt-0.5">
-        <p className="text-xs">{position}</p>
-      </div>
-    </div>
-  );
-}

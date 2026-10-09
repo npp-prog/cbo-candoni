@@ -233,3 +233,49 @@ export function buildSourceRegister(
       x.particulars.localeCompare(y.particulars),
   );
 }
+
+// ---------------------------------------------------------------------------
+// One supplemental budget's own LBP Form No. 8. Patch 129.
+// ---------------------------------------------------------------------------
+
+const ORDER: Record<string, number> = { NEW_REVENUE: 1, EXCESS_COLLECTION: 2, SAVINGS: 3 };
+
+/**
+ * The sources ONE supplemental ordinance stands on: those encoded in it, and
+ * the part of the open sources (encoded on the Supplemental Sources tab) it
+ * draws for what its own do not cover.
+ *
+ * Which open source a supplemental draws is not recorded - they are a pool -
+ * so the form shows them taken in the form's own order, 1.0 then 2.0 then
+ * 3.0, and only as much as the ordinance needs. A source drawn in part says
+ * so. What prints therefore adds up to what the ordinance appropriates, or
+ * to what it has if it is short.
+ */
+export function sourcesForAct(input: {
+  actId: string;
+  sources: Array<EncodedSourceInput & { actId?: string | null }>;
+  /** What the act appropriates - approved and waiting. */
+  needed: number;
+  /** What is left of the open sources after the other acts drew on them. */
+  openAvailable: number;
+}): EncodedSourceInput[] {
+  const supplemental = input.sources.filter((s) => ORDER[s.section]);
+  const own = supplemental.filter((s) => s.actId === input.actId);
+  const ownTotal = own.reduce((t, s) => t + s.amount, 0);
+  let toDraw = Math.max(0, Math.min(input.needed - ownTotal, input.openAvailable));
+  const open = supplemental
+    .filter((s) => !s.actId)
+    .sort((a, b) => ORDER[a.section] - ORDER[b.section] || a.particulars.localeCompare(b.particulars));
+  const drawn: EncodedSourceInput[] = [];
+  for (const s of open) {
+    if (toDraw <= 0) break;
+    const take = Math.min(s.amount, toDraw);
+    drawn.push({
+      ...s,
+      particulars: take < s.amount ? `${s.particulars} (part)` : s.particulars,
+      amount: take,
+    });
+    toDraw -= take;
+  }
+  return [...own, ...drawn];
+}

@@ -88,9 +88,9 @@ describe('buildLbpForm2', () => {
     const row = s.offices[0].groups[1].rows[0];
     expect(row.pastYear).toBe(85_000_00);
     expect(row.firstSemester).toBe(40_000_00);
-    // What is left of the current year's appropriation after the first semester.
-    expect(row.secondSemester).toBe(50_000_00);
-    expect(row.currentTotal).toBe(90_000_00);
+    // Columns 5 and 6 are left blank for the Department Head (patch 129).
+    expect(row.secondSemester).toBe(0);
+    expect(row.currentTotal).toBe(0);
     expect(row.proposed).toBe(100_001_00);
   });
 

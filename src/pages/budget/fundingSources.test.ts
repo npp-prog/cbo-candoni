@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFundingSources, buildSourceRegister, isRealignmentSource } from './fundingSources';
+import { buildFundingSources, buildSourceRegister, isRealignmentSource, sourcesForAct } from './fundingSources';
 
 const line = (over: Record<string, unknown>) => ({
   kind: 'REALIGNMENT',
@@ -113,5 +113,30 @@ describe('LBP Form No. 8 - funding sources', () => {
     expect(r.map((x) => x.number)).toEqual(['1.0', '3.0', '4.0']);
     expect(r[0]).toMatchObject({ encodedIn: null, sourceId: 'a' });
     expect(r[2]).toMatchObject({ encodedIn: 'Ord. 14', amount: 10_001_00, sourceId: null });
+  });
+});
+
+describe('one supplemental ordinance\'s Form 8 (patch 129)', () => {
+  const sources = [
+    { section: 'SAVINGS', particulars: 'Own savings', amount: 20_00, actId: 'A' },
+    { section: 'EXCESS_COLLECTION', particulars: 'Open excess', amount: 50_00, actId: null },
+    { section: 'NEW_REVENUE', particulars: 'Open tax', amount: 10_00, actId: null },
+    { section: 'NEW_REVENUE', particulars: 'Another act', amount: 99_00, actId: 'B' },
+    { section: 'CONTINUING', particulars: 'Not supplemental', amount: 99_00, actId: null },
+  ];
+
+  it('takes its own sources, then the open ones in the form\'s order, only as far as it needs', () => {
+    const r = sourcesForAct({ actId: 'A', sources, needed: 45_00, openAvailable: 60_00 });
+    expect(r.map((s) => [s.particulars, s.amount])).toEqual([
+      ['Own savings', 20_00],
+      ['Open tax', 10_00],
+      ['Open excess (part)', 15_00],
+    ]);
+    expect(buildFundingSources([], r).total).toBe(45_00);
+  });
+
+  it('draws no more than is left of the open sources', () => {
+    const r = sourcesForAct({ actId: 'A', sources, needed: 1_000_00, openAvailable: 5_00 });
+    expect(r.reduce((t, s) => t + s.amount, 0)).toBe(25_00);
   });
 });

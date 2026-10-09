@@ -47,7 +47,6 @@ const KINDS = [
     label: 'Realignment',
     hint: 'Moves authority between lines. Take away with a negative amount, give with a positive one; the file must come to zero.',
   },
-  { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. Amounts may be negative.' },
 ];
 
 /** Rows per call to the engine. Matches the server's own ceiling. */
@@ -95,7 +94,7 @@ export default function BudgetUpload({ kind }: { kind: 'APPROPRIATION' | 'ALLOTM
     if (ordinance.kind === 'REALIGNMENT') setInstrument('REALIGNMENT');
   }, [ordinance]);
 
-  const signed = ['REALIGNMENT', 'ADJUSTMENT'].includes(appropriationKind);
+  const signed = appropriationKind === 'REALIGNMENT';
   const isRealignment = isAppropriation && appropriationKind === 'REALIGNMENT';
 
   /**

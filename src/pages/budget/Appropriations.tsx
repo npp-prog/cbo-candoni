@@ -129,7 +129,8 @@ const KINDS: Array<{ value: FormKind; label: string; hint: string }> = [
     label: 'Realignment',
     hint: 'Authority moved ACROSS expense classes - PS to MOOE, and anything an augmentation may not reach. By ordinance of the Sanggunian.',
   },
-  { value: 'ADJUSTMENT', label: 'Adjustment', hint: 'A correction. May be negative.' },
+  // ADJUSTMENT withdrawn in patch 129 (Neil: "I don't need adjustment").
+  // Adjustments already recorded keep their label (KIND_LABELS) and approve.
 ];
 
 /** What the chosen act is stored as. */
@@ -573,7 +574,7 @@ export default function Appropriations() {
         <SummaryTile label="Original" amount={totals.original} />
         <SummaryTile label="Supplemental" amount={totals.supplemental} />
         <SummaryTile label="Continuing" amount={totals.continuing} />
-        <SummaryTile label="Realignments and adjustments" amount={totals.adjustments} />
+        <SummaryTile label="Realignments" amount={totals.adjustments} />
         <SummaryTile label="Revised appropriation" amount={totals.revised} emphasis />
       </div>
 
@@ -834,6 +835,60 @@ export default function Appropriations() {
         </Card>
       )}
 
+      {/* Patch 129: the form opens in the page, above the ledger - not as a window. */}
+      {editingDraft && (
+        <AppropriationForm
+          key={editingDraft.id}
+          draft={editingDraft}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          inline
+          onClose={() => setEditingDraft(null)}
+          onSaved={() => {
+            setEditingDraft(null);
+            toast.success(
+              `Prepared ${instrumentWord(editingDraft)} saved`,
+              'Still not posted. Approve it when the figures are right.',
+            );
+          }}
+          actor={
+            user
+              ? actorStamp({
+                  uid: user.uid,
+                  name: profile?.displayName ?? user.email ?? user.uid,
+                  position: profile?.position,
+                })
+              : null
+          }
+        />
+      )}
+      {editing && (
+        <AppropriationForm
+          key={editing.id}
+          existing={editing}
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          inline
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            toast.success(
+              'Appropriation corrected',
+              'It is still a draft. Approve it to make the authority available.',
+            );
+          }}
+          actor={
+            user
+              ? actorStamp({
+                  uid: user.uid,
+                  name: profile?.displayName ?? user.email ?? user.uid,
+                  position: profile?.position,
+                })
+              : null
+          }
+        />
+      )}
+
       <DataTable
         rows={rows}
         columns={columns}
@@ -869,31 +924,6 @@ export default function Appropriations() {
         }
       />
 
-      {editingDraft && (
-        <AppropriationForm
-          key={editingDraft.id}
-          draft={editingDraft}
-          fiscalYear={fiscalYear}
-          fundCode={fundCode}
-          onClose={() => setEditingDraft(null)}
-          onSaved={() => {
-            setEditingDraft(null);
-            toast.success(
-              `Prepared ${instrumentWord(editingDraft)} saved`,
-              'Still not posted. Approve it when the figures are right.',
-            );
-          }}
-          actor={
-            user
-              ? actorStamp({
-                  uid: user.uid,
-                  name: profile?.displayName ?? user.email ?? user.uid,
-                  position: profile?.position,
-                })
-              : null
-          }
-        />
-      )}
 
       <ConfirmDialog
         open={Boolean(approvingDraft)}
@@ -917,8 +947,10 @@ export default function Appropriations() {
                 The checks run now, not when it was prepared: that the set comes to zero, that the
                 savings exist,
                 {approvingDraft.instrument === 'AUGMENTATION'
-                  ? ' and that every line is in the same expense class.'
-                  : ' and that no line falls below the allotment already released.'}{' '}
+                  ? ', that every line is in the same expense class'
+                  : ''}
+                , and that no line gives up more than its appropriation less what is already
+                obligated.{' '}
                 If any of them fails NOTHING is posted and the prepared copy stays as it is.
               </p>
               <p className="mt-2">
@@ -952,31 +984,6 @@ export default function Appropriations() {
         }
       />
 
-      {editing && (
-        <AppropriationForm
-          key={editing.id}
-          existing={editing}
-          fiscalYear={fiscalYear}
-          fundCode={fundCode}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            toast.success(
-              'Appropriation corrected',
-              'It is still a draft. Approve it to make the authority available.',
-            );
-          }}
-          actor={
-            user
-              ? actorStamp({
-                  uid: user.uid,
-                  name: profile?.displayName ?? user.email ?? user.uid,
-                  position: profile?.position,
-                })
-              : null
-          }
-        />
-      )}
 
 
       <ConfirmDialog
@@ -1301,7 +1308,7 @@ export function AppropriationForm({
     expense class.
   */
   const isAugmentation = kind === 'AUGMENTATION';
-  const allowsNegative = kind === 'ADJUSTMENT' || isRealignment;
+  const allowsNegative = isRealignment;
   /*
     NOT a non-null assertion any more, and the reason is worth the three lines.
 
@@ -2033,14 +2040,6 @@ export function AppropriationForm({
         </div>
       )}
 
-      {/* Only for an adjustment now. On an augmentation or a realignment the
-          same thing is said once already, above the lines - and saying it
-          twice made Neil ask what the second one was. Patch 118. */}
-      {allowsNegative && !isRealignment && (
-        <Alert tone="info" className="mt-4">
-          An adjustment may be negative. Enter a minus amount to reduce the line.
-        </Alert>
-      )}
     </FormFrame>
   );
 }
