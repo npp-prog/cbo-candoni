@@ -1,6 +1,8 @@
 import { programDocId } from '../lib/budgetPrograms';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
+import { assertActDocumented } from './actGate';
+import { actKindOfInstrument } from '../lib/budgetActs';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, assertFundInScope, invalid, hasRole, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
@@ -229,6 +231,20 @@ export const importBudgetLines = onCall(
     }
     const refSlug = slug(reference);
     if (!refSlug) throw invalid('That reference has no letters or digits in it.');
+
+    /*
+     * Patch 123: a prepared realignment or augmentation is posted only under
+     * a recorded act with its signed copy attached. Its sources are its own
+     * lines - the set must come to zero, checked below.
+     */
+    if (fromDraft) {
+      await assertActDocumented({
+        fiscalYear: Number(data.fiscalYear),
+        fundCode: String(data.fundCode ?? '').trim(),
+        kind: actKindOfInstrument(String(data.instrument ?? '')),
+        reference,
+      });
+    }
 
     const date = String(data.date ?? '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {

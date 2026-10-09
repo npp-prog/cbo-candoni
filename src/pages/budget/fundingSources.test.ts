@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFundingSources, isRealignmentSource } from './fundingSources';
+import { buildFundingSources, isRealignmentSource, isSavingsSource } from './fundingSources';
 
 const line = (over: Record<string, unknown>) => ({
   kind: 'REALIGNMENT',
@@ -48,5 +48,27 @@ describe('LBP Form No. 8 - funding sources', () => {
       line({ accountCode: '', accountName: '', fppCode: 'CO-1', fppName: 'Road, Gatuslao' }),
     ]);
     expect(s.realignment[0].classification).toBe('Road, Gatuslao');
+  });
+
+  it('puts what an augmentation took under 3.0 Savings (patch 123)', () => {
+    const s = buildFundingSources([line({ instrument: 'AUGMENTATION', amount: -4_000_00 })]);
+    expect(isSavingsSource(line({ instrument: 'AUGMENTATION' }))).toBe(true);
+    expect(s.savings[0].amount).toBe(4_000_00);
+    expect(s.realignment).toHaveLength(0);
+    expect(s.total).toBe(4_000_00);
+  });
+
+  it('fills 1.0 and 2.0 from the sources encoded (patch 123)', () => {
+    const s = buildFundingSources(
+      [line({})],
+      [
+        { section: 'NEW_REVENUE', particulars: 'Tax Revenue', accountCode: '40101010', accountName: 'RPT', amount: 1_000_00 },
+        { section: 'EXCESS_COLLECTION', particulars: 'Excess collection FY 2025', amount: 2_000_00 },
+        { section: 'CONTINUING', particulars: 'Not on this form', amount: 9_000_00 },
+      ],
+    );
+    expect(s.newRevenue[0].classification).toBe('40101010 - RPT');
+    expect(s.excess[0].classification).toBe('Excess collection FY 2025');
+    expect(s.total).toBe(1_000_00 + 2_000_00 + 10_000_00);
   });
 });

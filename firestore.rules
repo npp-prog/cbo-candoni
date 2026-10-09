@@ -404,7 +404,7 @@ service cloud.firestore {
         && createdByCaller()
         && request.resource.data.reference is string
         && request.resource.data.reference.size() > 0
-        && request.resource.data.kind in ['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT']
+        && request.resource.data.kind in ['ORIGINAL', 'SUPPLEMENTAL', 'CONTINUING', 'REALIGNMENT', 'AUGMENTATION']
         && fundAllowed(request.resource.data.fundCode);
 
       allow update: if signedIn()
@@ -415,6 +415,17 @@ service cloud.firestore {
       // Only an administrator, and only the header: the lines under it, if
       // any, are untouched by this and still carry the number.
       allow delete: if signedIn() && isAdmin();
+    }
+
+    /*
+     * Sources of financing, encoded (patch 123). Written ONLY by the engine
+     * (saveFundingSource): a source is what lets an act become authority,
+     * and removing one can strand an act already approved - which only the
+     * engine, seeing every act, can refuse.
+     */
+    match /fundingSources/{id} {
+      allow read: if canRead();
+      allow write: if false;
     }
 
     // --- Budget: augmentations being prepared --------------------------------

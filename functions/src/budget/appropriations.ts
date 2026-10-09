@@ -18,6 +18,8 @@ import {
 } from '../lib/budget';
 import { checkAllotmentWithdrawal } from '../lib/rules';
 import { planAppropriationApproval, type ApprovalLine } from './appropriationApproval';
+import { assertActReady } from './actGate';
+import { actKindOfLine } from '../lib/budgetActs';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 
 const BUDGET_APPROVERS: Role[] = ['SUPER_ADMIN', 'BUDGET_OFFICER'];
@@ -64,6 +66,7 @@ export const approveAppropriation = onCall(
         serviceSector?: string;
         expenseClass: string;
         authorityReference?: string;
+        instrument?: string;
       };
 
       if (a.status !== 'DRAFT') {
@@ -114,6 +117,20 @@ export const approveAppropriation = onCall(
 
       assertFundInScope(caller, a.fundCode);
       await assertFiscalYearOpen(a.fiscalYear, tx);
+
+      /*
+       * Patch 123: the act this line was made by must be recorded, its signed
+       * copy attached, and its sources must finance it - this line included.
+       * An adjustment is a correction, not an act, and is not gated.
+       */
+      const act = actKindOfLine(a);
+      if (act) {
+        await assertActReady(
+          { fiscalYear: a.fiscalYear, fundCode: a.fundCode, kind: act, reference: a.authorityReference ?? '' },
+          a.amount,
+          tx,
+        );
+      }
 
       const key: BudgetKey = {
         fiscalYear: a.fiscalYear,
@@ -455,6 +472,28 @@ async function approveUploadedOrdinance(
       problems.push(`row ${a.importLineNo ?? doc.id} is missing its ${missing.join(', ')}`);
     if (typeof a.amount !== 'number' || !Number.isFinite(a.amount)) {
       problems.push(`row ${a.importLineNo ?? doc.id} has no usable amount`);
+    }
+  }
+
+  /*
+   * Patch 123: the act behind the upload - recorded, signed copy attached,
+   * financed for the whole of what is being approved. Checked before any
+   * line, so an ordinance is refused whole rather than half approved.
+   */
+  if (!problems.length) {
+    const acts = new Map<string, { kind: ReturnType<typeof actKindOfLine>; reference: string; adding: number }>();
+    for (const d of all.docs) {
+      const a = d.data() as StoredLine & { instrument?: string; importReference?: string };
+      const kind = actKindOfLine(a);
+      if (!kind) continue;
+      const ref = (a.authorityReference ?? a.importReference ?? reference).trim();
+      const k = `${kind}|${ref}`;
+      const cur = acts.get(k) ?? { kind, reference: ref, adding: 0 };
+      cur.adding += a.amount ?? 0;
+      acts.set(k, cur);
+    }
+    for (const act of acts.values()) {
+      await assertActReady({ fiscalYear, fundCode, kind: act.kind!, reference: act.reference }, act.adding);
     }
   }
 

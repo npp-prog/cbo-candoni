@@ -3051,6 +3051,50 @@ if (existsSync(functionsSrc)) {
   }
 }
 
+// --- 48. No act becomes authority without its signed copy and its sources ---
+
+/*
+ * Patch 123. An ordinance (original, supplemental, realignment), an
+ * augmentation and a continuing appropriation each need, before approval:
+ * the act recorded, its signed copy attached, and its sources - Estimated
+ * Revenue for the original; 1.0 and 2.0 for a supplemental; Continuing for a
+ * continuing; its own lines for a realignment or augmentation.
+ *
+ * Refused: an approval path that stops calling the gate; a sources collection
+ * a browser may write; and the coverage rule leaving the vendored list.
+ */
+{
+  const before = failures.length;
+  const read = (rel) => {
+    const full = resolve(root, rel);
+    return existsSync(full) ? readFileSync(full, 'utf8') : '';
+  };
+  const appr = read('functions/src/budget/appropriations.ts');
+  const single = appr.slice(appr.indexOf('export const approveAppropriation'), appr.indexOf('export const releaseAllotment'));
+  if (!/assertActReady\(/.test(single)) {
+    failures.push('functions/src/budget/appropriations.ts: approving ONE appropriation no longer checks its act (assertActReady).');
+  }
+  const upload = appr.slice(appr.indexOf('async function approveUploadedOrdinance'));
+  if (!/assertActReady\(/.test(upload)) {
+    failures.push('functions/src/budget/appropriations.ts: approving a WHOLE ordinance no longer checks its act (assertActReady).');
+  }
+  const imp = read('functions/src/budget/import.ts');
+  if (!/if \(fromDraft\) \{\s*await assertActDocumented\(/.test(imp)) {
+    failures.push('functions/src/budget/import.ts: a prepared realignment or augmentation is posted without its recorded, signed act.');
+  }
+  const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
+  const block = rules.match(/match \/fundingSources\/\{[^}]+\}\s*\{([\s\S]*?)\n\s{4}\}/);
+  if (!block || !/allow write:\s*if false;/.test(block[1])) {
+    failures.push('firestore.rules: /fundingSources may be written from a browser. Only saveFundingSource may write a source.');
+  }
+  if (!read('scripts/sync-rules.mjs').includes("source: 'src/lib/budgetActs.ts'")) {
+    failures.push('scripts/sync-rules.mjs: src/lib/budgetActs.ts is no longer vendored to the engine, so the screen and the engine may disagree about what finances an act.');
+  }
+  if (failures.length === before) {
+    console.log('acts: none approved without its signed copy and its sources');
+  }
+}
+
 // --- 42. A sub-tab strip never hides the strip above it --------------------
 
 /*

@@ -1,3 +1,4 @@
+import type { ActKind, SourceSection } from '@/lib/budgetActs';
 import type {
   ActorStamp,
   AuditStamps,
@@ -308,16 +309,45 @@ export interface Appropriation extends BudgetKey, Partial<AuditStamps> {
  * Its id is made from the year, the fund, the kind and the number, so the
  * same ordinance cannot be recorded twice.
  */
+/**
+ * An act of appropriation - an ordinance, an augmentation order, or a
+ * certification of continuing appropriations. Stored in `ordinances` (the
+ * name it had in patch 119, when ordinances were the only kind).
+ */
 export interface Ordinance extends Partial<AuditStamps> {
   id: Id;
   fiscalYear: number;
   fundCode: string;
-  kind: AppropriationKind;
+  kind: ActKind;
+  /** Kept by the attachments panel. The engine counts the documents itself. */
+  attachmentCount?: number;
   /** The ordinance or resolution number, as the authority reference is written on its lines. */
   reference: string;
   date: IsoDate;
   /** What it is, in the office's words: "Annual Budget FY 2026". */
   title?: string;
+}
+
+/**
+ * A source of financing, encoded. Patch 123.
+ *
+ * 1.0 New Revenue Sources and 2.0 Excess Collection finance supplemental
+ * budgets; Continuing finances continuing appropriations. Encoded inside an
+ * act (actId set: that act's) or on the Sources tab (actId null: open to
+ * any act of the kind it finances). Written only by the engine.
+ */
+export interface FundingSource extends Partial<AuditStamps> {
+  id: Id;
+  fiscalYear: number;
+  fundCode: string;
+  section: SourceSection;
+  particulars: string;
+  accountCode?: string | null;
+  accountName?: string | null;
+  amount: Centavos;
+  actId?: string | null;
+  /** The act's reference, for the list - the id is what links. */
+  actReference?: string | null;
 }
 
 // ---------------------------------------------------------------------------

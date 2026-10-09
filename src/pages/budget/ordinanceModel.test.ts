@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lineBelongsTo, ordinanceId, setBelongsTo, summariseOrdinance } from './ordinanceModel';
+import { actReadiness, lineBelongsTo, ordinanceId, setBelongsTo, summariseOrdinance } from './ordinanceModel';
 import type { Appropriation, AugmentationDraft, Ordinance } from '@/types/budget';
 
 const ord = (over: Partial<Ordinance> = {}): Ordinance => ({
@@ -128,5 +128,72 @@ describe('summariseOrdinance', () => {
     );
     expect(s.approvedTotal).toBe(30_00);
     expect(s.stage).toBe('APPROVED');
+  });
+});
+
+describe('an augmentation as an act (patch 123)', () => {
+  const aug = ord({ id: 'a', kind: 'AUGMENTATION', reference: 'Office Order No. 2026-03' });
+  it('owns the augmentation lines and set, not a realignment of the same number', () => {
+    const l = line({ kind: 'REALIGNMENT', instrument: 'AUGMENTATION', authorityReference: 'Office Order No. 2026-03' });
+    expect(lineBelongsTo(l, aug)).toBe(true);
+    expect(lineBelongsTo({ ...l, instrument: 'REALIGNMENT' } as Appropriation, aug)).toBe(false);
+    const set = {
+      fiscalYear: 2026,
+      fundCode: 'GF',
+      instrument: 'AUGMENTATION',
+      authorityReference: 'Office Order No. 2026-03',
+      lines: [],
+    } as unknown as AugmentationDraft;
+    expect(setBelongsTo(set, aug)).toBe(true);
+    expect(setBelongsTo(set, { ...aug, kind: 'REALIGNMENT' })).toBe(false);
+  });
+});
+
+describe('actReadiness (patch 123)', () => {
+  it('wants the signed copy and the estimated revenue for an original budget', () => {
+    const o = ord({ id: '2026__GF__ORIGINAL__ORD-NO-2026-01' });
+    const lines = [line({ amount: 80_00 })];
+    const summary = summariseOrdinance(o, lines, []);
+    const none = actReadiness({ summary, attachmentCount: 0, appropriations: lines, sources: [], estimatedRevenue: 0 });
+    expect(none.ready).toBe(false);
+    expect(none.problems).toHaveLength(2);
+    const ok = actReadiness({ summary, attachmentCount: 1, appropriations: lines, sources: [], estimatedRevenue: 100_00 });
+    expect(ok.ready).toBe(true);
+  });
+
+  it('finances a supplemental from its own and open sources', () => {
+    const o = ord({ id: 's1', kind: 'SUPPLEMENTAL', reference: 'Ord. No. 2026-07' });
+    const lines = [line({ kind: 'SUPPLEMENTAL', authorityReference: 'Ord. No. 2026-07', amount: 50_00 })];
+    const summary = summariseOrdinance(o, lines, []);
+    const short = actReadiness({
+      summary,
+      attachmentCount: 1,
+      appropriations: lines,
+      sources: [{ section: 'NEW_REVENUE', amount: 20_00, actId: 's1' }],
+      estimatedRevenue: 0,
+    });
+    expect(short.ready).toBe(false);
+    expect(short.problems[0]).toMatch(/30\.00 more/);
+    const ok = actReadiness({
+      summary,
+      attachmentCount: 1,
+      appropriations: lines,
+      sources: [
+        { section: 'NEW_REVENUE', amount: 20_00, actId: 's1' },
+        { section: 'EXCESS_COLLECTION', amount: 30_00 },
+      ],
+      estimatedRevenue: 0,
+    });
+    expect(ok.ready).toBe(true);
+  });
+
+  it('asks a realignment only for its signed copy - it finances itself', () => {
+    const o = ord({ id: 'r', kind: 'REALIGNMENT', reference: 'Ord. No. 2026-14' });
+    const lines = [
+      line({ kind: 'REALIGNMENT', instrument: 'REALIGNMENT', authorityReference: 'Ord. No. 2026-14', amount: -40_00, status: 'APPROVED' }),
+      line({ kind: 'REALIGNMENT', instrument: 'REALIGNMENT', authorityReference: 'Ord. No. 2026-14', amount: 40_00, status: 'APPROVED' }),
+    ];
+    const r = actReadiness({ summary: summariseOrdinance(o, lines, []), attachmentCount: 1, appropriations: lines, sources: [], estimatedRevenue: 0 });
+    expect(r).toMatchObject({ ready: true, cover: null, takenFrom: 40_00 });
   });
 });

@@ -101,6 +101,11 @@ const PAIRS = [
   // told the office to record it again, which produced another line it could
   // not approve either.
   { source: 'src/lib/budgetLines.ts', target: 'functions/src/lib/budgetLines.ts' },
+  // `budgetActs` joined in patch 123: what finances each act of appropriation
+  // and whether it is enough. The ordinance page says whether "Approve all"
+  // will go through, and the engine decides; a drifted copy would offer an
+  // approval the engine then refused, or refuse one the engine would take.
+  { source: 'src/lib/budgetActs.ts', target: 'functions/src/lib/budgetActs.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

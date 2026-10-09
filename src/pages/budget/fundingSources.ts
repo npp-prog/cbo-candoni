@@ -15,21 +15,23 @@ import type { Centavos } from '@/types/common';
  * the Local Treasurer and the Local Accountant.
  *
  * ---------------------------------------------------------------------------
- * WHAT CFMS FILLS IN, AND WHAT IT DOES NOT
+ * WHERE EACH SECTION COMES FROM (patch 123)
  * ---------------------------------------------------------------------------
- * 4.0 REALIGNMENT is filled from the books. A realignment is posted as lines
- * of opposite sign; the NEGATIVE lines are the appropriation taken away, and
- * those are the funding source. They are grouped by the object of expenditure
- * they were taken from - the "account classification" the form asks for - and
- * the positive side, the new realigned budget, is on the Appropriation Ledger
- * and on LBP Form No. 2, not here.
+ *   1.0, 2.0   ENCODED - inside a supplemental ordinance or on the Sources
+ *              tab (`fundingSources`, written by the engine). They are what
+ *              finances a supplemental budget, and it cannot be approved
+ *              without them.
+ *   3.0        the SAVINGS augmentations took - the negative lines of every
+ *              augmentation posted this year, by the object they came from.
+ *   4.0        what REALIGNMENTS took - the negative lines of every
+ *              realignment posted this year, by the object they came from.
  *
- * 1.0, 2.0 and 3.0 are NOT derived. Which new revenue or which excess
- * collection funds a supplemental budget is a decision the Treasurer and the
- * Accountant certify, not a figure the books can produce; and "savings" on
- * this form means savings declared to fund a supplemental budget, which is
- * not the same act as an augmentation. Those lines print blank, to be filled
- * in by hand, and the sheet says so.
+ * Patch 119 left 1.0 to 3.0 blank for the hand. Neil, 09 Oct 2026: the
+ * augmentation's source is 3.0 Savings, and the supplemental's sources are
+ * encoded, so the form is filled from the books in all four.
+ *
+ * The new realigned or augmented budget - the positive side - is on the
+ * Appropriation Ledger and on LBP Form No. 2, not here.
  */
 
 export interface FundingSourceInput {
@@ -47,15 +49,36 @@ export interface FundingSourceInput {
 export interface FundingSourceRow {
   /** Column 2: the account classification - the object the authority came from. */
   classification: string;
+  /** Column 1, for an encoded source: what it is. */
+  particulars?: string;
   accountCode: string;
   /** Column 3, always positive. */
   amount: Centavos;
 }
 
+export interface EncodedSourceInput {
+  section: string;
+  particulars: string;
+  accountCode?: string | null;
+  accountName?: string | null;
+  amount: Centavos;
+}
+
 export interface FundingSourcesSheet {
+  newRevenue: FundingSourceRow[];
+  totalNewRevenue: Centavos;
+  excess: FundingSourceRow[];
+  totalExcess: Centavos;
+  savings: FundingSourceRow[];
+  totalSavings: Centavos;
   realignment: FundingSourceRow[];
   totalRealignment: Centavos;
   total: Centavos;
+}
+
+/** A line of a posted augmentation that gave up its savings. */
+export function isSavingsSource(a: FundingSourceInput): boolean {
+  return a.status === 'APPROVED' && a.kind === 'REALIGNMENT' && a.instrument === 'AUGMENTATION' && a.amount < 0;
 }
 
 /** A line of a posted realignment that took authority away. */
@@ -75,10 +98,10 @@ const classificationOf = (a: FundingSourceInput): string => {
   return a.fppName || a.fppCode || '';
 };
 
-export function buildFundingSources(appropriations: FundingSourceInput[]): FundingSourcesSheet {
+function takenFrom(appropriations: FundingSourceInput[], test: (a: FundingSourceInput) => boolean) {
   const byAccount = new Map<string, FundingSourceRow>();
   for (const a of appropriations) {
-    if (!isRealignmentSource(a)) continue;
+    if (!test(a)) continue;
     const key = a.accountCode || a.fppCode || classificationOf(a);
     const row = byAccount.get(key) ?? {
       classification: classificationOf(a),
@@ -88,11 +111,46 @@ export function buildFundingSources(appropriations: FundingSourceInput[]): Fundi
     row.amount += Math.abs(a.amount);
     byAccount.set(key, row);
   }
-  const realignment = [...byAccount.values()].sort(
-    (x, y) =>
-      x.accountCode.localeCompare(y.accountCode) ||
-      x.classification.localeCompare(y.classification),
+  return [...byAccount.values()].sort(
+    (x, y) => x.accountCode.localeCompare(y.accountCode) || x.classification.localeCompare(y.classification),
   );
-  const totalRealignment = realignment.reduce((t, r) => t + r.amount, 0);
-  return { realignment, totalRealignment, total: totalRealignment };
+}
+
+function encodedRows(sources: EncodedSourceInput[], section: string): FundingSourceRow[] {
+  return sources
+    .filter((s) => s.section === section)
+    .map((s) => ({
+      classification: s.accountCode
+        ? `${s.accountCode}${s.accountName ? ` - ${s.accountName}` : ''}`
+        : s.particulars,
+      accountCode: s.accountCode ?? '',
+      particulars: s.particulars,
+      amount: s.amount,
+    }));
+}
+
+const sum = (rows: FundingSourceRow[]) => rows.reduce((t, r) => t + r.amount, 0);
+
+export function buildFundingSources(
+  appropriations: FundingSourceInput[],
+  sources: EncodedSourceInput[] = [],
+): FundingSourcesSheet {
+  const newRevenue = encodedRows(sources, 'NEW_REVENUE');
+  const excess = encodedRows(sources, 'EXCESS_COLLECTION');
+  const savings = takenFrom(appropriations, isSavingsSource);
+  const realignment = takenFrom(appropriations, isRealignmentSource);
+  const t = {
+    totalNewRevenue: sum(newRevenue),
+    totalExcess: sum(excess),
+    totalSavings: sum(savings),
+    totalRealignment: sum(realignment),
+  };
+  return {
+    newRevenue,
+    excess,
+    savings,
+    realignment,
+    ...t,
+    total: t.totalNewRevenue + t.totalExcess + t.totalSavings + t.totalRealignment,
+  };
 }

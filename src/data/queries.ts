@@ -8,6 +8,7 @@ import type {
   AugmentationDraft,
   AroDraft,
   Ordinance,
+  FundingSource,
   Ada,
   BankAccount,
   BudgetBalance,
@@ -175,6 +176,14 @@ export const useOrdinances = (fiscalYear: number, fundCode: string) =>
     COL.ordinances,
     [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode)],
     ['ordinances', fiscalYear, fundCode],
+  );
+
+/** Encoded sources of financing of the year and fund - patch 123. */
+export const useFundingSources = (fiscalYear: number, fundCode: string) =>
+  useCollection<FundingSource>(
+    COL.fundingSources,
+    [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode)],
+    ['fundingSources', fiscalYear, fundCode],
   );
 
 export const useAllotments = (fiscalYear: number, fundCode: string) =>

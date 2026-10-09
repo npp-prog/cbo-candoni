@@ -79,6 +79,23 @@ export const engine = {
       { posted: number; allotmentMoved: Centavos; reference: string }
     >('importBudgetLines', { kind: 'APPROPRIATION', draftId: p.draftId }),
 
+  /**
+   * Encode, correct or remove a source of financing (patch 123). Refused
+   * when a removal or reduction would leave an approved act unfinanced.
+   */
+  saveFundingSource: (p: {
+    id?: Id;
+    remove?: boolean;
+    fiscalYear?: number;
+    fundCode?: string;
+    section?: string;
+    particulars?: string;
+    accountCode?: string | null;
+    accountName?: string | null;
+    amount?: Centavos;
+    actId?: Id | null;
+  }) => call<typeof p, { id: Id; removed: boolean }>('saveFundingSource', p),
+
   releaseAllotment: (p: { allotmentId: Id }) =>
     call<typeof p, { allotmentId: Id; allotmentNo: string; availableAppropriation: Centavos }>(
       'releaseAllotment',

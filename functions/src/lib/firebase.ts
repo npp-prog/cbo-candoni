@@ -74,6 +74,8 @@ export const COL = {
   budgetBalances: 'budgetBalances',
   budgetSummaries: 'budgetSummaries',
   estimatedReceipts: 'estimatedReceipts',
+  ordinances: 'ordinances',
+  fundingSources: 'fundingSources',
   /** One marker per fiscal year and fund; see recordEstimatedReceipts. */
   estimatedReceiptLocks: 'estimatedReceiptLocks',
   trustPrograms: 'trustPrograms',

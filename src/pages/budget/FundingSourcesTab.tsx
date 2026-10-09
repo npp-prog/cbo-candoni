@@ -1,13 +1,16 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { ReportHeading } from '@/components/ReportShell';
 import { ReportPrintStyle } from '@/components/print/ReportPrintStyle';
-import { useAppropriations } from '@/data/queries';
+import { useAppropriations, useFundingSources } from '@/data/queries';
+import { useAuth } from '@/auth/AuthProvider';
+import type { FundingSource } from '@/types/budget';
+import { FundingSourceDialog, FundingSourceList } from './FundingSourceDialog';
 import { formatAmount } from '@/lib/money';
 import { printReport } from '@/lib/export';
 import { fundLabel } from './Obligations';
-import { buildFundingSources } from './fundingSources';
+import { buildFundingSources, type FundingSourceRow } from './fundingSources';
 
 /**
  * The Funding Sources tab of Sources of Financing: LBP Form No. 8. Patch 119.
@@ -24,7 +27,16 @@ export function FundingSourcesTab({
   fundCode: string;
 }) {
   const appropriations = useAppropriations(fiscalYear, fundCode);
-  const sheet = useMemo(() => buildFundingSources(appropriations.data), [appropriations.data]);
+  const sources = useFundingSources(fiscalYear, fundCode);
+  const sheet = useMemo(
+    () => buildFundingSources(appropriations.data, sources.data),
+    [appropriations.data, sources.data],
+  );
+  const { hasRole } = useAuth();
+  const canEncode = hasRole('SUPER_ADMIN', 'BUDGET_OFFICER', 'BUDGET_STAFF', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT');
+  const [editing, setEditing] = useState<FundingSource | 'new' | null>(null);
+  const supplementalSources = sources.data.filter((x) => x.section !== 'CONTINUING');
+  const continuing = sources.data.filter((x) => x.section === 'CONTINUING');
 
   const meta = {
     title: 'Statement of Funding Sources (Supplemental Budget)',
@@ -40,13 +52,21 @@ export function FundingSourcesTab({
       <ReportPrintStyle orientation="portrait" />
       <div className="mt-4 flex items-center justify-between gap-3 no-print">
         <p className="text-xs text-slate-600">
-          LBP Form No. 8, Budget Operations Manual for LGUs 2023, page 70. Section 4.0 is filled
-          from the realignments posted this year - the appropriation TAKEN AWAY by each. The new
-          realigned budget is on the Appropriation Ledger and on LBP Form No. 2.
+          LBP Form No. 8, Budget Operations Manual for LGUs 2023, page 70. 1.0 and 2.0 are the
+          sources encoded below or inside a supplemental ordinance - a supplemental budget cannot be
+          approved without them. 3.0 is what augmentations took as savings, and 4.0 what
+          realignments took, both from the books.
         </p>
-        <Button size="sm" variant="primary" onClick={() => printReport(meta)}>
-          Print
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {canEncode && (
+            <Button size="sm" variant="secondary" onClick={() => setEditing('new')}>
+              Encode a source
+            </Button>
+          )}
+          <Button size="sm" variant="primary" onClick={() => printReport(meta)}>
+            Print
+          </Button>
+        </div>
       </div>
 
       <Card className="mt-3 cbo-report-sheet print:border-0 print:px-0 print:py-0">
@@ -71,27 +91,14 @@ export function FundingSourcesTab({
             </tr>
           </thead>
           <tbody>
-            <Section label="1.0 New Revenue Sources" />
-            <Blank label="Tax Revenue" />
-            <Blank label="Loan Proceeds (Borrowings)" />
-            <Section label="2.0 Actual Collection in Excess of the Estimated Income" />
-            <Blank />
-            <Section label="3.0 Savings" />
-            <Blank />
+            <Section label="1.0 New Revenue Sources" amount={sheet.totalNewRevenue} />
+            <Rows rows={sheet.newRevenue} />
+            <Section label="2.0 Actual Collection in Excess of the Estimated Income" amount={sheet.totalExcess} />
+            <Rows rows={sheet.excess} />
+            <Section label="3.0 Savings" amount={sheet.totalSavings} />
+            <Rows rows={sheet.savings} particulars="Savings from" />
             <Section label="4.0 Realignment" amount={sheet.totalRealignment} />
-            {sheet.realignment.length === 0 ? (
-              <Blank />
-            ) : (
-              sheet.realignment.map((r) => (
-                <tr key={r.accountCode || r.classification}>
-                  <td className={`${cell} pl-6 text-slate-600`}>Appropriation realigned from</td>
-                  <td className={cell}>{r.classification}</td>
-                  <td className={`${cell} cbo-amount text-right`}>
-                    {formatAmount(r.amount, false)}
-                  </td>
-                </tr>
-              ))
-            )}
+            <Rows rows={sheet.realignment} particulars="Appropriation realigned from" />
             <tr className="font-bold">
               <td className={cell} colSpan={2}>
                 TOTAL
@@ -103,11 +110,7 @@ export function FundingSourcesTab({
           </tbody>
         </table>
 
-        <p className="mt-3 text-2xs text-slate-500">
-          Sections 1.0 to 3.0 are certified by the Treasurer and the Accountant from the
-          supplemental budget&rsquo;s own funding, which the books do not record; they are left to
-          be filled in by hand. Section 4.0 and the total are from the books.
-        </p>
+
 
         <div className="mt-8">
           <p className="text-xs font-semibold">Certified Correct by:</p>
@@ -118,12 +121,44 @@ export function FundingSourcesTab({
         </div>
       </Card>
 
-      {sheet.realignment.length === 0 && (
+      <Card title="Encoded sources - 1.0 and 2.0" className="mt-4 no-print" bodyClassName="p-0">
+        <FundingSourceList
+          sources={supplementalSources}
+          canEdit={canEncode}
+          onEdit={setEditing}
+          empty="Nothing encoded. A supplemental budget cannot be approved until its sources are here or in the ordinance itself."
+        />
+      </Card>
+
+      <Card
+        title="Continuing"
+        subtitle="Last year's authority carried into this one. A continuing appropriation cannot be approved without it. Not part of LBP Form No. 8."
+        className="mt-4 no-print"
+        bodyClassName="p-0"
+      >
+        <FundingSourceList
+          sources={continuing}
+          canEdit={canEncode}
+          onEdit={setEditing}
+          empty="No continuing source encoded."
+        />
+      </Card>
+
+      {sheet.total === 0 && (
         <Alert tone="info" className="mt-4 no-print">
-          No realignment has been posted for {fiscalYear} in this fund, so section 4.0 is empty. A
-          realignment is recorded and approved on the Appropriation screen; what it takes away
-          appears here once it is posted.
+          Nothing to show for {fiscalYear} in this fund yet. Encode a source above, or post a
+          realignment or augmentation - what it takes away appears under 4.0 or 3.0.
         </Alert>
+      )}
+
+      {editing && (
+        <FundingSourceDialog
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          act={null}
+          existing={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
       )}
     </>
   );
@@ -138,6 +173,23 @@ function Section({ label, amount }: { label: string; amount?: number }) {
         {amount !== undefined && amount > 0 ? formatAmount(amount, false) : ''}
       </td>
     </tr>
+  );
+}
+
+function Rows({ rows, particulars }: { rows: FundingSourceRow[]; particulars?: string }) {
+  if (rows.length === 0) return <Blank />;
+  return (
+    <>
+      {rows.map((r, i) => (
+        <tr key={`${r.accountCode}-${r.classification}-${i}`}>
+          <td className="border border-slate-400 px-2 py-1.5 pl-6 text-slate-600">
+            {r.particulars ?? particulars ?? ''}
+          </td>
+          <td className="border border-slate-400 px-2 py-1.5">{r.particulars ? (r.accountCode ? r.classification : '') : r.classification}</td>
+          <td className="border border-slate-400 px-2 py-1.5 cbo-amount text-right">{formatAmount(r.amount, false)}</td>
+        </tr>
+      ))}
+    </>
   );
 }
 

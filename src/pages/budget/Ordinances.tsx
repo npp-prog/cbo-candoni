@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { actKindLabel } from '@/lib/budgetActs';
 import { useOpenWithReturn } from '@/components/ui/BackButton';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
@@ -13,7 +14,6 @@ import { formatShortDate } from '@/lib/dates';
 import { AppropriationTabs } from './appropriationTabs';
 import { RecordOrdinanceDialog } from './RecordOrdinanceDialog';
 import {
-  ORDINANCE_KINDS,
   STAGE_LABELS,
   summariseOrdinance,
   type OrdinanceSummary,
@@ -60,7 +60,7 @@ export default function Ordinances() {
   const columns: Column<OrdinanceSummary>[] = [
     {
       key: 'reference',
-      header: 'Ordinance',
+      header: 'Number',
       width: '14rem',
       value: (r) => `${r.ordinance.reference} ${r.ordinance.title ?? ''}`,
       cell: (r) => (
@@ -79,8 +79,7 @@ export default function Ordinances() {
       value: (r) => r.ordinance.kind,
       cell: (r) => (
         <span className="text-xs">
-          {ORDINANCE_KINDS.find((k) => k.value === r.ordinance.kind)?.label.split(' - ')[0] ??
-            r.ordinance.kind}
+          {actKindLabel(r.ordinance.kind)}
         </span>
       ),
     },
@@ -145,13 +144,13 @@ export default function Ordinances() {
   return (
     <div>
       <PageHeader
-        title="Ordinances"
+        title="Authorities"
         subtitle={`${fundLabel(fundCode)} - fiscal year ${fiscalYear}`}
-        breadcrumbs={[{ label: 'Budget' }, { label: 'Appropriations' }, { label: 'Ordinances' }]}
+        breadcrumbs={[{ label: 'Budget' }, { label: 'Appropriations' }, { label: 'Authorities' }]}
         actions={
           can('budget', 'create') && (
             <Button variant="primary" size="sm" onClick={() => setRecording(true)}>
-              Record an ordinance
+              Record an authority
             </Button>
           )
         }
@@ -168,9 +167,9 @@ export default function Ordinances() {
         onRowClick={(r) => open(`/budget/appropriations/ordinances/${r.ordinance.id}`)}
         loading={ordinances.loading}
         error={ordinances.error}
-        searchPlaceholder="Ordinance number or title"
-        emptyTitle="No ordinance recorded"
-        emptyMessage="Record the appropriation ordinance here first; its lines are recorded inside it."
+        searchPlaceholder="Number or title"
+        emptyTitle="Nothing recorded"
+        emptyMessage="Record the ordinance, augmentation order or continuing appropriations here first; its lines and sources are recorded inside it."
       />
 
       {recording && (

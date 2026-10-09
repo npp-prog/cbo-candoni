@@ -1,9 +1,18 @@
-import type {
-  Appropriation,
-  AppropriationKind,
-  AugmentationDraft,
-  Ordinance,
-} from '@/types/budget';
+import type { Appropriation, AugmentationDraft, Ordinance } from '@/types/budget';
+import {
+  ACT_KINDS,
+  actId,
+  actKindOfInstrument,
+  actKindOfLine,
+  coverEncoded,
+  coverOriginal,
+  coverShortfall,
+  fundingBasis,
+  slugReference,
+  type Cover,
+  type FundingBasis,
+  type SourceEntry,
+} from '@/lib/budgetActs';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -32,31 +41,23 @@ import type { Centavos } from '@/types/common';
  * any other.
  */
 
-/** The reference made safe for a document id, as the engine makes it. */
-export function slugReference(value: string): string {
-  return value
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9-]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+/*
+ * The id and the slug moved to lib/budgetActs.ts in patch 123, shared with
+ * the engine, which now reads the act when it approves. Re-exported here so
+ * the screens that already import them keep working.
+ */
+export { slugReference };
+export const ordinanceId = actId;
 
-/** The id an ordinance is stored under - so the same one cannot be recorded twice. */
-export function ordinanceId(o: {
-  fiscalYear: number;
-  fundCode: string;
-  kind: string;
-  reference: string;
-}): string {
-  return `${o.fiscalYear}__${o.fundCode}__${o.kind}__${slugReference(o.reference)}`;
-}
+/** Acts whose lines are prepared as ONE set that comes to zero. */
+export const isSetAct = (kind: string) => kind === 'REALIGNMENT' || kind === 'AUGMENTATION';
 
 /** Whether a ledger line is on this ordinance. */
 export function lineBelongsTo(line: Appropriation, o: Ordinance): boolean {
   return (
     line.fiscalYear === o.fiscalYear &&
     line.fundCode === o.fundCode &&
-    line.kind === o.kind &&
+    actKindOfLine(line) === o.kind &&
     (line.authorityReference ?? '').trim() === o.reference.trim() &&
     line.status !== 'CANCELLED'
   );
@@ -65,10 +66,10 @@ export function lineBelongsTo(line: Appropriation, o: Ordinance): boolean {
 /** Whether a prepared set (a realignment waiting to be posted) is this ordinance's. */
 export function setBelongsTo(set: AugmentationDraft, o: Ordinance): boolean {
   return (
-    o.kind === 'REALIGNMENT' &&
+    isSetAct(o.kind) &&
     set.fiscalYear === o.fiscalYear &&
     set.fundCode === o.fundCode &&
-    set.instrument === 'REALIGNMENT' &&
+    actKindOfInstrument(set.instrument) === o.kind &&
     (set.authorityReference ?? '').trim() === o.reference.trim()
   );
 }
@@ -101,7 +102,7 @@ export function summariseOrdinance(
   const own = sets.filter((s) => setBelongsTo(s, o));
   const drafts = lines.filter((l) => l.status === 'DRAFT');
   const approved = lines.filter((l) => l.status === 'APPROVED');
-  const realign = o.kind === 'REALIGNMENT';
+  const realign = isSetAct(o.kind);
 
   const setLines = own.flatMap((s) => s.lines ?? []);
   const draftTotal =
@@ -139,26 +140,74 @@ export const STAGE_LABELS: Record<OrdinanceStage, string> = {
   APPROVED: 'Approved',
 };
 
-/** The kinds an ordinance can be. An augmentation is not one - it is signed by the LCE, not enacted. */
-export const ORDINANCE_KINDS: Array<{ value: AppropriationKind; label: string; hint: string }> = [
-  {
-    value: 'ORIGINAL',
-    label: 'Original - the annual budget',
-    hint: 'The appropriation ordinance for the year.',
-  },
-  {
-    value: 'SUPPLEMENTAL',
-    label: 'Supplemental budget',
-    hint: 'New authority from new revenue, enacted during the year.',
-  },
-  {
-    value: 'CONTINUING',
-    label: 'Continuing appropriation',
-    hint: 'Prior-year authority carried forward.',
-  },
-  {
-    value: 'REALIGNMENT',
-    label: 'Realignment',
-    hint: 'Authority moved across expense classes by ordinance. Its lines are prepared as one set and posted together.',
-  },
-];
+/** The kinds of act. Patch 123 added the augmentation - not an ordinance, but a document all the same. */
+export const ORDINANCE_KINDS = ACT_KINDS.map((k) => ({ value: k.value, label: k.label, hint: k.hint }));
+
+// ---------------------------------------------------------------------------
+// Ready to approve? Patch 123.
+// ---------------------------------------------------------------------------
+
+export interface ActReadiness {
+  /** The signed copy is attached. */
+  documented: boolean;
+  basis: FundingBasis;
+  /** For an act financed from outside itself; null for a realignment or augmentation. */
+  cover: Cover | null;
+  /** What it takes from, for a realignment or augmentation - its own source. */
+  takenFrom: number;
+  ready: boolean;
+  /** Why not, in the order they need doing. */
+  problems: string[];
+}
+
+/**
+ * The screen's reading of what the engine will check (functions/src/budget/
+ * actGate.ts) - so Approve is offered only when it will go through, and the
+ * page says what is missing before anyone presses it.
+ */
+export function actReadiness(input: {
+  summary: OrdinanceSummary;
+  attachmentCount: number;
+  appropriations: Appropriation[];
+  sources: SourceEntry[];
+  estimatedRevenue: number;
+}): ActReadiness {
+  const o = input.summary.ordinance;
+  const basis = fundingBasis(o.kind);
+  const problems: string[] = [];
+  const documented = input.attachmentCount > 0;
+  if (!documented) {
+    const doc = ACT_KINDS.find((k) => k.value === o.kind)?.document ?? 'signed copy';
+    problems.push(`Attach the ${doc} on Supporting documents.`);
+  }
+
+  let cover: Cover | null = null;
+  let takenFrom = 0;
+  if (basis === 'OWN_LINES') {
+    const lines = [
+      ...input.summary.lines.filter((l) => l.status !== 'CANCELLED'),
+      ...input.summary.sets.flatMap((s) => s.lines ?? []),
+    ];
+    takenFrom = lines.reduce((t, l) => t + (l.amount < 0 ? -l.amount : 0), 0);
+  } else {
+    const adding = input.summary.lines.filter((l) => l.status === 'DRAFT').reduce((t, l) => t + l.amount, 0);
+    const approved = input.appropriations.filter((l) => l.status === 'APPROVED' && actKindOfLine(l) === o.kind);
+    if (basis === 'ESTIMATED_REVENUE') {
+      cover = coverOriginal({
+        estimated: input.estimatedRevenue,
+        approvedOriginal: approved.reduce((t, l) => t + l.amount, 0),
+        adding,
+      });
+    } else {
+      const byAct = new Map<string, number>();
+      for (const l of approved) {
+        const id = actId({ fiscalYear: l.fiscalYear, fundCode: l.fundCode, kind: o.kind, reference: l.authorityReference ?? '' });
+        byAct.set(id, (byAct.get(id) ?? 0) + l.amount);
+      }
+      cover = coverEncoded({ kind: o.kind, actId: o.id, sources: input.sources, approvedByAct: byAct, adding });
+    }
+    if (!cover.ok) problems.push(coverShortfall(o.kind, o.reference, cover));
+  }
+
+  return { documented, basis, cover, takenFrom, ready: problems.length === 0, problems };
+}

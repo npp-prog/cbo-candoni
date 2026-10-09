@@ -8,8 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { COL } from '@/lib/collections';
 import { todayPh } from '@/lib/dates';
 import type { ActorStamp } from '@/types/common';
-import type { AppropriationKind } from '@/types/budget';
-import { ORDINANCE_KINDS, ordinanceId } from './ordinanceModel';
+import { ACT_KINDS, actId, type ActKind } from '@/lib/budgetActs';
 
 /**
  * Recording an ordinance - the header its lines are then recorded under.
@@ -26,7 +25,10 @@ export function RecordOrdinanceDialog({
   actor,
   onClose,
   onRecorded,
+  preset,
 }: {
+  /** Filled in from a prepared set that names an act not yet recorded. */
+  preset?: { kind: ActKind; reference: string; date?: string };
   fiscalYear: number;
   fundCode: string;
   actor: ActorStamp | null;
@@ -35,32 +37,32 @@ export function RecordOrdinanceDialog({
   onRecorded: (id: string, existed: boolean) => void;
 }) {
   const toast = useToast();
-  const [kind, setKind] = useState<AppropriationKind>('ORIGINAL');
-  const [reference, setReference] = useState('');
-  const [date, setDate] = useState(todayPh());
+  const [kind, setKind] = useState<ActKind>(preset?.kind ?? 'ORIGINAL');
+  const [reference, setReference] = useState(preset?.reference ?? '');
+  const [date, setDate] = useState(preset?.date || todayPh());
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const chosen = ORDINANCE_KINDS.find((k) => k.value === kind);
+  const chosen = ACT_KINDS.find((k) => k.value === kind);
 
   const save = async () => {
     if (!actor) return;
     if (!reference.trim()) {
       toast.error(
-        'The ordinance number is required',
+        `The ${(chosen?.numberLabel ?? 'number').toLowerCase()} is required`,
         'It is what every line of it is recorded under.',
       );
       return;
     }
     setSaving(true);
     try {
-      const id = ordinanceId({ fiscalYear, fundCode, kind, reference });
+      const id = actId({ fiscalYear, fundCode, kind, reference });
       const ref = doc(db, COL.ordinances, id);
       const existing = await getDoc(ref);
       if (existing.exists()) {
         toast.info(
-          'That ordinance is already recorded',
-          'Opening it. Record its lines there rather than recording the ordinance again.',
+          'That is already recorded',
+          'Opening it. Record its lines there rather than recording it again.',
         );
         onRecorded(id, true);
         return;
@@ -78,7 +80,7 @@ export function RecordOrdinanceDialog({
       onRecorded(id, false);
     } catch (err) {
       toast.error(
-        'Could not record the ordinance',
+        'Could not record it',
         err instanceof Error ? err.message : String(err),
       );
     } finally {
@@ -90,8 +92,8 @@ export function RecordOrdinanceDialog({
     <Modal
       open
       onClose={onClose}
-      title="Record an ordinance"
-      description="The ordinance first; its lines are recorded inside it, the signed copy is attached to it, and it is printed on LBP Form No. 2 before it is approved."
+      title="Record an authority"
+      description="An ordinance, an augmentation order, or the continuing appropriations. Its lines and its sources are recorded inside it and the signed copy is attached to it; it cannot be approved without both."
       size="md"
       footer={
         <>
@@ -113,24 +115,28 @@ export function RecordOrdinanceDialog({
           <Select
             id="ordKind"
             value={kind}
-            onChange={(e) => setKind(e.target.value as AppropriationKind)}
+            onChange={(e) => setKind(e.target.value as ActKind)}
           >
-            {ORDINANCE_KINDS.map((k) => (
+            {ACT_KINDS.map((k) => (
               <option key={k.value} value={k.value}>
                 {k.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Ordinance or resolution number" required htmlFor="ordRef">
+        <Field label={chosen?.numberLabel ?? 'Number'} required htmlFor="ordRef">
           <TextInput
             id="ordRef"
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="Ord. No. 2026-01"
+            placeholder={chosen?.placeholder}
           />
         </Field>
-        <Field label="Date enacted" required htmlFor="ordDate">
+        <Field
+          label={kind === 'AUGMENTATION' ? 'Date signed' : kind === 'CONTINUING' ? 'Date' : 'Date enacted'}
+          required
+          htmlFor="ordDate"
+        >
           <DateInput id="ordDate" value={date} onChange={setDate} />
         </Field>
         <Field

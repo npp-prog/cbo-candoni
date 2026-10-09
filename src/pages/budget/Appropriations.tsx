@@ -16,6 +16,7 @@ import {
   useAppropriations,
   useAugmentationDrafts,
   useBudgetBalances,
+  useOrdinances,
   usePrograms,
 } from '@/data/queries';
 import { createDraft, updateDraft, deleteDraft, deleteDrafts, actorStamp } from '@/data/mutations';
@@ -47,6 +48,7 @@ import { uploadedDrafts, type UploadGroup } from './uploadedDrafts';
 import { fundLabel } from './Obligations';
 import { RecordOrdinanceDialog } from './RecordOrdinanceDialog';
 import { ordinanceId } from './ordinanceModel';
+import { actKindOfInstrument, type ActKind } from '@/lib/budgetActs';
 import { useEntity } from '@/data/useEntity';
 import { buildAugmentationSheet, type AugmentationSheet } from './augmentationForm';
 import { AugmentationFormSheet, usePrintAugmentation } from './AugmentationFormSheet';
@@ -184,7 +186,11 @@ export default function Appropriations() {
 
   const [showForm, setShowForm] = useState(false);
   /* Patch 119: the ordinance is recorded first, as a document of its own. */
-  const [recordingOrdinance, setRecordingOrdinance] = useState(false);
+  const [recordingOrdinance, setRecordingOrdinance] = useState<
+    boolean | { kind: ActKind; reference: string; date: string }
+  >(false);
+  /* Patch 123: a prepared set is approved only under its recorded act. */
+  const acts = useOrdinances(fiscalYear, fundCode);
   const [approving, setApproving] = useState<Appropriation | null>(null);
   const [editing, setEditing] = useState<Appropriation | null>(null);
   const [busy, setBusy] = useState(false);
@@ -526,7 +532,7 @@ export default function Appropriations() {
                 Record appropriation
               </Button>
               <Button variant="primary" size="sm" onClick={() => setRecordingOrdinance(true)}>
-                Record an ordinance
+                Record an authority
               </Button>
             </div>
           )
@@ -636,6 +642,7 @@ export default function Appropriations() {
         <RecordOrdinanceDialog
           fiscalYear={fiscalYear}
           fundCode={fundCode}
+          preset={typeof recordingOrdinance === 'object' ? recordingOrdinance : undefined}
           actor={
             user
               ? actorStamp({
@@ -704,13 +711,22 @@ export default function Appropriations() {
               const takes = lines.filter((l) => l.amount > 0).reduce((t, l) => t + l.amount, 0);
               /* The engine refuses an unbalanced set anyway; saying so here
                  saves the round trip and names the figure it is out by. */
+              const actKind = actKindOfInstrument(d.instrument);
+              const ref = (d.authorityReference ?? '').trim();
+              const act = ref
+                ? acts.data.find((a) => a.id === ordinanceId({ fiscalYear, fundCode, kind: actKind, reference: ref }))
+                : undefined;
               const blocked = !lines.length
                 ? 'It has no lines on it yet.'
                 : set && !set.ok
                   ? set.violations[0]?.message ?? 'The set does not come to zero.'
-                  : !(d.authorityReference ?? '').trim()
+                  : !ref
                     ? 'Add the authority it was signed under (Edit) before it can be approved.'
-                    : null;
+                    : !act
+                      ? `Record ${ref} under Authorities and attach the signed copy before it can be approved.`
+                      : !(act.attachmentCount ?? 0)
+                        ? `Attach the signed copy to ${ref} (Open) before it can be approved.`
+                        : null;
 
               return (
                 <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
@@ -741,6 +757,28 @@ export default function Appropriations() {
                       <Button size="sm" variant="ghost" onClick={() => printPrepared(d)}>
                         Print form
                       </Button>
+                    )}
+                    {act ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => navigate(`/budget/appropriations/ordinances/${act.id}`)}
+                      >
+                        Open
+                      </Button>
+                    ) : (
+                      ref &&
+                      can('budget', 'create') && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            setRecordingOrdinance({ kind: actKind, reference: ref, date: d.authorityDate })
+                          }
+                        >
+                          Record the {actKind === 'AUGMENTATION' ? 'order' : 'ordinance'}
+                        </Button>
+                      )
                     )}
                     {can('budget', 'create') && augmentationDraftEditable(d) && (
                       <Button size="sm" variant="secondary" onClick={() => setEditingDraft(d)}>

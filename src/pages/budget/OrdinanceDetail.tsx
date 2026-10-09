@@ -15,6 +15,8 @@ import {
   useAttachments,
   useAugmentationDrafts,
   useBudgetBalances,
+  useEstimatedReceipts,
+  useFundingSources,
   useObligations,
 } from '@/data/queries';
 import { useEntity } from '@/data/useEntity';
@@ -26,10 +28,14 @@ import { appropriationEditable, augmentationDraftEditable } from '@/lib/budgetEd
 import { formatPeso } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
-import type { Appropriation, AugmentationDraft, Ordinance } from '@/types/budget';
+import type { Appropriation, AugmentationDraft, FundingSource, Ordinance } from '@/types/budget';
+import { ACT_KINDS, fundingBasis, sectionsFinancing } from '@/lib/budgetActs';
 import { AppropriationForm } from './Appropriations';
 import { fundLabel } from './Obligations';
-import { ORDINANCE_KINDS, STAGE_LABELS, slugReference, summariseOrdinance } from './ordinanceModel';
+import { STAGE_LABELS, actReadiness, isSetAct, slugReference, summariseOrdinance } from './ordinanceModel';
+import { FundingSourceDialog, FundingSourceList } from './FundingSourceDialog';
+import { buildAugmentationSheet, type AugmentationSheet } from './augmentationForm';
+import { AugmentationFormSheet, usePrintAugmentation } from './AugmentationFormSheet';
 import { buildLbpForm2, type Form2Sheet } from './lbpForm2';
 import { LbpForm2Sheet, usePrintForm2 } from './LbpForm2Sheet';
 
@@ -74,13 +80,20 @@ export default function OrdinanceDetail() {
   const pastYear = useObligations(fy - 2, fund);
   const currentYear = useObligations(fy - 1, fund);
   const currentBalances = useBudgetBalances(fy - 1, fund);
+  /* Patch 123: what finances it. */
+  const sources = useFundingSources(fy, fund);
+  const estimated = useEstimatedReceipts(fy, fund);
 
   const summary = useMemo(
     () => (ordinance ? summariseOrdinance(ordinance, appropriations.data, sets.data) : null),
     [ordinance, appropriations.data, sets.data],
   );
 
-  const [tab, setTab] = useState<'lines' | 'attachments'>('lines');
+  const [tab, setTab] = useState<'lines' | 'sources' | 'attachments'>('lines');
+  const [sourceEditing, setSourceEditing] = useState<FundingSource | 'new' | null>(null);
+  const [augSheet, setAugSheet] = useState<AugmentationSheet | null>(null);
+  const clearAug = useCallback(() => setAugSheet(null), []);
+  usePrintAugmentation(augSheet, clearAug);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Appropriation | null>(null);
   const [editingSet, setEditingSet] = useState<AugmentationDraft | null>(null);
@@ -121,12 +134,45 @@ export default function OrdinanceDetail() {
     );
   }
 
-  const realign = ordinance.kind === 'REALIGNMENT';
-  const kindLabel =
-    ORDINANCE_KINDS.find((k) => k.value === ordinance.kind)?.label.split(' - ')[0] ??
-    ordinance.kind;
+  const realign = isSetAct(ordinance.kind);
+  const isAug = ordinance.kind === 'AUGMENTATION';
+  const actMeta = ACT_KINDS.find((k) => k.value === ordinance.kind);
+  const kindLabel = actMeta?.label ?? ordinance.kind;
+  const setWord = isAug ? 'augmentation' : 'realignment';
+  const basis = fundingBasis(ordinance.kind);
+  const ownSources = sources.data.filter((x) => x.actId === ordinance.id);
+  const openSources = sources.data.filter(
+    (x) => !x.actId && sectionsFinancing(ordinance.kind).includes(x.section),
+  );
+  const readiness = actReadiness({
+    summary,
+    attachmentCount: attachments.data.length,
+    appropriations: appropriations.data,
+    sources: sources.data.map((x) => ({ section: x.section, amount: x.amount, actId: x.actId ?? null })),
+    estimatedRevenue: estimated.data.reduce((t, r) => t + (r.annual ?? 0), 0),
+  });
+  const notReady = readiness.problems.join(' ');
+  const takenLines = [
+    ...summary.lines.filter((l) => l.amount < 0 && l.status !== 'CANCELLED'),
+    ...summary.sets.flatMap((x) => (x.lines ?? []).filter((l) => l.amount < 0)),
+  ];
   const drafts = summary.lines.filter((l) => l.status === 'DRAFT');
   const waitingSet = summary.sets.find((s) => augmentationDraftEditable(s)) ?? null;
+
+  /** An augmentation prints on the Augmentation Form (patch 116), not LBP Form No. 2. */
+  const printAugmentation = () =>
+    setAugSheet(
+      buildAugmentationSheet({
+        fiscalYear: fy,
+        lgu: entity.headingLines[1] ?? '',
+        headingLines: entity.headingLines,
+        ordinanceNo: ordinance.reference,
+        authorityDate: ordinance.date,
+        lines: [...summary.lines, ...summary.sets.flatMap((x) => x.lines ?? [])],
+        prepared: summary.stage !== 'APPROVED',
+        preparedBy: summary.sets[0]?.createdBy?.name ?? null,
+      }),
+    );
 
   /** LBP Form No. 2 from every line the ordinance has - approved, draft, or prepared. */
   const print = () => {
@@ -211,7 +257,7 @@ export default function OrdinanceDetail() {
       if (!waitingSet) return;
       const res = await engine.approvePreparedSet({ draftId: waitingSet.id });
       toast.success(
-        'Realignment posted',
+        isAug ? 'Augmentation posted' : 'Realignment posted',
         `${res.posted} line${res.posted === 1 ? '' : 's'}.` +
           (res.allotmentMoved
             ? ` ${formatPeso(res.allotmentMoved)} of allotment moved with it.`
@@ -223,7 +269,7 @@ export default function OrdinanceDetail() {
     run(async () => {
       if (!waitingSet) return;
       await deleteDraft(COL.augmentationDrafts, waitingSet.id);
-      toast.success('Prepared realignment discarded', 'Nothing had been posted from it.');
+      toast.success(`Prepared ${setWord} discarded`, 'Nothing had been posted from it.');
     }, 'Could not discard it');
 
   const lineColumns: Array<{ h: string; cls?: string }> = [
@@ -238,18 +284,18 @@ export default function OrdinanceDetail() {
 
   return (
     <>
-      <div className={sheet ? 'no-print' : undefined}>
+      <div className={sheet || augSheet ? 'no-print' : undefined}>
         <PageHeader
           title={`${kindLabel} - ${ordinance.reference}`}
-          subtitle={`${ordinance.title ? `${ordinance.title} - ` : ''}${fundLabel(fund)} - fiscal year ${fy} - enacted ${formatLongDate(ordinance.date)}`}
+          subtitle={`${ordinance.title ? `${ordinance.title} - ` : ''}${fundLabel(fund)} - fiscal year ${fy} - dated ${formatLongDate(ordinance.date)}`}
           breadcrumbs={[
             { label: 'Budget' },
-            { label: 'Ordinances', to: '/budget/appropriations/ordinances' },
+            { label: 'Authorities', to: '/budget/appropriations/ordinances' },
             { label: ordinance.reference },
           ]}
           actions={
             <>
-              <BackButton list={{ to: '/budget/appropriations/ordinances', label: 'Ordinances' }} />
+              <BackButton list={{ to: '/budget/appropriations/ordinances', label: 'Authorities' }} />
               <Badge
                 tone={
                   summary.stage === 'APPROVED'
@@ -263,18 +309,28 @@ export default function OrdinanceDetail() {
               </Badge>
               <Button
                 variant="secondary"
-                onClick={print}
+                onClick={isAug ? printAugmentation : print}
                 disabled={summary.lines.length + summary.sets.length === 0}
               >
-                Print LBP Form No. 2
+                {isAug ? 'Print the Augmentation Form' : 'Print LBP Form No. 2'}
               </Button>
               {!realign && canApprove && drafts.length > 0 && (
-                <Button variant="primary" onClick={() => setConfirm('approve')}>
+                <Button
+                  variant="primary"
+                  disabled={!readiness.ready}
+                  title={readiness.ready ? undefined : notReady}
+                  onClick={() => setConfirm('approve')}
+                >
                   Approve all {drafts.length}
                 </Button>
               )}
               {realign && canApprove && waitingSet && (
-                <Button variant="primary" onClick={() => setConfirm('approveSet')}>
+                <Button
+                  variant="primary"
+                  disabled={!readiness.ready}
+                  title={readiness.ready ? undefined : notReady}
+                  onClick={() => setConfirm('approveSet')}
+                >
                   Approve and post
                 </Button>
               )}
@@ -282,9 +338,30 @@ export default function OrdinanceDetail() {
           }
         />
 
+        {summary.stage !== 'APPROVED' && summary.stage !== 'EMPTY' && (
+          <ReadinessCard
+            documented={readiness.documented}
+            fundedText={
+              basis === 'OWN_LINES'
+                ? `Finances itself: ${formatPeso(readiness.takenFrom)} taken from the lines it gives up (LBP Form No. 8, ${isAug ? '3.0 Savings' : '4.0 Realignment'}).`
+                : readiness.cover
+                  ? `${formatPeso(readiness.cover.needed)} to finance; ${formatPeso(readiness.cover.available)} available from ${basis === 'ESTIMATED_REVENUE' ? 'the Estimated Revenue' : 'its sources'}.`
+                  : ''
+            }
+            funded={basis === 'OWN_LINES' || Boolean(readiness.cover?.ok)}
+            problems={readiness.problems}
+            onGo={(t) => setTab(t)}
+          />
+        )}
+
         <Tabs
           tabs={[
             { id: 'lines', label: 'Lines', count: summary.approvedCount + summary.waitingCount },
+            {
+              id: 'sources',
+              label: 'Sources',
+              count: basis === 'ENCODED' ? ownSources.length : undefined,
+            },
             { id: 'attachments', label: 'Supporting documents', count: attachments.data.length },
           ]}
           active={tab}
@@ -295,9 +372,11 @@ export default function OrdinanceDetail() {
           <div className="mt-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-slate-600">
-                {realign
-                  ? 'A realignment is prepared as one set that comes to zero, printed on LBP Form No. 2 for signature, and posted whole. What it takes away is on LBP Form No. 8 under Sources of Financing.'
-                  : 'Record the lines of the ordinance here, one at a time or from the annex, attach the signed ordinance, print LBP Form No. 2 for signature, then approve them all.'}
+                {isAug
+                  ? 'An augmentation is prepared as one set that comes to zero, within one expense class, printed on the Augmentation Form for the Mayor to sign, and posted whole. The savings it takes are its source - LBP Form No. 8, 3.0.'
+                  : realign
+                    ? 'A realignment is prepared as one set that comes to zero, printed on LBP Form No. 2 for signature, and posted whole. What it takes away is its source - LBP Form No. 8, 4.0.'
+                    : 'Record the lines here, one at a time or from the annex, encode its sources, attach the signed copy, print LBP Form No. 2 for signature, then approve them all.'}
               </p>
               {canRecord && (
                 <div className="flex flex-wrap gap-2">
@@ -320,7 +399,7 @@ export default function OrdinanceDetail() {
                     ) : (
                       summary.approvedCount === 0 && (
                         <Button size="sm" variant="primary" onClick={() => setAdding(true)}>
-                          Prepare the realignment
+                          Prepare the {setWord}
                         </Button>
                       )
                     )
@@ -352,7 +431,9 @@ export default function OrdinanceDetail() {
             {realign && waitingSet && (
               <Card className="mb-4 border-amber-300 bg-amber-50/40" bodyClassName="p-0">
                 <div className="px-4 py-3">
-                  <p className="text-sm font-semibold text-navy-900">Prepared - not yet posted</p>
+                  <p className="text-sm font-semibold text-navy-900">
+                    Prepared - not yet posted
+                  </p>
                   <p className="text-xs text-slate-600">
                     {(waitingSet.lines ?? []).length} lines
                     {waitingSet.createdBy?.name
@@ -403,7 +484,7 @@ export default function OrdinanceDetail() {
                 }
                 empty={
                   realign
-                    ? 'Nothing posted yet. Prepare the realignment above.'
+                    ? `Nothing posted yet. Prepare the ${setWord} above.`
                     : 'No lines yet. Add them one at a time, or upload the annex.'
                 }
               />
@@ -411,11 +492,104 @@ export default function OrdinanceDetail() {
           </div>
         )}
 
+        {tab === 'sources' && (
+          <div className="mt-4 space-y-4">
+            {basis === 'ESTIMATED_REVENUE' && (
+              <Card title="Estimated Revenue" subtitle="The original budget may not exceed it. Recorded on Budget > Sources of Financing > Schedule.">
+                <dl className="grid gap-4 sm:grid-cols-3">
+                  <Figure label="Estimated revenue" value={readiness.cover?.available ?? 0} />
+                  <Figure label="Original budget, with this ordinance" value={readiness.cover?.needed ?? 0} />
+                  <Figure
+                    label="Left"
+                    value={(readiness.cover?.available ?? 0) - (readiness.cover?.needed ?? 0)}
+                  />
+                </dl>
+                <div className="mt-3">
+                  <Button size="sm" variant="secondary" onClick={() => open('/budget/estimated-receipts')}>
+                    Open Sources of Financing
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {basis === 'ENCODED' && (
+              <>
+                <Card
+                  title={ordinance.kind === 'SUPPLEMENTAL' ? 'Sources encoded in this ordinance - 1.0 and 2.0' : 'Continuing sources encoded here'}
+                  subtitle={
+                    readiness.cover
+                      ? `Needed ${formatPeso(readiness.cover.needed)} - own ${formatPeso(readiness.cover.own)} - open on the Sources tab ${formatPeso(readiness.cover.open)}.`
+                      : undefined
+                  }
+                  bodyClassName="p-0"
+                  actions={
+                    can('budget', 'create') && (
+                      <Button size="sm" variant="primary" onClick={() => setSourceEditing('new')}>
+                        Encode a source
+                      </Button>
+                    )
+                  }
+                >
+                  <FundingSourceList
+                    sources={ownSources}
+                    canEdit={can('budget', 'create')}
+                    onEdit={setSourceEditing}
+                    empty="Nothing encoded in this act. Encode its sources here, or on Budget > Sources of Financing > Funding Sources."
+                  />
+                </Card>
+                {openSources.length > 0 && (
+                  <Card
+                    title="Open on the Sources tab"
+                    subtitle="Encoded without an act. Any act of this kind draws on them for what its own sources do not cover, in the order they are approved."
+                    bodyClassName="p-0"
+                  >
+                    <FundingSourceList sources={openSources} canEdit={false} onEdit={() => undefined} empty="" />
+                  </Card>
+                )}
+              </>
+            )}
+
+            {basis === 'OWN_LINES' && (
+              <Card
+                title={isAug ? '3.0 Savings - what this augmentation takes from' : '4.0 Realignment - what this realignment takes from'}
+                subtitle="Its own source. The set must come to zero, so what it gives is exactly what it takes."
+                bodyClassName="p-0"
+              >
+                <LinesTable
+                  columns={lineColumns}
+                  rows={takenLines.map((l, i) => ({
+                    key: `t-${i}`,
+                    officeName: l.officeName,
+                    line: l.accountCode ? `${l.accountCode} ${l.accountName}` : `${l.fppCode} ${l.fppName}`,
+                    expenseClass: l.expenseClass,
+                    sector: l.sector,
+                    amount: l.amount,
+                    status: 'status' in l ? (l as Appropriation).status : 'PREPARED',
+                  }))}
+                  total={-readiness.takenFrom}
+                  empty={`Nothing yet. Prepare the ${setWord} on Lines.`}
+                />
+              </Card>
+            )}
+          </div>
+        )}
+
+        {sourceEditing && (
+          <FundingSourceDialog
+            fiscalYear={fy}
+            fundCode={fund}
+            act={ordinance}
+            existing={sourceEditing === 'new' ? null : sourceEditing}
+            sections={sectionsFinancing(ordinance.kind)}
+            onClose={() => setSourceEditing(null)}
+          />
+        )}
+
         {tab === 'attachments' && (
           <div className="mt-4">
             <Alert tone="info" className="mb-4">
-              Attach the signed and enacted ordinance here. It stays with the record, and every line
-              approved under this number can be traced to it.
+              Attach the signed {actMeta?.document ?? 'document'} here. It cannot be approved without
+              it, and every line approved under this number can be traced to it.
             </Alert>
             <AttachmentsPanel
               entityType={COL.ordinances}
@@ -450,7 +624,7 @@ export default function OrdinanceDetail() {
               setEditing(null);
               setEditingSet(null);
               toast.success(
-                realign ? 'Realignment prepared' : editing ? 'Line corrected' : 'Line recorded',
+                realign ? `${isAug ? 'Augmentation' : 'Realignment'} prepared` : editing ? 'Line corrected' : 'Line recorded',
                 realign
                   ? 'Print it for signature, then approve and post it.'
                   : 'Still a draft. Approve the ordinance when all its lines are in.',
@@ -526,6 +700,7 @@ export default function OrdinanceDetail() {
       </div>
 
       {sheet && <LbpForm2Sheet sheet={sheet} />}
+      {augSheet && <AugmentationFormSheet sheet={augSheet} />}
     </>
   );
 }
@@ -612,5 +787,61 @@ function LinesTable({
         )}
       </table>
     </div>
+  );
+}
+
+function Figure({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <dt className="text-2xs uppercase tracking-wider text-slate-500">{label}</dt>
+      <dd className={`mt-0.5 font-mono text-sm ${value < 0 ? 'text-rose-700' : 'text-navy-900'}`}>
+        {formatPeso(value)}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * Before approval: what the engine will want, ticked off. Patch 123.
+ */
+function ReadinessCard({
+  documented,
+  funded,
+  fundedText,
+  problems,
+  onGo,
+}: {
+  documented: boolean;
+  funded: boolean;
+  fundedText: string;
+  problems: string[];
+  onGo: (tab: 'sources' | 'attachments') => void;
+}) {
+  const Item = ({ ok, label, tab, detail }: { ok: boolean; label: string; tab: 'sources' | 'attachments'; detail?: string }) => (
+    <li className="flex items-start gap-2">
+      <span
+        className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-2xs font-bold ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+      >
+        {ok ? '\u2713' : '!'}
+      </span>
+      <span className="text-xs">
+        <button type="button" className="font-semibold text-navy-900 hover:underline" onClick={() => onGo(tab)}>
+          {label}
+        </button>
+        {detail && <span className="text-slate-600"> - {detail}</span>}
+      </span>
+    </li>
+  );
+  return (
+    <Card className={`mb-4 ${problems.length ? 'border-amber-300 bg-amber-50/40' : 'border-emerald-200 bg-emerald-50/40'}`}>
+      <p className="text-sm font-semibold text-navy-900">
+        {problems.length ? 'Before it can be approved' : 'Ready to approve'}
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        <Item ok={documented} label="Signed copy attached" tab="attachments" detail={documented ? undefined : 'attach it on Supporting documents'} />
+        <Item ok={funded} label="Sources" tab="sources" detail={fundedText} />
+      </ul>
+      {problems.length > 0 && <p className="mt-2 text-2xs text-slate-600">{problems.join(' ')}</p>}
+    </Card>
   );
 }
