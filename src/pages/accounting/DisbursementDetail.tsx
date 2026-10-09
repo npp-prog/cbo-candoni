@@ -754,6 +754,34 @@ function DisbursementEditor() {
         </Alert>
       )}
 
+      {/*
+        Patch 153: its check / ADA was taken out of a journalized report and
+        cancelled. The number cannot be used again; the payee is repaid by a
+        new voucher of the Trust liability kind.
+      */}
+      {existing?.reprocessedAsTrustLiability && (
+        <Alert tone="warning" title="Payment cancelled - held as a trust liability" className="mb-4">
+          {existing.reprocessedAsTrustLiability.instrument === 'ADA' ? 'ADA' : 'Check'}{' '}
+          {existing.reprocessedAsTrustLiability.no} was cancelled after its report was in the books
+          {existing.reprocessedAsTrustLiability.jevNo ? (
+            <>
+              {' '}
+              (taken out by{' '}
+              <JevLink
+                jevId={existing.reprocessedAsTrustLiability.jevId}
+                jevNo={existing.reprocessedAsTrustLiability.jevNo}
+              >
+                JEV {existing.reprocessedAsTrustLiability.jevNo}
+              </JevLink>
+              )
+            </>
+          ) : null}
+          . This voucher stays paid and cannot be paid again; what is owed to {existing.payeeName}{' '}
+          is a trust liability, to be repaid by a new voucher of the Trust liability kind.{' '}
+          {existing.reprocessedAsTrustLiability.reason}
+        </Alert>
+      )}
+
       {existing?.jevId && existing.jevNo && (
         <Alert tone="success" className="mb-4">
           In the General Ledger as{' '}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { namesCheck, rciCheckReversalLines } from './rciReversal';
+import { namesCheck, paymentReversalLines, rciCheckReversalLines } from './rciReversal';
 
 const AP = { accountCode: '20101010', accountName: 'Accounts Payable' };
 const CASH = {
@@ -67,13 +67,15 @@ describe('rciCheckReversalLines (patch 151)', () => {
       debit: 120_000,
       credit: 0,
     });
+    // Patch 153: what is still owed goes to Trust Liabilities, same payee.
     expect(out[1]).toMatchObject({
-      accountCode: '20101010',
+      accountCode: '20401010',
+      accountName: 'Trust Liabilities',
       subsidiaryId: 'p1',
       debit: 0,
       credit: 120_000,
     });
-    expect(out[1].particulars).toBe('Reversal of: Payment of Check No. 1234 - Supplies');
+    expect(out[1].particulars).toMatch(/^Check No\. 1234 cancelled - held in trust/);
     expect(out.map((l) => l.lineNo)).toEqual([1, 2]);
   });
 
@@ -97,7 +99,7 @@ describe('rciCheckReversalLines (patch 151)', () => {
       credit: 0,
     });
     expect(out[0].particulars).toMatch(/Check No\. 12345/);
-    expect(out[1]).toMatchObject({ subsidiaryId: 'p2', credit: 360_000 });
+    expect(out[1]).toMatchObject({ accountCode: '20401010', subsidiaryId: 'p2', credit: 360_000 });
   });
 
   it('refuses when no payable line names the check', () => {
@@ -114,5 +116,58 @@ describe('rciCheckReversalLines (patch 151)', () => {
 
   it('refuses when nothing is chosen', () => {
     expect(() => rciCheckReversalLines(PER_CHECK, [])).toThrow(/at least one/);
+  });
+});
+
+describe('paymentReversalLines - a RADAI (patch 153)', () => {
+  const TL = { code: '20401010', name: 'Trust Liabilities' };
+  const RADAI = [
+    {
+      lineNo: 1,
+      ...AP,
+      debit: 500_000,
+      credit: 0,
+      subsidiaryId: 'p1',
+      particulars: 'Payment of ADA No. 2026-10-0003 - Honoraria',
+    },
+    {
+      lineNo: 2,
+      ...AP,
+      debit: 500_000,
+      credit: 0,
+      subsidiaryId: 'p2',
+      particulars: 'Payment of ADA No. 2026-10-0003 - Honoraria',
+    },
+    {
+      lineNo: 3,
+      ...AP,
+      debit: 200_000,
+      credit: 0,
+      subsidiaryId: 'p3',
+      particulars: 'Payment of ADA No. 2026-10-0004 - Supplies',
+    },
+    { lineNo: 4, ...CASH, debit: 0, credit: 1_200_000, particulars: 'Payments per RADAI' },
+  ];
+
+  it('takes a group ADA - every payee - out of the single cash credit', () => {
+    const out = paymentReversalLines(RADAI, [{ no: '2026-10-0003', amount: 1_000_000 }], {
+      label: 'ADA No.',
+      trustLiability: TL,
+    });
+    expect(out).toHaveLength(3);
+    expect(out[0]).toMatchObject({ accountCode: '10102020', debit: 1_000_000, credit: 0 });
+    expect(out.slice(1).map((l) => [l.accountCode, l.subsidiaryId, l.credit])).toEqual([
+      ['20401010', 'p1', 500_000],
+      ['20401010', 'p2', 500_000],
+    ]);
+  });
+
+  it('does not take ADA 2026-10-0004 for 2026-10-0003', () => {
+    expect(() =>
+      paymentReversalLines(RADAI, [{ no: '2026-10-0004', amount: 1_000_000 }], {
+        label: 'ADA No.',
+        trustLiability: TL,
+      }),
+    ).toThrow(/come to 2000\.00/);
   });
 });

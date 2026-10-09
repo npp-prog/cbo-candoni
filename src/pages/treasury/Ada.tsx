@@ -150,6 +150,15 @@ export default function Ada() {
             Patch 144: "Posted online" is recorded on the RADAI, for every
             advice on it at once - the bank's file is uploaded from there.
           */}
+          {/* Patch 153: taken out of its journalized RADAI - it may now be cancelled. */}
+          {a.entryReversedByJevNo && a.status !== 'CANCELLED' && (
+            <span
+              className="text-2xs text-amber-700"
+              title={`Taken out of the books by JEV ${a.entryReversedByJevNo}`}
+            >
+              Entry reversed
+            </span>
+          )}
           {(a.notPostedAmount ?? 0) > 0 && (
             <span className="text-2xs text-amber-700">
               {formatPeso(a.notPostedAmount ?? 0, { symbol: false })} not posted

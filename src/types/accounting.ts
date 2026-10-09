@@ -136,6 +136,22 @@ export interface DisbursementVoucher extends Partial<AuditStamps> {
    * as an unpaid voucher - no obligation, no expense lines. Engine-written.
    */
   openingPayable?: boolean;
+  /** Patch 153: the liability it was carried forward on, and whether it is Accounts Payable. */
+  payableAccountCode?: string | null;
+  payableAccountName?: string | null;
+  outstandingUnpaid?: boolean;
+  /**
+   * Patch 153: its check / ADA was taken out of a journalized report and
+   * cancelled; what is owed is a trust liability, repaid by a new voucher.
+   */
+  reprocessedAsTrustLiability?: {
+    instrument: 'CHECK' | 'ADA';
+    no: string;
+    jevId: Id | null;
+    jevNo: string | null;
+    reason: string;
+    at: string;
+  } | null;
   openingBalanceId?: string;
 
   particulars: string;
@@ -354,6 +370,8 @@ export interface JournalEntryVoucher extends Partial<AuditStamps> {
    * each reversal with its own JEV. Written by the engine only.
    */
   checkReversals?: Array<{
+    /** Patch 153: 'ADA' on a RADAI's entry; absent or 'CHECK' on an RCI's. */
+    kind?: 'CHECK' | 'ADA';
     jevId: Id;
     jevNo: string;
     date: IsoDate;
@@ -432,6 +450,9 @@ export interface LedgerEntry {
 
 export interface Check extends Partial<AuditStamps> {
   id: Id;
+  /** Patch 153: the liability a carried-forward payable settles (else Accounts Payable). */
+  payableAccountCode?: string | null;
+  payableAccountName?: string | null;
   checkNo: string;
   checkDate: IsoDate;
   fiscalYear: FiscalYear;
@@ -493,6 +514,9 @@ export interface Check extends Partial<AuditStamps> {
 
 export interface Ada extends Partial<AuditStamps> {
   id: Id;
+  /** Patch 153: the liability a carried-forward payable settles (else Accounts Payable). */
+  payableAccountCode?: string | null;
+  payableAccountName?: string | null;
   adaNo: string;
   adaDate: IsoDate;
   fiscalYear: FiscalYear;
@@ -532,6 +556,9 @@ export interface Ada extends Partial<AuditStamps> {
    */
   notPosted?: DvPayee[];
   notPostedAmount?: Centavos;
+  /** Patch 153: taken out of its journalized RADAI by this JEV - may be cancelled. */
+  entryReversedByJevId?: Id;
+  entryReversedByJevNo?: string;
   notPostedJevId?: Id;
   postedOnlineBy?: { uid: string; name: string; position?: string | null; at: string };
 

@@ -132,7 +132,8 @@ export default function JevDetail() {
    * entry can no longer be reversed, copied or amended as a whole - that
    * check would be undone twice.
    */
-  const isRciEntry = existing?.sourceType === 'RCI';
+  const isRciEntry = existing?.sourceType === 'RCI' || existing?.sourceType === 'RADAI';
+  const docNoun = existing?.sourceType === 'RADAI' ? 'ADAs' : 'checks';
   const checksReversed = (existing?.checkReversals ?? []).length > 0;
   /** Reverse it AND open a corrected copy - one act instead of three. */
   const canCorrect = canReverse && !checksReversed;
@@ -376,7 +377,7 @@ export default function JevDetail() {
                 variant="danger"
                 onClick={() => (isRciEntry ? setChoosingChecks(true) : setConfirm('reverse'))}
               >
-                {isRciEntry ? 'Reverse checks' : 'Reverse'}
+                {isRciEntry ? `Reverse ${docNoun}` : 'Reverse'}
               </Button>
             )}
           </>
@@ -468,11 +469,11 @@ export default function JevDetail() {
 
       {/* Patch 151: the checks of this RCI entry reversed on their own. */}
       {checksReversed && (
-        <Alert tone="warning" title="Checks reversed from this entry" className="mb-4">
+        <Alert tone="warning" title={`${docNoun === 'ADAs' ? 'ADAs' : 'Checks'} reversed from this entry`} className="mb-4">
           <ul className="list-disc pl-5">
             {(existing?.checkReversals ?? []).map((r) => (
               <li key={r.jevId}>
-                Check No. {r.checkNos.join(', ')} ({formatPeso(r.amount)}) - reversed by{' '}
+                {r.kind === 'ADA' ? 'ADA No.' : 'Check No.'} {r.checkNos.join(', ')} ({formatPeso(r.amount)}) - to trust liabilities by{' '}
                 <JevLink jevId={r.jevId} jevNo={r.jevNo} className="font-mono">
                   JEV {r.jevNo}
                 </JevLink>{' '}
@@ -481,7 +482,9 @@ export default function JevDetail() {
             ))}
           </ul>
           {existing?.status === 'POSTED' && (
-            <p className="mt-1">The other checks stay paid. Reverse more of them with Reverse checks.</p>
+            <p className="mt-1">
+              The others stay paid. Reverse more of them with Reverse {docNoun}.
+            </p>
           )}
         </Alert>
       )}

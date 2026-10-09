@@ -462,7 +462,13 @@ export const engine = {
     ),
 
   /** Patch 151: reverse the chosen checks of an RCI's entry. */
-  reverseRciChecks: (p: { jevId: Id; checkIds: Id[]; reason: string; reversalDate?: IsoDate }) =>
+  reverseRciChecks: (p: {
+    jevId: Id;
+    /** Check ids on an RCI's entry, ADA ids on a RADAI's (patch 153). */
+    documentIds: Id[];
+    reason: string;
+    reversalDate?: IsoDate;
+  }) =>
     call<
       typeof p,
       {

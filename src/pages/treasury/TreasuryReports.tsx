@@ -83,6 +83,8 @@ interface SourceDoc {
   deductions?: number;
   /** Patch 138: an ADA for several payees - its list, for the entry and the bank file. */
   payees?: Array<{ payeeId: string; payeeName: string; accountNumber: string; amount: number }>;
+  /** Patch 153: a carried-forward payable on another liability (Due to BIR, ...). */
+  payableAccount?: { code: string; name: string } | null;
   treasuryReportId?: string;
   status?: string;
 }
@@ -422,6 +424,11 @@ function PrepareReport({
           payeeName: c.payeeName,
           particulars: c.particulars,
           amount: c.netAmount,
+          // Patch 153: another liability than Accounts Payable, if the voucher was carried on one.
+          payableAccount:
+            c.payableAccountCode && c.payableAccountCode !== ACCOUNTS.accountsPayable.code
+              ? { code: c.payableAccountCode, name: c.payableAccountName ?? c.payableAccountCode }
+              : null,
         }));
     }
     if (reportType === 'RADAI') {
@@ -435,6 +442,11 @@ function PrepareReport({
           payeeName: a.payeeName,
           particulars: a.particulars,
           amount: a.amount,
+          // Patch 153: another liability than Accounts Payable, if the voucher was carried on one.
+          payableAccount:
+            a.payableAccountCode && a.payableAccountCode !== ACCOUNTS.accountsPayable.code
+              ? { code: a.payableAccountCode, name: a.payableAccountName ?? a.payableAccountCode }
+              : null,
           payees: (a.payees ?? [])
             .filter((p) => p.payeeId)
             .map((p) => ({
@@ -552,6 +564,7 @@ function PrepareReport({
           particulars: d.particulars ?? null,
           amount: d.amount,
           payees: d.payees && d.payees.length ? d.payees : null,
+          payableAccount: d.payableAccount ?? null,
         })),
       });
     }

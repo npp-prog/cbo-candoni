@@ -36,7 +36,16 @@ export default function CancelledChecks() {
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
 
-  const { data: checks, loading } = useChecks(bankAccountId ?? undefined, 'CANCELLED');
+  /*
+   * Patch 153. Read every check of the account and keep the cancelled ones
+   * here. Asking Firestore for status == CANCELLED ordered by date needs a
+   * composite index the project did not have, and the query failed without a
+   * word - so the report said "No checks were cancelled" while the register
+   * showed two. The same index is added in firestore.indexes.json, but the
+   * report no longer depends on it.
+   */
+  const { data: allChecks, loading } = useChecks(bankAccountId ?? undefined);
+  const checks = useMemo(() => allChecks.filter((c) => c.status === 'CANCELLED'), [allChecks]);
 
   const rows = useMemo(
     () =>

@@ -21,7 +21,8 @@ import {
   todayPh,
 } from '../lib/period';
 import { isDirectEntry } from '../lib/jevSourceKinds';
-import { rciCheckReversalLines } from '../lib/rciReversal';
+import { paymentReversalLines } from '../lib/rciReversal';
+import { TRUST_LIABILITIES } from '../lib/chartOfAccounts';
 import {
   postJevInTransaction,
   replaceLedgerLines,
@@ -297,41 +298,48 @@ function assertNoCheckReversed(jev: {
   if (done.length > 0) {
     throw new HttpsError(
       'failed-precondition',
-      `Check No. ${done.join(', ')} of JEV ${jev.jevNo ?? ''} ${done.length === 1 ? 'has' : 'have'} already been reversed on ${done.length === 1 ? 'its' : 'their'} own. Reverse the other checks the same way - Reverse, then choose the checks - so no check is reversed twice.`,
+      `No. ${done.join(', ')} of JEV ${jev.jevNo ?? ''} ${done.length === 1 ? 'has' : 'have'} already been reversed on ${done.length === 1 ? 'its' : 'their'} own. Reverse the others the same way - Reverse checks / Reverse ADAs, then choose - so none is reversed twice.`,
     );
   }
 }
 
 /**
- * reverseRciChecks - reverse the CHOSEN checks of an RCI entry. Patch 151.
+ * reverseRciChecks - take the CHOSEN checks out of an RCI's entry, or the
+ * chosen ADAs out of a RADAI's. Patch 151; RADAI and trust liabilities in
+ * patch 153. (The name is kept so the deployed function and its Cloud Run
+ * permission stay as they are.)
  *
- * An RCI is journalized as one entry for all its checks. When one of them is
- * to be cancelled or replaced, only that check's lines are reversed: the cash
- * goes back to its bank account and the payable is owed again to its payee.
- * The checks properly paid stay paid. See lib/rciReversal.ts for the lines.
+ * A report is journalized as one entry for all its checks or advices. When
+ * one of them is to be cancelled or replaced, only its lines are taken out:
+ * the cash goes back to its bank account, and what is still owed to the payee
+ * becomes a TRUST LIABILITY (lib/rciReversal.ts). The voucher's number cannot
+ * be used again - the payee is repaid by a new voucher of the Trust liability
+ * kind. The documents properly paid stay paid.
  *
- * The amounts come from the CHECKS, read here - not from the browser.
+ * The amounts come from the CHECKS / ADAs, read here - not from the browser.
  *
- * Afterwards each reversed check carries the reversing JEV, which is what lets
- * the Treasurer cancel it (cancelCheck refuses a check whose RCI is in the
- * books unless its entry has been reversed). When every check of the report
- * has been reversed, the original entry is marked REVERSED, as a whole
- * reversal would have left it.
+ * Afterwards each document carries the JEV that took it out, which is what
+ * lets the Treasurer cancel it (cancelCheck / cancelAda refuse a document
+ * whose report is in the books otherwise). When every document of the report
+ * has been taken out, the original entry is marked REVERSED.
  */
 export const reverseRciChecks = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
     const caller = await requireCaller(request, POSTING_ROLES);
-    const { jevId, checkIds, reason, reversalDate } = (request.data ?? {}) as {
+    const { jevId, checkIds, documentIds, reason, reversalDate } = (request.data ?? {}) as {
       jevId?: string;
       checkIds?: string[];
+      documentIds?: string[];
       reason?: string;
       reversalDate?: string;
     };
 
     if (!jevId) throw invalid('A journal entry voucher id is required.');
-    const ids = [...new Set((checkIds ?? []).filter((x) => typeof x === 'string' && x))];
-    if (ids.length === 0) throw invalid('Choose at least one check to reverse.');
+    const ids = [
+      ...new Set((documentIds ?? checkIds ?? []).filter((x) => typeof x === 'string' && x)),
+    ];
+    if (ids.length === 0) throw invalid('Choose at least one check or ADA to reverse.');
     if (!reason?.trim()) {
       throw invalid(
         'A reason for the reversal is required. It is printed on the reversing entry and recorded in the audit trail.',
@@ -350,12 +358,17 @@ export const reverseRciChecks = onCall(
         checkReversals?: Array<{ checkIds?: string[]; checkNos?: string[] }>;
       };
 
-      if (original.sourceType !== 'RCI' || !original.sourceId) {
+      const kind = original.sourceType;
+      if ((kind !== 'RCI' && kind !== 'RADAI') || !original.sourceId) {
         throw new HttpsError(
           'failed-precondition',
-          `JEV ${original.jevNo} is not the entry of a Report of Checks Issued. Reverse it as a whole.`,
+          `JEV ${original.jevNo} is not the entry of an RCI or a RADAI. Reverse it as a whole.`,
         );
       }
+      const isAda = kind === 'RADAI';
+      const label = isAda ? 'ADA No.' : 'Check No.';
+      const noun = isAda ? 'ADA' : 'check';
+
       if (original.status !== 'POSTED') {
         throw new HttpsError(
           'failed-precondition',
@@ -371,7 +384,7 @@ export const reverseRciChecks = onCall(
       assertFundInScope(caller, original.fundCode);
 
       const reportSnap = await tx.get(db.collection(COL.treasuryReports).doc(original.sourceId));
-      if (!reportSnap.exists) throw notFound('The RCI behind this entry');
+      if (!reportSnap.exists) throw notFound(`The ${kind} behind this entry`);
       const report = reportSnap.data() as {
         reportNo?: string;
         lines?: Array<{ sourceId: string; sourceNo: string; excluded?: boolean }>;
@@ -381,43 +394,59 @@ export const reverseRciChecks = onCall(
       );
       const already = new Set((original.checkReversals ?? []).flatMap((r) => r.checkIds ?? []));
 
-      const checkRefs = ids.map((id) => db.collection(COL.checks).doc(id));
-      const checkSnaps = await Promise.all(checkRefs.map((r) => tx.get(r)));
-      const checks = checkSnaps.map((cs, i) => {
-        if (!cs.exists) throw notFound('A chosen check');
-        const c = cs.data() as {
-          checkNo: string;
+      const docRefs = ids.map((id) => db.collection(isAda ? COL.ada : COL.checks).doc(id));
+      const docSnaps = await Promise.all(docRefs.map((r) => tx.get(r)));
+      const docs = docSnaps.map((ds, i) => {
+        if (!ds.exists) throw notFound(`A chosen ${noun}`);
+        const d = ds.data() as {
+          checkNo?: string;
+          adaNo?: string;
           status: string;
-          netAmount: number;
+          netAmount?: number;
+          amount?: number;
+          notPostedAmount?: number;
           entryReversedByJevId?: string;
         };
         const id = ids[i];
+        const no = String((isAda ? d.adaNo : d.checkNo) ?? '');
         if (!onReport.has(id)) {
-          throw invalid(`Check No. ${c.checkNo} is not on RCI ${report.reportNo ?? ''}.`);
+          throw invalid(`${label} ${no} is not on ${kind} ${report.reportNo ?? ''}.`);
         }
-        if (already.has(id) || c.entryReversedByJevId) {
+        if (already.has(id) || d.entryReversedByJevId) {
+          throw new HttpsError('failed-precondition', `${label} ${no} has already been reversed.`);
+        }
+        if (d.status === 'CANCELLED') {
+          throw new HttpsError('failed-precondition', `${label} ${no} is cancelled.`);
+        }
+        if (!isAda && d.status === 'CLEARED') {
           throw new HttpsError(
             'failed-precondition',
-            `Check No. ${c.checkNo} has already been reversed.`,
+            `Check No. ${no} has cleared the bank - the payee has been paid, and there is nothing to reverse. If the payment was wrong, record the refund and an adjusting entry.`,
           );
         }
-        if (c.status === 'CLEARED') {
+        if (isAda && (d.status === 'SUBMITTED' || d.status === 'DEBITED')) {
           throw new HttpsError(
             'failed-precondition',
-            `Check No. ${c.checkNo} has cleared the bank - the payee has been paid, and there is nothing to reverse. If the payment was wrong, record the refund and an adjusting entry.`,
+            `ADA No. ${no} has been posted online by the bank - the payees have been credited, and there is nothing to reverse. A credit the bank did not post is already a trust liability, by the adjusting entry of the RADAI.`,
           );
         }
-        if (c.status === 'CANCELLED') {
-          throw new HttpsError('failed-precondition', `Check No. ${c.checkNo} is cancelled.`);
-        }
-        return { id, ref: checkRefs[i], checkNo: c.checkNo, amount: Number(c.netAmount) || 0 };
+        return {
+          id,
+          ref: docRefs[i],
+          no,
+          amount: Number(isAda ? d.amount : d.netAmount) || 0,
+        };
       });
 
       let lines: JevLineData[];
       try {
-        lines = rciCheckReversalLines(
+        lines = paymentReversalLines(
           original.lines,
-          checks.map((c) => ({ checkNo: c.checkNo, amount: c.amount })),
+          docs.map((d) => ({ no: d.no, amount: d.amount })),
+          {
+            label,
+            trustLiability: { code: TRUST_LIABILITIES.code, name: TRUST_LIABILITIES.name },
+          },
         );
       } catch (err) {
         throw invalid(err instanceof Error ? err.message : String(err));
@@ -439,8 +468,8 @@ export const reverseRciChecks = onCall(
       });
 
       // ---- writes ----------------------------------------------------------
-      const checkNos = checks.map((c) => c.checkNo);
-      const particulars = `Reversal of JEV ${original.jevNo} (RCI ${report.reportNo ?? ''}) - Check No. ${checkNos.join(', ')}. ${reason.trim()}`;
+      const nos = docs.map((d) => d.no);
+      const particulars = `Reversal of JEV ${original.jevNo} (${kind} ${report.reportNo ?? ''}) - ${label} ${nos.join(', ')}; amount still owed held as trust liability. ${reason.trim()}`;
 
       const reversingJev: JevData = {
         jevNo: reversingNo,
@@ -464,22 +493,24 @@ export const reverseRciChecks = onCall(
       postJevInTransaction(tx, caller, reversingJevId, reversingJev, { isReversal: true });
       tx.update(db.collection(COL.jevs).doc(reversingJevId), {
         reversesJevId: jevId,
-        reversesCheckIds: checks.map((c) => c.id),
+        reversesCheckIds: docs.map((d) => d.id),
       });
 
       const now = new Date().toISOString();
       const record = {
+        kind: isAda ? 'ADA' : 'CHECK',
         jevId: reversingJevId,
         jevNo: reversingNo,
         date: revDate,
-        checkIds: checks.map((c) => c.id),
-        checkNos,
+        // Named for checks in patch 151; they hold ADA ids and numbers on a RADAI.
+        checkIds: docs.map((d) => d.id),
+        checkNos: nos,
         amount: total,
         reason: reason.trim(),
         at: now,
       };
       const allDone = [...onReport.keys()].every(
-        (id) => already.has(id) || checks.some((c) => c.id === id),
+        (id) => already.has(id) || docs.some((d) => d.id === id),
       );
       tx.update(ref, {
         checkReversals: FieldValue.arrayUnion(record),
@@ -487,13 +518,13 @@ export const reverseRciChecks = onCall(
           ? {
               status: 'REVERSED',
               reversedByJevId: reversingJevId,
-              remarks: `Every check reversed; the last by JEV ${reversingNo} on ${revDate}.`,
+              remarks: `Every ${noun} reversed; the last by JEV ${reversingNo} on ${revDate}.`,
             }
           : {}),
       });
 
-      for (const c of checks) {
-        tx.update(c.ref, {
+      for (const d of docs) {
+        tx.update(d.ref, {
           entryReversedByJevId: reversingJevId,
           entryReversedByJevNo: reversingNo,
           entryReversedAt: now,
@@ -511,7 +542,7 @@ export const reverseRciChecks = onCall(
         action: 'REVERSE',
         previousStatus: 'POSTED',
         newStatus: allDone ? 'REVERSED' : 'POSTED',
-        remarks: `Check No. ${checkNos.join(', ')} reversed by JEV ${reversingNo}. ${reason.trim()}`,
+        remarks: `${label} ${nos.join(', ')} taken out by JEV ${reversingNo} (to trust liabilities). ${reason.trim()}`,
         severity: 'CRITICAL',
       });
 
@@ -519,7 +550,7 @@ export const reverseRciChecks = onCall(
         originalJevId: jevId,
         reversingJevId,
         reversingJevNo: reversingNo,
-        checkNos,
+        checkNos: nos,
         amount: total,
         fullyReversed: allDone,
       };

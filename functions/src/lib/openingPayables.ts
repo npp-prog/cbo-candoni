@@ -11,7 +11,10 @@
  * and the old voucher was not in CFMS.
  *
  * So each Accounts Payable line of the opening balances becomes a voucher in
- * Treasury's payment queue (Disbursements for Payment), approved and ready:
+ * Treasury's payment queue (Disbursements for Payment), approved and ready.
+ * (Patch 153: so does every other payable carried forward - see
+ * isPayableAccount - but only Accounts Payable is tagged an outstanding
+ * unpaid voucher.)
  *
  *   - its number is the old voucher's number (the line's Reference, "DV "
  *     dropped), or OB-<fund>-<year>-<n> where the line gave none;
@@ -28,8 +31,20 @@
  * books no longer have.
  */
 
+/**
+ * Patch 153: the liabilities a voucher pays. Payables (201: Accounts Payable,
+ * Due to Officers and Employees, ...) and Inter-agency Payables (202: Due to
+ * BIR, GSIS, Pag-IBIG, PhilHealth, ...). Every credit balance carried forward
+ * on one of them becomes a voucher to pay; only Accounts Payable is tagged an
+ * OUTSTANDING UNPAID VOUCHER.
+ */
+export function isPayableAccount(code: string): boolean {
+  return /^20[12]\d{5}$/.test(String(code).trim());
+}
+
 export interface OpeningPayableLine {
   accountCode: string;
+  accountName?: string;
   credit: number;
   subsidiaryType?: string | null;
   subsidiaryId?: string | null;
@@ -42,6 +57,10 @@ export interface OpeningPayableLine {
 export interface OpeningPayableVoucher {
   /** Firestore id - fixed, so a re-open finds every one of them. */
   id: string;
+  accountCode: string;
+  accountName: string;
+  /** Accounts Payable only: an outstanding unpaid voucher. */
+  outstandingUnpaid: boolean;
   dvNo: string;
   dvDate: string;
   payeeId: string | null;
@@ -66,7 +85,7 @@ export function openingPayableVouchers(
   const out: OpeningPayableVoucher[] = [];
   let n = 0;
   for (const l of lines) {
-    if (l.accountCode !== ctx.payableAccountCode) continue;
+    if (!isPayableAccount(l.accountCode)) continue;
     if (!(l.credit > 0)) continue;
     n += 1;
     const seq = String(n).padStart(4, '0');
@@ -74,9 +93,13 @@ export function openingPayableVouchers(
     const payeeName = String(l.subsidiaryName ?? '').trim() || 'Payee not named';
     const particulars =
       String(l.particulars ?? '').trim() ||
-      `Accounts payable carried forward as at ${ctx.asOfDate}${l.referenceNo ? ` - ${l.referenceNo}` : ''}`;
+      `${String(l.accountName ?? '').trim() || 'Payable'} carried forward as at ${ctx.asOfDate}${l.referenceNo ? ` - ${l.referenceNo}` : ''}`;
+    const isAp = l.accountCode === ctx.payableAccountCode;
     out.push({
       id: `OB__${ctx.fiscalYear}__${ctx.fundCode}__${seq}`,
+      accountCode: l.accountCode,
+      accountName: String(l.accountName ?? '').trim() || l.accountCode,
+      outstandingUnpaid: isAp,
       dvNo,
       dvDate: l.agingDate?.trim() || ctx.asOfDate,
       payeeId: l.subsidiaryType === 'PAYEE' && l.subsidiaryId ? l.subsidiaryId : null,

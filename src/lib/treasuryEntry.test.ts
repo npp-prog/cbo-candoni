@@ -296,3 +296,22 @@ describe('renumberPaymentEntry (patch 147)', () => {
     expect(out[out.length - 1].particulars).toBe('Encashment of checks');
   });
 });
+
+describe('a payable carried forward on another liability (patch 153)', () => {
+  it('debits that liability, not Accounts Payable', () => {
+    const entry = proposePaymentEntry({
+      kind: 'RCI',
+      payable: PAYABLE,
+      cash: CASH,
+      documents: [
+        {
+          sourceNo: '1300',
+          payeeName: 'Bureau of Internal Revenue',
+          amount: 50_000,
+          payableAccount: { code: '20201010', name: 'Due to BIR' },
+        },
+      ],
+    });
+    expect(entry[0]).toMatchObject({ accountCode: '20201010', accountName: 'Due to BIR', debit: 50_000 });
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openingPayableVouchers, voucherNumberFrom } from './openingPayables';
+import { isPayableAccount, openingPayableVouchers, voucherNumberFrom } from './openingPayables';
 
 const CTX = {
   payableAccountCode: '20101010',
@@ -32,14 +32,18 @@ describe('openingPayableVouchers (patch 152)', () => {
       particulars: 'Office supplies, August',
     },
     { accountCode: '20101010', credit: 120_000, subsidiaryName: 'Juan Cruz' },
-    { accountCode: '20201010', credit: 99_000, subsidiaryName: 'Not a payable voucher' },
+    { accountCode: '20401010', credit: 99_000, subsidiaryName: 'Trust - not a payable voucher' },
+    { accountCode: '20201010', accountName: 'Due to BIR', credit: 30_000, subsidiaryName: 'BIR' },
   ];
 
-  it('makes one voucher per Accounts Payable credit, and nothing else', () => {
+  it('makes one voucher per payable credit, and nothing else', () => {
     const out = openingPayableVouchers(lines, CTX);
-    expect(out).toHaveLength(2);
+    expect(out).toHaveLength(3);
     expect(out[0]).toEqual({
       id: 'OB__2026__GF__0001',
+      accountCode: '20101010',
+      accountName: '20101010',
+      outstandingUnpaid: true,
       dvNo: '2025-08-0123',
       dvDate: '2025-08-14',
       payeeId: 'p1',
@@ -63,5 +67,34 @@ describe('openingPayableVouchers (patch 152)', () => {
 
   it('ignores a debit balance on the payable account', () => {
     expect(openingPayableVouchers([{ accountCode: '20101010', credit: 0 }], CTX)).toEqual([]);
+  });
+});
+
+describe('other payables carried forward (patch 153)', () => {
+  it('are vouchers too, but not tagged outstanding unpaid', () => {
+    const out = openingPayableVouchers(
+      [
+        {
+          accountCode: '20201010',
+          accountName: 'Due to BIR',
+          credit: 30_000,
+          subsidiaryName: 'BIR',
+        },
+      ],
+      CTX,
+    );
+    expect(out[0]).toMatchObject({
+      accountCode: '20201010',
+      accountName: 'Due to BIR',
+      outstandingUnpaid: false,
+    });
+  });
+
+  it('knows a payable account', () => {
+    expect(isPayableAccount('20101010')).toBe(true);
+    expect(isPayableAccount('20101020')).toBe(true);
+    expect(isPayableAccount('20201010')).toBe(true);
+    expect(isPayableAccount('20401010')).toBe(false);
+    expect(isPayableAccount('10102020')).toBe(false);
   });
 });

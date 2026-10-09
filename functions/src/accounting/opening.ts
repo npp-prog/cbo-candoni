@@ -235,6 +235,7 @@ export const postOpeningBalances = onCall(
         });
         sources.push({
           accountCode: line.accountCode,
+          accountName: account.name,
           credit,
           subsidiaryType: line.subsidiaryType ?? null,
           subsidiaryId: line.subsidiaryId ?? null,
@@ -307,7 +308,13 @@ export const postOpeningBalances = onCall(
           fundCode,
           openingPayable: true,
           openingBalanceId: markerRef.id,
-          payableAccountCode: ACCOUNTS_PAYABLE.code,
+          // Patch 153: the liability it is carried on; only Accounts Payable
+          // is an outstanding unpaid voucher. A payment of any other debits
+          // that liability (the check / ADA carries it to the RCI / RADAI).
+          outstandingUnpaid: v.outstandingUnpaid,
+          ...(v.outstandingUnpaid
+            ? {}
+            : { payableAccountCode: v.accountCode, payableAccountName: v.accountName }),
           obligationId: null,
           obrNo: null,
           officeId: '',

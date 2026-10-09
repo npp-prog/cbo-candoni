@@ -84,6 +84,13 @@ export interface PaidDocument {
    * would be credited to forty people and cleared against one.
    */
   payees?: Array<{ payeeId?: string | null; payeeName: string; amount: number }> | null;
+  /**
+   * Patch 153 - the liability this payment settles, when it is not Accounts
+   * Payable: a payable carried forward from the opening balances on Due to
+   * Officers and Employees, Due to BIR, and the like. Its voucher raised no
+   * entry of its own, so the payment debits the liability itself.
+   */
+  payableAccount?: { code: string; name: string } | null;
 }
 
 /** The credit side, worked out by the caller from the bank account. */
@@ -160,8 +167,8 @@ export function proposePaymentEntry(input: {
   const debits: ProposedEntryLine[] = live.flatMap((d) =>
     d.payees && d.payees.length > 0
       ? d.payees.map((p) => ({
-          accountCode: input.payable.code,
-          accountName: input.payable.name,
+          accountCode: (d.payableAccount ?? input.payable).code,
+          accountName: (d.payableAccount ?? input.payable).name,
           debit: p.amount,
           credit: 0,
           subsidiaryType: p.payeeId ? 'PAYEE' : null,
@@ -174,8 +181,8 @@ export function proposePaymentEntry(input: {
 
   function single(d: PaidDocument): ProposedEntryLine {
     return {
-    accountCode: input.payable.code,
-    accountName: input.payable.name,
+    accountCode: (d.payableAccount ?? input.payable).code,
+    accountName: (d.payableAccount ?? input.payable).name,
     debit: d.amount,
     credit: 0,
     /*

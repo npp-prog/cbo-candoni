@@ -76,6 +76,9 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       netAmount: number;
       status: string;
       severalPayees?: boolean;
+      /** Patch 153: a payable carried forward on a liability other than Accounts Payable. */
+      payableAccountCode?: string | null;
+      payableAccountName?: string | null;
       checkId?: string;
       obligationId?: string;
       officeId?: string;
@@ -189,6 +192,10 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       payeeId: dv.payeeId,
       payeeName: dv.payeeName,
       particulars: dv.particulars,
+      // Patch 153: the liability the payment settles, for the RCI / RADAI entry.
+      ...(dv.payableAccountCode
+        ? { payableAccountCode: dv.payableAccountCode, payableAccountName: dv.payableAccountName ?? null }
+        : {}),
       grossAmount: dv.grossAmount,
       totalDeductions: dv.totalDeductions,
       netAmount: dv.netAmount,
@@ -289,7 +296,9 @@ async function assertNotReported(
       'failed-precondition',
       report.reportType === 'RCI'
         ? `${label} has already been journalized as part of RCI ${report.reportNo}. Reverse this check in that report's journal entry first - open the JEV, Reverse, and choose this check; the ledger has already reported this payment.`
-        : `${label} has already been journalized as part of ${report.reportType} ${report.reportNo}. Reverse that report's journal entry first; the ledger has already reported this payment.`,
+        : report.reportType === 'RADAI'
+          ? `${label} has already been journalized as part of RADAI ${report.reportNo}. Reverse this ADA in that report's journal entry first - open the JEV, Reverse ADAs, and choose this ADA; the ledger has already reported this payment.`
+          : `${label} has already been journalized as part of ${report.reportType} ${report.reportNo}. Reverse that report's journal entry first; the ledger has already reported this payment.`,
     );
   }
 
@@ -319,6 +328,7 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
       treasuryReportId?: string;
       /** Patch 151: its lines of the RCI's entry have been reversed. */
       entryReversedByJevId?: string;
+      entryReversedByJevNo?: string;
     };
 
     if (check.status === 'CANCELLED') {
@@ -342,10 +352,17 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
     }
 
     // The disbursement this check made, to be taken back below (patch 121).
+    //
+    // Patch 153: NOT when the check's lines were taken out of a journalized
+    // RCI. The payment stands in the budget - the voucher was paid and
+    // reported, and what is still owed to the payee is now a trust liability,
+    // repaid by a new voucher. Only the check itself is cancelled.
+    const toTrust = Boolean(check.entryReversedByJevId);
     const dvSnap = await tx.get(db.collection(COL.disbursementVouchers).doc(check.dvId));
-    const reversal = dvSnap.exists
-      ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, check.dvId)], -1)
-      : null;
+    const reversal =
+      dvSnap.exists && !toTrust
+        ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, check.dvId)], -1)
+        : null;
 
     /**
      * A cancelled check stays on its draft report, at nil.
@@ -387,11 +404,29 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
     // APPROVED - unpaid and in the Treasurer's queue - because the check that
     // paid it has been cancelled. Leaving it PAID would hide it from the queue
     // with nothing having been paid.
-    tx.update(db.collection(COL.disbursementVouchers).doc(check.dvId), {
-      checkId: null,
-      checkNo: null,
-      status: 'APPROVED',
-    });
+    if (toTrust) {
+      /*
+       * Patch 153. The voucher's number cannot be used again: it stays PAID,
+       * still pointing at this check, so it never returns to Disbursements
+       * for Payment. The payee is repaid by a new Trust liability voucher.
+       */
+      tx.update(db.collection(COL.disbursementVouchers).doc(check.dvId), {
+        reprocessedAsTrustLiability: {
+          instrument: 'CHECK',
+          no: check.checkNo,
+          jevId: check.entryReversedByJevId ?? null,
+          jevNo: check.entryReversedByJevNo ?? null,
+          reason: reason.trim(),
+          at: now,
+        },
+      });
+    } else {
+      tx.update(db.collection(COL.disbursementVouchers).doc(check.dvId), {
+        checkId: null,
+        checkNo: null,
+        status: 'APPROVED',
+      });
+    }
     // And the registry, the fund summary and the obligation stop counting
     // it as disbursed. A cancelled check is not a disbursement.
     if (reversal) applyPaymentPlan(tx, reversal);
@@ -450,6 +485,9 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       netAmount: number;
       status: string;
       severalPayees?: boolean;
+      /** Patch 153: a payable carried forward on a liability other than Accounts Payable. */
+      payableAccountCode?: string | null;
+      payableAccountName?: string | null;
       payees?: Array<{ payeeId: string; payeeName: string; accountNumber: string; amount: number }>;
       adaId?: string;
       obligationId?: string;
@@ -569,6 +607,10 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       payeeId: dv.payeeId,
       payeeName: dv.payeeName,
       particulars: dv.particulars,
+      // Patch 153: the liability the payment settles, for the RCI / RADAI entry.
+      ...(dv.payableAccountCode
+        ? { payableAccountCode: dv.payableAccountCode, payableAccountName: dv.payableAccountName ?? null }
+        : {}),
       amount: dv.netAmount,
       // Patch 138: the voucher's payees travel with the advice - the RADAI
       // clears the payable per payee and the bank file has a row each.
@@ -638,6 +680,9 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       fiscalYear: number;
       fundCode: string;
       treasuryReportId?: string;
+      /** Patch 153: its lines of the RADAI's entry were taken out (reverseRciChecks). */
+      entryReversedByJevId?: string;
+      entryReversedByJevNo?: string;
     };
 
     if (ada.status === 'DEBITED') {
@@ -647,13 +692,19 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       );
     }
 
-    await assertNotReported(tx, ada.treasuryReportId, `ADA ${ada.adaNo}`);
+    // Patch 153: an advice taken out of its journalized RADAI may be cancelled.
+    const toTrust = Boolean(ada.entryReversedByJevId);
+    if (!toTrust) {
+      await assertNotReported(tx, ada.treasuryReportId, `ADA ${ada.adaNo}`);
+    }
 
-    // The disbursement this advice made, to be taken back below (patch 121).
+    // The disbursement this advice made, to be taken back below (patch 121) -
+    // but not once it is a trust liability (see cancelCheck).
     const dvSnap = await tx.get(db.collection(COL.disbursementVouchers).doc(ada.dvId));
-    const reversal = dvSnap.exists
-      ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, ada.dvId)], -1)
-      : null;
+    const reversal =
+      dvSnap.exists && !toTrust
+        ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, ada.dvId)], -1)
+        : null;
 
     const now = new Date().toISOString();
     tx.update(ref, {
@@ -661,11 +712,24 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       cancelledReason: reason.trim(),
       cancelledBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
-    tx.update(db.collection(COL.disbursementVouchers).doc(ada.dvId), {
-      adaId: null,
-      adaNo: null,
-      status: 'APPROVED',
-    });
+    if (toTrust) {
+      tx.update(db.collection(COL.disbursementVouchers).doc(ada.dvId), {
+        reprocessedAsTrustLiability: {
+          instrument: 'ADA',
+          no: ada.adaNo,
+          jevId: ada.entryReversedByJevId ?? null,
+          jevNo: ada.entryReversedByJevNo ?? null,
+          reason: reason.trim(),
+          at: now,
+        },
+      });
+    } else {
+      tx.update(db.collection(COL.disbursementVouchers).doc(ada.dvId), {
+        adaId: null,
+        adaNo: null,
+        status: 'APPROVED',
+      });
+    }
     if (reversal) applyPaymentPlan(tx, reversal);
 
     recordTransition(tx, {

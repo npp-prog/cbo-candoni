@@ -19,11 +19,21 @@ import type { DisbursementVoucher } from '@/types/accounting';
  */
 export function OpeningPayableVoucher({ dv }: { dv: DisbursementVoucher }) {
   const paidBy = dv.checkNo ? `Check ${dv.checkNo}` : dv.adaNo ? `ADA ${dv.adaNo}` : null;
+  /* Patch 153: Accounts Payable is an outstanding unpaid voucher; any other payable is not tagged so. */
+  const isAp =
+    dv.outstandingUnpaid === true || !dv.payableAccountCode || dv.payableAccountCode === '20101010';
+  const liability = isAp
+    ? 'Accounts Payable'
+    : (dv.payableAccountName ?? dv.payableAccountCode ?? 'the payable');
   return (
     <div>
       <PageHeader
         title={`DV ${dv.dvNo}`}
-        subtitle="Accounts payable carried forward from the opening balances"
+        subtitle={
+          isAp
+            ? 'Outstanding unpaid voucher - carried forward from the opening balances'
+            : `${liability} - carried forward from the opening balances`
+        }
         breadcrumbs={[
           { label: 'Accounting' },
           { label: 'Disbursements', to: '/accounting/disbursements' },
@@ -37,9 +47,19 @@ export function OpeningPayableVoucher({ dv }: { dv: DisbursementVoucher }) {
         }
       />
 
-      <Alert tone="info" title="Carried forward - to be paid in CFMS" className="mb-4">
-        This voucher was approved in the previous system and is still unpaid. It came in with the
-        opening balances
+      <Alert
+        tone="info"
+        title={
+          isAp
+            ? 'Outstanding unpaid voucher - to be paid in CFMS'
+            : 'Carried forward - to be paid in CFMS'
+        }
+        className="mb-4"
+      >
+        {isAp
+          ? 'This voucher was approved in the previous system and is still unpaid.'
+          : `This ${liability} was owed when the books were converted and is still unpaid.`}{' '}
+        It came in with the opening balances
         {dv.jevNo ? (
           <>
             {' '}
@@ -51,8 +71,8 @@ export function OpeningPayableVoucher({ dv }: { dv: DisbursementVoucher }) {
           </>
         ) : null}
         , which already carry the payable. Treasury pays it by check or ADA from Disbursements for
-        Payment; the payment books Dr Accounts Payable / Cr Cash in Bank. No expense, no obligation
-        and no budget line is charged again.
+        Payment; the payment books Dr {liability} / Cr Cash in Bank. No expense, no obligation and
+        no budget line is charged again.
       </Alert>
 
       <Card>
@@ -61,6 +81,7 @@ export function OpeningPayableVoucher({ dv }: { dv: DisbursementVoucher }) {
             {dv.dvNo}
           </DetailField>
           <DetailField label="Outstanding since">{formatShortDate(dv.dvDate)}</DetailField>
+          <DetailField label="Liability">{liability}</DetailField>
           <DetailField label="Payee">{dv.payeeName}</DetailField>
           <DetailField label="Amount">
             <span className="cbo-amount font-semibold">{formatPeso(dv.netAmount)}</span>

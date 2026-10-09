@@ -64,12 +64,24 @@ export default function TreasuryDisbursements() {
       width: '11rem',
       value: (dv) => dv.dvNo,
       cell: (dv) => (
-        <ReturnLink
-          to={`/accounting/disbursements/${dv.id}`}
-          className="font-mono text-xs font-medium underline"
-        >
-          {dv.dvNo}
-        </ReturnLink>
+        <span className="flex flex-col items-start gap-0.5">
+          <ReturnLink
+            to={`/accounting/disbursements/${dv.id}`}
+            className="font-mono text-xs font-medium underline"
+          >
+            {dv.dvNo}
+          </ReturnLink>
+          {/* Patch 153: carried forward from the opening balances. */}
+          {dv.openingPayable && (
+            <span className="text-2xs text-amber-700">
+              {dv.outstandingUnpaid === true ||
+              !dv.payableAccountCode ||
+              dv.payableAccountCode === '20101010'
+                ? 'Outstanding unpaid voucher'
+                : `Carried forward - ${dv.payableAccountName ?? dv.payableAccountCode}`}
+            </span>
+          )}
+        </span>
       ),
     },
     {
