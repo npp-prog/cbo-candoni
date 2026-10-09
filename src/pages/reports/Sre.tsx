@@ -12,7 +12,9 @@ import {
   useBudgetBalances,
   useEstimatedReceipts,
   useLedgerEntries,
+  useObligations,
 } from '@/data/queries';
+import { figuresForPeriod, lineKey } from '@/lib/budgetPeriods';
 import { useDocument } from '@/hooks/useFirestore';
 import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
@@ -28,8 +30,11 @@ import {
   expendituresByFund,
   mappingConflicts,
   receiptsByLine,
+  reconcileLedgerWithRegistry,
+  type RegistryLine,
   resolveTotals,
   unmappedReceipts,
+  type ExpenditureTotals,
   type SreEntry,
   type SreMapping,
 } from '@/lib/sre';
@@ -74,6 +79,21 @@ export default function Sre() {
   const toast = useToast();
 
   const [throughPeriod, setThroughPeriod] = useState<PeriodNo>(12);
+  /*
+   * Patch 131. What the Actual column of the expenditure half reads.
+   *
+   * OBLIGATIONS - the obligations incurred, from the same figures as the
+   * Registry (RAAO), LBAc Form No. 2 and the SCBAA. The default: budget
+   * execution in an LGU is reported in obligations, and Neil compared this
+   * statement with the registry and expected them to agree.
+   *
+   * LEDGER - the expense charged to a budget line in the General Ledger, which
+   * is what this statement read until patch 131. It moves when a voucher is
+   * approved, not when the obligation is certified, so it lags the registry by
+   * whatever is obligated and not yet vouchered - and by anything posted to
+   * the wrong line. The reconciliation under the statement shows which.
+   */
+  const [basis, setBasis] = useState<'OBLIGATIONS' | 'LEDGER'>('OBLIGATIONS');
   const [showMapping, setShowMapping] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -83,6 +103,10 @@ export default function Sre() {
   const gf = useLedgerEntries(fiscalYear, 'GF', { throughPeriod });
   const sef = useLedgerEntries(fiscalYear, 'SEF', { throughPeriod });
   const tf = useLedgerEntries(fiscalYear, 'TF', { throughPeriod });
+
+  const gfObligations = useObligations(fiscalYear, 'GF');
+  const sefObligations = useObligations(fiscalYear, 'SEF');
+  const tfObligations = useObligations(fiscalYear, 'TF');
 
   const gfBudget = useBudgetBalances(fiscalYear, 'GF');
   const sefBudget = useBudgetBalances(fiscalYear, 'SEF');
@@ -114,10 +138,107 @@ export default function Sre() {
         accountCode: e.accountCode,
         accountName: e.accountName,
         fppCode: e.fppCode,
+        officeId: e.officeId ?? null,
+        jevNo: e.jevNo,
         debit: e.debit,
         credit: e.credit,
       })),
     [gf.data, sef.data, tf.data],
+  );
+
+  /** The last day of the month the statement runs to; compared as text. */
+  const throughDate = `${fiscalYear}-${String(throughPeriod).padStart(2, '0')}-31`;
+
+  /**
+   * Every General and Special Education Fund budget line with what was
+   * obligated on it up to the month chosen. For the whole year that is the
+   * registry's own running figure, so the two cannot differ; for part of the
+   * year it is computed from the obligations by their dates, as the registry
+   * does for a quarter.
+   */
+  const registryLines = useMemo<RegistryLine[]>(() => {
+    const out: RegistryLine[] = [];
+    const funds = [
+      { balances: gfBudget.data, obligations: gfObligations.data },
+      { balances: sefBudget.data, obligations: sefObligations.data },
+    ];
+    for (const f of funds) {
+      const toDate =
+        throughPeriod === 12
+          ? null
+          : new Map(
+              figuresForPeriod([], f.obligations, `${fiscalYear}-01-01`, throughDate).map((x) => [
+                lineKey(x),
+                x.obligationPrevious + x.obligationThisPeriod,
+              ]),
+            );
+      for (const b of f.balances) {
+        const obligated = toDate
+          ? (toDate.get(
+              lineKey({ officeId: b.officeId, fppCode: b.fppCode, accountCode: b.accountCode }),
+            ) ?? 0)
+          : b.obligated;
+        out.push({
+          fundCode: b.fundCode,
+          officeId: b.officeId,
+          officeName: b.officeName,
+          fppCode: b.fppCode,
+          accountCode: b.accountCode ?? '',
+          sector: b.sector,
+          serviceSector: b.serviceSector,
+          label: `${b.accountCode || b.fppCode} ${b.accountName || b.fppName || ''}`.trim(),
+          obligated,
+        });
+      }
+    }
+    return out;
+  }, [
+    gfBudget.data,
+    sefBudget.data,
+    gfObligations.data,
+    sefObligations.data,
+    throughPeriod,
+    throughDate,
+    fiscalYear,
+  ]);
+
+  /*
+   * The Trust Fund is obligated against trust programmes, not budget lines, so
+   * its obligations are read off the obligations themselves.
+   */
+  const trustObligated = useMemo(
+    () =>
+      figuresForPeriod([], tfObligations.data, `${fiscalYear}-01-01`, throughDate).reduce(
+        (t, x) => t + x.obligationPrevious + x.obligationThisPeriod,
+        0,
+      ),
+    [tfObligations.data, fiscalYear, throughDate],
+  );
+
+  const obligationExpenditures = useMemo<ExpenditureTotals>(() => {
+    const byLine = appropriationsByFund(
+      registryLines.map((l) => ({
+        fundCode: l.fundCode,
+        fppCode: l.fppCode,
+        sector: l.sector,
+        serviceSector: l.serviceSector,
+        appropriationRevised: l.obligated,
+      })),
+    );
+    return {
+      ...byLine,
+      trustFund: byLine.trustFund + trustObligated,
+      total: byLine.total + trustObligated,
+    };
+  }, [registryLines, trustObligated]);
+
+  const reconciliation = useMemo(
+    () =>
+      reconcileLedgerWithRegistry(
+        registryLines,
+        entries.filter((e) => e.fundCode.trim().toUpperCase() !== 'TF'),
+      ),
+    [registryLines, entries],
   );
 
   const revenueCodes = useMemo(
@@ -176,11 +297,14 @@ export default function Sre() {
 
   const conflicts = useMemo(() => mappingConflicts(mapping), [mapping]);
 
-  const expenditures = useMemo(
+  const ledgerExpenditures = useMemo(
     () =>
       expendituresByFund(
         entries,
         gfBudget.data.map((b) => ({
+          fundCode: b.fundCode,
+          officeId: b.officeId,
+          accountCode: b.accountCode ?? '',
           fppCode: b.fppCode,
           sector: b.sector,
           serviceSector: b.serviceSector,
@@ -188,6 +312,8 @@ export default function Sre() {
       ),
     [entries, gfBudget.data],
   );
+
+  const expenditures = basis === 'OBLIGATIONS' ? obligationExpenditures : ledgerExpenditures;
 
   const canEditMapping = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'MUNICIPAL_TREASURER');
 
@@ -214,8 +340,24 @@ export default function Sre() {
       return next;
     });
 
-  const loading = gf.loading || sef.loading || tf.loading || accounts.loading;
-  const error = gf.error ?? sef.error ?? tf.error ?? accounts.error;
+  const loading =
+    gf.loading ||
+    sef.loading ||
+    tf.loading ||
+    accounts.loading ||
+    gfBudget.loading ||
+    sefBudget.loading ||
+    gfObligations.loading ||
+    sefObligations.loading ||
+    tfObligations.loading;
+  const error =
+    gf.error ??
+    sef.error ??
+    tf.error ??
+    accounts.error ??
+    gfObligations.error ??
+    sefObligations.error ??
+    tfObligations.error;
 
   /** Every revenue account, with what it currently maps to. */
   const revenueRows = useMemo(() => {
@@ -260,18 +402,30 @@ export default function Sre() {
         ) : undefined
       }
       filters={
-        <Field label="Up to and including" className="w-44">
-          <Select
-            value={String(throughPeriod)}
-            onChange={(e) => setThroughPeriod(Number(e.target.value) as PeriodNo)}
-          >
-            {Array.from({ length: 12 }, (_, i) => (i + 1) as PeriodNo).map((p) => (
-              <option key={p} value={p}>
-                {monthName(p)}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <div className="flex flex-wrap gap-4">
+          <Field label="Up to and including" className="w-44">
+            <Select
+              value={String(throughPeriod)}
+              onChange={(e) => setThroughPeriod(Number(e.target.value) as PeriodNo)}
+            >
+              {Array.from({ length: 12 }, (_, i) => (i + 1) as PeriodNo).map((p) => (
+                <option key={p} value={p}>
+                  {monthName(p)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Actual expenditures" htmlFor="sreBasis" className="w-72">
+            <Select
+              id="sreBasis"
+              value={basis}
+              onChange={(e) => setBasis(e.target.value as 'OBLIGATIONS' | 'LEDGER')}
+            >
+              <option value="OBLIGATIONS">Obligations incurred (as the Registry)</option>
+              <option value="LEDGER">Expense in the General Ledger</option>
+            </Select>
+          </Field>
+        </div>
       }
       footnote={
         <>
@@ -280,7 +434,10 @@ export default function Sre() {
           beginning and ending cash balances are left blank: they are cash figures and CFMS builds
           its cash position from the bank ledgers rather than from the entries this statement reads,
           so deriving them here would put two figures that look like a pair, and are not, at the top
-          and bottom of the form.
+          and bottom of the form.{' '}
+          {basis === 'OBLIGATIONS'
+            ? 'Actual expenditures are the obligations incurred, the same figures as the Registry of Appropriations, Allotments and Obligations. Receipts are the collections journalized in the General Ledger.'
+            : 'Actual expenditures are the expense charged to a budget line in the General Ledger, recognized when the voucher is approved. Receipts are the collections journalized in the General Ledger.'}
         </>
       }
     >
@@ -455,6 +612,58 @@ export default function Sre() {
               </tr>
             </tbody>
           </table>
+
+          {reconciliation.length > 0 && (
+            <Card
+              title="The General Ledger against the Registry"
+              subtitle={`Obligations ${formatPeso(obligationExpenditures.total - trustObligated)} - expense charged in the ledger ${formatPeso(
+                ledgerExpenditures.total - ledgerExpenditures.trustFund,
+              )} (General and Special Education Funds). The budget lines where the two differ:`}
+              className="mt-6 no-print"
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-left text-slate-600">
+                    <tr>
+                      <th className="px-2 py-1.5 font-medium">Fund</th>
+                      <th className="px-2 py-1.5 font-medium">Office</th>
+                      <th className="px-2 py-1.5 font-medium">Budget line</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Obligated</th>
+                      <th className="px-2 py-1.5 text-right font-medium">In the ledger</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Difference</th>
+                      <th className="px-2 py-1.5 font-medium">Journal entries charged</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {reconciliation.map((r, i) => (
+                      <tr key={`${r.fundCode}-${r.label}-${i}`}>
+                        <td className="px-2 py-1.5">{r.fundCode}</td>
+                        <td className="px-2 py-1.5">{r.officeName}</td>
+                        <td className="px-2 py-1.5">{r.label}</td>
+                        <td className="px-2 py-1.5 text-right font-mono tabular">
+                          {formatPeso(r.obligated, { symbol: false, dash: true })}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono tabular">
+                          {formatPeso(r.ledger, { symbol: false, dash: true })}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono tabular font-semibold">
+                          {formatPeso(r.difference, { symbol: false })}
+                        </td>
+                        <td className="px-2 py-1.5 font-mono">{r.jevNos.join(', ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                A positive difference is obligated and not yet in the books as expense - an
+                obligation with no approved voucher yet, or a voucher whose expense line was charged
+                to another budget line. A negative one is expense in the books with no obligation
+                behind it on that line - a voucher charged to the wrong line, or a journal entry
+                made in General Transactions. Open the journal entries named to see which.
+              </p>
+            </Card>
+          )}
 
           {showMapping && canEditMapping && (
             <Card

@@ -42,10 +42,10 @@ export function BudgetLinePicker({
 }: {
   /**
    * Which balance the label shows. `allotment` - what may still be
-   * obligated - for an obligation. `unobligated` - the appropriation less
-   * obligations, all a realignment or augmentation may take (patch 128).
+   * obligated - for an obligation. `unallotted` - the appropriation not yet
+   * allotted, all a realignment or augmentation may take (patch 130).
    */
-  measure?: 'allotment' | 'unobligated';
+  measure?: 'allotment' | 'unallotted';
   /** Every running balance for the fiscal year and fund in view. */
   balances: BudgetBalance[];
   /** Narrows to one office; null offers every office's lines. */
@@ -91,12 +91,12 @@ export function BudgetLinePicker({
   );
 }
 
-function label(b: BudgetBalance, measure: 'allotment' | 'unobligated'): string {
+function label(b: BudgetBalance, measure: 'allotment' | 'unallotted'): string {
   const name = b.fppName || b.accountName || b.fppCode;
   const object = b.accountCode ? ` · ${b.accountCode}` : '';
-  if (measure === 'unobligated') {
+  if (measure === 'unallotted') {
     const free = formatPeso(realignableBalance(b), { symbol: false });
-    return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${free} unobligated)`;
+    return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${free} unallotted)`;
   }
   const available = formatPeso(b.availableAllotment, { symbol: false });
   return `${b.fppCode}${object} — ${name} (${b.expenseClass}, ${available} available)`;

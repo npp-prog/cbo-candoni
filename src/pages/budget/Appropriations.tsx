@@ -726,7 +726,7 @@ export default function Appropriations() {
           </h2>
           <p className="mt-1 text-xs text-slate-600">
             Nothing has moved. No appropriation, no allotment, nothing obligable against these.
-            Approving one posts the whole set and moves the allotment with it.
+            Approving one posts the whole set. It moves appropriation only - no allotment.
           </p>
 
           <ul className="mt-3 divide-y divide-amber-200/70">
@@ -940,8 +940,8 @@ export default function Appropriations() {
             <>
               <p>
                 This posts all {approvingDraft.lines?.length ?? 0} lines of{' '}
-                <strong>{approvingDraft.authorityReference}</strong> together, and moves the
-                allotment with them peso for peso.
+                <strong>{approvingDraft.authorityReference}</strong> together. It moves appropriation
+                only - no allotment.
               </p>
               <p className="mt-2">
                 The checks run now, not when it was prepared: that the set comes to zero, that the
@@ -949,8 +949,7 @@ export default function Appropriations() {
                 {approvingDraft.instrument === 'AUGMENTATION'
                   ? ', that every line is in the same expense class'
                   : ''}
-                , and that no line gives up more than its appropriation less what is already
-                obligated.{' '}
+                , and that no line gives up more than its appropriation not yet allotted.{' '}
                 If any of them fails NOTHING is posted and the prepared copy stays as it is.
               </p>
               <p className="mt-2">
@@ -1368,8 +1367,8 @@ export function AppropriationForm({
   );
 
   /**
-   * Patch 128: each source within its unobligated balance - appropriation
-   * less obligations. The same rule the engine runs at posting; here it is
+   * Patch 128, corrected in 130: each source within its appropriation not
+   * yet allotted (appropriation less allotment released and held). The same rule the engine runs at posting; here it is
    * shown while the amounts are typed, and saving is refused while it fails,
    * because no amount of finishing the draft later makes it possible.
    */
@@ -1389,7 +1388,8 @@ export function AppropriationForm({
             : id,
           amount,
           appropriationRevised: b?.appropriationRevised ?? 0,
-          obligated: b?.obligated ?? 0,
+          allotmentReleased: b?.allotmentReleased ?? 0,
+          forLaterRelease: b?.forLaterRelease ?? 0,
         };
       }),
     );
@@ -1425,7 +1425,7 @@ export function AppropriationForm({
       without it (`postingFromPreparedSet`).
     */
     if (realignableCheck && !realignableCheck.ok) {
-      toast.error('More than the unobligated balance', realignableCheck.violations[0].message);
+      toast.error('More than the appropriation not yet allotted', realignableCheck.violations[0].message);
       return;
     }
     setSaving(true);
@@ -1865,7 +1865,7 @@ export function AppropriationForm({
             which rule a set broke. The Type's own hint names the act.
           */}
           {realignableCheck && !realignableCheck.ok && (
-            <Alert tone="error" title="More than the unobligated balance" className="mb-4">
+            <Alert tone="error" title="More than the appropriation not yet allotted" className="mb-4">
               {realignableCheck.violations.map((v) => (
                 <p key={String(v.details?.lineNo)}>{v.message}</p>
               ))}
@@ -1935,7 +1935,7 @@ export function AppropriationForm({
                     <td className="px-2 py-1.5">
                       <BudgetLinePicker
                         balances={balances.data}
-                        measure="unobligated"
+                        measure="unallotted"
                         officeId={line.officeId}
                         value={line.lineId}
                         onChange={(id, chosen) =>

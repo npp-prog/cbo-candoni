@@ -19,7 +19,6 @@ import {
   checkAllotmentAgainstAppropriation,
   checkAugmentationExpenseClass,
   checkRealignmentSet,
-  planAugmentationAllotment,
   checkRealignableBalances,
 } from '../lib/rules';
 import { findSector } from '../lib/sectors';
@@ -734,36 +733,32 @@ export const importBudgetLines = onCall(
       const lines = [...byLine.values()];
       const balances = await Promise.all(lines.map((l) => readBudgetBalance(tx, l.key)));
 
-      /**
-       * A realignment moves the allotment as well as the appropriation.
-       *
-       * It used to move the appropriation alone, and was refused outright the
-       * moment the reduced appropriation fell below the allotment already
-       * released. That refusal describes the ordinary case: savings are what
-       * is left of an item after its allotment was released and not all of it
-       * spent, so an augmentation made mid-year is made from an account whose
-       * allotment IS released. The office was left to withdraw the allotment
-       * by hand, post the realignment, then release a new allotment on the far
-       * side - three acts for one decision, and nothing tying them together.
-       *
-       * `planAugmentationAllotment` works out what has to move. The plan is
-       * all-or-nothing: if any line cannot give up or take on its allotment,
-       * nothing is posted.
-       */
       /*
-       * Patch 128: a source gives up no more than its appropriation less what
-       * is already obligated against it - the unobligated balance - whichever
-       * act this is. Checked before the allotment plan, so the office reads
-       * the reason in those words rather than as an allotment shortfall.
+       * WHAT A SOURCE MAY GIVE UP. Patch 130.
+       *
+       * The part of its appropriation not yet allotted - appropriation less
+       * allotment released and held for later release - and nothing else.
+       * Neil, correcting patch 128: "the available amount to be realigned and
+       * augmented is the difference of Appropriation and Allotment only. When
+       * it hits zero it can withdraw the amount of the release order."
+       *
+       * So a realignment or augmentation now moves APPROPRIATION ONLY. Since
+       * patch 53 it had carried the allotment with it (planAugmentationAllotment);
+       * that is withdrawn. Allotment is freed by its own act, a withdrawal on
+       * the Allotments screen, which is refused if it would leave the allotment
+       * below what is obligated against it.
        */
       if (kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT') {
         const within = checkRealignableBalances(
           lines.map((l, i) => ({
             lineNo: i,
-            label: `${l.rows[0].accountCode || l.rows[0].fppCode} ${l.rows[0].accountName || l.rows[0].fppName || ''} in ${l.rows[0].officeName}`.replace(/\s+/g, ' ').trim(),
+            label: `${l.rows[0].accountCode || l.rows[0].fppCode} ${l.rows[0].accountName || l.rows[0].fppName || ''} in ${l.rows[0].officeName}`
+              .replace(/\s+/g, ' ')
+              .trim(),
             amount: l.amount,
             appropriationRevised: balances[i].appropriationRevised,
-            obligated: balances[i].obligated,
+            allotmentReleased: balances[i].allotmentReleased,
+            forLaterRelease: balances[i].forLaterRelease ?? 0,
           })),
         );
         if (!within.ok) {
@@ -774,37 +769,6 @@ export const importBudgetLines = onCall(
           );
         }
       }
-
-      const allotmentPlan =
-        kind === 'APPROPRIATION' && appropriationKind === 'REALIGNMENT'
-          ? planAugmentationAllotment(
-              lines.map((l, i) => ({
-                lineNo: i,
-                accountCode: l.rows[0].accountCode,
-                accountName: l.rows[0].accountName,
-                officeName: l.rows[0].officeName,
-                amount: l.amount,
-                appropriationRevised: balances[i].appropriationRevised,
-                allotmentReleased: balances[i].allotmentReleased,
-                obligated: balances[i].obligated,
-                forLaterRelease: balances[i].forLaterRelease ?? 0,
-              })),
-              instrument as 'SUPPLEMENTAL' | 'AUGMENTATION',
-            )
-          : null;
-
-      if (allotmentPlan && !allotmentPlan.ok) {
-        throw new HttpsError(
-          'failed-precondition',
-          `${allotmentPlan.violations[0].message} Nothing was posted.`,
-          allotmentPlan.violations[0].details,
-        );
-      }
-
-      /** allotmentReleased delta per line index, from the plan. */
-      const allotmentByLine = new Map<number, number>(
-        (allotmentPlan?.moves ?? []).map((m) => [m.lineNo, m.allotmentDelta]),
-      );
 
       // ---- the invariant, checked on the summed amount ----------------------
 
@@ -847,8 +811,7 @@ export const importBudgetLines = onCall(
           // realignment takes some of it back in the same transaction, so the
           // figure to test against is the one after that withdrawal, not the
           // one before it.
-          const resultingAllotment =
-            balances[i].allotmentReleased + (allotmentByLine.get(i) ?? 0);
+          const resultingAllotment = balances[i].allotmentReleased + (balances[i].forLaterRelease ?? 0);
           if (resulting < resultingAllotment) {
             throw new HttpsError(
               'failed-precondition',
@@ -1051,9 +1014,7 @@ export const importBudgetLines = onCall(
           delta.appropriationAdjustments = line.amount;
         }
 
-        // A realignment carries its allotment with it.
-        const allotmentDelta = allotmentByLine.get(i);
-        if (allotmentDelta) delta.allotmentReleased = allotmentDelta;
+        // Patch 130: a realignment moves appropriation only; no allotment moves.
 
         applyBudgetDelta(tx, line.key, balances[i], delta, {
           officeName: first.officeName,
@@ -1194,8 +1155,8 @@ export const importBudgetLines = onCall(
         total,
         allotmentNo,
         reference,
-        /** How much allotment a realignment carried across with it. */
-        allotmentMoved: allotmentPlan?.totalMoved ?? 0,
+        /** Since patch 130 a realignment moves no allotment; kept for callers that read it. */
+        allotmentMoved: 0,
       };
     });
   },

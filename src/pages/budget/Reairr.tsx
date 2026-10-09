@@ -3,7 +3,8 @@ import { ReportShell } from '@/components/ReportShell';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { useFilters } from '@/context/FilterContext';
-import { useEstimatedReceipts, useRcds } from '@/data/queries';
+import { useEstimatedReceipts } from '@/data/queries';
+import { useCollectionReports } from '@/data/useCollectionReports';
 import { periodHeading, periodRange, type ReportPeriod } from '@/lib/reportPeriods';
 import { formatPeso } from '@/lib/money';
 import { todayPh } from '@/lib/dates';
@@ -32,7 +33,7 @@ export default function Reairr() {
   }));
 
   const estimates = useEstimatedReceipts(fiscalYear, fundCode);
-  const rcds = useRcds(fiscalYear, fundCode);
+  const rcds = useCollectionReports(fiscalYear, fundCode);
 
   const range = periodRange(period, fiscalYear);
 
@@ -94,14 +95,29 @@ export default function Reairr() {
             accumulated, as instruction 3 requires.
           </p>
           <p className="mt-1">
-            Section B lists one line per Report of Collections and Deposits, which is the document
-            instruction 1 names. Reports still in draft, and cancelled ones, are not counted.
+            Section B lists one line per Report of Collections and Deposits (and per Report of
+            e-Collections and Deposits), which is the document instruction 1 names. A report counts
+            once Accounting has journalized it, so this registry agrees with the General Ledger.
+            Drafts, reports still awaiting their journal entry, and cancelled ones are not counted.
           </p>
         </>
       }
     >
+      {!loading && rcds.waiting.count > 0 && (
+        <Alert tone="info" title="Certified, not yet journalized" className="mb-4 no-print">
+          {rcds.waiting.count === 1 ? 'One report' : `${rcds.waiting.count} reports`} (
+          {rcds.waiting.numbers.join(', ') || 'no number yet'}) totalling{' '}
+          {formatPeso(rcds.waiting.total)} {rcds.waiting.count === 1 ? 'is' : 'are'} with
+          Accounting. {rcds.waiting.count === 1 ? 'It is' : 'They are'} counted here once the journal
+          entry is posted.
+        </Alert>
+      )}
       {loading ? (
         <Spinner />
+      ) : rcds.error ? (
+        <Alert tone="error" title="The collections could not be read">
+          {rcds.error}
+        </Alert>
       ) : codes.length === 0 ? (
         <Alert tone="info" title="Nothing on this registry yet">
           No income estimate has been loaded for {fiscalYear} and no Report of Collections and

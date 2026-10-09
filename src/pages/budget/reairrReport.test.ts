@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildReairr, type ReairrEstimate, type ReairrRcd } from './reairrReport';
+import {
+  awaitingJournal,
+  buildReairr,
+  collectionReportAsRcd,
+  type CollectionReportLike,
+  type ReairrEstimate,
+  type ReairrRcd,
+} from './reairrReport';
 
 const est = (over: Partial<ReairrEstimate> = {}): ReairrEstimate => ({
   accountCode: '40101010',
@@ -211,5 +218,55 @@ describe('the shortfall', () => {
       ],
     );
     expect(r.shortfallByAccount['40606010']).toBe(-5_000_00);
+  });
+});
+
+/** Patch 131: the reports made on the Treasury Reports screen. */
+describe('collection reports from the Treasury Reports screen', () => {
+  const report = (over: Partial<CollectionReportLike> = {}): CollectionReportLike => ({
+    reportType: 'RCD',
+    reportNo: '111',
+    reportDate: '2026-10-07',
+    status: 'JOURNALIZED',
+    totalAmount: 2_00,
+    entry: [
+      { accountCode: '10101010', accountName: 'Cash - Local Treasury', debit: 2_00, credit: 0 },
+      { accountCode: '40102010', accountName: 'Business Tax', debit: 0, credit: 2_00 },
+    ],
+    ...over,
+  });
+
+  it('counts a journalized RCD, by the accounts its entry credits', () => {
+    const rcdLine = collectionReportAsRcd(report())!;
+    expect(rcdLine.accountSummary).toEqual([
+      { accountCode: '40102010', accountName: 'Business Tax', amount: 2_00 },
+    ]);
+    const r = buildReairr({
+      estimates: [],
+      rcds: [rcdLine],
+      from: '2026-10-01',
+      to: '2026-10-31',
+    });
+    expect(r.collectionsThisPeriod).toBe(2_00);
+    expect(r.collections[0].reference).toBe('111');
+  });
+
+  it('does not count a certified report until it is journalized, and names it', () => {
+    const certified = report({ status: 'CERTIFIED' });
+    const r = buildReairr({
+      estimates: [],
+      rcds: [collectionReportAsRcd(certified)!],
+      from: '2026-10-01',
+      to: '2026-10-31',
+    });
+    expect(r.collectionsToDate).toBe(0);
+    expect(awaitingJournal([certified])).toEqual({ count: 1, total: 2_00, numbers: ['111'] });
+  });
+
+  it('reads the e-collection reports and ignores the payment reports', () => {
+    expect(collectionReportAsRcd(report({ reportType: 'ERCD_EOR' }))?.particulars).toMatch(
+      /e-Collections/,
+    );
+    expect(collectionReportAsRcd(report({ reportType: 'RCI' }))).toBeNull();
   });
 });

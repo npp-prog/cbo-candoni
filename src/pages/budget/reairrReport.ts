@@ -59,6 +59,8 @@ export interface ReairrRcd {
   status: string;
   accountSummary: Array<{ accountCode: string; accountName: string; amount: Centavos }>;
   totalCollections: Centavos;
+  /** What the line says in Particulars. Defaults to the RCD wording. */
+  particulars?: string;
 }
 
 /**
@@ -69,6 +71,89 @@ export interface ReairrRcd {
  * collecting officer's hands, and the money behind them is in.
  */
 export const COLLECTED = new Set(['SUBMITTED', 'VERIFIED', 'POSTED']);
+
+// ---------------------------------------------------------------------------
+// PATCH 131 - THE REPORTS THE TREASURY ACTUALLY FILES NOW
+// ---------------------------------------------------------------------------
+// Until patch 131 this registry read only the old `rcds` collection. Every
+// Report of Collections and Deposits made since the Treasury Reports screen
+// (RCD 111, 2.00, journalized as JEV 100-2026-10-0007) lives in
+// `treasuryReports`, so a collection could be in the General Ledger and on
+// the SRE and still be missing here. Both are read now.
+//
+// WHICH ONES COUNT. A treasury report counts once it is JOURNALIZED - the
+// Accountant has posted its entry, so the registry agrees with the books
+// (and with the SRE and LBAc Form No. 1, which read the books). A CERTIFIED
+// report is in Accounting's hands but not yet in the books; it is shown as a
+// note, not counted, so the two never disagree by money nobody has posted.
+//
+// THE ACCOUNTS. Read off the report's entry: each account credited, net of
+// any debit to it. The debit to cash comes out negative and is dropped. The
+// entry is what was posted, so the columns are the General Ledger's.
+// ---------------------------------------------------------------------------
+
+/** The treasury reports that report money coming in. */
+export const COLLECTION_REPORT_TYPES = new Set(['RCD', 'ERCD_AR', 'ERCD_EOR']);
+
+export interface CollectionReportLike {
+  reportType: string;
+  reportNo?: string;
+  reportDate: IsoDate;
+  status: string;
+  totalAmount: Centavos;
+  entry?: Array<{ accountCode: string; accountName: string; debit: Centavos; credit: Centavos }>;
+}
+
+const REPORT_PARTICULARS: Record<string, string> = {
+  RCD: 'Collections per Report of Collections and Deposits',
+  ERCD_AR: 'Collections per Report of e-Collections and Deposits (by Intermediary)',
+  ERCD_EOR: 'Collections per Report of e-Collections and Deposits',
+};
+
+/**
+ * A treasury report as a registry line. Null for a report that is not a
+ * collection. JOURNALIZED becomes POSTED, the status this registry counts;
+ * every other status passes through and is not counted.
+ */
+export function collectionReportAsRcd(r: CollectionReportLike): ReairrRcd | null {
+  if (!COLLECTION_REPORT_TYPES.has(r.reportType)) return null;
+  const net = new Map<string, { name: string; amount: Centavos }>();
+  for (const l of r.entry ?? []) {
+    const code = String(l.accountCode ?? '').trim();
+    if (!code) continue;
+    const cur = net.get(code) ?? { name: l.accountName ?? '', amount: 0 };
+    cur.amount += (l.credit ?? 0) - (l.debit ?? 0);
+    if (!cur.name && l.accountName) cur.name = l.accountName;
+    net.set(code, cur);
+  }
+  const accountSummary = [...net.entries()]
+    .filter(([, v]) => v.amount > 0)
+    .map(([accountCode, v]) => ({ accountCode, accountName: v.name, amount: v.amount }));
+  return {
+    rcdNo: r.reportNo ?? '',
+    rcdDate: r.reportDate,
+    status: r.status === 'JOURNALIZED' ? 'POSTED' : r.status,
+    accountSummary,
+    totalCollections: r.totalAmount ?? 0,
+    particulars: REPORT_PARTICULARS[r.reportType],
+  };
+}
+
+/** Certified collection reports not yet journalized: shown, not counted. */
+export function awaitingJournal(reports: CollectionReportLike[]): {
+  count: number;
+  total: Centavos;
+  numbers: string[];
+} {
+  const waiting = reports.filter(
+    (r) => COLLECTION_REPORT_TYPES.has(r.reportType) && r.status === 'CERTIFIED',
+  );
+  return {
+    count: waiting.length,
+    total: waiting.reduce((t, r) => t + (r.totalAmount ?? 0), 0),
+    numbers: waiting.map((r) => r.reportNo ?? '').filter(Boolean),
+  };
+}
 
 export interface ReairrEntry {
   date: IsoDate;
@@ -185,7 +270,7 @@ export function buildReairr(input: {
     collections.push({
       date: r.rcdDate,
       reference: r.rcdNo,
-      particulars: 'Collections per Report of Collections and Deposits',
+      particulars: r.particulars ?? 'Collections per Report of Collections and Deposits',
       amount,
       byAccount,
     });

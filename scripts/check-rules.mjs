@@ -3095,25 +3095,67 @@ if (existsSync(functionsSrc)) {
   }
 }
 
-// --- 49. Only the unobligated balance is realigned or augmented from -------
+// --- 49. Only appropriation not yet allotted is realigned or augmented from -
 
 /*
- * Patch 128. A source of a realignment or augmentation gives up no more than
- * its appropriation less its obligations. The engine must check it when the
- * set is posted (import.ts), and the form when it is prepared.
+ * Patch 128, corrected in 130. A source of a realignment or augmentation gives
+ * up no more than its appropriation not yet allotted (appropriation less
+ * allotment released and held). The engine must check it when the set is
+ * posted (import.ts), and the form when it is prepared. And the engine must
+ * no longer move allotment with a realignment (planAugmentationAllotment).
  */
 {
   const before = failures.length;
   const imp = readFileSync(resolve(root, 'functions/src/budget/import.ts'), 'utf8');
   if (!/checkRealignableBalances\(/.test(imp)) {
-    failures.push('functions/src/budget/import.ts: a realignment or augmentation is posted without checking each source against its unobligated balance.');
+    failures.push('functions/src/budget/import.ts: a realignment or augmentation is posted without checking each source against its appropriation not yet allotted.');
+  }
+  if (/planAugmentationAllotment\(/.test(imp)) {
+    failures.push('functions/src/budget/import.ts: a realignment moves allotment again. Since patch 130 it moves appropriation only; allotment is freed by a withdrawal.');
   }
   const form = readFileSync(resolve(root, 'src/pages/budget/Appropriations.tsx'), 'utf8');
   if (!/checkRealignableBalances\(/.test(form)) {
-    failures.push('src/pages/budget/Appropriations.tsx: the realignment form no longer checks each source against its unobligated balance.');
+    failures.push('src/pages/budget/Appropriations.tsx: the realignment form no longer checks each source against its appropriation not yet allotted.');
   }
   if (failures.length === before) {
-    console.log('realignment: each source within its unobligated balance, on the form and in the engine');
+    console.log('realignment: each source within its unallotted appropriation, on the form and in the engine; no allotment moves');
+  }
+}
+
+// --- 50. The registries read every collection report; the SRE every line ---
+
+/*
+ * Patch 131. The Registry of Income read only the old `rcds` collection, so an
+ * RCD made on the Treasury Reports screen and journalized never reached it.
+ * Both it and the SCBAA must read collections through useCollectionReports,
+ * which takes the old records and the treasury reports together. And the SRE
+ * must not place an expense by its FPP code alone: two offices share FPP codes,
+ * and a map keyed on the FPP lets one line's sector decide another's bucket.
+ */
+{
+  const before = failures.length;
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  for (const f of ['src/pages/budget/Reairr.tsx', 'src/pages/reports/Scbaa.tsx']) {
+    const src = strip(readFileSync(resolve(root, f), 'utf8'));
+    if (/\buseRcds\(/.test(src) || !/\buseCollectionReports\(/.test(src)) {
+      failures.push(`${f}: reads collections without useCollectionReports, so an RCD made on the Treasury Reports screen is left out.`);
+    }
+  }
+  const hook = strip(readFileSync(resolve(root, 'src/data/useCollectionReports.ts'), 'utf8'));
+  for (const t of ['RCD', 'ERCD_AR', 'ERCD_EOR']) {
+    if (!new RegExp(`useTreasuryReports\\('${t}'`).test(hook)) {
+      failures.push(`src/data/useCollectionReports.ts: does not read the ${t} treasury reports.`);
+    }
+  }
+  const sre = strip(readFileSync(resolve(root, 'src/lib/sre.ts'), 'utf8'));
+  if (/new Map\(\s*sectors\.map\(\s*\(s\)\s*=>\s*\[\s*s\.fppCode/.test(sre)) {
+    failures.push('src/lib/sre.ts: places expenditure by a map keyed on the FPP code alone. Match the budget line (office, FPP, object) with budgetLineMatcher.');
+  }
+  if (!/budgetLineMatcher\(sectors\)/.test(sre)) {
+    failures.push('src/lib/sre.ts: expendituresByFund no longer matches each entry to its budget line.');
+  }
+  if (failures.length === before) {
+    console.log('collections: registries read every collection report; the SRE matches each expense to its budget line');
   }
 }
 

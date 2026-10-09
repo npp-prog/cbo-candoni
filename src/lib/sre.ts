@@ -190,6 +190,10 @@ export interface SreEntry {
   accountName?: string;
   /** The budget line, present only on expenditure. */
   fppCode?: string;
+  /** The office charged. With the FPP and the account, the budget line. */
+  officeId?: string | null;
+  /** The journal entry it came from, to name it in the reconciliation. */
+  jevNo?: string;
   debit: Centavos;
   credit: Centavos;
 }
@@ -317,6 +321,64 @@ export interface SectorOfFpp {
   fppCode: string;
   sector?: string;
   serviceSector?: string;
+  /*
+   * Patch 131. The rest of the budget line's identity. An FPP code is not
+   * unique: "01" is a programme in two offices, and every office's Office
+   * Supplies line carries 50203010. Keyed on the FPP alone, two lines of
+   * different sectors overwrote each other and whichever was read last decided
+   * the bucket of both. Optional, so a caller that has only the FPP still
+   * works - by the FPP, and only where every line with it agrees.
+   */
+  fundCode?: string;
+  officeId?: string;
+  accountCode?: string;
+}
+
+/**
+ * The budget line an expenditure entry was charged to. Patch 131.
+ *
+ * In order: the same office, FPP and object code; the same office and FPP on
+ * a line appropriated by programme (no object - the entry's object is the one
+ * the obligation bought); the only line of that office with that FPP. An entry
+ * matching none of these is not guessed onto a line.
+ */
+export function budgetLineMatcher<L extends SectorOfFpp>(
+  lines: L[],
+): (e: { fundCode: string; fppCode?: string; officeId?: string | null; accountCode: string }) => L | null {
+  const norm = (v: string | null | undefined) => String(v ?? '').trim();
+  const byOfficeFpp = new Map<string, L[]>();
+  for (const l of lines) {
+    const k = `${norm(l.fundCode).toUpperCase()}|${norm(l.officeId)}|${norm(l.fppCode)}`;
+    const list = byOfficeFpp.get(k) ?? [];
+    list.push(l);
+    byOfficeFpp.set(k, list);
+  }
+  return (e) => {
+    if (!norm(e.officeId)) return null;
+    const fund = norm(e.fundCode).toUpperCase();
+    const list =
+      byOfficeFpp.get(`${fund}|${norm(e.officeId)}|${norm(e.fppCode)}`) ??
+      // Lines given without a fund match any fund.
+      byOfficeFpp.get(`|${norm(e.officeId)}|${norm(e.fppCode)}`) ??
+      [];
+    if (list.length === 0) return null;
+    const exact = list.find((l) => norm(l.accountCode) === norm(e.accountCode));
+    if (exact) return exact;
+    const programme = list.filter((l) => !norm(l.accountCode));
+    if (programme.length === 1) return programme[0];
+    return list.length === 1 ? list[0] : null;
+  };
+}
+
+/** The bucket an FPP takes when the line cannot be told: only if every line agrees. */
+function bucketByFppOnly(sectors: SectorOfFpp[]): Map<string, SreBucket | null> {
+  const out = new Map<string, SreBucket | null>();
+  for (const s of sectors) {
+    const b = bucketFor(s.sector, s.serviceSector);
+    if (!out.has(s.fppCode)) out.set(s.fppCode, b);
+    else if (out.get(s.fppCode) !== b) out.set(s.fppCode, null);
+  }
+  return out;
 }
 
 export interface ExpenditureTotals {
@@ -409,7 +471,8 @@ export function expendituresByFund(
   entries: SreEntry[],
   sectors: SectorOfFpp[],
 ): ExpenditureTotals {
-  const sectorOf = new Map(sectors.map((s) => [s.fppCode, s]));
+  const lineOf = budgetLineMatcher(sectors);
+  const byFpp = bucketByFppOnly(sectors);
   const generalFund = EMPTY_BUCKETS();
   let generalFundUnclassified = 0;
   let specialEducationFund = 0;
@@ -432,8 +495,10 @@ export function expendituresByFund(
       continue;
     }
 
-    const s = sectorOf.get(e.fppCode);
-    const bucket = bucketFor(s?.sector, s?.serviceSector);
+    const line = lineOf(e);
+    const bucket = line
+      ? bucketFor(line.sector, line.serviceSector)
+      : (byFpp.get(e.fppCode) ?? null);
     if (bucket) generalFund[bucket] += amount;
     else generalFundUnclassified += amount;
   }
@@ -454,4 +519,95 @@ export function expendituresByFund(
     trustFund,
     total,
   };
+}
+
+// ---------------------------------------------------------------------------
+// PATCH 131 - THE LEDGER AGAINST THE REGISTRY
+// ---------------------------------------------------------------------------
+
+export interface RegistryLine extends SectorOfFpp {
+  fundCode: string;
+  officeId: string;
+  officeName: string;
+  accountCode: string;
+  label: string;
+  /** Obligations incurred on the line, as the registry shows them. */
+  obligated: Centavos;
+}
+
+export interface ReconcileRow {
+  label: string;
+  officeName: string;
+  fundCode: string;
+  obligated: Centavos;
+  ledger: Centavos;
+  /** Obligated less charged in the ledger. */
+  difference: Centavos;
+  jevNos: string[];
+}
+
+/**
+ * Each budget line: what the registry says was obligated, what the General
+ * Ledger has charged to it, and the journal entries behind the charge. Only
+ * the lines that differ, plus one row per FPP the ledger charged that matches
+ * no line. Patch 131.
+ *
+ * A difference is not always an error - an obligation not yet vouchered has
+ * no expense in the books - but it is always the first thing to look at when
+ * the SRE and the registry disagree.
+ */
+export function reconcileLedgerWithRegistry(
+  lines: RegistryLine[],
+  entries: SreEntry[],
+): ReconcileRow[] {
+  const lineOf = budgetLineMatcher(lines);
+  const ledger = new Map<RegistryLine, { amount: Centavos; jevs: Set<string> }>();
+  const stray = new Map<string, { amount: Centavos; jevs: Set<string>; fundCode: string }>();
+  for (const e of entries) {
+    if (!e.fppCode) continue;
+    const amount = e.debit - e.credit;
+    if (amount === 0) continue;
+    const line = lineOf(e);
+    if (line) {
+      const cur = ledger.get(line) ?? { amount: 0, jevs: new Set<string>() };
+      cur.amount += amount;
+      if (e.jevNo) cur.jevs.add(e.jevNo);
+      ledger.set(line, cur);
+    } else {
+      const k = `${e.fundCode}|${e.officeId ?? ''}|${e.fppCode}`;
+      const cur = stray.get(k) ?? { amount: 0, jevs: new Set<string>(), fundCode: e.fundCode };
+      cur.amount += amount;
+      if (e.jevNo) cur.jevs.add(e.jevNo);
+      stray.set(k, cur);
+    }
+  }
+  const rows: ReconcileRow[] = [];
+  for (const l of lines) {
+    const g = ledger.get(l);
+    const charged = g?.amount ?? 0;
+    if (charged === l.obligated) continue;
+    rows.push({
+      label: l.label,
+      officeName: l.officeName,
+      fundCode: l.fundCode,
+      obligated: l.obligated,
+      ledger: charged,
+      difference: l.obligated - charged,
+      jevNos: [...(g?.jevs ?? [])].sort(),
+    });
+  }
+  for (const [k, v] of stray) {
+    if (v.amount === 0) continue;
+    const [, office, fpp] = k.split('|');
+    rows.push({
+      label: `FPP ${fpp} - charged in the ledger, matching no budget line${office ? '' : ' (no office on the entry)'}`,
+      officeName: '',
+      fundCode: v.fundCode,
+      obligated: 0,
+      ledger: v.amount,
+      difference: -v.amount,
+      jevNos: [...v.jevs].sort(),
+    });
+  }
+  return rows;
 }

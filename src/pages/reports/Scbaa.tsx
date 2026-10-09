@@ -8,7 +8,8 @@ import { Field, Select } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFilters } from '@/context/FilterContext';
-import { useBudgetBalances, useEstimatedReceipts, useRcds } from '@/data/queries';
+import { useBudgetBalances, useEstimatedReceipts } from '@/data/queries';
+import { useCollectionReports } from '@/data/useCollectionReports';
 import { useDocument } from '@/hooks/useFirestore';
 import { db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
@@ -55,7 +56,7 @@ export default function Scbaa() {
 
   const balances = useBudgetBalances(fiscalYear, fundCode);
   const estimates = useEstimatedReceipts(fiscalYear, fundCode);
-  const rcds = useRcds(fiscalYear, fundCode);
+  const rcds = useCollectionReports(fiscalYear, fundCode);
 
   const stored = useDocument<ScbaaSettings>(COL.settings, 'scbaa');
   const [form, setForm] = useState<ScbaaSettings>({});

@@ -7,6 +7,7 @@ import {
   expendituresByFund,
   mappingConflicts,
   receiptsByLine,
+  reconcileLedgerWithRegistry,
   resolveTotals,
   unmappedReceipts,
   type SreEntry,
@@ -287,5 +288,63 @@ describe('appropriationsByFund', () => {
 
   it('ignores a line with no appropriation', () => {
     expect(appropriationsByFund([line({ appropriationRevised: 0 })]).total).toBe(0);
+  });
+});
+
+/** Patch 131: an FPP code is not a budget line. */
+describe('expenditure placed by its budget line', () => {
+  const lines = [
+    { fundCode: 'GF', officeId: 'MAYOR', fppCode: '1011', accountCode: '50203010', sector: 'General Public Services' },
+    { fundCode: 'GF', officeId: 'MAYOR', fppCode: '1011', accountCode: '50299080', sector: 'Economic Services' },
+    { fundCode: 'GF', officeId: 'MDF', fppCode: '01', accountCode: '', sector: '20% Development Fund', serviceSector: 'Economic Services' },
+  ];
+  const e = (officeId: string, fppCode: string, accountCode: string, debit: number) => ({
+    fundCode: 'GF',
+    officeId,
+    fppCode,
+    accountCode,
+    debit,
+    credit: 0,
+  });
+
+  it('does not let one line of an FPP decide the bucket of another', () => {
+    const t = expendituresByFund(
+      [e('MAYOR', '1011', '50203010', 10_000_00), e('MAYOR', '1011', '50299080', 1_000_00)],
+      lines,
+    );
+    expect(t.generalFund.GENERAL).toBe(10_000_00);
+    expect(t.generalFund.ECONOMIC).toBe(1_000_00);
+  });
+
+  it('matches a project line by its programme, whatever object the voucher bought', () => {
+    const t = expendituresByFund([e('MDF', '01', '50604050', 5_000_00)], lines);
+    expect(t.generalFund.ECONOMIC).toBe(5_000_00);
+  });
+
+  it('names the budget lines where the ledger and the registry differ, with the entries', () => {
+    const rows = reconcileLedgerWithRegistry(
+      [
+        { ...lines[0], officeName: 'Mayor', label: 'Office Supplies', obligated: 12_000_00 },
+        { ...lines[1], officeName: 'Mayor', label: 'Donations', obligated: 0 },
+      ],
+      [
+        { ...e('MAYOR', '1011', '50203010', 10_000_00), jevNo: '100-2026-10-0001' },
+        { ...e('', '9999', '50203010', 300_00), jevNo: '100-2026-10-0003' },
+      ],
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        label: 'Office Supplies',
+        obligated: 12_000_00,
+        ledger: 10_000_00,
+        difference: 2_000_00,
+        jevNos: ['100-2026-10-0001'],
+      }),
+      expect.objectContaining({
+        label: expect.stringMatching(/FPP 9999/),
+        ledger: 300_00,
+        jevNos: ['100-2026-10-0003'],
+      }),
+    ]);
   });
 });

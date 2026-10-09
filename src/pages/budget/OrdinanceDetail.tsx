@@ -510,7 +510,7 @@ export default function OrdinanceDetail() {
                     {waitingSet.createdBy?.name
                       ? ` - prepared by ${waitingSet.createdBy.name}`
                       : ''}
-                    . Approving posts the whole set and moves the allotment with it.
+                    . Approving posts the whole set. It moves appropriation only - no allotment.
                   </p>
                 </div>
                 <LinesTable
@@ -724,9 +724,9 @@ export default function OrdinanceDetail() {
           message={
             <p>
               This posts all {(waitingSet?.lines ?? []).length} lines of{' '}
-              <strong>{ordinance.reference}</strong> together and moves the allotment with them. The
-              checks run now: that the set comes to zero, that the savings exist, and that no line
-              falls below the allotment already released. If any fails, nothing is posted.
+              <strong>{ordinance.reference}</strong> together. It moves appropriation only. The checks
+              run now: that the set comes to zero, and that no line gives up more than its
+              appropriation not yet allotted. If any fails, nothing is posted.
             </p>
           }
         />
