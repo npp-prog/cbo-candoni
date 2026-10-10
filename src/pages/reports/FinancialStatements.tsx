@@ -40,6 +40,10 @@ import {
 } from './condensedFs';
 import { fundLabel } from '../budget/Obligations';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
+import { useDocument } from '@/hooks/useFirestore';
+import { COL } from '@/lib/collections';
+import { priorTbId } from '@/lib/priorTrialBalance';
+import type { StoredPriorTb } from '../accounting/PriorTrialBalances';
 import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
 /**
@@ -108,6 +112,49 @@ export default function FinancialStatements() {
   const priorLedger = useLedgerEntries(fiscalYear - 1, fundCode, { throughPeriod: 12 });
   const budget = useBudgetBalances(fiscalYear, fundCode);
 
+  /*
+   * Patch 169: where the General Ledger has no preceding year - the year
+   * before CFMS - the comparative is read from the trial balances uploaded on
+   * Accounting > Setup > Prior Year Trial Balances: the pre-closing one for
+   * the performance statement, the post-closing one for the position.
+   */
+  const preTb = useDocument<StoredPriorTb>(
+    COL.priorTrialBalances,
+    priorTbId(fiscalYear - 1, fundCode, 'PRE'),
+  );
+  const postTb = useDocument<StoredPriorTb>(
+    COL.priorTrialBalances,
+    priorTbId(fiscalYear - 1, fundCode, 'POST'),
+  );
+  const priorSource = useMemo(() => {
+    if (priorLedger.data.length > 0 || (!preTb.data && !postTb.data)) return null;
+    const asEntries = (tb: StoredPriorTb | null, keep: RegExp) =>
+      (tb?.lines ?? [])
+        .filter((l) => keep.test(String(l.accountCode)))
+        .map((l) => ({
+          accountCode: String(l.accountCode),
+          accountName: l.accountName,
+          period: 12,
+          signedAmount: (l.debit ?? 0) - (l.credit ?? 0),
+        }));
+    const pre = preTb.data;
+    const post = postTb.data;
+    return {
+      /* Revenue and expense from the pre-closing; the rest as the position reads it. */
+      all: pre ? asEntries(pre, /^/) : asEntries(post, /^/),
+      position: [
+        ...asEntries(pre, /^[45]/),
+        ...(post ? asEntries(post, /^[123]/) : asEntries(pre, /^[123]/)),
+      ],
+      /* A post-closing trial balance has the surplus closed into equity already. */
+      positionFromPost: Boolean(post),
+      pre: Boolean(pre),
+      post: Boolean(post),
+    };
+  }, [priorLedger.data, preTb.data, postTb.data]);
+  const priorAll = priorSource?.all ?? priorLedger.data;
+  const priorPosition = priorSource?.position ?? priorLedger.data;
+
   const lines = useMemo<FsLine[]>(
     () => balancesFrom(ledger.data, accounts.data, throughPeriod),
     [ledger.data, accounts.data, throughPeriod],
@@ -115,13 +162,17 @@ export default function FinancialStatements() {
 
   /** The same balances for the whole of the preceding year. */
   const priorLines = useMemo<FsLine[]>(
-    () => balancesFrom(priorLedger.data, accounts.data, 12),
-    [priorLedger.data, accounts.data],
+    () => balancesFrom(priorAll, accounts.data, 12),
+    [priorAll, accounts.data],
+  );
+  const priorPositionLines = useMemo<FsLine[]>(
+    () => balancesFrom(priorPosition, accounts.data, 12),
+    [priorPosition, accounts.data],
   );
 
   const condensed = useMemo(
-    () => condensePosition(lines as FsAccountBalance[], priorLines as FsAccountBalance[]),
-    [lines, priorLines],
+    () => condensePosition(lines as FsAccountBalance[], priorPositionLines as FsAccountBalance[]),
+    [lines, priorPositionLines],
   );
   const performance = useMemo(
     // The Trust Fund has its own shorter form, Annex 6-A.
@@ -133,7 +184,8 @@ export default function FinancialStatements() {
   /* Patch 168 - the detailed statements, from the same ledger lines. */
   const detailed = useMemo(() => {
     const cur = naturalBalances(ledger.data, throughPeriod);
-    const pri = naturalBalances(priorLedger.data, 12);
+    const pri = naturalBalances(priorAll, 12);
+    const priPos = naturalBalances(priorPosition, 12);
     const names = new Map(accounts.data.map((a) => [String(a.code), a.name]));
     const perf = buildDetailed(
       PERFORMANCE_LAYOUT,
@@ -142,15 +194,26 @@ export default function FinancialStatements() {
       names,
     );
     const surplus = lineValue(perf, /^SURPLUS \(DEFICIT\) FOR THE PERIOD$/);
-    const posBal = { current: balancesFor(cur, 'position'), prior: balancesFor(pri, 'position') };
+    const posBal = {
+      current: balancesFor(cur, 'position'),
+      prior: balancesFor(priPos, 'position'),
+    };
     const pos = buildDetailed(
       POSITION_LAYOUT,
       posBal,
-      equityFigures(POSITION_LAYOUT, posBal, surplus),
+      equityFigures(
+        POSITION_LAYOUT,
+        posBal,
+        priorSource?.positionFromPost ? { current: surplus.current, prior: 0 } : surplus,
+      ),
       names,
     );
     return { position: pos, performance: perf };
-  }, [ledger.data, priorLedger.data, throughPeriod, accounts.data]);
+  }, [ledger.data, priorAll, priorPosition, priorSource, throughPeriod, accounts.data]);
+  /* The surplus as the position statement adds it to equity. */
+  const positionSurplus = priorSource?.positionFromPost
+    ? { current: performance.surplus.current, prior: 0 }
+    : performance.surplus;
   const isDetailed =
     format === 'detailed' && (statement === 'position' || statement === 'performance');
   const detailedNow: DetailedStatement | null = isDetailed
@@ -173,7 +236,7 @@ export default function FinancialStatements() {
     [detailedNow, showNil],
   );
   const detailedColumns: ExportColumn<DetailedRow>[] = [
-    { key: 'code', header: 'Account Code', value: (r) => r.code ?? '' },
+    /* Patch 169: no account code column - the account name is enough. */
     {
       key: 'label',
       header: 'Particulars',
@@ -307,6 +370,21 @@ export default function FinancialStatements() {
             Prepared from posted journal entries. No statement balance is stored anywhere in CFMS,
             so the statements cannot disagree with the ledger.
           </p>
+          {priorSource && (
+            <p className="mt-1">
+              The {fiscalYear - 1} column is read from the {fiscalYear - 1} trial balances uploaded
+              under Accounting &rarr; Setup &rarr; Prior Year Trial Balances, the General Ledger
+              having no {fiscalYear - 1}:{' '}
+              {priorSource.pre
+                ? 'performance from the pre-closing trial balance'
+                : 'no pre-closing trial balance uploaded, so no performance figures'}
+              ;{' '}
+              {priorSource.post
+                ? 'position from the post-closing trial balance, which agrees with the opening balances'
+                : 'position from the pre-closing trial balance'}
+              .
+            </p>
+          )}
           {isDetailed && (
             <p className="mt-1">
               Detailed: every account of the Revised Chart of Accounts under the headings of the
@@ -347,7 +425,7 @@ export default function FinancialStatements() {
       ) : isDetailed && detailedNow ? (
         <DetailedView data={detailedNow} rows={detailedShown} fiscalYear={fiscalYear} />
       ) : statement === 'position' ? (
-        <PositionStatement data={condensed} fiscalYear={fiscalYear} surplus={performance.surplus} />
+        <PositionStatement data={condensed} fiscalYear={fiscalYear} surplus={positionSurplus} />
       ) : statement === 'performance' ? (
         <PerformanceStatement data={performance} fiscalYear={fiscalYear} />
       ) : statement === 'cashflow' ? (
@@ -1263,14 +1341,12 @@ function DetailedView({
       )}
       <table className="w-full text-sm">
         <colgroup>
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '50%' }} />
-          <col style={{ width: '18%' }} />
-          <col style={{ width: '18%' }} />
+          <col style={{ width: '60%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
         </colgroup>
         <thead>
           <tr className="border-b border-navy-800">
-            <th className="cbo-th" />
             <th className="cbo-th" />
             <th className="cbo-th text-right">{fiscalYear}</th>
             <th className="cbo-th text-right">{fiscalYear - 1}</th>
@@ -1288,7 +1364,6 @@ function DetailedView({
                   isTotal ? 'border-t border-slate-300' : ''
                 } ${top ? 'border-t-2 border-navy-800' : ''}`}
               >
-                <td className="px-1 py-0.5 font-mono text-xs text-slate-500">{r.code ?? ''}</td>
                 <td
                   className={`px-1 py-0.5${r.extra ? ' italic' : ''}`}
                   style={{ paddingLeft: pad(r) }}

@@ -836,6 +836,23 @@ export const engine = {
       }
     >('reopenOpeningBalances', p),
 
+  /**
+   * Patch 169: the preceding year's pre- or post-closing trial balance, for
+   * the comparative statements. Posts nothing.
+   */
+  savePriorTrialBalance: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    kind: 'PRE' | 'POST';
+    asOfDate?: IsoDate;
+    fileName?: string;
+    lines: Array<{ accountCode: string; accountName?: string; debit: number; credit: number }>;
+  }) =>
+    call<
+      typeof p,
+      { id: string; lineCount: number; total: number; namesDiffer: number; openingChecked: boolean }
+    >('savePriorTrialBalance', p),
+
   // -------------------------------------------------------------------------
   // Reconciliation
   // -------------------------------------------------------------------------
@@ -927,6 +944,9 @@ export const engine = {
     roles: string[];
     officeScope?: Id[];
     fundScope?: string[];
+    active?: boolean;
+    /** Patch 169: per module and per Treasury book - VIEW or HIDDEN; FULL is left out. */
+    access?: Record<string, 'VIEW' | 'HIDDEN'>;
   }) =>
     call<typeof p, { uid: Id; roles: string[]; segregationWarnings?: string[] }>('setUserRoles', p),
 

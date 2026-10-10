@@ -14,6 +14,8 @@ import { useFilters } from '@/context/FilterContext';
 import { sectionHeadForPath } from './sections';
 import { originPathname } from '@/lib/returnTo';
 import { useAuth } from '@/auth/AuthProvider';
+import { levelAllows, treasuryAreaFor } from '@/auth/access';
+import type { Permission } from '@/types/system';
 import { Seal } from '@/components/ui/Seal';
 
 /**
@@ -106,7 +108,7 @@ export function Sidebar({
   mobileOpen: boolean;
   onMobileClose: () => void;
 }) {
-  const { can } = useAuth();
+  const { permissions, access } = useAuth();
   const location = useLocation();
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(readOpenGroups);
@@ -119,11 +121,25 @@ export function Sidebar({
   const visible = useMemo(
     () =>
       NAVIGATION.filter(
-        (item) => can(item.module, 'view') && sectionShownForFund(item, fundCode),
+        (item) =>
+          // Patch 169: the menu asks about the module itself, not about the
+          // Treasury book of whatever screen happens to be open.
+          permissions.has(`${item.module}:view` as Permission) &&
+          levelAllows(access[item.module], 'view') &&
+          sectionShownForFund(item, fundCode),
       ).map((item) =>
-        item.children ? { ...item, children: childrenForFund(item.children, fundCode) } : item,
+        item.children
+          ? {
+              ...item,
+              // Patch 169: a Treasury book the user is not given is left out.
+              children: childrenForFund(item.children, fundCode).filter((c) => {
+                const area = treasuryAreaFor(c.to);
+                return !area || levelAllows(access[area], 'view');
+              }),
+            }
+          : item,
       ),
-    [can, fundCode],
+    [permissions, access, fundCode],
   );
 
   /*

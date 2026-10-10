@@ -1,18 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
-import { Field, Select } from '@/components/ui/Field';
+import { Field, Select, TextInput } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useCollections, useLedgerEntries } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import { monthName } from '@/lib/dates';
-
-/** The last day of a month, so the schedule's range closes on it. */
-function lastDayOf(year: number, month: number): string {
-  const d = new Date(Date.UTC(year, month, 0));
-  return `${year}-${String(month).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
 import type { ExportColumn } from '@/lib/export';
 import type { Centavos } from '@/types/common';
 import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from '../treasury/sections';
@@ -23,6 +17,7 @@ import {
   buildRptSchedule,
   type RptCollection,
   type RptAbstractMonth,
+  type RptAbstractRow,
   type RptLedgerEntry,
   type RptTaxBlock,
 } from './rptAbstractReport';
@@ -37,8 +32,20 @@ import {
  */
 export default function RptAbstract() {
   const { fiscalYear, fundCode } = useFilters();
-  const [fromPeriod, setFromPeriod] = useState(1);
-  const [throughPeriod, setThroughPeriod] = useState(12);
+  /*
+   * Patch 169: a From date and a To date, and the collecting officer, in
+   * place of the From and Through months.
+   */
+  const [fromDate, setFromDate] = useState(`${fiscalYear}-01-01`);
+  const [toDate, setToDate] = useState(`${fiscalYear}-12-31`);
+  const [officer, setOfficer] = useState('');
+  useEffect(() => {
+    setFromDate(`${fiscalYear}-01-01`);
+    setToDate(`${fiscalYear}-12-31`);
+  }, [fiscalYear]);
+  const fromPeriod = Number(fromDate.slice(5, 7)) || 1;
+  const throughPeriod = Math.max(fromPeriod, Number(toDate.slice(5, 7)) || 12);
+  const rangeLabel = `${longDate(fromDate)} to ${longDate(toDate)}`;
 
   const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
 
@@ -54,14 +61,30 @@ export default function RptAbstract() {
    */
   const collections = useCollections(fiscalYear, fundCode);
 
+  /** The collecting officers who issued a receipt in the range. */
+  const officers = useMemo(
+    () =>
+      [
+        ...new Set(
+          (collections.data ?? [])
+            .filter((c) => c.orDate >= fromDate && c.orDate <= toDate)
+            .map((c) => (c.collectingOfficerName ?? '').trim())
+            .filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [collections.data, fromDate, toDate],
+  );
+
   const schedule = useMemo(
     () =>
       buildRptSchedule({
-        collections: (collections.data ?? []) as unknown as RptCollection[],
-        fromDate: `${fiscalYear}-${String(fromPeriod).padStart(2, '0')}-01`,
-        toDate: lastDayOf(fiscalYear, throughPeriod),
+        collections: (collections.data ?? []).filter(
+          (c) => !officer || (c.collectingOfficerName ?? '').trim() === officer,
+        ) as unknown as RptCollection[],
+        fromDate,
+        toDate,
       }),
-    [collections.data, fiscalYear, fromPeriod, throughPeriod],
+    [collections.data, fromDate, toDate, officer],
   );
 
   const data = useMemo(
@@ -70,8 +93,10 @@ export default function RptAbstract() {
         entries: (ledger.data ?? []) as unknown as RptLedgerEntry[],
         fromPeriod,
         throughPeriod,
+        fromDate,
+        toDate,
       }),
-    [ledger.data, fromPeriod, throughPeriod],
+    [ledger.data, fromPeriod, throughPeriod, fromDate, toDate],
   );
 
   const exportColumns: ExportColumn<RptAbstractMonth>[] = [
@@ -83,8 +108,25 @@ export default function RptAbstract() {
     { key: 'pen', header: 'Fines and Penalties', kind: 'amount', value: (m) => m.penalties },
   ];
 
-  const nothing =
-    data.basic.gross === 0 && data.sef.gross === 0 && data.penalties === 0;
+  /** One officer's abstract: the receipts he issued, for the export. */
+  const receiptColumns: ExportColumn<RptAbstractRow>[] = [
+    { key: 'date', header: 'Date', value: (r) => r.orDate },
+    { key: 'or', header: 'O.R. No.', value: (r) => r.orNumber },
+    { key: 'payor', header: 'Taxpayer', value: (r) => r.payorName },
+    { key: 'period', header: 'Period covered', value: (r) => r.periodCovered },
+    { key: 'bc', header: 'Basic - current', kind: 'amount', value: (r) => r.basicCurrent },
+    { key: 'bp', header: 'Basic - preceding', kind: 'amount', value: (r) => r.basicPreceding },
+    { key: 'pen', header: 'Penalties', kind: 'amount', value: (r) => r.penalties },
+    { key: 'sc', header: 'SEF - current', kind: 'amount', value: (r) => r.sefCurrent },
+    { key: 'sp', header: 'SEF - preceding', kind: 'amount', value: (r) => r.sefPreceding },
+    { key: 'total', header: 'Total', kind: 'amount', value: (r) => r.total },
+    { key: 'brgy', header: 'Barangay', value: (r) => r.barangayName ?? '' },
+    { key: 'share', header: 'Barangay share', kind: 'amount', value: (r) => r.barangayShare },
+  ];
+
+  const nothing = officer
+    ? schedule.rows.length === 0
+    : data.basic.gross === 0 && data.sef.gross === 0 && data.penalties === 0;
 
   return (
     <ReportShell
@@ -92,32 +134,47 @@ export default function RptAbstract() {
       meta={{
         title: 'Abstract of Real Property Tax Collections',
         fundLabel: fundLabel(fundCode),
-        periodLabel: `${monthName(fromPeriod)} to ${monthName(throughPeriod)} ${fiscalYear}`,
+        periodLabel: officer ? `${rangeLabel} - Collecting Officer: ${officer}` : rangeLabel,
         preparedBy: 'Municipal Accountant',
         certifiedBy: 'Municipal Accountant',
       }}
       breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Abstract of RPT Collections' }]}
       tabs={<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />}
-      rows={data.months}
-      exportColumns={exportColumns}
+      rows={(officer ? schedule.rows : data.months) as Array<RptAbstractRow | RptAbstractMonth>}
+      exportColumns={
+        (officer ? receiptColumns : exportColumns) as unknown as ExportColumn<
+          RptAbstractRow | RptAbstractMonth
+        >[]
+      }
       filters={
         <>
-          <Field label="From">
-            <Select value={fromPeriod} onChange={(e) => setFromPeriod(Number(e.target.value))}>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {monthName(m)}
-                </option>
-              ))}
-            </Select>
+          <Field label="From date">
+            <TextInput
+              type="date"
+              value={fromDate}
+              min={`${fiscalYear}-01-01`}
+              max={toDate}
+              onChange={(e) => e.target.value && setFromDate(e.target.value)}
+            />
           </Field>
-          <Field label="Through">
-            <Select value={throughPeriod} onChange={(e) => setThroughPeriod(Number(e.target.value))}>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {monthName(m)}
+          <Field label="To date">
+            <TextInput
+              type="date"
+              value={toDate}
+              min={fromDate}
+              max={`${fiscalYear}-12-31`}
+              onChange={(e) => e.target.value && setToDate(e.target.value)}
+            />
+          </Field>
+          <Field label="Collecting officer">
+            <Select value={officer} onChange={(e) => setOfficer(e.target.value)}>
+              <option value="">All collecting officers</option>
+              {officers.map((o) => (
+                <option key={o} value={o}>
+                  {o}
                 </option>
               ))}
+              {officer && !officers.includes(officer) && <option value={officer}>{officer}</option>}
             </Select>
           </Field>
         </>
@@ -145,8 +202,8 @@ export default function RptAbstract() {
         <Spinner label="Reading the General Ledger" />
       ) : nothing ? (
         <p className="py-8 text-center text-sm text-slate-500">
-          No real property tax was collected in the {fundLabel(fundCode)} between{' '}
-          {monthName(fromPeriod)} and {monthName(throughPeriod)} {fiscalYear}.
+          No real property tax was collected in the {fundLabel(fundCode)} from {rangeLabel}
+          {officer ? ` by ${officer}` : ''}.
         </p>
       ) : (
         <>
@@ -155,19 +212,19 @@ export default function RptAbstract() {
               {schedule.withoutBarangay > 0 && (
                 <p>
                   {schedule.withoutBarangay} receipt
-                  {schedule.withoutBarangay === 1 ? '' : 's'} carrying basic real property tax
-                  name no barangay, so {formatPeso(schedule.withoutBarangayAmount)} of barangay
-                  share is on the form without an owner. The barangay is set on the receipt, in
-                  Treasury &rarr; Collections &mdash; and it is the barangay the{' '}
-                  <em>property</em> stands in, not the one the payor lives in.
+                  {schedule.withoutBarangay === 1 ? '' : 's'} carrying basic real property tax name
+                  no barangay, so {formatPeso(schedule.withoutBarangayAmount)} of barangay share is
+                  on the form without an owner. The barangay is set on the receipt, in Treasury
+                  &rarr; Collections &mdash; and it is the barangay the <em>property</em> stands in,
+                  not the one the payor lives in.
                 </p>
               )}
               {schedule.withoutTaxYear > 0 && (
                 <p className={schedule.withoutBarangay > 0 ? 'mt-1' : ''}>
                   {schedule.withoutTaxYear} receipt
-                  {schedule.withoutTaxYear === 1 ? '' : 's'} do not say which tax year they
-                  settle. They are shown under the current year, which is the common case, but a
-                  payment on an arrear belongs in the preceding-year column.
+                  {schedule.withoutTaxYear === 1 ? '' : 's'} do not say which tax year they settle.
+                  They are shown under the current year, which is the common case, but a payment on
+                  an arrear belongs in the preceding-year column.
                 </p>
               )}
             </Alert>
@@ -207,22 +264,37 @@ export default function RptAbstract() {
                         <td className="cbo-td font-mono">{r.orNumber}</td>
                         <td className="cbo-td">{r.payorName}</td>
                         <td className="cbo-td">
-                          {r.periodCovered || (
-                            <span className="text-amber-700">not stated</span>
-                          )}
+                          {r.periodCovered || <span className="text-amber-700">not stated</span>}
                         </td>
-                        <td className="cbo-td cbo-amount">{formatPeso(r.basicCurrent, { symbol: false })}</td>
-                        <td className="cbo-td cbo-amount">{formatPeso(r.basicPreceding, { symbol: false })}</td>
-                        <td className="cbo-td cbo-amount">{formatPeso(r.penalties, { symbol: false })}</td>
-                        <td className="cbo-td cbo-amount">{formatPeso(r.sefCurrent, { symbol: false })}</td>
-                        <td className="cbo-td cbo-amount">{formatPeso(r.sefPreceding, { symbol: false })}</td>
-                        <td className="cbo-td cbo-amount font-medium">{formatPeso(r.total, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(r.basicCurrent, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(r.basicPreceding, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(r.penalties, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(r.sefCurrent, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(r.sefPreceding, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount font-medium">
+                          {formatPeso(r.total, { symbol: false })}
+                        </td>
                         <td className="cbo-td">
-                          {r.barangayName || (
-                            r.barangayMissing ? <span className="text-amber-700">not stated</span> : '—'
-                          )}
+                          {r.barangayName ||
+                            (r.barangayMissing ? (
+                              <span className="text-amber-700">not stated</span>
+                            ) : (
+                              '—'
+                            ))}
                         </td>
-                        <td className="cbo-td cbo-amount">{formatPeso(r.barangayShare, { symbol: false })}</td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(r.barangayShare, { symbol: false })}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -231,14 +303,28 @@ export default function RptAbstract() {
                       <td className="cbo-td" colSpan={4}>
                         Total
                       </td>
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.basicCurrent, { symbol: false })}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.basicPreceding, { symbol: false })}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.penalties, { symbol: false })}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.sefCurrent, { symbol: false })}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.sefPreceding, { symbol: false })}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.total, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.basicCurrent, { symbol: false })}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.basicPreceding, { symbol: false })}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.penalties, { symbol: false })}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.sefCurrent, { symbol: false })}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.sefPreceding, { symbol: false })}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.total, { symbol: false })}
+                      </td>
                       <td className="cbo-td" />
-                      <td className="cbo-td cbo-amount">{formatPeso(schedule.totals.barangayShare, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(schedule.totals.barangayShare, { symbol: false })}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -256,7 +342,9 @@ export default function RptAbstract() {
                   {schedule.byBarangay.map((b) => (
                     <tr key={b.barangayName}>
                       <td className="cbo-td">{b.barangayName}</td>
-                      <td className="cbo-td cbo-amount w-44">{formatPeso(b.share, { symbol: false })}</td>
+                      <td className="cbo-td cbo-amount w-44">
+                        {formatPeso(b.share, { symbol: false })}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -268,87 +356,111 @@ export default function RptAbstract() {
             </section>
           )}
 
-          <TaxBlock block={data.basic} />
-          <TaxBlock block={data.sef} />
+          {officer ? (
+            <Alert tone="info" className="mb-4">
+              The sharing between the municipality, the province and the barangays, and the check
+              against Due to LGUs, are drawn from the General Ledger, which does not record who
+              collected. They are shown when All collecting officers is chosen. The receipts above
+              and the barangay shares are this officer&rsquo;s alone.
+            </Alert>
+          ) : (
+            <>
+              <TaxBlock block={data.basic} />
+              <TaxBlock block={data.sef} />
 
-          <section className="mb-6">
-            <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
-              Fines and Penalties on Property Taxes
-            </h3>
-            <Line label="Collected in the period" amount={data.penalties} />
-            {data.penalties !== 0 && (
-              <Alert tone="warning" className="mt-2">
-                Section 44 shares fines and penalties on the same basis as the tax they arose from
-                &mdash; but the basic tax and the Special Education Fund share differently, and the
-                chart carries a single account, 40105020, for the penalties on both. CFMS cannot
-                tell which part of this figure belongs to which tax, so it is left unallocated
-                rather than put through one of the two rates. The Treasurer&rsquo;s own register is
-                what splits it.
+              <section className="mb-6">
+                <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+                  Fines and Penalties on Property Taxes
+                </h3>
+                <Line label="Collected in the period" amount={data.penalties} />
+                {data.penalties !== 0 && (
+                  <Alert tone="warning" className="mt-2">
+                    Section 44 shares fines and penalties on the same basis as the tax they arose
+                    from &mdash; but the basic tax and the Special Education Fund share differently,
+                    and the chart carries a single account, 40105020, for the penalties on both.
+                    CFMS cannot tell which part of this figure belongs to which tax, so it is left
+                    unallocated rather than put through one of the two rates. The Treasurer&rsquo;s
+                    own register is what splits it.
+                  </Alert>
+                )}
+              </section>
+
+              <section className="mb-6">
+                <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+                  Summary
+                </h3>
+                <Line label="Retained by the Municipality of Candoni" amount={data.totalOwn} />
+                <Line
+                  label="Due to the Province and the barangays"
+                  amount={data.totalToRemit}
+                  strong
+                />
+              </section>
+
+              <Alert tone={data.dueToLgusDifference === 0 ? 'success' : 'warning'} className="mb-4">
+                {data.dueToLgusDifference === 0 ? (
+                  <p>
+                    Due to LGUs (20201070) moved by {formatPeso(data.dueToLgusMovement)} in this
+                    period, which is exactly the share computed above. The sharing entry has been
+                    drawn for everything this abstract covers.
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-medium">The sharing entry does not match this abstract.</p>
+                    <p className="mt-1">
+                      This abstract puts {formatPeso(data.totalToRemit)} beyond Candoni&rsquo;s own
+                      share, while Due to LGUs (20201070) moved by{' '}
+                      {formatPeso(data.dueToLgusMovement)} &mdash; a difference of{' '}
+                      {formatPeso(Math.abs(data.dueToLgusDifference))}.{' '}
+                      {data.dueToLgusDifference < 0
+                        ? 'That is share collected and not yet recognised as owing. Draw the journal voucher debiting the revenue accounts and crediting Due to LGUs.'
+                        : 'More has been recognised as owing than this abstract accounts for. Some of it may relate to a period outside the range above, or to something other than real property tax.'}
+                    </p>
+                  </>
+                )}
               </Alert>
-            )}
-          </section>
 
-          <section className="mb-6">
-            <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
-              Summary
-            </h3>
-            <Line label="Retained by the Municipality of Candoni" amount={data.totalOwn} />
-            <Line label="Due to the Province and the barangays" amount={data.totalToRemit} strong />
-          </section>
-
-          <Alert tone={data.dueToLgusDifference === 0 ? 'success' : 'warning'} className="mb-4">
-            {data.dueToLgusDifference === 0 ? (
-              <p>
-                Due to LGUs (20201070) moved by {formatPeso(data.dueToLgusMovement)} in this period,
-                which is exactly the share computed above. The sharing entry has been drawn for
-                everything this abstract covers.
-              </p>
-            ) : (
-              <>
-                <p className="font-medium">The sharing entry does not match this abstract.</p>
-                <p className="mt-1">
-                  This abstract puts {formatPeso(data.totalToRemit)} beyond Candoni&rsquo;s own
-                  share, while Due to LGUs (20201070) moved by{' '}
-                  {formatPeso(data.dueToLgusMovement)} &mdash; a difference of{' '}
-                  {formatPeso(Math.abs(data.dueToLgusDifference))}.{' '}
-                  {data.dueToLgusDifference < 0
-                    ? 'That is share collected and not yet recognised as owing. Draw the journal voucher debiting the revenue accounts and crediting Due to LGUs.'
-                    : 'More has been recognised as owing than this abstract accounts for. Some of it may relate to a period outside the range above, or to something other than real property tax.'}
-                </p>
-              </>
-            )}
-          </Alert>
-
-
-          <section className="mt-6">
-            <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
-              Month by month
-            </h3>
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="cbo-th">Month</th>
-                  <th className="cbo-th text-right">Basic RPT</th>
-                  <th className="cbo-th text-right">Less: Discount</th>
-                  <th className="cbo-th text-right">Special Education Fund</th>
-                  <th className="cbo-th text-right">Less: Discount</th>
-                  <th className="cbo-th text-right">Fines and Penalties</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.months.map((m) => (
-                  <tr key={m.period}>
-                    <td className="cbo-td">{monthName(m.period)}</td>
-                    <td className="cbo-td cbo-amount">{formatPeso(m.basicGross, { symbol: false })}</td>
-                    <td className="cbo-td cbo-amount">{formatPeso(m.basicDiscount, { symbol: false })}</td>
-                    <td className="cbo-td cbo-amount">{formatPeso(m.sefGross, { symbol: false })}</td>
-                    <td className="cbo-td cbo-amount">{formatPeso(m.sefDiscount, { symbol: false })}</td>
-                    <td className="cbo-td cbo-amount">{formatPeso(m.penalties, { symbol: false })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+              <section className="mt-6">
+                <h3 className="mb-2 border-b border-slate-300 pb-1 text-sm font-semibold uppercase tracking-wide text-navy-900">
+                  Month by month
+                </h3>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="cbo-th">Month</th>
+                      <th className="cbo-th text-right">Basic RPT</th>
+                      <th className="cbo-th text-right">Less: Discount</th>
+                      <th className="cbo-th text-right">Special Education Fund</th>
+                      <th className="cbo-th text-right">Less: Discount</th>
+                      <th className="cbo-th text-right">Fines and Penalties</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.months.map((m) => (
+                      <tr key={m.period}>
+                        <td className="cbo-td">{monthName(m.period)}</td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(m.basicGross, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(m.basicDiscount, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(m.sefGross, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(m.sefDiscount, { symbol: false })}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(m.penalties, { symbol: false })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            </>
+          )}
         </>
       )}
     </ReportShell>
@@ -356,6 +468,12 @@ export default function RptAbstract() {
 }
 
 // ---------------------------------------------------------------------------
+
+/** 2026-01-05 -> January 5, 2026 */
+function longDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return y && m && d ? `${monthName(m)} ${d}, ${y}` : iso;
+}
 
 function TaxBlock({ block }: { block: RptTaxBlock }) {
   if (block.gross === 0 && block.discount === 0) return null;
@@ -389,7 +507,9 @@ function TaxBlock({ block }: { block: RptTaxBlock }) {
               </td>
               <td className="cbo-td cbo-amount">{(r.rate / (BASIS / 100)).toFixed(0)}%</td>
               <td className="cbo-td cbo-amount">{formatPeso(r.grossShare, { symbol: false })}</td>
-              <td className="cbo-td cbo-amount">{formatPeso(r.discountShare, { symbol: false })}</td>
+              <td className="cbo-td cbo-amount">
+                {formatPeso(r.discountShare, { symbol: false })}
+              </td>
               <td className="cbo-td cbo-amount font-medium">
                 {formatPeso(r.netShare, { symbol: false })}
               </td>

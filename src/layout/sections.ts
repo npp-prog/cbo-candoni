@@ -155,6 +155,8 @@ export const ACCOUNTING_MONITORING_TABS: SectionTab[] = [
  */
 export const ACCOUNTING_SETUP_TABS: SectionTab[] = [
   { label: 'Opening Balances', to: '/accounting/opening-balances' },
+  /* Patch 169: the preceding year's trial balances, for the comparative statements. */
+  { label: 'Prior Year Trial Balances', to: '/accounting/prior-trial-balances' },
 ];
 
 // ---------------------------------------------------------------------------

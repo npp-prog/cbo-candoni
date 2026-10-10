@@ -101,6 +101,8 @@ export const COL = {
   treasuryReports: 'treasuryReports',
   treasuryImports: 'treasuryImports',
   openingBalances: 'openingBalances',
+  /** Patch 169: the preceding year's pre- and post-closing trial balances. */
+  priorTrialBalances: 'priorTrialBalances',
   deposits: 'deposits',
   /** Patch 160/161: collectors' remittances to the Liquidating Officer. */
   collectionRemittances: 'collectionRemittances',

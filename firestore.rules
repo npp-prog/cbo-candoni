@@ -95,6 +95,25 @@ service cloud.firestore {
       return ['SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'TREASURY_STAFF'];
     }
 
+    // Patch 169: the user's access map (custom claim 'access', set by the
+    // setUserRoles callable) narrows the role. Absent, or a key not in it,
+    // means FULL. VIEW and HIDDEN both refuse a write.
+    function accessFull(key) {
+      return !('access' in claims()) || claims().access.get(key, 'FULL') == 'FULL';
+    }
+
+    // One of Treasury's four books: Treasury itself and the book must be FULL.
+    function treasuryBook(book) {
+      return accessFull('treasury') && accessFull(book);
+    }
+
+    // The book a treasury report belongs to, by its type.
+    function treasuryReportBook(reportType) {
+      return reportType in ['RCI', 'RADAI'] ? 'treasury.checks'
+        : reportType == 'RCDISB' ? 'treasury.payroll'
+        : 'treasury.collections';
+    }
+
     function masterDataWriters() {
       return ['SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'BUDGET_OFFICER', 'MUNICIPAL_TREASURER'];
     }
@@ -678,7 +697,7 @@ service cloud.firestore {
       allow create: if false;
       // Release details are recorded by treasury; amounts and numbers are not
       // touchable from the client.
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook('treasury.checks')
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && onlyChanged(['status', 'dateReleased', 'releasedToName', 'releasedToPosition', 'updatedBy'])
         && request.resource.data.status in ['FOR_SIGNATURE', 'SIGNED', 'RELEASED']
@@ -708,11 +727,11 @@ service cloud.firestore {
     // General Ledger and cannot be edited from a browser.
     match /payrolls/{id} {
       allow read: if canRead() && officeAllowed(resource.data.officeId);
-      allow create: if signedIn()
+      allow create: if signedIn() && treasuryBook('treasury.payroll')
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && createdByCaller()
         && request.resource.data.status == 'DRAFT';
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook('treasury.payroll')
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && resource.data.status in ['DRAFT', 'RETURNED']
         && !('treasuryReportId' in resource.data)
@@ -756,7 +775,7 @@ service cloud.firestore {
 
     match /collections/{id} {
       allow read: if canRead();
-      allow create: if signedIn()
+      allow create: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && createdByCaller()
         && request.resource.data.status == 'ISSUED'
@@ -793,7 +812,7 @@ service cloud.firestore {
        * sets the field to null - and a receipt released by a withdrawn report
        * has to be editable again, or withdrawing would be a one-way door.
        */
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && fundAllowed(resource.data.fundCode)
         && resource.data.get('treasuryReportId', null) == null
@@ -866,11 +885,11 @@ service cloud.firestore {
 
     match /rcds/{id} {
       allow read: if canRead();
-      allow create: if signedIn()
+      allow create: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && createdByCaller()
         && request.resource.data.status == 'DRAFT';
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && resource.data.status in ['DRAFT']
         && isClientWritableStatus(request.resource.data.status)
@@ -905,6 +924,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Patch 169: the preceding year's trial balances, for the comparative
+    // statements. savePriorTrialBalance only.
+    match /priorTrialBalances/{id} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
     match /treasuryReports/{id} {
       allow read: if canRead();
       /*
@@ -927,7 +953,7 @@ service cloud.firestore {
        * journal entry it was posted as, the certification, and the closing of
        * the supporting documents.
        */
-      allow create: if signedIn()
+      allow create: if signedIn() && treasuryBook(treasuryReportBook(request.resource.data.reportType))
         && hasAny(treasuryRoles())
         && createdByCaller()
         && request.resource.data.status == 'DRAFT'
@@ -937,7 +963,7 @@ service cloud.firestore {
         && !('certifiedBy' in request.resource.data)
         && !('attachmentsLockedAt' in request.resource.data)
         && !('attachmentsLockedBy' in request.resource.data);
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook(treasuryReportBook(resource.data.reportType))
         && hasAny(treasuryRoles())
         && resource.data.status == 'DRAFT'
         && request.resource.data.status == 'DRAFT'
@@ -989,12 +1015,12 @@ service cloud.firestore {
     // books nothing, so the Treasury records it and may correct or cancel it.
     match /collectionRemittances/{id} {
       allow read: if canRead();
-      allow create: if signedIn()
+      allow create: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && createdByCaller()
         && request.resource.data.status == 'RECORDED'
         && fundAllowed(request.resource.data.fundCode);
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && resource.data.status == 'RECORDED'
         // Patch 161: once a Liquidating Officer's RCD reports it, it is that
@@ -1007,11 +1033,11 @@ service cloud.firestore {
 
     match /deposits/{id} {
       allow read: if canRead();
-      allow create: if signedIn()
+      allow create: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && createdByCaller()
         && request.resource.data.status == 'RECORDED';
-      allow update: if signedIn()
+      allow update: if signedIn() && treasuryBook('treasury.collections')
         && hasAny(treasuryRoles())
         && resource.data.status == 'RECORDED'
         // Patch 159: once an RCD has claimed it, its entry books it from the

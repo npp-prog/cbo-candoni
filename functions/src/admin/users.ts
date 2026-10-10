@@ -51,7 +51,13 @@ const SEGREGATION_CONFLICTS: Array<[string, string, string]> = [
 async function grantAccess(
   caller: Awaited<ReturnType<typeof requireCaller>>,
   uid: string,
-  input: { roles?: string[]; officeScope?: string[]; fundScope?: string[]; active?: boolean },
+  input: {
+    roles?: string[];
+    officeScope?: string[];
+    fundScope?: string[];
+    active?: boolean;
+    access?: unknown;
+  },
 ): Promise<{ uid: string; roles: string[]; segregationWarnings: string[] }> {
   const { roles, officeScope, fundScope, active } = input;
 
@@ -87,12 +93,22 @@ async function grantAccess(
   const previousRoles = (previousSnap.data()?.roles as string[]) ?? [];
 
   const isActive = active ?? previousSnap.data()?.active ?? true;
+  /*
+   * Patch 169: the user's own access - per module, and per Treasury book -
+   * which narrows the roles. Kept when not sent, so an older screen granting
+   * roles does not wipe it.
+   */
+  const access =
+    input.access === undefined
+      ? ((previousSnap.data()?.access as Record<string, string>) ?? {})
+      : cleanAccess(input.access);
 
   await auth.setCustomUserClaims(uid, {
     roles,
     officeScope: officeScope ?? [],
     fundScope: fundScope ?? [],
     active: isActive,
+    access,
   });
 
   // Force the change to take effect on the next request rather than waiting
@@ -102,21 +118,27 @@ async function grantAccess(
   const now = new Date().toISOString();
   // `set` with merge, not `update`: this both maintains an existing profile and
   // provisions one that the sign-in hook never got to create.
-  await db.collection(COL.users).doc(uid).set(
-    {
-      uid,
-      email: userRecord.email ?? '',
-      displayName: userRecord.displayName ?? userRecord.email ?? uid,
-      roles,
-      officeScope: officeScope ?? [],
-      fundScope: fundScope ?? [],
-      active: isActive,
-      claimsSyncedAt: now,
-    },
-    { merge: true },
-  );
+  await db
+    .collection(COL.users)
+    .doc(uid)
+    .set(
+      {
+        uid,
+        email: userRecord.email ?? '',
+        displayName: userRecord.displayName ?? userRecord.email ?? uid,
+        roles,
+        officeScope: officeScope ?? [],
+        fundScope: fundScope ?? [],
+        active: isActive,
+        access,
+        claimsSyncedAt: now,
+      },
+      { merge: true },
+    );
 
-  const conflicts = SEGREGATION_CONFLICTS.filter(([a, b]) => roles.includes(a) && roles.includes(b));
+  const conflicts = SEGREGATION_CONFLICTS.filter(
+    ([a, b]) => roles.includes(a) && roles.includes(b),
+  );
 
   await audit({
     caller,
@@ -128,7 +150,12 @@ async function grantAccess(
     changes: [
       { field: 'roles', previous: previousRoles, next: roles },
       { field: 'active', previous: previousSnap.data()?.active ?? null, next: isActive },
-      { field: 'officeScope', previous: previousSnap.data()?.officeScope ?? [], next: officeScope ?? [] },
+      {
+        field: 'officeScope',
+        previous: previousSnap.data()?.officeScope ?? [],
+        next: officeScope ?? [],
+      },
+      { field: 'access', previous: previousSnap.data()?.access ?? {}, next: access },
     ],
     remarks:
       conflicts.length > 0
@@ -137,6 +164,37 @@ async function grantAccess(
   });
 
   return { uid, roles, segregationWarnings: conflicts.map((c) => c[2]) };
+}
+
+/**
+ * Patch 169 - a user's access map, cleaned: known keys (the modules and the
+ * four Treasury books) and the narrowing levels only. FULL is the default and
+ * is not stored. Mirrors src/auth/access.ts.
+ */
+const ACCESS_KEYS = new Set([
+  'dashboard',
+  'budget',
+  'accounting',
+  'treasury',
+  'reconciliation',
+  'reports',
+  'masterData',
+  'documents',
+  'administration',
+  'auditTrail',
+  'treasury.checks',
+  'treasury.collections',
+  'treasury.payroll',
+  'treasury.forms',
+]);
+export function cleanAccess(input: unknown): Record<string, 'VIEW' | 'HIDDEN'> {
+  const out: Record<string, 'VIEW' | 'HIDDEN'> = {};
+  if (input && typeof input === 'object') {
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      if (ACCESS_KEYS.has(k) && (v === 'VIEW' || v === 'HIDDEN')) out[k] = v;
+    }
+  }
+  return out;
 }
 
 /**
@@ -152,52 +210,66 @@ async function grantAccess(
  * within the hour, or immediately on next sign-in. For a revocation that must
  * bite now, this also revokes the user's refresh tokens.
  */
-export const setUserRoles = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const caller = await requireCaller(request, ['SUPER_ADMIN']);
-  return reporting('Granting access', async () => {
-  const { uid: uidIn, email, roles, officeScope, fundScope, active } = (request.data ?? {}) as {
-    uid?: string;
-    email?: string;
-    roles?: string[];
-    officeScope?: string[];
-    fundScope?: string[];
-    active?: boolean;
-  };
+export const setUserRoles = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request, ['SUPER_ADMIN']);
+    return reporting('Granting access', async () => {
+      const {
+        uid: uidIn,
+        email,
+        roles,
+        officeScope,
+        fundScope,
+        active,
+        access,
+      } = (request.data ?? {}) as {
+        uid?: string;
+        email?: string;
+        roles?: string[];
+        officeScope?: string[];
+        fundScope?: string[];
+        active?: boolean;
+        access?: unknown;
+      };
 
-  /*
-   * A user may be named by id or by email address, and the email is what an
-   * administrator actually has.
-   *
-   * Roles used to be grantable only to somebody already in the `users`
-   * collection, which meant only to somebody who had signed in at least once,
-   * because the profile was created by the sign-in hook. That put the
-   * municipality one broken hook away from nobody being able to grant access to
-   * anybody - including to a new administrator, with the old one gone. The
-   * administration screen would simply be empty, with no way to act.
-   *
-   * Looking the account up here removes that. The account must still exist in
-   * Firebase Authentication; this does not create one, because creating
-   * credentials is not a thing a role-granting function should be able to do.
-   */
-  let uid = uidIn;
-  if (!uid) {
-    const address = String(email ?? '').trim().toLowerCase();
-    if (!address) throw invalid('A user id or an email address is required.');
-    const found = await auth.getUserByEmail(address).catch((err: { code?: string }) => {
-      if (err?.code === 'auth/user-not-found') return null;
-      throw err;
+      /*
+       * A user may be named by id or by email address, and the email is what an
+       * administrator actually has.
+       *
+       * Roles used to be grantable only to somebody already in the `users`
+       * collection, which meant only to somebody who had signed in at least once,
+       * because the profile was created by the sign-in hook. That put the
+       * municipality one broken hook away from nobody being able to grant access to
+       * anybody - including to a new administrator, with the old one gone. The
+       * administration screen would simply be empty, with no way to act.
+       *
+       * Looking the account up here removes that. The account must still exist in
+       * Firebase Authentication; this does not create one, because creating
+       * credentials is not a thing a role-granting function should be able to do.
+       */
+      let uid = uidIn;
+      if (!uid) {
+        const address = String(email ?? '')
+          .trim()
+          .toLowerCase();
+        if (!address) throw invalid('A user id or an email address is required.');
+        const found = await auth.getUserByEmail(address).catch((err: { code?: string }) => {
+          if (err?.code === 'auth/user-not-found') return null;
+          throw err;
+        });
+        if (!found) {
+          throw new HttpsError(
+            'not-found',
+            `No Firebase Authentication account exists for ${address}. Create the account first - Firebase console, Authentication, Add user - then grant the role here.`,
+          );
+        }
+        uid = found.uid;
+      }
+      return grantAccess(caller, uid, { roles, officeScope, fundScope, active, access });
     });
-    if (!found) {
-      throw new HttpsError(
-        'not-found',
-        `No Firebase Authentication account exists for ${address}. Create the account first - Firebase console, Authentication, Add user - then grant the role here.`,
-      );
-    }
-    uid = found.uid;
-  }
-  return grantAccess(caller, uid, { roles, officeScope, fundScope, active });
-  });
-});
+  },
+);
 
 /** Firebase accepts six. A system holding the municipality's books asks more. */
 const MIN_PASSWORD_LENGTH = 10;
@@ -255,7 +327,9 @@ export const createUserAccount = onCall(
         fundScope?: string[];
       };
 
-      const address = String(email ?? '').trim().toLowerCase();
+      const address = String(email ?? '')
+        .trim()
+        .toLowerCase();
       if (!address) throw invalid('An email address is required.');
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
         throw invalid(`"${address}" is not an email address.`);
@@ -278,7 +352,9 @@ export const createUserAccount = onCall(
 
       const name = String(displayName ?? '').trim();
       if (!name) {
-        throw invalid('A full name is required. It is what appears on every document this user certifies, approves or posts.');
+        throw invalid(
+          'A full name is required. It is what appears on every document this user certifies, approves or posts.',
+        );
       }
 
       const secret = String(password ?? '');
@@ -444,22 +520,25 @@ export const onBeforeSignIn = beforeUserSignedIn({ region: REGION }, async (even
  * client calls this after a successful export; it carries no authority and
  * changes nothing, so a failure here never blocks the export itself.
  */
-export const recordExport = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const caller = await requireCaller(request);
-  const { report, format, filters } = (request.data ?? {}) as {
-    report?: string;
-    format?: string;
-    filters?: Record<string, unknown>;
-  };
+export const recordExport = onCall(
+  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    const caller = await requireCaller(request);
+    const { report, format, filters } = (request.data ?? {}) as {
+      report?: string;
+      format?: string;
+      filters?: Record<string, unknown>;
+    };
 
-  await audit({
-    caller,
-    event: format === 'PRINT' ? 'PRINT' : 'EXPORT',
-    entityType: 'reports',
-    entityRef: report ?? 'unnamed report',
-    remarks: `${report} exported as ${format}${filters ? ` with filters ${JSON.stringify(filters)}` : ''}.`,
-    severity: 'INFO',
-  });
+    await audit({
+      caller,
+      event: format === 'PRINT' ? 'PRINT' : 'EXPORT',
+      entityType: 'reports',
+      entityRef: report ?? 'unnamed report',
+      remarks: `${report} exported as ${format}${filters ? ` with filters ${JSON.stringify(filters)}` : ''}.`,
+      severity: 'INFO',
+    });
 
-  return { logged: true as const };
-});
+    return { logged: true as const };
+  },
+);

@@ -99,6 +99,7 @@ const Sre = lazy(() => import('./pages/reports/Sre'));
 const QuarterlyFinancialReport = lazy(() => import('./pages/reports/QuarterlyFinancialReport'));
 const QuarterlyReceipts = lazy(() => import('./pages/reports/QuarterlyReceipts'));
 const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
+const PriorTrialBalances = lazy(() => import('./pages/accounting/PriorTrialBalances'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
 const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
@@ -491,6 +492,10 @@ export default function App() {
             path="/accounting/opening-balances"
             element={<Guard module="accounting"><OpeningBalances /></Guard>}
           />
+          <Route
+            path="/accounting/prior-trial-balances"
+            element={<Guard module="accounting"><PriorTrialBalances /></Guard>}
+          />
           {/* The screen used to live under Reports. Anything already linking
               there - a bookmark, an older runbook - still arrives. */}
           <Route
@@ -574,10 +579,12 @@ function Guard({
   action?: Action;
   children: ReactNode;
 }) {
-  const { can, roles } = useAuth();
+  const { canHere, roles } = useAuth();
   const location = useLocation();
 
-  if (can(module, action)) return <>{children}</>;
+  // Patch 169: the module, and the Treasury book of this screen, as the
+  // user's own access allows.
+  if (canHere(module, action)) return <>{children}</>;
 
   return (
     <EmptyState

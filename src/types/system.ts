@@ -99,6 +99,12 @@ export interface UserProfile {
   officeScope: Id[];
   /** Funds this user may transact in. Empty means all funds. */
   fundScope: string[];
+  /**
+   * Patch 169: this user's access, narrowing the roles - per module and per
+   * Treasury book: VIEW (view, print, export only) or HIDDEN. Anything not
+   * listed is FULL. See src/auth/access.ts.
+   */
+  access?: Partial<Record<string, 'VIEW' | 'HIDDEN'>>;
   active: boolean;
   mfaEnrolled: boolean;
   lastLoginAt?: IsoTimestamp;

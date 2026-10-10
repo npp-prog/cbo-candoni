@@ -111,6 +111,10 @@ const PAIRS = [
   // not issued, and so does the bulk upload on the engine; one copy, so the
   // two cannot disagree about whose booklet a receipt came from.
   { source: 'src/lib/formCustody.ts', target: 'functions/src/lib/formCustody.ts' },
+  // Patch 169: the prior year's trial balances. The screen shows where the
+  // post-closing trial balance disagrees with the opening balances; the engine
+  // refuses the upload on the same comparison.
+  { source: 'src/lib/priorTrialBalance.ts', target: 'functions/src/lib/priorTrialBalance.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

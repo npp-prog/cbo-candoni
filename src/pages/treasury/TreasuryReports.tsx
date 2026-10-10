@@ -118,8 +118,14 @@ export default function TreasuryReports({
   reportType,
   aside,
   tableFilters,
+  alsoType,
 }: {
   reportType: TreasuryReportType;
+  /**
+   * Patch 169: a second type listed with the first - the eRCD's "All", the
+   * eOR and the AR reports in one list. Prepare then asks which.
+   */
+  alsoType?: TreasuryReportType;
   /**
    * Rendered under the tab strip. The e-collection registers use it to carry
    * the choice between Annexes E, F and G - three COA reports that are one
@@ -146,7 +152,14 @@ export default function TreasuryReports({
   const label = TREASURY_REPORT_LABELS[reportType];
   const short = TREASURY_REPORT_SHORT[reportType];
 
-  const { data, loading, error } = useTreasuryReports(reportType, fiscalYear, fundCode);
+  const first = useTreasuryReports(reportType, fiscalYear, fundCode);
+  const second = useTreasuryReports(alsoType ?? reportType, fiscalYear, fundCode);
+  const data = useMemo(
+    () => (alsoType ? [...(first.data ?? []), ...(second.data ?? [])] : first.data),
+    [alsoType, first.data, second.data],
+  );
+  const loading = first.loading || (alsoType ? second.loading : false);
+  const error = first.error ?? (alsoType ? second.error : undefined);
 
   /* Which strip this report's section draws. See sectionGroupsFor. */
   const sectionGroups = sectionGroupsFor(reportType);
@@ -162,12 +175,17 @@ export default function TreasuryReports({
    */
   const [params, setParams] = useSearchParams();
   const showForm = params.get('prepare') === '1';
-  const setShowForm = (on: boolean) =>
+  /* With two types listed, the one being prepared rides in the address. */
+  const prepareType: TreasuryReportType =
+    alsoType && params.get('type') === alsoType ? alsoType : reportType;
+  const setShowForm = (on: boolean, type?: TreasuryReportType) =>
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         if (on) next.set('prepare', '1');
         else next.delete('prepare');
+        if (on && (type || alsoType)) next.set('type', type ?? reportType);
+        else next.delete('type');
         return next;
       },
       { replace: !on },
@@ -184,6 +202,21 @@ export default function TreasuryReports({
     : null;
 
   const columns: Column<TreasuryReport>[] = [
+    ...(alsoType
+      ? [
+          {
+            key: 'reportType',
+            header: 'Report',
+            width: '8rem',
+            value: (r: TreasuryReport) => TREASURY_REPORT_SHORT[r.reportType] ?? r.reportType,
+            cell: (r: TreasuryReport) => (
+              <span className="text-xs text-slate-600">
+                {TREASURY_REPORT_SHORT[r.reportType] ?? r.reportType}
+              </span>
+            ),
+          } satisfies Column<TreasuryReport>,
+        ]
+      : []),
     {
       key: 'reportNo',
       header: `${short} No.`,
@@ -283,7 +316,7 @@ export default function TreasuryReports({
   if (showForm && actor) {
     return (
       <PrepareReport
-        reportType={reportType}
+        reportType={prepareType}
         fiscalYear={fiscalYear}
         fundCode={fundCode}
         actor={actor}
@@ -300,7 +333,9 @@ export default function TreasuryReports({
         title={label}
         breadcrumbs={[{ label: 'Treasury' }, { label: short }]}
         subtitle={
-          reportType === 'RCI'
+          alsoType
+            ? `All of them: the ${TREASURY_REPORT_SHORT[reportType]} and the ${TREASURY_REPORT_SHORT[alsoType]} in one list. Choose one in the list's toolbar to see it alone.`
+            : reportType === 'RCI'
             ? 'The checks drawn in the period, certified, then forwarded to Accounting for journalizing.'
             : reportType === 'RADAI'
               ? 'The advices to debit account sent to the bank in the period, certified, then forwarded to Accounting for journalizing.'
@@ -319,9 +354,19 @@ export default function TreasuryReports({
             not move the tabs.
           */
           canPrepare ? (
-            <Button size="sm" variant="primary" onClick={() => setShowForm(true)}>
-              Prepare {short}
-            </Button>
+            alsoType ? (
+              <div className="flex gap-2">
+                {[reportType, alsoType].map((t) => (
+                  <Button key={t} size="sm" variant="primary" onClick={() => setShowForm(true, t)}>
+                    Prepare {TREASURY_REPORT_SHORT[t]}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <Button size="sm" variant="primary" onClick={() => setShowForm(true)}>
+                Prepare {short}
+              </Button>
+            )
           ) : undefined
         }
       />

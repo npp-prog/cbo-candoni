@@ -16,6 +16,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { COL } from '@/lib/collections';
 import { permissionsFor, can } from './permissions';
+import { narrowed, type AccessMap } from './access';
 import type { Action, Module, Permission, Role, UserProfile } from '@/types/system';
 
 /**
@@ -52,6 +53,13 @@ interface AuthState {
   /** Send a reset link to an address, without saying whether it exists. */
   sendPasswordReset: (email: string) => Promise<void>;
   can: (module: Module, action: Action) => boolean;
+  /**
+   * Patch 169: the route guard's question - the module AND, on a screen of
+   * one of Treasury's books, that book's access, whatever the module.
+   */
+  canHere: (module: Module, action: Action) => boolean;
+  /** Patch 169: this user's access map (Administration > Users). */
+  access: AccessMap;
   hasRole: (...roles: Role[]) => boolean;
   /** Offices this user is restricted to; empty means unrestricted. */
   officeScope: string[];
@@ -73,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [officeScope, setOfficeScope] = useState<string[]>([]);
   const [fundScope, setFundScope] = useState<string[]>([]);
+  const [access, setAccess] = useState<AccessMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const idleTimer = useRef<number | undefined>(undefined);
@@ -121,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRoles((claims.roles as Role[]) ?? []);
         setOfficeScope((claims.officeScope as string[]) ?? []);
         setFundScope((claims.fundScope as string[]) ?? []);
+        setAccess((claims.access as AccessMap) ?? {});
       } catch {
         setRoles([]);
       }
@@ -250,10 +260,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // purpose, for the reason above.
         }
       },
-      can: (module, action) => can(permissions, module, action),
+      // Patch 169: the role, narrowed by the user's own access; in Treasury,
+      // by the book of the screen being shown.
+      can: (module, action) =>
+        narrowed(can(permissions, module, action), access, module, action, window.location.pathname),
+      canHere: (module, action) =>
+        narrowed(
+          can(permissions, module, action),
+          access,
+          module,
+          action,
+          window.location.pathname,
+          true,
+        ),
+      access,
       hasRole: (...check) => check.some((r) => roles.includes(r)),
     }),
-    [user, profile, roles, permissions, loading, error, officeScope, fundScope],
+    [user, profile, roles, permissions, loading, error, officeScope, fundScope, access],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

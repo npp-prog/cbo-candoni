@@ -154,6 +154,8 @@ export function splitByShares(amount: Centavos, shares: ShareRate[]): Centavos[]
 
 export interface RptLedgerEntry {
   period: number;
+  /** Patch 169: when present, a From/To date range is applied to it. */
+  entryDate?: IsoDate;
   accountCode: string;
   /** Debit positive, credit negative, as the ledger stores it. */
   signedAmount: Centavos;
@@ -255,9 +257,17 @@ export function buildRptAbstract(input: {
   entries: RptLedgerEntry[];
   fromPeriod: number;
   throughPeriod: number;
+  /** Patch 169: the abstract runs from a date to a date, not by whole months. */
+  fromDate?: IsoDate;
+  toDate?: IsoDate;
 }): RptAbstract {
   const inPeriod = input.entries.filter(
-    (e) => e.period >= input.fromPeriod && e.period <= input.throughPeriod,
+    (e) =>
+      e.period >= input.fromPeriod &&
+      e.period <= input.throughPeriod &&
+      (!e.entryDate ||
+        ((!input.fromDate || e.entryDate >= input.fromDate) &&
+          (!input.toDate || e.entryDate <= input.toDate))),
   );
 
   const months: RptAbstractMonth[] = [];

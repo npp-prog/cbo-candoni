@@ -11,7 +11,40 @@ import { useUsers, useOffices } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatInstant } from '@/lib/dates';
 import { segregationWarnings, DEFAULT_ROLE_PERMISSIONS } from '@/auth/permissions';
-import { ROLES, ROLE_LABELS, MIN_PASSWORD_LENGTH, type Role, type UserProfile } from '@/types/system';
+import { ACCESS_LEVELS, TREASURY_AREAS, type AccessLevel } from '@/auth/access';
+import {
+  MODULES,
+  ROLES,
+  ROLE_LABELS,
+  MIN_PASSWORD_LENGTH,
+  type Role,
+  type UserProfile,
+} from '@/types/system';
+
+/** "Budget: view only; Payroll: hidden", for the list of users. */
+function accessSummary(access: UserProfile['access']): string {
+  const names: Record<string, string> = {
+    ...MODULE_LABELS,
+    ...Object.fromEntries(TREASURY_AREAS.map((a) => [a.key, a.label])),
+  };
+  return Object.entries(access ?? {})
+    .filter(([, v]) => v === 'VIEW' || v === 'HIDDEN')
+    .map(([k, v]) => `${names[k] ?? k}: ${v === 'VIEW' ? 'view only' : 'hidden'}`)
+    .join('; ');
+}
+
+const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  budget: 'Budget',
+  accounting: 'Accounting',
+  treasury: 'Treasury',
+  reconciliation: 'Reconciliation',
+  reports: 'Reports',
+  masterData: 'Master Data',
+  documents: 'Documents',
+  administration: 'Administration',
+  auditTrail: 'Audit Trail',
+};
 
 /**
  * Users and roles.
@@ -71,7 +104,10 @@ export default function Users() {
             <Badge tone="amber">No access</Badge>
           ) : (
             (u.roles ?? []).map((r) => (
-              <Badge key={r} tone={r === 'SUPER_ADMIN' ? 'violet' : r === 'AUDITOR' ? 'slate' : 'blue'}>
+              <Badge
+                key={r}
+                tone={r === 'SUPER_ADMIN' ? 'violet' : r === 'AUDITOR' ? 'slate' : 'blue'}
+              >
                 {ROLE_LABELS[r as Role] ?? r}
               </Badge>
             ))
@@ -94,10 +130,26 @@ export default function Users() {
       optional: true,
     },
     {
+      key: 'access',
+      header: 'Access',
+      value: (u) => accessSummary(u.access),
+      cell: (u) => {
+        const t = accessSummary(u.access);
+        return t ? (
+          <span className="text-xs text-slate-600">{t}</span>
+        ) : (
+          <span className="text-xs text-slate-400">Full</span>
+        );
+      },
+      optional: true,
+    },
+    {
       key: 'lastLogin',
       header: 'Last sign-in',
       value: (u) => u.lastLoginAt ?? '',
-      cell: (u) => <span className="text-xs text-slate-600">{formatInstant(u.lastLoginAt) || '-'}</span>,
+      cell: (u) => (
+        <span className="text-xs text-slate-600">{formatInstant(u.lastLoginAt) || '-'}</span>
+      ),
     },
     {
       key: 'actions',
@@ -364,7 +416,6 @@ function AddUserDialog({
           ))}
         </Select>
       </Field>
-
     </Modal>
   );
 }
@@ -387,6 +438,22 @@ function AccessDialog({
   const [officeScope, setOfficeScope] = useState<string[]>(user.officeScope ?? []);
   const [fundScope, setFundScope] = useState<string[]>(user.fundScope ?? []);
   const [active, setActive] = useState(user.active !== false);
+  /* Patch 169: this user's access, per module and per Treasury book. */
+  const [access, setAccess] = useState<Record<string, 'VIEW' | 'HIDDEN'>>(
+    (user.access ?? {}) as Record<string, 'VIEW' | 'HIDDEN'>,
+  );
+  const setLevel = (key: string, level: AccessLevel) =>
+    setAccess((a) => {
+      const next = { ...a };
+      if (level === 'FULL') delete next[key];
+      else next[key] = level;
+      return next;
+    });
+  const granted = useMemo(
+    () =>
+      new Set(roles.flatMap((r) => DEFAULT_ROLE_PERMISSIONS[r] ?? []).map((p) => p.split(':')[0])),
+    [roles],
+  );
   const [saving, setSaving] = useState(false);
 
   const warnings = useMemo(() => segregationWarnings(roles), [roles]);
@@ -403,6 +470,8 @@ function AccessDialog({
         roles,
         officeScope,
         fundScope,
+        active,
+        access,
       });
       onSaved(result.segregationWarnings ?? []);
     } catch (err) {
@@ -430,8 +499,8 @@ function AccessDialog({
     >
       {isSelf && (
         <Alert tone="warning" className="mb-4">
-          You are editing your own access. Removing your own Super Administrator role is refused
-          if you are the last active administrator.
+          You are editing your own access. Removing your own Super Administrator role is refused if
+          you are the last active administrator.
         </Alert>
       )}
 
@@ -472,6 +541,67 @@ function AccessDialog({
         </Alert>
       )}
 
+      {/* Patch 169: access per module and per Treasury book. */}
+      <div className="mt-5">
+        <p className="cbo-label">Access</p>
+        <p className="mb-2 text-xs text-slate-500">
+          Narrows what the roles above allow, for this user only. Full: as the role allows. View
+          only: can open, print and export, but not add, change or approve. Hidden: the menu item is
+          gone and the screens refuse.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {MODULES.filter((m) => granted.has(m)).map((m) => (
+            <label
+              key={m}
+              className="flex items-center justify-between gap-2 text-sm text-navy-800"
+            >
+              <span>{MODULE_LABELS[m] ?? m}</span>
+              <Select
+                value={access[m] ?? 'FULL'}
+                onChange={(e) => setLevel(m, e.target.value as AccessLevel)}
+                className="w-40 py-1"
+              >
+                {ACCESS_LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {l === 'FULL' ? 'Full' : l === 'VIEW' ? 'View only' : 'Hidden'}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ))}
+        </div>
+        {granted.has('treasury') && access.treasury !== 'HIDDEN' && (
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold text-navy-900">Treasury - which books</p>
+            <p className="mb-2 text-xs text-slate-500">
+              A Treasury staff may keep one book, several, or all. Hide the ones this user does not
+              keep.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {TREASURY_AREAS.map((a) => (
+                <label
+                  key={a.key}
+                  className="flex items-center justify-between gap-2 text-sm text-navy-800"
+                >
+                  <span>{a.label}</span>
+                  <Select
+                    value={access[a.key] ?? 'FULL'}
+                    onChange={(e) => setLevel(a.key, e.target.value as AccessLevel)}
+                    className="w-40 py-1"
+                  >
+                    {ACCESS_LEVELS.map((l) => (
+                      <option key={l} value={l}>
+                        {l === 'FULL' ? 'Full' : l === 'VIEW' ? 'View only' : 'Hidden'}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="mt-5">
         <p className="cbo-label">Office restriction</p>
         <p className="mb-2 text-xs text-slate-500">
@@ -480,12 +610,17 @@ function AccessDialog({
         </p>
         <div className="max-h-44 overflow-y-auto rounded-md border border-slate-200 p-2">
           {offices.map((office) => (
-            <label key={office.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50">
+            <label
+              key={office.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50"
+            >
               <input
                 type="checkbox"
                 checked={officeScope.includes(office.id)}
                 onChange={(e) =>
-                  setOfficeScope((s) => (e.target.checked ? [...s, office.id] : s.filter((x) => x !== office.id)))
+                  setOfficeScope((s) =>
+                    e.target.checked ? [...s, office.id] : s.filter((x) => x !== office.id),
+                  )
                 }
                 className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
@@ -504,14 +639,18 @@ function AccessDialog({
                 type="checkbox"
                 checked={fundScope.includes(fund)}
                 onChange={(e) =>
-                  setFundScope((s) => (e.target.checked ? [...s, fund] : s.filter((x) => x !== fund)))
+                  setFundScope((s) =>
+                    e.target.checked ? [...s, fund] : s.filter((x) => x !== fund),
+                  )
                 }
                 className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
               {fund}
             </label>
           ))}
-          <span className="text-xs text-slate-500">Leave all unchecked for access to every fund.</span>
+          <span className="text-xs text-slate-500">
+            Leave all unchecked for access to every fund.
+          </span>
         </div>
       </div>
 

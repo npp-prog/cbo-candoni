@@ -65,6 +65,21 @@ describe('splitByShares', () => {
 });
 
 describe('buildRptAbstract', () => {
+  it('keeps to a From and To date within the months (patch 169)', () => {
+    const a = buildRptAbstract({
+      entries: [
+        { ...collected(RPT_ACCOUNTS.basic, 100_00, 3), entryDate: '2026-03-05' },
+        { ...collected(RPT_ACCOUNTS.basic, 50_00, 3), entryDate: '2026-03-20' },
+        { ...collected(RPT_ACCOUNTS.basic, 7_00, 4), entryDate: '2026-04-02' },
+      ],
+      fromPeriod: 3,
+      throughPeriod: 3,
+      fromDate: '2026-03-01',
+      toDate: '2026-03-15',
+    });
+    expect(a.basic.gross).toBe(100_00);
+  });
+
   it('reproduces the worked example in Section 69', () => {
     const a = build([
       collected(RPT_ACCOUNTS.basic, 100_00),

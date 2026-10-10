@@ -26,7 +26,8 @@ import type { ECollectionReportType } from '@/types/enums';
  * nothing here can drift away from the other four.
  */
 export default function ECollectionReports() {
-  const [reportType, setReportType] = useState<ECollectionReportType>('ERCD_EOR');
+  /* Patch 169: All - the eOR and the AR reports together - unless one is chosen. */
+  const [reportType, setReportType] = useState<ECollectionReportType | 'ALL'>('ALL');
 
   /*
    * Patch 160: the choice of report is a dropdown in the table's toolbar,
@@ -36,15 +37,17 @@ export default function ECollectionReports() {
   const chosen = E_COLLECTION_KINDS.find((k) => k.reportType === reportType);
   return (
     <TreasuryReports
-      reportType={reportType}
+      reportType={reportType === 'ALL' ? 'ERCD_EOR' : reportType}
+      alsoType={reportType === 'ALL' ? 'ERCD_AR' : undefined}
       tableFilters={
         <Select
           aria-label="Which report"
           value={reportType}
-          onChange={(e) => setReportType(e.target.value as ECollectionReportType)}
+          onChange={(e) => setReportType(e.target.value as ECollectionReportType | 'ALL')}
           className="w-auto min-w-[16rem]"
           title={chosen?.when}
         >
+          <option value="ALL">All (eOR and AR)</option>
           {E_COLLECTION_KINDS.map((k) => (
             <option key={k.reportType} value={k.reportType}>
               {k.label}
