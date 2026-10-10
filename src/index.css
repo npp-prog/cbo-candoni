@@ -26,6 +26,17 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 
+  /*
+   * Patch 168: what was the monospaced face is now Inter with tabular
+   * figures - columns of amounts still align - and the plain zero: no dot,
+   * no slash ('zero' off).
+   */
+  .font-mono,
+  .cbo-amount {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'zero' 0;
+  }
+
   /* Figures line up in columns. */
   .tabular {
     font-variant-numeric: tabular-nums;

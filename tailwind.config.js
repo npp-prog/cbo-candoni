@@ -62,8 +62,13 @@ export default {
       },
       fontFamily: {
         sans: ['"Inter"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        // Amounts, account codes and document numbers are tabular by nature.
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        /*
+         * Amounts, account codes and document numbers. Patch 168: Inter with
+         * tabular (equal-width) figures instead of a monospaced face - the
+         * figures still line up in columns, and a zero is a plain 0, with no
+         * dot or slash inside (JetBrains Mono drew it dotted).
+         */
+        mono: ['"Inter"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       fontSize: {
         '2xs': ['0.6875rem', { lineHeight: '1rem' }],

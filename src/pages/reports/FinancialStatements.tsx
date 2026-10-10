@@ -12,6 +12,16 @@ import type { Centavos } from '@/types/common';
 import type { FsClassification } from '@/types/enums';
 import { FUND_BALANCE_CAPTIONS } from '@/lib/fsGroups';
 import { buildEquityStatement, type EquityStatement } from './equityStatement';
+import { PERFORMANCE_LAYOUT, POSITION_LAYOUT } from '@/lib/detailedFsLayout';
+import {
+  balancesFor,
+  buildDetailed,
+  equityFigures,
+  lineValue,
+  naturalBalances,
+  type DetailedRow,
+  type DetailedStatement,
+} from '@/lib/detailedFs';
 import { isCashAccount } from '@/lib/cashFlowLines';
 import {
   SECTION_LABELS,
@@ -77,6 +87,12 @@ export default function FinancialStatements() {
   const { fiscalYear, fundCode, period } = useFilters();
   const [throughPeriod, setThroughPeriod] = useState<number>(period ?? 12);
   const [statement, setStatement] = useState<StatementId>('position');
+  /*
+   * Patch 168: the position and performance statements come CONDENSED (the
+   * GAM annexes) or DETAILED - every account, in the office's own format.
+   */
+  const [format, setFormat] = useState<'condensed' | 'detailed'>('condensed');
+  const [showNil, setShowNil] = useState(false);
 
   const accounts = useAccounts(false);
   const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
@@ -109,9 +125,73 @@ export default function FinancialStatements() {
   );
   const performance = useMemo(
     // The Trust Fund has its own shorter form, Annex 6-A.
-    () => condensePerformance(lines as FsAccountBalance[], priorLines as FsAccountBalance[], fundCode),
+    () =>
+      condensePerformance(lines as FsAccountBalance[], priorLines as FsAccountBalance[], fundCode),
     [lines, priorLines, fundCode],
   );
+
+  /* Patch 168 - the detailed statements, from the same ledger lines. */
+  const detailed = useMemo(() => {
+    const cur = naturalBalances(ledger.data, throughPeriod);
+    const pri = naturalBalances(priorLedger.data, 12);
+    const names = new Map(accounts.data.map((a) => [String(a.code), a.name]));
+    const perf = buildDetailed(
+      PERFORMANCE_LAYOUT,
+      { current: balancesFor(cur, 'performance'), prior: balancesFor(pri, 'performance') },
+      undefined,
+      names,
+    );
+    const surplus = lineValue(perf, /^SURPLUS \(DEFICIT\) FOR THE PERIOD$/);
+    const posBal = { current: balancesFor(cur, 'position'), prior: balancesFor(pri, 'position') };
+    const pos = buildDetailed(
+      POSITION_LAYOUT,
+      posBal,
+      equityFigures(POSITION_LAYOUT, posBal, surplus),
+      names,
+    );
+    return { position: pos, performance: perf };
+  }, [ledger.data, priorLedger.data, throughPeriod, accounts.data]);
+  const isDetailed =
+    format === 'detailed' && (statement === 'position' || statement === 'performance');
+  const detailedNow: DetailedStatement | null = isDetailed
+    ? statement === 'position'
+      ? detailed.position
+      : detailed.performance
+    : null;
+  const detailedShown = useMemo(
+    () =>
+      detailedNow
+        ? detailedNow.rows.filter(
+            (r) =>
+              showNil ||
+              r.hasFigures ||
+              r.kind === 'computed' ||
+              r.kind === 'equity' ||
+              (r.kind === 'total' && r.level <= 1),
+          )
+        : [],
+    [detailedNow, showNil],
+  );
+  const detailedColumns: ExportColumn<DetailedRow>[] = [
+    { key: 'code', header: 'Account Code', value: (r) => r.code ?? '' },
+    {
+      key: 'label',
+      header: 'Particulars',
+      value: (r) => `${'   '.repeat(r.kind === 'account' ? 4 : r.level)}${r.label}`,
+    },
+    {
+      key: 'cur',
+      header: String(fiscalYear),
+      kind: 'amount',
+      value: (r) => (r.kind === 'heading' ? null : r.current),
+    },
+    {
+      key: 'pri',
+      header: String(fiscalYear - 1),
+      kind: 'amount',
+      value: (r) => (r.kind === 'heading' ? null : r.prior),
+    },
+  ];
 
   const equityStatement = useMemo(
     () =>
@@ -170,8 +250,8 @@ export default function FinancialStatements() {
         certifiedBy: 'Municipal Accountant',
       }}
       breadcrumbs={[{ label: 'Reports', to: '/reports' }, { label: 'Financial Statements' }]}
-      rows={lines}
-      exportColumns={exportColumns}
+      rows={(isDetailed ? detailedShown : lines) as never[]}
+      exportColumns={(isDetailed ? detailedColumns : exportColumns) as never}
       filters={
         <>
           <Field label="Statement">
@@ -183,8 +263,35 @@ export default function FinancialStatements() {
               ))}
             </Select>
           </Field>
+          {(statement === 'position' || statement === 'performance') && (
+            <Field label="Format">
+              <Select
+                value={format}
+                onChange={(e) => setFormat(e.target.value as 'condensed' | 'detailed')}
+              >
+                <option value="condensed">Condensed (GAM annex)</option>
+                <option value="detailed">Detailed (every account)</option>
+              </Select>
+            </Field>
+          )}
+          {isDetailed && (
+            <Field label="Accounts">
+              <label className="flex h-10 items-center gap-2 text-sm text-navy-800">
+                <input
+                  type="checkbox"
+                  checked={showNil}
+                  onChange={(e) => setShowNil(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                Show accounts with no balance
+              </label>
+            </Field>
+          )}
           <Field label="Through period">
-            <Select value={throughPeriod} onChange={(e) => setThroughPeriod(Number(e.target.value))}>
+            <Select
+              value={throughPeriod}
+              onChange={(e) => setThroughPeriod(Number(e.target.value))}
+            >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                 <option key={m} value={m}>
                   {monthName(m)}
@@ -200,7 +307,15 @@ export default function FinancialStatements() {
             Prepared from posted journal entries. No statement balance is stored anywhere in CFMS,
             so the statements cannot disagree with the ledger.
           </p>
-          {(statement === 'position' || statement === 'performance') && (
+          {isDetailed && (
+            <p className="mt-1">
+              Detailed: every account of the Revised Chart of Accounts under the headings of the
+              office&rsquo;s detailed financial statements, the second money column the whole of{' '}
+              {fiscalYear - 1}. Net Assets/Equity is the equity accounts plus the surplus or deficit
+              for the period.
+            </p>
+          )}
+          {!isDetailed && (statement === 'position' || statement === 'performance') && (
             <p className="mt-1">
               Presented in the condensed format GAM Volume I, Sections 366 and 368 prescribe:
               Annexes 5 and 6. Each line is an account group of the Revised Chart of Accounts, read
@@ -208,11 +323,11 @@ export default function FinancialStatements() {
               it closed — not the same months of it, which would be a figure nobody has seen.
             </p>
           )}
-          {statement === 'performance' && (
+          {statement === 'performance' && !isDetailed && (
             <p className="mt-1">
               &ldquo;Share from Internal Revenue Collections&rdquo; is account 40106010 alone;
-              &ldquo;Other Share from National Taxes&rdquo; is the rest of sub-major group 4-01-06
-              — Expanded VAT, National Wealth, Tobacco Excise and Economic Zones. Both sit inside
+              &ldquo;Other Share from National Taxes&rdquo; is the rest of sub-major group 4-01-06 —
+              Expanded VAT, National Wealth, Tobacco Excise and Economic Zones. Both sit inside
               major group 4-01 Tax Revenue in the chart and the annex prints them apart from it, so
               Tax Revenue above excludes them.
             </p>
@@ -229,12 +344,10 @@ export default function FinancialStatements() {
           </p>
           <UnpostedEntriesNote fiscalYear={fiscalYear} fundCode={fundCode} className="mt-4" />
         </div>
+      ) : isDetailed && detailedNow ? (
+        <DetailedView data={detailedNow} rows={detailedShown} fiscalYear={fiscalYear} />
       ) : statement === 'position' ? (
-        <PositionStatement
-          data={condensed}
-          fiscalYear={fiscalYear}
-          surplus={performance.surplus}
-        />
+        <PositionStatement data={condensed} fiscalYear={fiscalYear} surplus={performance.surplus} />
       ) : statement === 'performance' ? (
         <PerformanceStatement data={performance} fiscalYear={fiscalYear} />
       ) : statement === 'cashflow' ? (
@@ -342,9 +455,14 @@ function CashFlowStatement({
           </p>
           {data.unbalanced.length > 0 && (
             <p className="mt-1">
-              {data.unbalanced.length === 1 ? 'This journal entry does' : 'These journal entries do'}{' '}
+              {data.unbalanced.length === 1
+                ? 'This journal entry does'
+                : 'These journal entries do'}{' '}
               not foot:{' '}
-              {data.unbalanced.map((u) => `${u.jevNo} (out by ${formatPeso(u.difference)})`).join('; ')}.
+              {data.unbalanced
+                .map((u) => `${u.jevNo} (out by ${formatPeso(u.difference)})`)
+                .join('; ')}
+              .
             </p>
           )}
         </Alert>
@@ -380,7 +498,8 @@ function CashFlowStatement({
 
           <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-slate-300 py-1">
             <span className="text-sm font-medium text-navy-900">
-              Net Cash Provided by (Used in) {SECTION_LABELS[block.section].replace('Cash Flows From ', '')}
+              Net Cash Provided by (Used in){' '}
+              {SECTION_LABELS[block.section].replace('Cash Flows From ', '')}
             </span>
             <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
               {formatPeso(block.net, { symbol: false, parens: true })}
@@ -415,9 +534,8 @@ function CashFlowStatement({
           its own amount of the cash that moved — nothing here is apportioned or estimated.
         </p>
         <p className="mt-1">
-          {data.cashEntries.toLocaleString()} journal{' '}
-          {data.cashEntries === 1 ? 'entry' : 'entries'} moved cash and{' '}
-          {data.transferEntries.toLocaleString()}{' '}
+          {data.cashEntries.toLocaleString()} journal {data.cashEntries === 1 ? 'entry' : 'entries'}{' '}
+          moved cash and {data.transferEntries.toLocaleString()}{' '}
           {data.transferEntries === 1 ? 'was a transfer' : 'were transfers'} between cash accounts —
           a deposit of collections, or a movement between bank accounts. Transfers are deliberately
           absent: the money was reported when it was collected, and reporting it again on deposit
@@ -475,7 +593,10 @@ function CashFlowRowView({ row }: { row: CashFlowStatementRow }) {
       </div>
       {open &&
         row.accounts.map((a) => (
-          <div key={a.accountCode} className="flex items-baseline justify-between gap-4 py-0.5 pl-10">
+          <div
+            key={a.accountCode}
+            className="flex items-baseline justify-between gap-4 py-0.5 pl-10"
+          >
             <span className="text-xs text-slate-500">
               <span className="font-mono text-2xs text-slate-400">{a.accountCode}</span>{' '}
               {a.accountName}
@@ -493,11 +614,20 @@ function BudgetAndActual({
   budget,
   expenses,
 }: {
-  budget: Array<{ accountCode: string; accountName: string; appropriationRevised: number; obligated: number; disbursed: number }>;
+  budget: Array<{
+    accountCode: string;
+    accountName: string;
+    appropriationRevised: number;
+    obligated: number;
+    disbursed: number;
+  }>;
   expenses: FsLine[];
 }) {
   const rows = useMemo(() => {
-    const map = new Map<string, { code: string; name: string; budget: number; obligated: number; actual: number }>();
+    const map = new Map<
+      string,
+      { code: string; name: string; budget: number; obligated: number; actual: number }
+    >();
 
     for (const b of budget) {
       const row = map.get(b.accountCode) ?? {
@@ -559,19 +689,33 @@ function BudgetAndActual({
               <span className="font-mono text-xs text-slate-500">{r.code}</span>{' '}
               <span className="text-sm">{r.name}</span>
             </td>
-            <td className="cbo-td cbo-amount">{formatPeso(r.budget, { symbol: false, dash: true })}</td>
-            <td className="cbo-td cbo-amount">{formatPeso(r.obligated, { symbol: false, dash: true })}</td>
-            <td className="cbo-td cbo-amount">{formatPeso(r.actual, { symbol: false, dash: true })}</td>
-            <td className="cbo-td cbo-amount">{formatPeso(r.budget - r.actual, { symbol: false, parens: true })}</td>
+            <td className="cbo-td cbo-amount">
+              {formatPeso(r.budget, { symbol: false, dash: true })}
+            </td>
+            <td className="cbo-td cbo-amount">
+              {formatPeso(r.obligated, { symbol: false, dash: true })}
+            </td>
+            <td className="cbo-td cbo-amount">
+              {formatPeso(r.actual, { symbol: false, dash: true })}
+            </td>
+            <td className="cbo-td cbo-amount">
+              {formatPeso(r.budget - r.actual, { symbol: false, parens: true })}
+            </td>
           </tr>
         ))}
       </tbody>
       <tfoot>
         <tr className="border-t-2 border-navy-800 font-semibold">
           <td className="cbo-td border-b-0">Total</td>
-          <td className="cbo-td cbo-amount border-b-0">{formatPeso(totals.budget, { symbol: false })}</td>
-          <td className="cbo-td cbo-amount border-b-0">{formatPeso(totals.obligated, { symbol: false })}</td>
-          <td className="cbo-td cbo-amount border-b-0">{formatPeso(totals.actual, { symbol: false })}</td>
+          <td className="cbo-td cbo-amount border-b-0">
+            {formatPeso(totals.budget, { symbol: false })}
+          </td>
+          <td className="cbo-td cbo-amount border-b-0">
+            {formatPeso(totals.obligated, { symbol: false })}
+          </td>
+          <td className="cbo-td cbo-amount border-b-0">
+            {formatPeso(totals.actual, { symbol: false })}
+          </td>
           <td className="cbo-td cbo-amount border-b-0">
             {formatPeso(totals.budget - totals.actual, { symbol: false, parens: true })}
           </td>
@@ -589,7 +733,12 @@ function BudgetAndActual({
  * a statement comes to show last year's revenue as negative.
  */
 function balancesFrom(
-  entries: Array<{ accountCode: string; accountName: string; period: number; signedAmount?: number }>,
+  entries: Array<{
+    accountCode: string;
+    accountName: string;
+    period: number;
+    signedAmount?: number;
+  }>,
   accounts: Array<{ code: string; fsClassification?: string | null }>,
   throughPeriod: number,
 ): FsLine[] {
@@ -683,7 +832,13 @@ function CaptionLines({ lines }: { lines: CondensedLine[] }) {
   return (
     <>
       {lines.map((l) => (
-        <TwoYearRow key={l.caption} label={l.caption} current={l.current} prior={l.prior} indent={1} />
+        <TwoYearRow
+          key={l.caption}
+          label={l.caption}
+          current={l.current}
+          prior={l.prior}
+          indent={1}
+        />
       ))}
     </>
   );
@@ -732,8 +887,7 @@ function PositionStatement({
   const sec = (key: string) => data.sections.find((s) => s.key === key)!;
   const equityCurrent = data.equityTotal.current + surplus.current;
   const equityPrior = data.equityTotal.prior + surplus.prior;
-  const balanced =
-    data.totalAssets.current === data.totalLiabilities.current + equityCurrent;
+  const balanced = data.totalAssets.current === data.totalLiabilities.current + equityCurrent;
 
   return (
     <>
@@ -837,9 +991,9 @@ function PositionStatement({
           Blank on purpose. The budgetary registry accounts (3-05) are not postable in CFMS — the
           registry is kept in the budget balances the Cloud Functions maintain and is never
           journalised — so the general ledger carries nothing against them. These figures can be
-          derived from the Registry instead, but which registry figure answers to which caption is
-          a decision for the Accountant, and one wrong mapping here is a wrong figure on a
-          submitted statement.
+          derived from the Registry instead, but which registry figure answers to which caption is a
+          decision for the Accountant, and one wrong mapping here is a wrong figure on a submitted
+          statement.
           {data.fundBalanceAccounts.length > 0 && (
             <>
               {' '}
@@ -931,13 +1085,7 @@ function PerformanceStatement({
  * the close of the year before the comparative one is not knowable, and a zero
  * there would read as a municipality that began with nothing.
  */
-function EquityStatementView({
-  data,
-  fiscalYear,
-}: {
-  data: EquityStatement;
-  fiscalYear: number;
-}) {
+function EquityStatementView({ data, fiscalYear }: { data: EquityStatement; fiscalYear: number }) {
   const priorOpeningKnown = data.openingBalance.prior !== 0;
 
   return (
@@ -1024,8 +1172,8 @@ function EquityStatementView({
       )}
       {!priorOpeningKnown && (
         <p className="mt-1 text-xs text-slate-500">
-          The {fiscalYear - 1} column has no opening balance because the close of {fiscalYear - 2} is
-          not in the ledger this screen reads. Blank rather than nil — nil would read as a
+          The {fiscalYear - 1} column has no opening balance because the close of {fiscalYear - 2}{' '}
+          is not in the ledger this screen reads. Blank rather than nil — nil would read as a
           municipality that began with nothing.
         </p>
       )}
@@ -1064,5 +1212,100 @@ function EquityRow({
         {prior === null || priorBlank ? '' : formatPeso(prior)}
       </td>
     </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Patch 168 - the detailed statements
+// ---------------------------------------------------------------------------
+
+function DetailedView({
+  data,
+  rows,
+  fiscalYear,
+}: {
+  data: DetailedStatement;
+  rows: DetailedRow[];
+  fiscalYear: number;
+}) {
+  const fig = (v: number) =>
+    v === 0
+      ? '-'
+      : v < 0
+        ? `(${formatPeso(-v, { symbol: false })})`
+        : formatPeso(v, { symbol: false });
+  const pad = (r: DetailedRow) => `${0.25 + (r.kind === 'account' ? 4 : r.level) * 0.9}rem`;
+  const position = data.rows.find((r) => r.label === 'TOTAL ASSETS');
+  const totalLE = data.rows.find((r) => r.label === 'TOTAL LIABILITIES AND EQUITY');
+  const off =
+    position && totalLE
+      ? { current: position.current - totalLE.current, prior: position.prior - totalLE.prior }
+      : null;
+  return (
+    <>
+      {data.unplaced.length > 0 && (
+        <Alert
+          tone="warning"
+          title="Accounts the detailed format has no line for"
+          className="mb-3 no-print"
+        >
+          {data.unplaced.map((u) => `${u.code} ${formatPeso(u.current)}`).join('; ')} - not in the
+          office&rsquo;s detailed layout. Each is printed in italics beside the nearest account of
+          its class and counted in that account&rsquo;s totals, so the statement still foots;
+          correct the code in the Chart of Accounts if it is an old one.
+        </Alert>
+      )}
+      {off && (off.current !== 0 || off.prior !== 0) && (
+        <Alert tone="warning" title="The statement does not balance" className="mb-3 no-print">
+          Total assets less total liabilities and equity: {formatPeso(off.current)} ({fiscalYear}),{' '}
+          {formatPeso(off.prior)} ({fiscalYear - 1}).
+        </Alert>
+      )}
+      <table className="w-full text-sm">
+        <colgroup>
+          <col style={{ width: '14%' }} />
+          <col style={{ width: '50%' }} />
+          <col style={{ width: '18%' }} />
+          <col style={{ width: '18%' }} />
+        </colgroup>
+        <thead>
+          <tr className="border-b border-navy-800">
+            <th className="cbo-th" />
+            <th className="cbo-th" />
+            <th className="cbo-th text-right">{fiscalYear}</th>
+            <th className="cbo-th text-right">{fiscalYear - 1}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const strong = r.kind !== 'account';
+            const isTotal = r.kind === 'total' || r.kind === 'computed';
+            const top = r.level <= 1 && isTotal;
+            return (
+              <tr
+                key={i}
+                className={`${strong ? 'font-semibold text-navy-900' : 'text-slate-700'} ${
+                  isTotal ? 'border-t border-slate-300' : ''
+                } ${top ? 'border-t-2 border-navy-800' : ''}`}
+              >
+                <td className="px-1 py-0.5 font-mono text-xs text-slate-500">{r.code ?? ''}</td>
+                <td
+                  className={`px-1 py-0.5${r.extra ? ' italic' : ''}`}
+                  style={{ paddingLeft: pad(r) }}
+                >
+                  {r.label}
+                </td>
+                <td className="px-1 py-0.5 text-right tabular-nums">
+                  {r.kind === 'heading' ? '' : fig(r.current)}
+                </td>
+                <td className="px-1 py-0.5 text-right tabular-nums">
+                  {r.kind === 'heading' ? '' : fig(r.prior)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
