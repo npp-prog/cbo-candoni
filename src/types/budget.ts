@@ -688,6 +688,21 @@ export interface TrustProgram {
   percentComplete?: number | null;
   /** The Remarks column of Form 6. */
   statusRemarks?: string | null;
+  /**
+   * Patch 164 - a Local Government Support Fund programme, reported on FDP
+   * Form 6b as well as Form 6. The fields below are Form 6b's columns.
+   */
+  lgsf?: boolean | null;
+  /** "LGSF-SBDP FY 2025" - the fund source as the NADAI names it. */
+  lgsfFundSource?: string | null;
+  /** Date the Notice of Authority to Debit Account Issued (NADAI) was issued. */
+  nadaiDate?: string | null;
+  projectType?: string | null;
+  /** Mechanism / mode of implementation (by administration, by contract ...). */
+  mechanism?: string | null;
+  beneficiaries?: number | null;
+  /** Estimated completion, month and year: YYYY-MM. */
+  estimatedCompletion?: string | null;
   updatedAt: string;
   updatedBy?: { uid: Id; name: string };
 }

@@ -1,5 +1,6 @@
 import type { CashFlowStatement } from '@/pages/reports/cashFlows';
-import type { BudgetBalance, TrustFundSource, TrustProgram } from '@/types/budget';
+import type { Appropriation, BudgetBalance, TrustFundSource, TrustProgram } from '@/types/budget';
+import { COMMITTED, lineKey } from './budgetPeriods';
 
 /**
  * Patch 163 - the Full Disclosure Policy Portal (FDPP) reports, worked out of
@@ -20,7 +21,8 @@ import type { BudgetBalance, TrustFundSource, TrustProgram } from '@/types/budge
  */
 
 export const FDP_PLACE = {
-  region: 'REGION VI - WESTERN VISAYAS',
+  // Patch 164: Negros Occidental is in the Negros Island Region now.
+  region: 'NEGROS ISLAND REGION',
   province: 'NEGROS OCCIDENTAL',
   municipality: 'CANDONI',
 };
@@ -90,7 +92,12 @@ export interface Form6Row {
   inferred: boolean;
 }
 
-export function buildForm6(programs: TrustProgram[], year: number): Form6Row[] {
+export function buildForm6(
+  programs: TrustProgram[],
+  year: number,
+  /** Patch 164: the programme's figures as at the quarter's end (trustFiguresAsOf). */
+  asOf?: Map<string, TrustAsOf>,
+): Form6Row[] {
   return programs
     .filter((p) => {
       const { source } = trustSourceOf(p);
@@ -101,7 +108,7 @@ export function buildForm6(programs: TrustProgram[], year: number): Form6Row[] {
       return true;
     })
     .map((p) => {
-      const utilised = p.utilised ?? 0;
+      const utilised = asOf?.get(p.id)?.utilised ?? p.utilised ?? 0;
       const pct =
         p.percentComplete ??
         (p.programmed > 0 ? Math.round((utilised / p.programmed) * 10000) / 100 : 0);
@@ -126,8 +133,275 @@ export function buildForm6(programs: TrustProgram[], year: number): Form6Row[] {
 }
 
 // ===========================================================================
+// Form 6b - Local Government Support Fund (patch 164)
+// ===========================================================================
+
+export interface Form6bRow {
+  id: string;
+  fundSource: string;
+  nadaiDate: string;
+  projectType: string;
+  title: string;
+  location: string;
+  mechanism: string;
+  beneficiaries: string;
+  received: number;
+  obligation: number;
+  disbursement: number;
+  estimatedCompletion: string;
+  remarks: string;
+}
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+/** "2026-03" -> "March 2026" */
+export function monthYear(ym: string | null | undefined): string {
+  if (!ym || !/^\d{4}-\d{2}/.test(ym)) return '';
+  return `${MONTH_NAMES[Number(ym.slice(5, 7)) - 1] ?? ''} ${ym.slice(0, 4)}`;
+}
+
+/**
+ * The Trust Fund programmes tagged LGSF. Received is what the NADAI
+ * released (the programme's stated receipt); Obligation and Disbursement are
+ * as at the quarter's end.
+ */
+export function buildForm6b(
+  programs: TrustProgram[],
+  year: number,
+  asOf?: Map<string, TrustAsOf>,
+): Form6bRow[] {
+  return programs
+    .filter((p) => {
+      if (!p.lgsf) return false;
+      if (p.startYear && p.startYear > year) return false;
+      if (p.nadaiDate && Number(p.nadaiDate.slice(0, 4)) > year) return false;
+      if (p.status === 'CLOSED') return String(p.updatedAt ?? '').slice(0, 4) === String(year);
+      return true;
+    })
+    .map((p) => {
+      const f = asOf?.get(p.id);
+      const obligation = f?.utilised ?? p.utilised ?? 0;
+      const disbursement = f?.disbursed ?? p.disbursed ?? 0;
+      return {
+        id: p.id,
+        fundSource: p.lgsfFundSource || p.sourceAgency,
+        nadaiDate: p.nadaiDate ?? '',
+        projectType: p.projectType ?? '',
+        title: `${p.programCode} - ${p.programName}`,
+        location: p.location || FDP_PLACE.municipality,
+        mechanism: p.mechanism ?? '',
+        beneficiaries: p.beneficiaries ? p.beneficiaries.toLocaleString('en-PH') : '',
+        received: p.received || p.programmed,
+        obligation,
+        disbursement,
+        estimatedCompletion: monthYear(p.estimatedCompletion),
+        remarks:
+          p.statusRemarks ||
+          (obligation <= 0
+            ? 'Not yet started'
+            : disbursement >= obligation
+              ? 'Completed'
+              : 'On-going'),
+      };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+}
+
+// ===========================================================================
+// Patch 164 - a Trust Fund programme as it stood at the end of the quarter
+// ===========================================================================
+
+export interface TrustAsOf {
+  utilised: number;
+  disbursed: number;
+}
+
+export interface ObligationLike {
+  id: string;
+  obrDate: string;
+  status: string;
+  totalAmount?: number;
+  lines: Array<{
+    amount: number;
+    trustProgramId?: string | null;
+    officeId?: string;
+    officeName?: string;
+    fppCode?: string;
+    fppName?: string;
+    appropriatedAccountCode?: string;
+    accountName?: string;
+    expenseClass?: string;
+  }>;
+}
+
+export interface VoucherLike {
+  dvDate: string;
+  status: string;
+  obligationId?: string | null;
+  grossAmount: number;
+}
+
+/**
+ * A programme's utilised and disbursed figures are running totals, kept by
+ * the server as FURS are certified and vouchers paid. As they stood at
+ * `asOf`, they are the running totals less whatever came AFTER: the FURS
+ * certified later, and the vouchers paid later (a voucher's amount spread
+ * over its FURS's programmes in proportion to the lines).
+ *
+ * `obligations` and `vouchers` are the Trust Fund's of the report's year and
+ * the year after - everything that can be dated after the quarter's end.
+ */
+export function trustFiguresAsOf(
+  programs: TrustProgram[],
+  obligations: ObligationLike[],
+  vouchers: VoucherLike[],
+  asOf: string,
+): Map<string, TrustAsOf> {
+  const later = new Map<string, TrustAsOf>();
+  const bump = (id: string, k: keyof TrustAsOf, v: number) => {
+    const cur = later.get(id) ?? { utilised: 0, disbursed: 0 };
+    cur[k] += v;
+    later.set(id, cur);
+  };
+  const byId = new Map(obligations.map((o) => [o.id, o]));
+  for (const o of obligations) {
+    if (!COMMITTED.has(o.status) || o.obrDate <= asOf) continue;
+    for (const l of o.lines ?? [])
+      if (l.trustProgramId) bump(l.trustProgramId, 'utilised', l.amount);
+  }
+  for (const v of vouchers) {
+    if (!(v.status === 'PAID' || v.status === 'CLOSED') || v.dvDate <= asOf) continue;
+    const o = v.obligationId ? byId.get(v.obligationId) : undefined;
+    const lines = (o?.lines ?? []).filter((l) => l.trustProgramId);
+    const base = lines.reduce((t, l) => t + l.amount, 0);
+    if (!base) continue;
+    let left = v.grossAmount;
+    lines.forEach((l, i) => {
+      const share = i === lines.length - 1 ? left : Math.round((v.grossAmount * l.amount) / base);
+      left -= share;
+      bump(l.trustProgramId as string, 'disbursed', share);
+    });
+  }
+  return new Map(
+    programs.map((p) => {
+      const l = later.get(p.id) ?? { utilised: 0, disbursed: 0 };
+      return [
+        p.id,
+        {
+          utilised: Math.max(0, (p.utilised ?? 0) - l.utilised),
+          disbursed: Math.max(0, (p.disbursed ?? 0) - l.disbursed),
+        },
+      ];
+    }),
+  );
+}
+
+// ===========================================================================
 // Form 8 - LDRRMF Utilization
 // ===========================================================================
+
+/** What Form 8 reads of a budget line. */
+export type Form8Line = Pick<
+  BudgetBalance,
+  | 'sector'
+  | 'fppName'
+  | 'accountName'
+  | 'expenseClass'
+  | 'appropriationRevised'
+  | 'appropriationContinuing'
+  | 'obligated'
+>;
+
+/**
+ * Patch 164 - the General Fund's budget lines as they stood at `asOf`, worked
+ * from the documents rather than read off the running balances: every
+ * approved appropriation enacted by then (the original budget always; a
+ * supplemental, realignment or continuing one by its authority date), and
+ * every obligation committed by then.
+ */
+export function budgetLinesAsOf(
+  appropriations: Array<
+    Pick<
+      Appropriation,
+      | 'kind'
+      | 'status'
+      | 'amount'
+      | 'authorityDate'
+      | 'postedAt'
+      | 'officeId'
+      | 'fppCode'
+      | 'accountCode'
+      | 'fppName'
+      | 'accountName'
+      | 'sector'
+      | 'expenseClass'
+    >
+  >,
+  obligations: ObligationLike[],
+  asOf: string,
+): Form8Line[] {
+  const map = new Map<string, Form8Line>();
+  const at = (k: string, seed: Partial<Form8Line>) => {
+    let row = map.get(k);
+    if (!row) {
+      row = {
+        sector: '',
+        fppName: '',
+        accountName: '',
+        expenseClass: 'MOOE',
+        appropriationRevised: 0,
+        appropriationContinuing: 0,
+        obligated: 0,
+        ...seed,
+      } as Form8Line;
+      map.set(k, row);
+    }
+    return row;
+  };
+  for (const a of appropriations) {
+    if (a.status !== 'APPROVED') continue;
+    const dated = a.authorityDate || String(a.postedAt ?? '').slice(0, 10);
+    if (a.kind !== 'ORIGINAL' && dated && dated > asOf) continue;
+    const row = at(
+      lineKey({ officeId: a.officeId, fppCode: a.fppCode ?? '', accountCode: a.accountCode ?? '' }),
+      {
+        sector: a.sector,
+        fppName: a.fppName,
+        accountName: a.accountName,
+        expenseClass: a.expenseClass,
+      },
+    );
+    row.appropriationRevised += a.amount;
+    if (a.kind === 'CONTINUING') row.appropriationContinuing += a.amount;
+  }
+  for (const o of obligations) {
+    if (!COMMITTED.has(o.status) || o.obrDate > asOf) continue;
+    for (const l of o.lines ?? []) {
+      const k = lineKey({
+        officeId: l.officeId ?? '',
+        fppCode: l.fppCode ?? '',
+        accountCode: l.appropriatedAccountCode ?? '',
+      });
+      const row = map.get(k);
+      // An obligation against a line with no appropriation is not this report's.
+      if (row) row.obligated += l.amount;
+    }
+  }
+  return [...map.values()];
+}
 
 export const isLdrrmfLine = (b: Pick<BudgetBalance, 'sector' | 'fppName'>) =>
   /^\s*L?DRRMF?\s*$/i.test(b.sector ?? '') ||
@@ -183,7 +457,7 @@ const ZERO: Form8Amounts = { qrf: 0, seventy: 0 };
 const split = (qrf: boolean, v: number): Form8Amounts =>
   qrf ? { qrf: v, seventy: 0 } : { qrf: 0, seventy: v };
 
-function lineLabel(b: Pick<BudgetBalance, 'fppName' | 'accountName'>): string {
+function lineLabel(b: Pick<Form8Line, 'fppName' | 'accountName'>): string {
   const f = (b.fppName ?? '').trim();
   const a = (b.accountName ?? '').trim();
   if (f && a && f.toUpperCase() !== a.toUpperCase()) return `${f} - ${a}`;
@@ -191,14 +465,16 @@ function lineLabel(b: Pick<BudgetBalance, 'fppName' | 'accountName'>): string {
 }
 
 export function buildForm8(input: {
-  /** The General Fund's budget balances of the year. */
-  balances: BudgetBalance[];
+  /** The General Fund's budget lines of the year (budgetLinesAsOf). */
+  balances: Form8Line[];
   /** The Trust Fund programmes (the LDRRMF in the Special Trust Fund is among them). */
   trustPrograms: TrustProgram[];
   year: number;
+  /** Patch 164: the programmes' figures at the quarter's end. */
+  trustAsOf?: Map<string, TrustAsOf>;
 }): Form8 {
   const lines = input.balances.filter(isLdrrmfLine);
-  const continuing = (b: BudgetBalance) =>
+  const continuing = (b: Form8Line) =>
     (b.appropriationContinuing ?? 0) > 0 &&
     (b.appropriationRevised ?? 0) - (b.appropriationContinuing ?? 0) <= 0;
 
@@ -208,7 +484,7 @@ export function buildForm8(input: {
     (p) => trustSourceOf(p).source === 'LDRRMF' && (!p.startYear || p.startYear <= input.year),
   );
 
-  const sumBudget = (ls: BudgetBalance[]) =>
+  const sumBudget = (ls: Form8Line[]) =>
     ls.reduce((t, b) => add(t, split(isQrf(lineLabel(b)), b.appropriationRevised ?? 0)), ZERO);
 
   const stfByYear = new Map<string, Form8Amounts>();
@@ -228,7 +504,7 @@ export function buildForm8(input: {
   ];
   const totalAvailable = sources.reduce((t, s) => add(t, s), ZERO);
 
-  const groupLines = (ls: BudgetBalance[]): Form8Group[] => {
+  const groupLines = (ls: Form8Line[]): Form8Group[] => {
     const groups = new Map<string, Form8Item[]>();
     for (const b of ls) {
       const label = lineLabel(b);
@@ -263,7 +539,7 @@ export function buildForm8(input: {
           label: 'Special Trust Fund',
           items: stf
             .map((p) => {
-              const used = p.utilised ?? 0;
+              const used = input.trustAsOf?.get(p.id)?.utilised ?? p.utilised ?? 0;
               return {
                 label: `${p.programCode} - ${p.programName}`,
                 ...split(isQrf(p.programName), used),

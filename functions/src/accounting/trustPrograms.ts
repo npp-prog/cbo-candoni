@@ -72,6 +72,13 @@ export const recordTrustProgram = onCall(
       extensions?: number | null;
       percentComplete?: number | null;
       statusRemarks?: string | null;
+      lgsf?: boolean | null;
+      lgsfFundSource?: string | null;
+      nadaiDate?: string | null;
+      projectType?: string | null;
+      mechanism?: string | null;
+      beneficiaries?: number | null;
+      estimatedCompletion?: string | null;
     };
 
     /*
@@ -246,6 +253,13 @@ export function fdpFields(data: {
   extensions?: number | null;
   percentComplete?: number | null;
   statusRemarks?: string | null;
+  lgsf?: boolean | null;
+  lgsfFundSource?: string | null;
+  nadaiDate?: string | null;
+  projectType?: string | null;
+  mechanism?: string | null;
+  beneficiaries?: number | null;
+  estimatedCompletion?: string | null;
 }) {
   const text = (v: unknown, max = 300) => String(v ?? '').trim().slice(0, max) || null;
   const date = (v: unknown) => {
@@ -254,6 +268,7 @@ export function fdpFields(data: {
   };
   const source = String(data.fundSource ?? '').trim().toUpperCase();
   const ext = Number(data.extensions);
+  const ben = data.beneficiaries === null || data.beneficiaries === undefined ? NaN : Number(data.beneficiaries);
   const pctRaw = data.percentComplete;
   const pct = pctRaw === null || pctRaw === undefined || String(pctRaw) === '' ? NaN : Number(pctRaw);
   return {
@@ -264,6 +279,16 @@ export function fdpFields(data: {
     extensions: Number.isInteger(ext) && ext >= 0 ? ext : null,
     percentComplete: Number.isFinite(pct) ? Math.min(100, Math.max(0, Math.round(pct * 100) / 100)) : null,
     statusRemarks: text(data.statusRemarks),
+    // Patch 164 - FDP Form 6b, the Local Government Support Fund.
+    lgsf: data.lgsf === true,
+    lgsfFundSource: text(data.lgsfFundSource),
+    nadaiDate: date(data.nadaiDate),
+    projectType: text(data.projectType),
+    mechanism: text(data.mechanism),
+    beneficiaries: Number.isInteger(ben) && ben >= 0 ? ben : null,
+    estimatedCompletion: /^\d{4}-\d{2}$/.test(String(data.estimatedCompletion ?? '').trim())
+      ? String(data.estimatedCompletion).trim()
+      : null,
   };
 }
 

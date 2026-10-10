@@ -62,6 +62,14 @@ interface FormState {
   extensions: string;
   percentComplete: string;
   statusRemarks: string;
+  /* Patch 164 - FDP Form 6b, the Local Government Support Fund. */
+  lgsf: boolean;
+  lgsfFundSource: string;
+  nadaiDate: string;
+  projectType: string;
+  mechanism: string;
+  beneficiaries: string;
+  estimatedCompletion: string;
 }
 
 const empty = (startYear: number): FormState => ({
@@ -82,6 +90,13 @@ const empty = (startYear: number): FormState => ({
   extensions: '',
   percentComplete: '',
   statusRemarks: '',
+  lgsf: false,
+  lgsfFundSource: '',
+  nadaiDate: '',
+  projectType: '',
+  mechanism: '',
+  beneficiaries: '',
+  estimatedCompletion: '',
 });
 
 const fromProgram = (p: TrustProgram): FormState => ({
@@ -104,6 +119,14 @@ const fromProgram = (p: TrustProgram): FormState => ({
   percentComplete:
     p.percentComplete === null || p.percentComplete === undefined ? '' : String(p.percentComplete),
   statusRemarks: p.statusRemarks ?? '',
+  lgsf: p.lgsf === true,
+  lgsfFundSource: p.lgsfFundSource ?? '',
+  nadaiDate: p.nadaiDate ?? '',
+  projectType: p.projectType ?? '',
+  mechanism: p.mechanism ?? '',
+  beneficiaries:
+    p.beneficiaries === null || p.beneficiaries === undefined ? '' : String(p.beneficiaries),
+  estimatedCompletion: p.estimatedCompletion ?? '',
 });
 
 export default function TrustPrograms() {
@@ -147,8 +170,7 @@ export default function TrustPrograms() {
     [form],
   );
 
-  const set = (patch: Partial<FormState>) =>
-    setForm((f) => (f ? { ...f, ...patch } : f));
+  const set = (patch: Partial<FormState>) => setForm((f) => (f ? { ...f, ...patch } : f));
 
   const save = async () => {
     if (!form) return;
@@ -173,6 +195,13 @@ export default function TrustPrograms() {
         extensions: form.extensions.trim() === '' ? null : Number(form.extensions),
         percentComplete: form.percentComplete.trim() === '' ? null : Number(form.percentComplete),
         statusRemarks: form.statusRemarks.trim() || null,
+        lgsf: form.lgsf,
+        lgsfFundSource: form.lgsfFundSource.trim() || null,
+        nadaiDate: form.nadaiDate || null,
+        projectType: form.projectType.trim() || null,
+        mechanism: form.mechanism.trim() || null,
+        beneficiaries: form.beneficiaries.trim() === '' ? null : Number(form.beneficiaries),
+        estimatedCompletion: form.estimatedCompletion || null,
       });
       toast.success(
         `${result.programCode} ${form.programId ? 'amended' : 'recorded'}`,
@@ -461,7 +490,10 @@ export default function TrustPrograms() {
             </Field>
 
             <Field label="Location" hint="FDP Form 6. Empty prints CANDONI.">
-              <TextInput value={form.location} onChange={(e) => set({ location: e.target.value })} />
+              <TextInput
+                value={form.location}
+                onChange={(e) => set({ location: e.target.value })}
+              />
             </Field>
             <Field label="Date started">
               <DateInput value={form.dateStarted} onChange={(v) => set({ dateStarted: v })} />
@@ -497,6 +529,61 @@ export default function TrustPrograms() {
               />
             </Field>
 
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-2 text-sm text-navy-900">
+                <input
+                  type="checkbox"
+                  checked={form.lgsf}
+                  onChange={(e) => set({ lgsf: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                Local Government Support Fund (LGSF) - also reported on FDP Form 6b
+              </label>
+            </div>
+
+            {form.lgsf && (
+              <>
+                <Field label="Fund source (as on the NADAI)" hint="e.g. LGSF-SBDP FY 2025">
+                  <TextInput
+                    value={form.lgsfFundSource}
+                    onChange={(e) => set({ lgsfFundSource: e.target.value })}
+                  />
+                </Field>
+                <Field label="Date of the NADAI">
+                  <DateInput value={form.nadaiDate} onChange={(v) => set({ nadaiDate: v })} />
+                </Field>
+                <Field label="Type of program/project" hint="e.g. Farm-to-market road">
+                  <TextInput
+                    value={form.projectType}
+                    onChange={(e) => set({ projectType: e.target.value })}
+                  />
+                </Field>
+                <Field
+                  label="Mechanism / mode of implementation"
+                  hint="By administration / by contract"
+                >
+                  <TextInput
+                    value={form.mechanism}
+                    onChange={(e) => set({ mechanism: e.target.value })}
+                  />
+                </Field>
+                <Field label="Estimated number of beneficiaries">
+                  <TextInput
+                    inputMode="numeric"
+                    value={form.beneficiaries}
+                    onChange={(e) => set({ beneficiaries: e.target.value.replace(/\D/g, '') })}
+                  />
+                </Field>
+                <Field label="Estimated completion (month and year)">
+                  <TextInput
+                    type="month"
+                    value={form.estimatedCompletion}
+                    onChange={(e) => set({ estimatedCompletion: e.target.value })}
+                  />
+                </Field>
+              </>
+            )}
+
             <Field label="Notes" className="sm:col-span-2">
               <TextArea
                 rows={2}
@@ -520,10 +607,10 @@ export default function TrustPrograms() {
             {form.programId && (
               <div className="sm:col-span-2">
                 <Alert tone="info">
-                  The programmed amount may be lowered, but not below what has already been
-                  utilised &mdash; those commitments have numbers issued against them, and a
-                  ceiling beneath them would show a negative balance no document caused. Closing a
-                  programme with vouchers still outstanding is refused for the same reason.
+                  The programmed amount may be lowered, but not below what has already been utilised
+                  &mdash; those commitments have numbers issued against them, and a ceiling beneath
+                  them would show a negative balance no document caused. Closing a programme with
+                  vouchers still outstanding is refused for the same reason.
                 </Alert>
               </div>
             )}

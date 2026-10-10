@@ -11,9 +11,10 @@ import { useFilters } from '@/context/FilterContext';
 import { useEntity } from '@/data/useEntity';
 import { useAdvances } from '@/data/useAdvances';
 import {
-  useBudgetBalances,
+  useAppropriations,
   useDisbursementVouchers,
   useLedgerEntries,
+  useObligations,
   useTrustPrograms,
 } from '@/data/queries';
 import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
@@ -29,7 +30,11 @@ import {
   buildForm11,
   buildForm12,
   buildForm6,
+  buildForm6b,
   buildForm8,
+  budgetLinesAsOf,
+  trustFiguresAsOf,
+  type ObligationLike,
   buildForm9,
   quarterOfDate,
   quarterRange,
@@ -54,10 +59,11 @@ import { downloadFdp, type FdpSheetSpec, type XCell } from '@/lib/fdppXlsx';
  * as an Excel sheet in the portal's layout.
  */
 
-type FormId = 'f6' | 'f8' | 'f9' | 'f11' | 'f12';
+type FormId = 'f6' | 'f6b' | 'f8' | 'f9' | 'f11' | 'f12';
 
 const FORMS: Array<{ id: FormId; label: string }> = [
   { id: 'f6', label: 'Form 6 - Trust Fund' },
+  { id: 'f6b', label: 'Form 6b - LGSF' },
   { id: 'f8', label: 'Form 8 - LDRRMF' },
   { id: 'f9', label: 'Form 9 - Cash Flows' },
   { id: 'f11', label: 'Form 11 - SEF' },
@@ -65,6 +71,9 @@ const FORMS: Array<{ id: FormId; label: string }> = [
 ];
 
 const ORD = ['', '1st', '2nd', '3rd', '4th'];
+
+/** The journal entries that pay money out: Form 11's disbursements. */
+const DISBURSING_SOURCES = new Set(['DV', 'PAYROLL', 'LIQUIDATION']);
 
 /** Pesos as the FDP forms print them: negatives in brackets, nil as a dash. */
 const fig = (v: number) =>
@@ -148,6 +157,7 @@ export default function FdppReports() {
       />
       <div className="mt-4">
         {tab === 'f6' && <Form6 ctx={ctx} />}
+        {tab === 'f6b' && <Form6bView ctx={ctx} />}
         {tab === 'f8' && <Form8View ctx={ctx} />}
         {tab === 'f9' && <Form9View ctx={ctx} />}
         {tab === 'f11' && <Form11View ctx={ctx} />}
@@ -164,6 +174,8 @@ export default function FdppReports() {
 interface Signatory {
   name: string;
   position: string;
+  /** Printed above the signature, e.g. "Attested by:". */
+  label?: string;
 }
 
 function useSignatories(withBudgetOfficer = false): Signatory[] {
@@ -188,6 +200,8 @@ function FdpFrame({
   excel,
   loading,
   warnings,
+  office,
+  certification = true,
   children,
 }: {
   ctx: Ctx;
@@ -203,6 +217,10 @@ function FdpFrame({
   >;
   loading?: boolean;
   warnings?: ReactNode;
+  /** Form 6b's OFFICE line. */
+  office?: string;
+  /** Form 6b carries no certification paragraph. */
+  certification?: boolean;
   children: ReactNode;
 }) {
   const [printing, setPrinting] = useState(false);
@@ -230,7 +248,7 @@ function FdpFrame({
             <td className="w-36 py-0.5">REGION:</td>
             <td className="py-0.5 font-semibold">{FDP_PLACE.region}</td>
             <td className="w-32 py-0.5">CALENDAR YEAR:</td>
-            <td className="w-16 py-0.5 font-semibold">{ctx.year}</td>
+            <td className={`${office ? 'w-56' : 'w-16'} py-0.5 font-semibold`}>{ctx.year}</td>
           </tr>
           <tr>
             <td className="py-0.5">PROVINCE:</td>
@@ -241,13 +259,24 @@ function FdpFrame({
           <tr>
             <td className="py-0.5">CITY/MUNICIPALITY:</td>
             <td className="py-0.5 font-semibold">{FDP_PLACE.municipality}</td>
-            <td />
-            <td />
+            <td className="py-0.5">{office ? 'OFFICE:' : ''}</td>
+            <td className="whitespace-nowrap py-0.5 font-semibold">{office ?? ''}</td>
           </tr>
         </tbody>
       </table>
       {children}
-      <p className="mt-4">{FDP_CERTIFICATION}</p>
+      {certification && <p className="mt-4">{FDP_CERTIFICATION}</p>}
+      {/* Labels in a row of their own, so every signature line sits level. */}
+      {signatories.some((x) => x.label) && (
+        <div
+          className="mt-6 grid gap-10"
+          style={{ gridTemplateColumns: `repeat(${signatories.length}, minmax(0, 1fr))` }}
+        >
+          {signatories.map((s) => (
+            <p key={s.position}>{s.label ?? ''}</p>
+          ))}
+        </div>
+      )}
       <div
         className="mt-10 grid gap-10"
         style={{ gridTemplateColumns: `repeat(${signatories.length}, minmax(0, 1fr))` }}
@@ -290,6 +319,8 @@ function FdpFrame({
                   quarter: ctx.quarter,
                   signatories,
                   note,
+                  office,
+                  certification,
                 })
               }
             >
@@ -324,10 +355,45 @@ function FdpFrame({
 // Form 6 - Trust Fund Utilization
 // ---------------------------------------------------------------------------
 
-function Form6({ ctx }: { ctx: Ctx }) {
+/**
+ * Patch 164 - every FDP form is cut at the end of the quarter. A Trust Fund
+ * programme's running utilised and disbursed figures, less what the Trust
+ * Fund's FURS and vouchers dated after the quarter added to them (this year's
+ * and next year's, so a past year can be reported later).
+ */
+function useTrustAsOf(ctx: Ctx) {
+  const asOf = quarterRange(ctx.year, ctx.quarter).to;
   const programs = useTrustPrograms();
+  const obl = useObligations(ctx.year, 'TF');
+  const oblNext = useObligations(ctx.year + 1, 'TF');
+  const dvs = useDisbursementVouchers(ctx.year, 'TF');
+  const dvsNext = useDisbursementVouchers(ctx.year + 1, 'TF');
+  const figures = useMemo(
+    () =>
+      trustFiguresAsOf(
+        programs.data,
+        [...obl.data, ...oblNext.data] as unknown as ObligationLike[],
+        [...dvs.data, ...dvsNext.data],
+        asOf,
+      ),
+    [programs.data, obl.data, oblNext.data, dvs.data, dvsNext.data, asOf],
+  );
+  return {
+    programs: programs.data,
+    figures,
+    asOf,
+    loading: programs.loading || obl.loading || oblNext.loading || dvs.loading || dvsNext.loading,
+  };
+}
+
+function Form6({ ctx }: { ctx: Ctx }) {
+  const trust = useTrustAsOf(ctx);
+  const programs = { loading: trust.loading };
   const signatories = useSignatories(true);
-  const rows = useMemo(() => buildForm6(programs.data, ctx.year), [programs.data, ctx.year]);
+  const rows = useMemo(
+    () => buildForm6(trust.programs, ctx.year, trust.figures),
+    [trust.programs, trust.figures, ctx.year],
+  );
   const inferred = rows.filter((r) => r.inferred);
   const totalCost = rows.reduce((t, r) => t + r.totalCost, 0);
   const incurred = rows.reduce((t, r) => t + r.costIncurred, 0);
@@ -462,16 +528,191 @@ function Form6({ ctx }: { ctx: Ctx }) {
 }
 
 // ---------------------------------------------------------------------------
+// Form 6b - Local Government Support Fund (patch 164)
+// ---------------------------------------------------------------------------
+
+const F6B_HEAD = [
+  'Fund Source',
+  'Date of Notice of Authority to Debit Account Issued',
+  'Type of Program/Project',
+  'Name Title of Program/Project',
+  'Specific Location',
+  'Mechanism/Mode of Implementation',
+  'Estimated Number of Beneficiaries',
+  'Received',
+  'Obligation',
+  'Disbursement',
+  'Estimated Completion (Month and Year)',
+  'Remarks on Program/Project Status',
+];
+
+function Form6bView({ ctx }: { ctx: Ctx }) {
+  const trust = useTrustAsOf(ctx);
+  const entity = useEntity();
+  const rows = useMemo(
+    () => buildForm6b(trust.programs, ctx.year, trust.figures),
+    [trust.programs, trust.figures, ctx.year],
+  );
+  const total = (k: 'received' | 'obligation' | 'disbursement') =>
+    rows.reduce((t, r) => t + r[k], 0);
+
+  /* Certified correct by the Local Finance Committee; attested by the Mayor. */
+  const signatories: Signatory[] = [
+    {
+      label: 'Certified Correct by: The Local Finance Committee',
+      name: entity.budgetOfficer.name,
+      position: 'Municipal Budget Officer',
+    },
+    { name: entity.localTreasurer.name, position: 'Municipal Treasurer' },
+    {
+      name: entity.planningCoordinator.name,
+      position: 'Municipal Planning and Development Coordinator',
+    },
+    { label: 'Attested by:', name: entity.municipalMayor.name, position: 'Local Chief Executive' },
+  ];
+
+  const head: XCell[][] = [['', '', '', '', '', '', '', 'Amount', '', '', '', ''], F6B_HEAD];
+  const body: XCell[][] = rows.map((r) => [
+    r.fundSource,
+    mdy(r.nadaiDate),
+    r.projectType,
+    r.title,
+    r.location,
+    r.mechanism,
+    r.beneficiaries,
+    px(r.received),
+    px(r.obligation),
+    px(r.disbursement),
+    r.estimatedCompletion,
+    r.remarks,
+  ]);
+  body.push([
+    'TOTAL',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    px(total('received')),
+    px(total('obligation')),
+    px(total('disbursement')),
+    '',
+    '',
+  ]);
+
+  return (
+    <FdpFrame
+      ctx={ctx}
+      form="FDP Form 6b - TFU"
+      title="Local Government Support Fund (Report on Fund Utilization and Status of Program/Project Implementation)"
+      orientation="landscape"
+      signatories={signatories}
+      office={entity.headingLines[1]}
+      certification={false}
+      loading={trust.loading}
+      excel={{
+        head,
+        body,
+        moneyColumns: [7, 8, 9],
+        widths: [20, 14, 18, 40, 18, 18, 12, 15, 15, 15, 14, 26],
+      }}
+      warnings={
+        <Alert tone="info" className="mb-3 no-print">
+          The Trust Fund programmes ticked &ldquo;Local Government Support Fund (LGSF)&rdquo; on
+          Trust Accounts &gt; Trust Fund Programmes. Received is the amount released under the
+          NADAI; Obligation and Disbursement are as at {formatShortDate(trust.asOf)}.
+        </Alert>
+      }
+    >
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>
+            {F6B_HEAD.slice(0, 7).map((h) => (
+              <th key={h} className={TH} rowSpan={2}>
+                {h}
+              </th>
+            ))}
+            <th className={TH} colSpan={3}>
+              Amount
+            </th>
+            {F6B_HEAD.slice(10).map((h) => (
+              <th key={h} className={TH} rowSpan={2}>
+                {h}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            {F6B_HEAD.slice(7, 10).map((h) => (
+              <th key={h} className={TH}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td className={TD} colSpan={12}>
+                No Trust Fund programme is tagged LGSF.
+              </td>
+            </tr>
+          )}
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td className={TD}>{r.fundSource}</td>
+              <td className={TD}>{mdy(r.nadaiDate)}</td>
+              <td className={TD}>{r.projectType}</td>
+              <td className={TD}>{r.title}</td>
+              <td className={TD}>{r.location}</td>
+              <td className={TD}>{r.mechanism}</td>
+              <td className={`${TD} text-right`}>{r.beneficiaries}</td>
+              <td className={NUM}>{fig(r.received)}</td>
+              <td className={NUM}>{fig(r.obligation)}</td>
+              <td className={NUM}>{fig(r.disbursement)}</td>
+              <td className={TD}>{r.estimatedCompletion}</td>
+              <td className={TD}>{r.remarks}</td>
+            </tr>
+          ))}
+          <tr className="font-semibold">
+            <td className={TD} colSpan={7}>
+              TOTAL
+            </td>
+            <td className={NUM}>{fig(total('received'))}</td>
+            <td className={NUM}>{fig(total('obligation'))}</td>
+            <td className={NUM}>{fig(total('disbursement'))}</td>
+            <td className={TD} colSpan={2} />
+          </tr>
+        </tbody>
+      </table>
+    </FdpFrame>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Form 8 - LDRRMF Utilization
 // ---------------------------------------------------------------------------
 
 function Form8View({ ctx }: { ctx: Ctx }) {
-  const balances = useBudgetBalances(ctx.year, 'GF');
-  const programs = useTrustPrograms();
+  const appropriations = useAppropriations(ctx.year, 'GF');
+  const obligations = useObligations(ctx.year, 'GF');
+  const trust = useTrustAsOf(ctx);
+  const balances = { loading: appropriations.loading || obligations.loading };
+  const programs = { loading: trust.loading };
   const signatories = useSignatories().filter((s) => s.position === 'Chief Accountant');
   const f = useMemo(
-    () => buildForm8({ balances: balances.data, trustPrograms: programs.data, year: ctx.year }),
-    [balances.data, programs.data, ctx.year],
+    () =>
+      buildForm8({
+        balances: budgetLinesAsOf(
+          appropriations.data,
+          obligations.data as unknown as ObligationLike[],
+          trust.asOf,
+        ),
+        trustPrograms: trust.programs,
+        trustAsOf: trust.figures,
+        year: ctx.year,
+      }),
+    [appropriations.data, obligations.data, trust.programs, trust.figures, trust.asOf, ctx.year],
   );
 
   type Row = {
@@ -551,8 +792,7 @@ function Form8View({ ctx }: { ctx: Ctx }) {
         <Alert tone="info" className="mb-3 no-print">
           The General Fund lines of sector LDRRMF (a line naming the Quick Response Fund or QRF goes
           in the 30% column) and the Trust Fund programmes whose source is the unexpended LDRRMF.
-          Utilization is what has been obligated; the figures are the budget&rsquo;s current
-          balances.
+          Utilization is what has been obligated. Everything is as at the end of the quarter.
         </Alert>
       }
     >
@@ -635,6 +875,7 @@ function useFundCashFlows(year: number, fundCode: string, quarter: Quarter) {
     return {
       current: make(through),
       previous: quarter > 1 ? make(through - 3) : null,
+      entries: ledger.data,
       loading: ledger.loading || prior.loading,
     };
   }, [ledger.data, ledger.loading, prior.data, prior.loading, through, quarter, fundCode]);
@@ -751,7 +992,7 @@ function Form9View({ ctx }: { ctx: Ctx }) {
 
 function Form11View({ ctx }: { ctx: Ctx }) {
   const sef = useFundCashFlows(ctx.year, 'SEF', ctx.quarter);
-  const dvs = useDisbursementVouchers(ctx.year, 'SEF');
+  const dvs = { loading: false };
   const signatories = useSignatories();
   const quarterOnly = !ctx.ytd;
   const range = quarterRange(ctx.year, ctx.quarter);
@@ -762,12 +1003,19 @@ function Form11View({ ctx }: { ctx: Ctx }) {
       (s?.blocks ?? []).reduce((t, b) => t + b.totalIn, 0);
     const receipts =
       inflows(sef.current) - (quarterOnly && sef.previous ? inflows(sef.previous) : 0);
-    const paid = dvs.data.filter(
-      (d) =>
-        (d.status === 'PAID' || d.status === 'CLOSED') && d.dvDate >= from && d.dvDate <= range.to,
+    /*
+     * Patch 164: the disbursements as the LEDGER dates them - the entries of
+     * the SEF's vouchers, payrolls and liquidations posted in the period,
+     * their debits to expense and asset accounts.
+     */
+    const lines = sef.entries.filter(
+      (e) =>
+        DISBURSING_SOURCES.has(String(e.sourceType ?? '')) &&
+        e.entryDate >= from &&
+        e.entryDate <= range.to,
     );
-    return buildForm11({ receipts, vouchers: paid.map((d) => ({ lines: d.accountLines ?? [] })) });
-  }, [sef, dvs.data, quarterOnly, from, range.to]);
+    return buildForm11({ receipts, vouchers: [{ lines }] });
+  }, [sef, quarterOnly, from, range.to]);
 
   type Row = { label: string; level: number; amount?: number; bold?: boolean };
   const rows: Row[] = [{ label: 'Receipt from SEF', level: 0, amount: f.receipts, bold: true }];
@@ -802,9 +1050,10 @@ function Form11View({ ctx }: { ctx: Ctx }) {
       }}
       warnings={
         <Alert tone="info" className="mb-3 no-print">
-          Receipts are the SEF&rsquo;s cash inflows per the ledger; disbursements are the SEF
-          vouchers paid from {formatShortDate(from)} to {formatShortDate(range.to)}, by the expense
-          and asset accounts they charge.
+          Receipts are the SEF&rsquo;s cash inflows per the ledger; disbursements are the ledger
+          entries of the SEF&rsquo;s vouchers, payrolls and liquidations dated from{' '}
+          {formatShortDate(from)} to {formatShortDate(range.to)}, by the expense and asset accounts
+          they charge.
         </Alert>
       }
     >
@@ -838,11 +1087,12 @@ function Form11View({ ctx }: { ctx: Ctx }) {
 // ---------------------------------------------------------------------------
 
 function Form12View({ ctx }: { ctx: Ctx }) {
-  const gf = useAdvances(ctx.year, 'GF');
-  const sef = useAdvances(ctx.year, 'SEF');
-  const tf = useAdvances(ctx.year, 'TF');
-  const signatories = useSignatories();
+  // Patch 164: the register as at the quarter's end, not as it stands today.
   const asOf = quarterRange(ctx.year, ctx.quarter).to;
+  const gf = useAdvances(ctx.year, 'GF', true, asOf);
+  const sef = useAdvances(ctx.year, 'SEF', true, asOf);
+  const tf = useAdvances(ctx.year, 'TF', true, asOf);
+  const signatories = useSignatories();
   const f = useMemo(
     () => buildForm12([...gf.data, ...sef.data, ...tf.data], asOf),
     [gf.data, sef.data, tf.data, asOf],
@@ -889,8 +1139,8 @@ function Form12View({ ctx }: { ctx: Ctx }) {
       }}
       warnings={
         <Alert tone="info" className="mb-3 no-print">
-          The advances of the General Fund, the SEF and the Trust Fund still outstanding, as the
-          Cash Advance Summary shows them, aged from the date granted to {formatShortDate(asOf)}.
+          The advances of the General Fund, the SEF and the Trust Fund outstanding on{' '}
+          {formatShortDate(asOf)} (entries after it left out), aged from the date granted.
         </Alert>
       }
     >

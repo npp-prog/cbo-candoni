@@ -13,7 +13,17 @@ import type { CashAdvance } from '@/types/accounting';
  * (src/lib/advances.ts). Any record in the old `cashAdvances` collection is
  * included as well, so nothing that was there disappears.
  */
-export function useAdvances(fiscalYear: number, fundCode: string, outstandingOnly = true) {
+export function useAdvances(
+  fiscalYear: number,
+  fundCode: string,
+  outstandingOnly = true,
+  /**
+   * Patch 164: the register as it stood on this date - only the ledger lines
+   * entered by then, so a liquidation booked afterwards still shows the
+   * advance outstanding (FDP Form 12, cut at the quarter's end).
+   */
+  asOf?: string,
+) {
   const ledger = useLedgerEntries(fiscalYear, fundCode);
   const accounts = useAccounts(false);
   const legacy = useCashAdvances(fiscalYear, outstandingOnly);
@@ -29,29 +39,31 @@ export function useAdvances(fiscalYear: number, fundCode: string, outstandingOnl
   const register = useMemo(
     () =>
       buildAdvanceRegister(
-        ledger.data.map((e) => ({
-          id: e.id,
-          fiscalYear: e.fiscalYear,
-          fundCode: e.fundCode,
-          entryDate: e.entryDate,
-          agingDate: e.agingDate ?? null,
-          jevNo: e.jevNo,
-          jevId: e.jevId ?? null,
-          referenceNo: e.referenceNo ?? null,
-          accountCode: e.accountCode,
-          accountName: e.accountName,
-          debit: e.debit,
-          credit: e.credit,
-          subsidiaryType: e.subsidiaryType ?? null,
-          subsidiaryId: e.subsidiaryId ?? null,
-          subsidiaryName: e.subsidiaryName ?? null,
-          officeId: e.officeId ?? null,
-          officeName: e.officeName ?? null,
-          particulars: e.particulars ?? null,
-        })),
+        ledger.data
+          .filter((e) => !asOf || e.entryDate <= asOf)
+          .map((e) => ({
+            id: e.id,
+            fiscalYear: e.fiscalYear,
+            fundCode: e.fundCode,
+            entryDate: e.entryDate,
+            agingDate: e.agingDate ?? null,
+            jevNo: e.jevNo,
+            jevId: e.jevId ?? null,
+            referenceNo: e.referenceNo ?? null,
+            accountCode: e.accountCode,
+            accountName: e.accountName,
+            debit: e.debit,
+            credit: e.credit,
+            subsidiaryType: e.subsidiaryType ?? null,
+            subsidiaryId: e.subsidiaryId ?? null,
+            subsidiaryName: e.subsidiaryName ?? null,
+            officeId: e.officeId ?? null,
+            officeName: e.officeName ?? null,
+            particulars: e.particulars ?? null,
+          })),
         isAdvance,
       ),
-    [ledger.data, isAdvance],
+    [ledger.data, isAdvance, asOf],
   );
 
   const data = useMemo<CashAdvance[]>(() => {
@@ -87,7 +99,12 @@ export function useAdvances(fiscalYear: number, fundCode: string, outstandingOnl
         jevNo: a.jevNo,
         source: 'LEDGER',
       }));
-    return [...legacy.data.filter((c) => c.fundCode === fundCode), ...fromLedger];
+    return [
+      ...legacy.data.filter(
+        (c) => c.fundCode === fundCode && (!asOf || !c.dateGranted || c.dateGranted <= asOf),
+      ),
+      ...fromLedger,
+    ];
   }, [register.advances, legacy.data, outstandingOnly, fundCode]);
 
   return {

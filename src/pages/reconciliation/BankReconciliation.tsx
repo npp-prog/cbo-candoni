@@ -188,7 +188,7 @@ export default function BankReconciliation() {
   };
 
   const brsHeader = {
-    entityName: 'Municipal Government of Candoni',
+    entityName: entity.headingLines[1],
     statementDate,
     bankName: bank?.bankName ?? '',
     branch: bank?.branch ?? '',

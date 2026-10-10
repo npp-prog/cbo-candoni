@@ -37,11 +37,11 @@ const TH = 'border border-slate-600 bg-slate-100 px-2 py-1 text-center font-semi
 const TD = 'border border-slate-600 px-2 py-1 align-top';
 const NUM = `${TD} text-right tabular-nums whitespace-nowrap`;
 
-function Heading({ title, brs }: { title: string; brs: Brs }) {
+function Heading({ title, brs, entity }: { title: string; brs: Brs; entity: string }) {
   return (
     <header className="mb-4 text-center">
       <Seal className="mx-auto mb-1 h-20 w-20" />
-      <p className="font-semibold uppercase">Municipal Government of Candoni</p>
+      <p className="font-semibold uppercase">{entity}</p>
       <p className="mt-1 text-sm font-bold uppercase">{title}</p>
       <p>For the Month of {brs.monthLabel}</p>
     </header>
@@ -62,7 +62,7 @@ export function BrsPrintSheet({ brs, header }: { brs: Brs; header: BrsHeader }) 
       <ReportPrintStyle orientation="portrait" />
 
       <div className="cbo-report-sheet cbo-brs-page text-xs text-navy-900">
-        <Heading title="Bank Reconciliation Statement" brs={brs} />
+        <Heading title="Bank Reconciliation Statement" brs={brs} entity={header.entityName} />
 
         <table className="mb-3 w-full">
           <tbody>
@@ -147,7 +147,7 @@ export function BrsPrintSheet({ brs, header }: { brs: Brs; header: BrsHeader }) 
       </div>
 
       <div className="cbo-report-sheet cbo-brs-page text-xs text-navy-900">
-        <Heading title="Schedules of Reconciling Items" brs={brs} />
+        <Heading title="Schedules of Reconciling Items" brs={brs} entity={header.entityName} />
         <p className="mb-3 text-center">
           {header.bankName} - Account No. {header.accountNumber} - {header.fundLabel}
         </p>

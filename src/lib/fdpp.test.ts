@@ -4,7 +4,11 @@ import {
   buildForm11,
   buildForm12,
   buildForm6,
+  buildForm6b,
   buildForm8,
+  budgetLinesAsOf,
+  monthYear,
+  trustFiguresAsOf,
   buildForm9,
   form9KeyFor,
   quarterRange,
@@ -264,5 +268,136 @@ describe('FDPP reports (patch 163)', () => {
     expect(r.rows.map((x) => x.name)).toEqual(['BACUS, JOHN', 'PILAR, ANGELO']);
     expect(r.buckets).toEqual([7_600_00, 0, 0, 0, 0, 2_802_00]);
     expect(r.total).toBe(10_402_00);
+  });
+
+  it('cuts a Trust Fund programme back to the end of the quarter (patch 164)', () => {
+    const p = prog({
+      id: 'p1',
+      programCode: 'TRUST129',
+      programmed: 1000_00,
+      utilised: 900_00,
+      disbursed: 600_00,
+    });
+    const m = trustFiguresAsOf(
+      [p],
+      [
+        {
+          id: 'o1',
+          obrDate: '2025-11-02',
+          status: 'OBLIGATED',
+          lines: [{ amount: 500_00, trustProgramId: 'p1' }],
+        },
+        {
+          id: 'o2',
+          obrDate: '2026-01-15',
+          status: 'PAID',
+          lines: [
+            { amount: 300_00, trustProgramId: 'p1' },
+            { amount: 100_00, trustProgramId: 'p1' },
+          ],
+        },
+        {
+          id: 'o3',
+          obrDate: '2026-02-01',
+          status: 'CANCELLED',
+          lines: [{ amount: 50_00, trustProgramId: 'p1' }],
+        },
+      ],
+      [
+        { dvDate: '2026-01-20', status: 'PAID', obligationId: 'o2', grossAmount: 200_00 },
+        { dvDate: '2025-12-01', status: 'PAID', obligationId: 'o1', grossAmount: 400_00 },
+      ],
+      '2025-12-31',
+    );
+    expect(m.get('p1')).toEqual({ utilised: 500_00, disbursed: 400_00 });
+    const rows = buildForm6([{ ...p, sourceAgency: 'DILG' }], 2025, m);
+    expect(rows[0]).toMatchObject({ costIncurred: 500_00, percentComplete: 50 });
+  });
+
+  it('rebuilds the LDRRMF lines from the documents dated by the quarter end', () => {
+    const appr = (a: Record<string, unknown>) =>
+      ({
+        status: 'APPROVED',
+        officeId: 'm',
+        fppCode: 'F1',
+        accountCode: '',
+        fppName: 'Quick Response Fund',
+        accountName: '',
+        sector: 'LDRRMF',
+        expenseClass: 'MOOE',
+        ...a,
+      }) as never;
+    const lines = budgetLinesAsOf(
+      [
+        appr({ kind: 'ORIGINAL', amount: 300_00, authorityDate: '2024-12-20' }),
+        appr({ kind: 'SUPPLEMENTAL', amount: 100_00, authorityDate: '2025-08-01' }),
+        appr({ kind: 'SUPPLEMENTAL', amount: 999_00, authorityDate: '2025-10-01' }),
+        appr({ kind: 'ORIGINAL', amount: 50_00, status: 'DRAFT' }),
+      ],
+      [
+        {
+          id: 'a',
+          obrDate: '2025-09-10',
+          status: 'OBLIGATED',
+          lines: [{ amount: 120_00, officeId: 'm', fppCode: 'F1', appropriatedAccountCode: '' }],
+        },
+        {
+          id: 'b',
+          obrDate: '2025-10-10',
+          status: 'OBLIGATED',
+          lines: [{ amount: 80_00, officeId: 'm', fppCode: 'F1', appropriatedAccountCode: '' }],
+        },
+        {
+          id: 'c',
+          obrDate: '2025-09-11',
+          status: 'DRAFT',
+          lines: [{ amount: 7_00, officeId: 'm', fppCode: 'F1', appropriatedAccountCode: '' }],
+        },
+      ],
+      '2025-09-30',
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ appropriationRevised: 400_00, obligated: 120_00 });
+    const f = buildForm8({ balances: lines, trustPrograms: [], year: 2025 });
+    expect(f.sources[0]).toMatchObject({ qrf: 400_00 });
+    expect(f.totalUtilization.qrf).toBe(120_00);
+  });
+
+  it('Form 6b reports the programmes tagged LGSF', () => {
+    const rows = buildForm6b(
+      [
+        prog({
+          id: 'l1',
+          programCode: 'TRUST129',
+          programName: 'FMR Caningay',
+          sourceAgency: 'DILG',
+          lgsf: true,
+          lgsfFundSource: 'LGSF-SBDP FY 2025',
+          received: 2_500_000_00,
+          programmed: 2_500_000_00,
+          utilised: 2_380_983_17,
+          disbursed: 1_000_000_00,
+          estimatedCompletion: '2026-03',
+          nadaiDate: '2025-06-27',
+        }),
+        prog({
+          id: 'l2',
+          programCode: 'TRUST124',
+          programName: 'Social pension',
+          sourceAgency: 'DSWD',
+        }),
+      ],
+      2025,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      fundSource: 'LGSF-SBDP FY 2025',
+      received: 2_500_000_00,
+      obligation: 2_380_983_17,
+      disbursement: 1_000_000_00,
+      estimatedCompletion: 'March 2026',
+      remarks: 'On-going',
+    });
+    expect(monthYear('')).toBe('');
   });
 });

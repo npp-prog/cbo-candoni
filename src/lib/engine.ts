@@ -306,6 +306,13 @@ export const engine = {
     extensions?: number | null;
     percentComplete?: number | null;
     statusRemarks?: string | null;
+    lgsf?: boolean | null;
+    lgsfFundSource?: string | null;
+    nadaiDate?: string | null;
+    projectType?: string | null;
+    mechanism?: string | null;
+    beneficiaries?: number | null;
+    estimatedCompletion?: string | null;
   }) =>
     call<
       typeof p,
