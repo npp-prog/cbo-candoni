@@ -11,6 +11,7 @@ import { Letterhead, SignatureLine, blankRows } from '@/components/print/formPar
 import type { JournalEntryVoucher } from '@/types/accounting';
 import { useEntity } from '@/data/useEntity';
 import { fundLabel } from '../budget/Obligations';
+import { usePrintTitle, printFileName } from '@/lib/printTitle';
 
 /**
  * The Journal Entry Voucher as the GAM prints it - Appendix 30.
@@ -72,6 +73,8 @@ export default function JevAppendix30() {
   const { id } = useParams<{ id: string }>();
   const { data: jev, loading } = useDocument<JournalEntryVoucher>(COL.jevs, id);
   const entity = useEntity();
+  // Patch 156: saved to PDF as "Journal Voucher_<JV No.>".
+  usePrintTitle(jev ? printFileName('Journal Voucher', hasJevNumber(jev.jevNo) ? jev.jevNo : 'unnumbered') : null);
 
   const lines = useMemo(() => [...(jev?.lines ?? [])].sort((a, b) => a.lineNo - b.lineNo), [jev]);
 

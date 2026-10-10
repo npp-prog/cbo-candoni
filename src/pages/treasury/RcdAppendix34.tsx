@@ -29,6 +29,7 @@ import { FormPrintStyle, isCertifiedCopy } from '@/components/print/FormPrintSty
 import { FormBackButton } from './FormBackButton';
 import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
+import { usePrintTitle, printFileName } from '@/lib/printTitle';
 
 /**
  * The Report of Collections and Deposits as COA prints it - Appendix 34.
@@ -254,6 +255,9 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   }, [covered]);
 
   const checks = useMemo(() => covered.filter((c) => c.paymentForm === 'CHECK'), [covered]);
+
+  // Patch 156: saved to PDF as "Report of Collections and Deposits_<No.>".
+  usePrintTitle(rcd ? printFileName('Report of Collections and Deposits', rcd.rcdNo) : null);
 
   if (loading) return <Spinner label="Reading the report" />;
 

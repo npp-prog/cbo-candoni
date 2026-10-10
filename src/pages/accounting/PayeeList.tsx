@@ -14,6 +14,7 @@ import {
   type BankFilePayee,
 } from '@/lib/bankFile';
 import type { DisbursementVoucher } from '@/types/accounting';
+import { usePrintTitle, printFileName } from '@/lib/printTitle';
 
 /**
  * The List of Payees of a group ("Payee, et al.") voucher, and the bank's
@@ -166,6 +167,7 @@ export default function DvPayeeListPrint() {
   const { id } = useParams<{ id: string }>();
   const { data: dv, loading } = useDocument<DisbursementVoucher>(COL.disbursementVouchers, id);
   const entity = useEntity();
+  usePrintTitle(dv ? printFileName('List of Payees', dv.dvNo ? `DV ${dv.dvNo}` : '') : null);
 
   if (loading) return <Spinner label="Loading the voucher" />;
   if (!dv) {

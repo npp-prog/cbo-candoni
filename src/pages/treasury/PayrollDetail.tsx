@@ -89,7 +89,9 @@ export default function PayrollDetail() {
     setPayrollNo(existing.payrollNo);
     setPeriodFrom(existing.periodFrom);
     setPeriodTo(existing.periodTo);
-    setEmployeeCount(existing.employeeCount ? String(existing.employeeCount) : '');
+    setEmployeeCount(
+      existing.employeesCovered ?? (existing.employeeCount ? String(existing.employeeCount) : ''),
+    );
     setParticulars(existing.particulars ?? '');
     setNet(existing.totalNet);
     setLoaded(true);
@@ -134,6 +136,10 @@ export default function PayrollDetail() {
       toast.error('Choose the advance', 'Pick the advance for payroll this payroll liquidates.');
       return;
     }
+    if (!particulars.trim()) {
+      toast.error('Particulars are required', 'Say what the payroll is for.');
+      return;
+    }
     if (!payrollNo.trim() || !net || net <= 0) {
       toast.error('Incomplete', 'The payroll number and the net amount paid are required.');
       return;
@@ -159,7 +165,9 @@ export default function PayrollDetail() {
       periodFrom,
       periodTo,
       period: Number(periodTo.slice(5, 7)),
-      employeeCount: employeeCount ? Number(employeeCount) : null,
+      // Patch 156: typed freely - "45 regular employees, Office of the Mayor".
+      employeesCovered: employeeCount.trim() || null,
+      employeeCount: /^\d+$/.test(employeeCount.trim()) ? Number(employeeCount.trim()) : null,
       particulars: particulars.trim() || payrollParticulars(advance?.particulars),
       // Only the net is asked for. Gross equals net and deductions are nil, so
       // the RCDisb (which prints all three) still foots.
@@ -358,9 +366,8 @@ export default function PayrollDetail() {
               <TextInput
                 id="prCount"
                 value={employeeCount}
-                onChange={(e) => setEmployeeCount(e.target.value.replace(/[^0-9]/g, ''))}
-                inputMode="numeric"
-                className="font-mono"
+                onChange={(e) => setEmployeeCount(e.target.value)}
+                placeholder="45 regular employees, Office of the Mayor"
                 disabled={!editable}
               />
             </Field>
@@ -377,6 +384,7 @@ export default function PayrollDetail() {
             </Field>
             <Field
               label="Particulars"
+              required
               htmlFor="prParticulars"
               className="sm:col-span-2"
               hint="Copied from the advance's voucher."

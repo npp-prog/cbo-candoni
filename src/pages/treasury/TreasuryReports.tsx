@@ -498,7 +498,7 @@ function PrepareReport({
         officer: p.disbursingOfficer ?? null,
         particulars:
           p.particulars ??
-          (p.employeeCount ? `${p.employeeCount} employees` : undefined),
+          (p.employeesCovered || (p.employeeCount ? `${p.employeeCount} employees` : undefined)),
         amount: p.totalNet,
         gross: p.totalGross,
         deductions: p.totalDeductions,
@@ -507,6 +507,22 @@ function PrepareReport({
 
   const chosen = available.filter((d) => selected.has(d.id));
   const total = chosen.reduce((s, d) => s + d.amount, 0);
+
+  /*
+   * Patch 156. On an RCDisb the disbursing officer is not chosen: it is the
+   * payee of the advance each payroll liquidates (carried on the payroll as
+   * its disbursing officer). One RCDisb is one officer's report, so payrolls
+   * of two officers cannot be reported together.
+   */
+  const payrollOfficers = useMemo(() => {
+    if (reportType !== 'RCDISB') return [];
+    const m = new Map<string, { type: string; id: string; name: string }>();
+    for (const d of chosen) if (d.officer) m.set(`${d.officer.type}:${d.officer.id}`, d.officer);
+    return [...m.values()];
+  }, [reportType, chosen]);
+  const payrollOfficer = payrollOfficers.length === 1 ? payrollOfficers[0] : null;
+  const effOfficerId = payrollOfficer ? payrollOfficer.id : officerId;
+  const effOfficerName = payrollOfficer ? payrollOfficer.name : officerName;
 
   /**
    * RCDisb only: the payroll figures behind that total, carried onto the report
@@ -602,6 +618,7 @@ function PrepareReport({
        */
       const chosenOfficer =
         officerId && officerName ? { type: 'EMPLOYEE', id: officerId, name: officerName } : null;
+      // (Each payroll's own officer takes precedence; see payrollOfficers.)
 
       /*
        * Patch 155: each payroll names its own disbursing officer - the
@@ -691,14 +708,28 @@ function PrepareReport({
           });
       }
     }
+    /*
+     * Patch 156: e-collections are presented as DEPOSITED. Nobody held the
+     * money - it was credited to the bank account directly - so an eRCD
+     * debits Cash in Bank (that account), not Cash - Local Treasury, and no
+     * deposit slip follows it. The RCD (cash) keeps Cash - Local Treasury.
+     */
+    const ecash = isECollectionReport(reportType)
+      ? bankAccount
+        ? cashInBankLine(bankAccount, accountTitle)
+        : null
+      : null;
+    if (isECollectionReport(reportType) && !ecash) return [];
     return [
-      {
-        accountCode: ACCOUNTS.cashLocalTreasury.code,
-        accountName: ACCOUNTS.cashLocalTreasury.name,
-        debit: total,
-        credit: 0,
-        particulars: `Collections per ${short}`,
-      },
+      ecash
+        ? { ...ecash, debit: total, credit: 0, particulars: `e-Collections credited per ${short}` }
+        : {
+            accountCode: ACCOUNTS.cashLocalTreasury.code,
+            accountName: ACCOUNTS.cashLocalTreasury.name,
+            debit: total,
+            credit: 0,
+            particulars: `Collections per ${short}`,
+          },
       ...[...byAccount.values()].map((a) => ({
         accountCode: a.accountCode,
         accountName: a.accountName,
@@ -726,7 +757,12 @@ function PrepareReport({
     entry.reduce((s, l) => s + l.debit, 0) === total;
 
   const isPayroll = reportType === 'RCDISB';
-  const needsBank = reportType === 'RCI' || reportType === 'RADAI';
+  /*
+   * Patch 156: an eRCD names the bank account too - the e-collections were
+   * credited straight to it, and the entry debits it (see the entry above).
+   */
+  const needsBank =
+    reportType === 'RCI' || reportType === 'RADAI' || isECollectionReport(reportType);
   /*
    * Annex E is certified by the DESIGNATED OFFICER and Annex F by the
    * COLLECTING OFFICER.
@@ -737,6 +773,13 @@ function PrepareReport({
   const save = async () => {
     if (!chosen.length) {
       toast.error('Nothing selected', 'Choose at least one document to report.');
+      return;
+    }
+    if (reportType === 'RCDISB' && payrollOfficers.length > 1) {
+      toast.error(
+        'Payrolls of two disbursing officers',
+        `The payrolls chosen were disbursed by ${payrollOfficers.map((o) => o.name).join(' and ')}. An RCDisb is one disbursing officer's report - prepare one for each.`,
+      );
       return;
     }
     if (!reportNo.trim()) {
@@ -819,8 +862,8 @@ function PrepareReport({
                 bankAccountNumber: bankAccount?.accountNumber ?? '',
               }
             : {}),
-          ...(needsOfficer && officerId
-            ? { accountableOfficerId: officerId, accountableOfficerName: officerName }
+          ...(needsOfficer && effOfficerId
+            ? { accountableOfficerId: effOfficerId, accountableOfficerName: effOfficerName }
             : {}),
           lines,
           totalAmount: total,
@@ -888,7 +931,11 @@ function PrepareReport({
           <Field
             label="Bank account"
             required
-            hint="The account the payments were drawn on. Its General Ledger account is what the entry credits."
+            hint={
+              isECollectionReport(reportType)
+                ? 'The account the e-collections were credited to. Its General Ledger account is what the entry debits.'
+                : 'The account the payments were drawn on. Its General Ledger account is what the entry credits.'
+            }
           >
             <BankAccountPicker
               value={bankAccountId}
@@ -912,13 +959,22 @@ function PrepareReport({
             }
             hint="The accountable officer this report belongs to, and who certifies it."
           >
-            <EmployeePicker
-              value={officerId}
-              onChange={(id, employee) => {
-                setOfficerId(id);
-                setOfficerName(employee?.name ?? '');
-              }}
-            />
+            {reportType === 'RCDISB' && payrollOfficers.length > 0 ? (
+              /* Patch 156: the payee of the advance the payrolls liquidate. */
+              <p className="py-2 text-sm font-medium text-navy-900">
+                {payrollOfficer
+                  ? payrollOfficer.name
+                  : `Two officers chosen: ${payrollOfficers.map((o) => o.name).join(', ')}`}
+              </p>
+            ) : (
+              <EmployeePicker
+                value={officerId}
+                onChange={(id, employee) => {
+                  setOfficerId(id);
+                  setOfficerName(employee?.name ?? '');
+                }}
+              />
+            )}
           </Field>
         )}
       </div>
@@ -934,7 +990,7 @@ function PrepareReport({
           </span>
         </div>
 
-        {needsBank && !bankAccountId ? (
+        {(reportType === 'RCI' || reportType === 'RADAI') && !bankAccountId ? (
           <Alert tone="info">Choose a bank account to see the documents drawn on it.</Alert>
         ) : available.length === 0 ? (
           <Alert tone="info">

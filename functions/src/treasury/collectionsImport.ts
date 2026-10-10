@@ -84,7 +84,19 @@ export const importCollections = onCall(
       fundCode?: string;
       fileName?: string;
       receipts?: unknown;
+      /**
+       * Patch 156: the bulk upload of e-COLLECTIONS. Set, every receipt in
+       * the file is an electronic one of this kind - an eOR, or an
+       * intermediary's AR - recorded as the e-Collections screen records one.
+       * Absent, the file is cash collections, as before.
+       */
+      eCollectionKind?: string;
     };
+
+    const kind = data.eCollectionKind ? String(data.eCollectionKind).trim().toUpperCase() : null;
+    if (kind && kind !== 'EOR' && kind !== 'AR') {
+      throw invalid(`"${data.eCollectionKind}" is not a kind of e-collection. Use EOR or AR.`);
+    }
 
     const fiscalYear = Number(data.fiscalYear);
     if (!Number.isInteger(fiscalYear)) throw invalid('A fiscal year is required.');
@@ -177,7 +189,8 @@ export const importCollections = onCall(
         add('no O.R. number');
         continue;
       }
-      if (!reportRef) {
+      // Patch 156: an e-collection file need not carry a report reference.
+      if (!reportRef && !kind) {
         add('no report reference');
         continue;
       }
@@ -294,7 +307,9 @@ export const importCollections = onCall(
         );
       }
 
-      const docId = (r: Ready) => `${fundCode}__${r.reportRef}__${r.orNumber}`;
+      // Patch 156: e-collections are keyed by their kind and number.
+      const docId = (r: Ready) =>
+        kind ? `${fundCode}__${kind}__${r.orNumber}` : `${fundCode}__${r.reportRef}__${r.orNumber}`;
 
       const existing = await Promise.all(
         ready.map((r) => tx.get(db.collection(COL.collections).doc(docId(r)))),
@@ -342,11 +357,12 @@ export const importCollections = onCall(
           payorName: r.payor,
           lines: r.lines,
           totalAmount: r.totalAmount,
-          paymentForm: 'CASH',
+          paymentForm: kind ? 'ONLINE' : 'CASH',
+          ...(kind ? { eCollectionKind: kind, accountableFormId: null } : {}),
           // The abstract groups receipts by its own report reference. Keeping
           // it is what will let the RCD be built from the same file later
           // without anybody having to say which receipts belong together.
-          abstractReportRef: r.reportRef,
+          abstractReportRef: r.reportRef || null,
           importFileName: data.fileName ?? null,
           status: r.cancelled ? 'CANCELLED' : 'ISSUED',
           cancelledReason: r.cancelled ? r.remarks || 'Cancelled per Abstract of Collections' : null,
@@ -363,7 +379,7 @@ export const importCollections = onCall(
         event: 'UPLOAD',
         entityType: COL.collections,
         entityId: `${fundCode}__${ready[0]?.reportRef ?? 'abstract'}`,
-        entityRef: `Abstract of Collections${data.fileName ? ` - ${data.fileName}` : ''}`,
+        entityRef: `${kind ? `e-Collections (${kind})` : 'Abstract of Collections'}${data.fileName ? ` - ${data.fileName}` : ''}`,
         fiscalYear,
         fundCode,
         action: 'CREATE',

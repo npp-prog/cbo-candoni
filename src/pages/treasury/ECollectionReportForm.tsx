@@ -9,10 +9,11 @@ import { hasDocumentNumber } from '@/lib/jevNumbers';
 import { Letterhead, blankRows } from '@/components/print/formParts';
 import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { FormBackButton } from './FormBackButton';
-import { TREASURY_REPORT_SHORT } from '@/types/enums';
+import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
 import type { ECollectionReportType } from '@/types/enums';
 import type { Collection, TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
+import { usePrintTitle, printFileName } from '@/lib/printTitle';
 
 /**
  * Annexes E and F of COA Circular 2021-014, as the circular prints them.
@@ -113,6 +114,10 @@ const BLANK_ROWS = 12;
 export default function ECollectionReportForm({ report }: { report: TreasuryReport }) {
   const entity = useEntity();
   const spec = ANNEXES[report.reportType as ECollectionReportType];
+  // Patch 156: the PDF file name.
+  usePrintTitle(
+    printFileName(TREASURY_REPORT_LABELS[report.reportType] ?? 'e-Collection Report', report.reportNo ?? 'draft'),
+  );
 
   /*
    * The receipts themselves, for everything the report line does not carry:
@@ -192,42 +197,22 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
    *                     report.
    *   THIS REPORT       what is left of this report's collections.
    */
+  /*
+   * Patch 156: e-collections are presented as DEPOSITED. The money was
+   * credited straight to the bank account, so nothing is brought forward,
+   * the deposit is the whole of this report's collections, and nothing is
+   * left undeposited.
+   */
   const summary = useMemo(() => {
     if (!spec.withSummary) return null;
-
-    const kind = report.reportType === 'ERCD_AR' ? 'AR' : 'EOR';
-    const onThisReport = new Set((report.lines ?? []).map((l) => l.sourceId));
-
-    const broughtForward = collections.data
-      .filter((c) => c.eCollectionKind === kind)
-      .filter((c) => c.status !== 'CANCELLED')
-      .filter((c) => !onThisReport.has(c.id))
-      // Certified on an earlier report: an uncertified one is nobody's
-      // outstanding balance yet.
-      .filter((c) => !!c.treasuryReportId)
-      .filter((c) => (c.treasuryReportNo ?? '') < (report.reportNo ?? '￿'))
-      .filter((c) => !c.depositId)
-      .reduce((s, c) => s + c.totalAmount, 0);
-
-    const depositIds = new Set(
-      rows
-        .map(({ collection }) => collection?.depositId)
-        .filter((d): d is string => !!d),
-    );
-    const theDeposits = deposits.data.filter((d) => depositIds.has(d.id));
-    const deposited = rows
-      .filter(({ line }) => !line.excluded)
-      .filter(({ collection }) => !!collection?.depositId)
-      .reduce((s, { line }) => s + line.amount, 0);
-
     return {
-      broughtForward,
+      broughtForward: 0,
       collected: total,
-      deposits: theDeposits,
-      deposited,
-      carriedForward: broughtForward + total - deposited,
+      deposits: [] as typeof deposits.data,
+      deposited: total,
+      carriedForward: 0,
     };
-  }, [spec.withSummary, report, collections.data, deposits.data, rows, total]);
+  }, [spec.withSummary, total, deposits.data]);
 
   const intermediaryName =
     rows.find(({ collection }) => collection?.intermediaryName)?.collection?.intermediaryName ?? '';
@@ -516,11 +501,19 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
                 </tr>
                 {summary.deposits.length === 0 ? (
                   <tr>
-                    <td className="py-0.5 pl-6 text-slate-500">
-                      Date: ____________ Ref # ____________
-                      {report.reportType === 'ERCD_EOR' && ' Bank Account Number: ____________'}
+                    <td className="py-0.5 pl-6">
+                      Date: {formatShortDate(report.reportDate)} - credited directly to the bank
+                      {report.bankAccountNumber ? (
+                        <>
+                          {' '}
+                          Bank Account Number:{' '}
+                          <span className="font-mono">{report.bankAccountNumber}</span>
+                        </>
+                      ) : null}
                     </td>
-                    <td className="py-0.5 text-right tabular-nums">{formatAmount(0, false)}</td>
+                    <td className="py-0.5 text-right tabular-nums">
+                      {formatAmount(summary.deposited, false)}
+                    </td>
                   </tr>
                 ) : (
                   summary.deposits.map((d) => (
@@ -553,8 +546,8 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
               </tbody>
             </table>
             <p className="mt-1 text-[9px] italic text-slate-500">
-              Worked out from the receipts and the deposits recorded against them, not carried
-              forward by hand.
+              e-Collections are credited directly to the bank account and are presented as
+              deposited.
             </p>
           </div>
         )}

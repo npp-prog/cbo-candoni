@@ -3,6 +3,7 @@ import { Seal } from '@/components/ui/Seal';
 import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { formatAmount } from '@/lib/money';
 import type { Form2Group, Form2Office, Form2Row, Form2Sheet } from './lbpForm2';
+import { printAs, printFileName } from '@/lib/printTitle';
 
 /**
  * LBP Form No. 2 on paper, one page per office. Patch 119.
@@ -21,7 +22,11 @@ export function usePrintForm2(sheet: Form2Sheet | null, clear: () => void) {
   useEffect(() => {
     if (!sheet) return;
     window.addEventListener('afterprint', clear);
-    const timer = window.setTimeout(() => window.print(), 80);
+    // Patch 156: saved to PDF under the form's name and reference.
+    const timer = window.setTimeout(
+      () => printAs(printFileName('LBP Form No. 2', sheet.reference)),
+      80,
+    );
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', clear);

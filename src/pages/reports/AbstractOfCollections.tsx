@@ -77,7 +77,16 @@ export default function AbstractOfCollections({
   const { fiscalYear, fundCode } = useFilters();
   const { data: all, loading } = useCollections(fiscalYear, fundCode);
   const collections = useMemo(
-    () => (scope === 'ELECTRONIC' ? all.filter((c) => !!c.eCollectionKind) : all),
+    /*
+     * Patch 156: the General abstract is the CASH receipts only; the
+     * e-collections have their own abstract (General e-Collections), where
+     * they are presented as deposited - the money was credited straight to
+     * the bank account.
+     */
+    () =>
+      scope === 'ELECTRONIC'
+        ? all.filter((c) => !!c.eCollectionKind)
+        : all.filter((c) => !c.eCollectionKind),
     [all, scope],
   );
   const { data: formTypes } = useAccountableFormTypes();
@@ -199,7 +208,7 @@ export default function AbstractOfCollections({
     <ReportShell
       meta={{
         title:
-          scope === 'ELECTRONIC' ? 'Abstract of e-Collections' : 'Abstract of General Collection',
+          scope === 'ELECTRONIC' ? 'Abstract of General e-Collections' : 'Abstract of General Collection',
         fundLabel: fundLabel(fundCode),
         periodLabel: `For the period ${formatShortDate(from)} to ${formatShortDate(to)}`,
         preparedBy: 'Municipal Treasurer’s Office',
@@ -207,7 +216,10 @@ export default function AbstractOfCollections({
       }}
       breadcrumbs={[
         ...COLLECTION_CRUMBS,
-        { label: scope === 'ELECTRONIC' ? 'Abstract of e-Collections' : 'Abstract of Collections' },
+        {
+          label:
+            scope === 'ELECTRONIC' ? 'Abstract of General e-Collections' : 'Abstract of Collections',
+        },
       ]}
       tabs={<GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />}
       filters={
@@ -232,6 +244,18 @@ export default function AbstractOfCollections({
       }
       footnote={
         <div className="space-y-1.5">
+          {scope === 'ELECTRONIC' && reportable.length > 0 && (
+            <p className="font-semibold text-navy-900">
+              Deposited: {formatAmount(grandTotal)} - every e-collection is credited directly to the
+              municipality&apos;s bank account and is presented as deposited.
+            </p>
+          )}
+          {scope !== 'ELECTRONIC' && (
+            <p>
+              e-Collections are not in this abstract; they are in the Abstract of General
+              e-Collections.
+            </p>
+          )}
           {cashTickets.length > 0 && (
             <p>
               {cashTickets.length} cash-ticket receipt

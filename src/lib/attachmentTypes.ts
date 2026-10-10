@@ -72,7 +72,8 @@ export function attachmentTypesFor(
         case 'RADAI':
           return ['RADAI'];
         case 'RCDISB':
-          return ['RCDISB'];
+          // Patch 156: the payrolls it reports, and the RCDisb itself.
+          return ['PAYROLL', 'RCDISB'];
         /*
          * Both COA Circular 2021-014 reports take the same pair, and the
          * circular asks for both by name.

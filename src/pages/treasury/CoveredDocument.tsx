@@ -185,7 +185,8 @@ function PayrollDetail({ payroll, onClose }: { payroll: Payroll; onClose: () => 
           {payroll.obrNo ?? '-'}
         </DetailField>
         <DetailField label="Employees">
-          {payroll.employeeCount != null ? String(payroll.employeeCount) : '-'}
+          {payroll.employeesCovered ||
+            (payroll.employeeCount != null ? String(payroll.employeeCount) : '-')}
         </DetailField>
       </div>
 

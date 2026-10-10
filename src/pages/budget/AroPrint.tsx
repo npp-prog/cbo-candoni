@@ -7,6 +7,7 @@ import { formatLongDate } from '@/lib/dates';
 import { EXPENSE_CLASS_LABELS, type ExpenseClass } from '@/types/enums';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from './Obligations';
+import { printAs, printFileName } from '@/lib/printTitle';
 
 /**
  * The Allotment Release Order on paper - issued, or only prepared.
@@ -76,7 +77,11 @@ export function usePrintSheet(sheet: AroSheet | null, clear: () => void) {
   useEffect(() => {
     if (!sheet) return;
     window.addEventListener('afterprint', clear);
-    const timer = window.setTimeout(() => window.print(), 80);
+    // Patch 156: saved to PDF under the form's name and number.
+    const timer = window.setTimeout(
+      () => printAs(printFileName('Allotment Release Order', sheet.aroNo ?? 'prepared')),
+      80,
+    );
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', clear);

@@ -706,6 +706,8 @@ export const engine = {
     fiscalYear: number;
     fundCode: string;
     fileName?: string;
+    /** Patch 156: an e-collection file - every receipt of this kind. */
+    eCollectionKind?: 'EOR' | 'AR';
     receipts: Array<{
       lineNo: number;
       date: IsoDate;

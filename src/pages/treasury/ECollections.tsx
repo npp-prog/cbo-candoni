@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
@@ -156,7 +157,14 @@ export default function ECollections() {
       header: 'Status',
       width: '7rem',
       value: (c) => c.status,
-      cell: (c) => <StatusBadge status={c.status} />,
+      // Patch 156: an e-collection is presented as deposited - it was
+      // credited straight to the bank account.
+      cell: (c) =>
+        c.status === 'CANCELLED' ? (
+          <StatusBadge status={c.status} />
+        ) : (
+          <StatusBadge status="DEPOSITED" label="Deposited" />
+        ),
     },
   ];
 
@@ -168,35 +176,20 @@ export default function ECollections() {
         breadcrumbs={COLLECTION_CRUMBS}
         actions={
           can('treasury', 'create') && (
-            <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
-              Record an e-collection
-            </Button>
+            <>
+              {/* Patch 156: bulk upload of e-collections. */}
+              <Link to={`/treasury/collections/upload?kind=${kindFilter || 'EOR'}`}>
+                <Button size="sm">Bulk upload</Button>
+              </Link>
+              <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
+                Record an e-collection
+              </Button>
+            </>
           )
         }
       />
 
       <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
-
-      {/*
-       * The three kinds, with one line each saying when to use which. It is on
-       * the register rather than buried in the form because choosing the wrong
-       * one puts the collection on the wrong COA report, and the person who
-       * notices is the auditor.
-       */}
-      <div className="mb-4 grid gap-2 sm:grid-cols-3">
-        {E_COLLECTION_KINDS.map((k) => (
-          <button
-            key={k.kind}
-            onClick={() => setKindFilter((f) => (f === k.kind ? '' : k.kind))}
-            className={`cbo-card rounded-lg border p-3 text-left ${
-              kindFilter === k.kind ? 'border-navy-500 bg-navy-50' : 'border-slate-200'
-            }`}
-          >
-            <p className="text-xs font-semibold text-navy-900">{k.label}</p>
-            <p className="mt-1 text-xs leading-snug text-slate-600">{k.when}</p>
-          </button>
-        ))}
-      </div>
 
       <div className="mb-3 flex flex-wrap gap-6 text-sm">
         <span className="text-slate-600">
@@ -206,11 +199,7 @@ export default function ECollections() {
           Not yet on a report:{' '}
           <span className="cbo-amount font-semibold text-amber-700">{formatPeso(unreported)}</span>
         </span>
-        {kindFilter && (
-          <button className="text-xs text-navy-600 underline" onClick={() => setKindFilter('')}>
-            Showing {eCollectionKind(kindFilter)?.label} only - show all
-          </button>
-        )}
+
       </div>
 
       <DataTable
@@ -221,6 +210,26 @@ export default function ECollections() {
         loading={loading}
         error={error}
         searchPlaceholder="Receipt number, payor or intermediary"
+        /*
+          Patch 156: eOR / AR as a dropdown beside the table's own buttons,
+          not as two cards above it. The choice of kind - and what each means -
+          is made in the form when a receipt is recorded.
+        */
+        filters={
+          <Select
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            className="w-auto py-1.5 text-sm"
+            aria-label="Kind of e-collection"
+          >
+            <option value="">eOR and AR</option>
+            {E_COLLECTION_KINDS.map((k) => (
+              <option key={k.kind} value={k.kind} title={k.when}>
+                {k.label}
+              </option>
+            ))}
+          </Select>
+        }
         emptyTitle="No e-collections recorded"
         emptyMessage="Record each electronic receipt as the intermediary's list or the proof of deposit comes in."
         exportMeta={{
@@ -398,6 +407,11 @@ function ECollectionForm({
 
     const chosen = intermediaries.data.find((i) => i.id === intermediaryId);
 
+    // Patch 156: particulars are required on every entry.
+    if (!particulars.trim()) {
+      toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -571,7 +585,7 @@ function ECollectionForm({
           <TextInput id="payorTin" value={payorTin} onChange={(e) => setPayorTin(e.target.value)} />
         </Field>
 
-        <Field label="Particulars" htmlFor="particulars" className="sm:col-span-3">
+        <Field label="Particulars" required htmlFor="particulars" className="sm:col-span-3">
           <TextInput
             id="particulars"
             value={particulars}

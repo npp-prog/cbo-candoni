@@ -568,6 +568,11 @@ function AllotmentForm({
       toast.error('Incomplete', 'An office, a budget line and an amount are all required.');
       return;
     }
+    // Patch 156: particulars are required on every entry.
+    if (!particulars.trim()) {
+      toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
+      return;
+    }
     setSaving(true);
     try {
       await createDraft(
@@ -682,7 +687,7 @@ function AllotmentForm({
           />
         </Field>
 
-        <Field label="Particulars" htmlFor="particulars">
+        <Field label="Particulars" required htmlFor="particulars">
           <TextArea id="particulars" rows={2} value={particulars} onChange={(e) => setParticulars(e.target.value)} />
         </Field>
       </div>

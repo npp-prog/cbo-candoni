@@ -42,6 +42,7 @@ import { buildAugmentationSheet, type AugmentationSheet } from './augmentationFo
 import { AugmentationFormSheet, usePrintAugmentation } from './AugmentationFormSheet';
 import { buildLbpForm2, type Form2Sheet } from './lbpForm2';
 import { LbpForm2Sheet, usePrintForm2 } from './LbpForm2Sheet';
+import { printAs, printFileName } from '@/lib/printTitle';
 
 /**
  * One ordinance, opened. Patch 119.
@@ -103,7 +104,11 @@ export default function OrdinanceDetail() {
     if (!form8) return;
     const clear = () => setForm8(null);
     window.addEventListener('afterprint', clear);
-    const t = window.setTimeout(() => window.print(), 80);
+    // Patch 156: saved to PDF as "LBP Form No. 8_<period>".
+    const t = window.setTimeout(
+      () => printAs(printFileName('LBP Form No. 8', form8.meta.periodLabel ?? form8.meta.title)),
+      80,
+    );
     return () => {
       window.clearTimeout(t);
       window.removeEventListener('afterprint', clear);

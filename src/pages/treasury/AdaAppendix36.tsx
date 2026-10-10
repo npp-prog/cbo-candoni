@@ -9,6 +9,7 @@ import { Letterhead, blankRows } from '@/components/print/formParts';
 import type { Ada } from '@/types/accounting';
 import { useEntity } from '@/data/useEntity';
 import { BankFileButtons } from '../accounting/PayeeList';
+import { usePrintTitle, printFileName } from '@/lib/printTitle';
 
 /**
  * The Authority to Debit Account - Appendix 36.
@@ -39,6 +40,8 @@ export default function AdaAppendix36() {
   const { id } = useParams<{ id: string }>();
   const { data: ada, loading } = useDocument<Ada>(COL.ada, id);
   const entity = useEntity();
+  // Patch 156: saved to PDF as "Authority to Debit Account_<ADA No.>".
+  usePrintTitle(ada ? printFileName('Authority to Debit Account', ada.adaNo) : null);
 
   if (loading) return <Spinner label="Loading the advice" />;
 

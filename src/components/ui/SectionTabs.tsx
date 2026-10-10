@@ -241,7 +241,7 @@ export function GroupedSectionTabs({
       {activeTab?.children && activeTab.children.length > 0 && (
         <nav
           className="mt-2 flex flex-wrap border-b border-slate-200 px-2"
-          style={{ columnGap: '1.5rem' }}
+          style={{ columnGap: '0.5rem' }}
           aria-label={activeTab.label}
         >
           {activeTab.children.map((c) => {
@@ -251,7 +251,8 @@ export function GroupedSectionTabs({
                 key={c.to}
                 to={c.to}
                 aria-current={on ? 'page' : undefined}
-                className={`-mb-px whitespace-nowrap border-b-2 py-1.5 text-sm ${
+                /* Patch 156: a minimum width, so "RCI" is not a sliver beside "Claim Sheet". */
+                className={`-mb-px inline-flex min-w-[6rem] justify-center whitespace-nowrap border-b-2 px-3 py-1.5 text-sm ${
                   on
                     ? 'border-brand-600 font-medium text-brand-700'
                     : 'border-transparent text-slate-500 hover:text-navy-800'

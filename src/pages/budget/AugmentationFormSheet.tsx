@@ -4,6 +4,7 @@ import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { formatAmount } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
 import { LBE_FORM_2_NOTES, type AugmentationRow, type AugmentationSheet } from './augmentationForm';
+import { printAs, printFileName } from '@/lib/printTitle';
 
 /**
  * LBE Form No. 2 on paper. Patch 116.
@@ -24,7 +25,11 @@ export function usePrintAugmentation(sheet: AugmentationSheet | null, clear: () 
   useEffect(() => {
     if (!sheet) return;
     window.addEventListener('afterprint', clear);
-    const timer = window.setTimeout(() => window.print(), 80);
+    // Patch 156: saved to PDF under the form's name and authority.
+    const timer = window.setTimeout(
+      () => printAs(printFileName('Augmentation Form', sheet.ordinanceNo)),
+      80,
+    );
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', clear);

@@ -15,6 +15,7 @@ import { Spinner, Alert } from './ui/Layout';
 import { formatInstant, todayPh } from '@/lib/dates';
 import {
   ALLOWED_UPLOAD_MIME_TYPES,
+  uploadContentType,
   DOCUMENT_TYPE_LABELS,
   MAX_UPLOAD_BYTES,
   type DocumentType,
@@ -136,10 +137,11 @@ export function AttachmentsPanel({
       );
       return;
     }
-    if (!(ALLOWED_UPLOAD_MIME_TYPES as readonly string[]).includes(file.type)) {
+    const contentType = uploadContentType(file.name);
+    if (!contentType || !(ALLOWED_UPLOAD_MIME_TYPES as readonly string[]).includes(contentType)) {
       toast.error(
         'File type not accepted',
-        'CFMS accepts PDF, JPG, PNG, XLSX and DOCX files. Convert the file and try again.',
+        'Only PDF, Excel (XLS, XLSX), CSV, Word (DOC, DOCX), TXT, JPG and PNG files can be attached. Convert the file and try again.',
       );
       return;
     }
@@ -151,7 +153,7 @@ export function AttachmentsPanel({
       const safeName = file.name.replace(/[^\w.\- ]/g, '_');
       const path = `cbo/${fiscalYear}/${fundCode}/${storageDocType}/${storageDocId}/${Date.now()}_${safeName}`;
 
-      await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
+      await uploadBytes(storageRef(storage, path), file, { contentType });
 
       /*
        * ---- THE PREVIOUS ONE COMES OFF THE RECORD -------------------------
@@ -180,7 +182,7 @@ export function AttachmentsPanel({
       await addDoc(collection(db, COL.documents), {
         storagePath: path,
         fileName: file.name,
-        contentType: file.type,
+        contentType,
         sizeBytes: file.size,
         documentType,
         documentDate: todayPh(),
@@ -332,7 +334,7 @@ export function AttachmentsPanel({
             ref={fileRef}
             type="file"
             className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.xlsx,.docx"
+            accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,.txt,.jpg,.jpeg,.png"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void upload(file);
@@ -484,11 +486,15 @@ function FileIcon({ contentType }: { contentType: string }) {
     ? 'PDF'
     : contentType.includes('image')
       ? 'IMG'
-      : contentType.includes('sheet')
+      : contentType.includes('sheet') || contentType.includes('ms-excel')
         ? 'XLS'
-        : contentType.includes('word')
-          ? 'DOC'
-          : 'FILE';
+        : contentType === 'text/csv'
+          ? 'CSV'
+          : contentType.includes('word') || contentType.includes('msword')
+            ? 'DOC'
+            : contentType === 'text/plain'
+              ? 'TXT'
+              : 'FILE';
 
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-2xs font-semibold text-slate-500">

@@ -34,7 +34,7 @@ describe('attachmentTypesFor', () => {
   it('gives every other treasury report exactly its own form', () => {
     expect(attachmentTypesFor(COL.treasuryReports, 'RCI')).toEqual(['RCI']);
     expect(attachmentTypesFor(COL.treasuryReports, 'RADAI')).toEqual(['RADAI']);
-    expect(attachmentTypesFor(COL.treasuryReports, 'RCDISB')).toEqual(['RCDISB']);
+    expect(attachmentTypesFor(COL.treasuryReports, 'RCDISB')).toEqual(['PAYROLL', 'RCDISB']);
   });
 
   it('covers every treasury report type there is', () => {

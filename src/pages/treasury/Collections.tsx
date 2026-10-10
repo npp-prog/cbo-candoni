@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
@@ -174,9 +175,15 @@ export default function Collections() {
         breadcrumbs={COLLECTION_CRUMBS}
         actions={
           can('treasury', 'create') && (
-            <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
-              Record collection
-            </Button>
+            <>
+              {/* Patch 156: bulk upload of collections. */}
+              <Link to="/treasury/collections/upload">
+                <Button size="sm">Bulk upload</Button>
+              </Link>
+              <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
+                Record collection
+              </Button>
+            </>
           )
         }
       />
@@ -393,6 +400,11 @@ function CollectionForm({
       toast.error('The receipt is missing detail the reports need', describeProblems(problems));
       return;
     }
+    // Patch 156: particulars are required on every entry.
+    if (!particulars.trim()) {
+      toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -535,7 +547,7 @@ function CollectionForm({
           </Field>
         )}
 
-        <Field label="Particulars" htmlFor="particulars" className="sm:col-span-3">
+        <Field label="Particulars" required htmlFor="particulars" className="sm:col-span-3">
           <TextInput
             id="particulars"
             value={particulars}

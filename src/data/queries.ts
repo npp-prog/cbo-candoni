@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { orderBy, where, limit, type QueryConstraint } from 'firebase/firestore';
 import { COL } from '@/lib/collections';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
@@ -410,12 +411,19 @@ export const useCollections = (fiscalYear: number, fundCode: string) =>
     ['collections', fiscalYear, fundCode],
   );
 
-export const useUndepositedCollections = (fundCode: string) =>
-  useCollection<CollectionRecord>(
+export const useUndepositedCollections = (fundCode: string) => {
+  const result = useCollection<CollectionRecord>(
     COL.collections,
     [where('fundCode', '==', fundCode), where('status', 'in', ['ISSUED', 'IN_RCD']), orderBy('orDate')],
     ['undeposited', fundCode],
   );
+  /*
+   * Patch 156: an e-collection is never undeposited - the money was credited
+   * straight to the bank account - so it is never waiting for a deposit slip.
+   */
+  const data = useMemo(() => result.data.filter((c) => !c.eCollectionKind), [result.data]);
+  return { ...result, data };
+};
 
 /** The opening balance and buffer for one bank account and year. */
 export const useBankLedger = (fiscalYear: number, bankAccountId: string | null) =>

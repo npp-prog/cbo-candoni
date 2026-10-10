@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { engine } from './engine';
 import { formatLongDate, todayPh } from './dates';
 import { toPesos } from './money';
+import { printAs, printFileName } from './printTitle';
 
 /**
  * Report export.
@@ -214,7 +215,8 @@ export function exportXlsx<T>(rows: T[], columns: ExportColumn<T>[], meta: Repor
  */
 export function printReport(meta: ReportMeta): void {
   logExport(meta, 'PRINT');
-  window.print();
+  // Patch 156: saved as "<title>_<period>", not as "CFMS".
+  printAs(printFileName(meta.title, meta.periodLabel ?? meta.fundLabel ?? null));
 }
 
 // ---------------------------------------------------------------------------

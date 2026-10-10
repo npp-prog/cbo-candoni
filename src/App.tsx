@@ -69,7 +69,6 @@ const Deposits = lazy(() => import('./pages/treasury/Deposits'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
 const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
 const RcdAppendix34 = lazy(() => import('./pages/treasury/RcdAppendix34'));
-const PrimaryReports = lazy(() => import('./pages/treasury/PrimaryReports'));
 const PrimaryAppendix34 = lazy(() => import('./pages/treasury/PrimaryAppendix34'));
 const AbstractOfCollections = lazy(() => import('./pages/reports/AbstractOfCollections'));
 const SummaryOfCollections = lazy(() => import('./pages/reports/SummaryOfCollections'));
@@ -383,28 +382,19 @@ export default function App() {
               closing it is what freezes them. */}
           {/* The two layers above a collector's own report, one screen each
               way. The old address still arrives at the first of them. */}
+          {/* Patch 156: the Collector's Report and the Consolidated Collection
+              Report are removed. Their old addresses land on the RCD. */}
           <Route
             path="/treasury/collections/collectors"
-            element={
-              <Guard module="treasury">
-                <PrimaryReports types={['COLLECTION']} title="Collector's Report" />
-              </Guard>
-            }
+            element={<Navigate to="/treasury/collections/rcd" replace />}
           />
           <Route
             path="/treasury/collections/consolidated"
-            element={
-              <Guard module="treasury">
-                <PrimaryReports
-                  types={['CONSOLIDATED', 'DEPOSIT']}
-                  title="Consolidated Collection Report"
-                />
-              </Guard>
-            }
+            element={<Navigate to="/treasury/collections/rcd" replace />}
           />
           <Route
             path="/treasury/collections/primary"
-            element={<Navigate to="/treasury/collections/collectors" replace />}
+            element={<Navigate to="/treasury/collections/rcd" replace />}
           />
           <Route
             path="/treasury/collections/primary/:id/form"

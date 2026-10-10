@@ -412,7 +412,8 @@ function DepositForm({
     () => ({
       data: allCollections.data.filter(
         (c) =>
-          (c.status !== 'CANCELLED' && !c.depositId) || mine.has(c.id),
+          // Patch 156: e-collections are deposited already - credited to the bank.
+          (c.status !== 'CANCELLED' && !c.depositId && !c.eCollectionKind) || mine.has(c.id),
       ),
     }),
     [allCollections.data, mine],

@@ -1522,6 +1522,11 @@ export function AppropriationForm({
         return;
       }
     }
+    // Patch 156: particulars are required on every entry.
+    if (!particulars.trim()) {
+      toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
+      return;
+    }
     setSaving(true);
     try {
       /*
@@ -1838,7 +1843,7 @@ export function AppropriationForm({
               </Field>
             )}
 
-            <Field label="Particulars" htmlFor="particulars" className="sm:col-span-2">
+            <Field label="Particulars" required htmlFor="particulars" className="sm:col-span-2">
               <TextArea
                 id="particulars"
                 rows={2}

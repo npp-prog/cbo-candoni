@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { Button } from '@/components/ui/Button';
@@ -49,6 +50,15 @@ export default function AbstractUpload() {
   const [fundMap, setFundMap] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  /*
+   * Patch 156: the same upload for e-collections. "?kind=EOR" or "?kind=AR"
+   * (the e-Collections screen's Bulk upload) opens it on that kind.
+   */
+  const [params] = useSearchParams();
+  const [kind, setKind] = useState<'' | 'EOR' | 'AR'>(() => {
+    const k = (params.get('kind') ?? '').toUpperCase();
+    return k === 'EOR' || k === 'AR' ? k : '';
+  });
 
   /** The fund labels the file itself uses, in the order they first appear. */
   const fileFunds = useMemo(() => {
@@ -77,7 +87,15 @@ export default function AbstractUpload() {
 
   const read = async (file: File) => {
     try {
-      const parsed = await parseAbstractFile(file);
+      const parsed = (await parseAbstractFile(file)).map((r) => {
+        // An e-collection file need not carry a report reference.
+        if (!kind || !r.problem) return r;
+        const rest = r.problem
+          .split(', ')
+          .filter((p) => p !== 'no report reference')
+          .join(', ');
+        return { ...r, problem: rest || undefined };
+      });
       if (!parsed.length) {
         toast.error('Nothing to read', 'No receipts were found in the first sheet of that file.');
         return;
@@ -113,6 +131,7 @@ export default function AbstractUpload() {
             fiscalYear,
             fundCode: code,
             fileName,
+            ...(kind ? { eCollectionKind: kind } : {}),
             receipts: chunk.map((r) => ({
               lineNo: r.lineNo,
               date: r.date,
@@ -161,14 +180,29 @@ export default function AbstractUpload() {
   return (
     <div>
       <PageHeader
-        title="Upload Abstract of Collections"
-        subtitle="The abstract as the Treasurer's office produces it: one row per revenue account, grouped into the official receipts that were issued."
+        title={kind ? 'Bulk upload of e-Collections' : 'Bulk upload of Collections'}
+        subtitle="One row per revenue account, grouped into the receipts that were issued - the Abstract of Collections as the Treasurer's office produces it."
         breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Upload' }]}
       />
 
       <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
 
       <Card title="New upload">
+        <Field label="What the file holds" className="mb-4 max-w-md">
+          <Select
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value as '' | 'EOR' | 'AR');
+              setReceipts([]);
+              setFileName('');
+              if (fileInput.current) fileInput.current.value = '';
+            }}
+          >
+            <option value="">Collections - official receipts (cash, check)</option>
+            <option value="EOR">e-Collections - Electronic Official Receipts (eOR)</option>
+            <option value="AR">e-Collections - Intermediary Acknowledgement Receipts (AR)</option>
+          </Select>
+        </Field>
         <Field
           label="The file"
           hint="A .csv, .xls or .xlsx. Column headings are matched loosely; a receipt that collected two things may appear on two rows and is read as one receipt."

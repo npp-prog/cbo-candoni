@@ -55,7 +55,7 @@ export const COLLECTION_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }>
     group: 'Abstract',
     tabs: [
       { label: 'Abstract of General Collections', to: '/reports/abstract-of-collections' },
-      { label: 'Abstract of e-Collections', to: '/reports/abstract-of-e-collections' },
+      { label: 'Abstract of General e-Collections', to: '/reports/abstract-of-e-collections' },
       /*
        * The Accountant's abstract, not the Treasurer's: GAM Section 68 puts it
        * in Accounting because its purpose is working out what is owed to the
@@ -87,8 +87,7 @@ export const COLLECTION_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }>
        * One screen behind both, filtered. A second implementation would be a
        * second set of the rules about closing and re-opening them.
        */
-      { label: "Collector's Report", to: '/treasury/collections/collectors' },
-      { label: 'Consolidated Collection Report', to: '/treasury/collections/consolidated' },
+      /* Patch 156: Collector's Report and Consolidated Collection Report removed. */
       { label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
     ],
   },

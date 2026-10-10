@@ -228,6 +228,8 @@ export const DOCUMENT_TYPES = [
   'RCI',
   'RADAI',
   'RCDISB',
+  // Patch 156: the payrolls an RCDisb reports, filed with it.
+  'PAYROLL',
   // COA Circular 2021-014's reports of electronic money, and the proof the
   // money reached the bank. The circular asks for the proof by name: Annex F
   // is submitted to Accounting "together with the corresponding proof of
@@ -251,6 +253,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   RCI: 'Report of Checks Issued (RCI)',
   RADAI: 'Report of ADA Issued (RADAI)',
   RCDISB: 'Report of Cash Disbursement (RCDisb)',
+  PAYROLL: 'Payroll',
   ERCD: 'Report of e-Collections and Deposits (eRCD)',
   PROOF_OF_DEPOSIT: 'Proof of deposit or fund transfer',
   ORDINANCE: 'Appropriation Ordinance',
@@ -280,13 +283,46 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
  */
 export const MIN_PASSWORD_LENGTH = 10;
 
+/**
+ * Patch 156: PDF, Excel (XLS, XLSX), CSV, Word (DOC, DOCX), TXT, JPG and PNG
+ * - and nothing else. The same list is in storage.rules.
+ */
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   'application/pdf',
   'image/jpeg',
   'image/png',
+  'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
 ] as const;
+
+/** The extensions the file picker offers, and the type each is stored as. */
+export const ALLOWED_UPLOAD_EXTENSIONS: Record<string, (typeof ALLOWED_UPLOAD_MIME_TYPES)[number]> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  csv: 'text/csv',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain',
+};
+
+/**
+ * The type a file is uploaded as, or null when it is not one CFMS accepts.
+ * Judged by the EXTENSION: a browser reports a CSV as text/csv, as
+ * application/vnd.ms-excel, or as nothing at all depending on what is
+ * installed, so the type it reports cannot be the test.
+ */
+export function uploadContentType(fileName: string): string | null {
+  const ext = String(fileName).toLowerCase().split('.').pop() ?? '';
+  return ALLOWED_UPLOAD_EXTENSIONS[ext] ?? null;
+}
 
 /** 25 MB. Enforced in the UI and again in Storage rules. */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;

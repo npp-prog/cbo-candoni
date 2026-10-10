@@ -619,6 +619,8 @@ export interface Payroll extends Partial<AuditStamps> {
   totalNet: Centavos;
   /** How many people the payroll covers. Recorded for the report heading only. */
   employeeCount?: number;
+  /** Patch 156: who the payroll covers, as typed - "45 regular employees". */
+  employeesCovered?: string | null;
 
   /** The RCDisb that reported this payroll. Set when that report is certified. */
   treasuryReportId?: Id;

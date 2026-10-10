@@ -25,6 +25,7 @@ import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 import ECollectionReportForm from './ECollectionReportForm';
 import RcdAppendix34 from './RcdAppendix34';
+import { usePrintTitle, printFileName } from '@/lib/printTitle';
 
 /**
  * The Treasurer's reports as COA prints them - Appendices 37, 38 and 39.
@@ -141,6 +142,15 @@ export default function TreasuryReportForm() {
   const checks = useChecks(isCheckReport ? (report?.bankAccountId ?? undefined) : undefined);
   const ada = useAda(isAdaReport ? (report?.bankAccountId ?? undefined) : undefined);
   const vouchers = useDisbursementVouchers(report?.fiscalYear ?? 0, report?.fundCode ?? '');
+  // Patch 156: saved to PDF as "Report of Checks Issued_2026-10-0001".
+  usePrintTitle(
+    report
+      ? printFileName(
+          TREASURY_REPORT_LABELS[report.reportType],
+          hasDocumentNumber(report.reportNo) ? report.reportNo : 'draft',
+        )
+      : null,
+  );
 
   const rows = useMemo(() => {
     if (!report) return [];
