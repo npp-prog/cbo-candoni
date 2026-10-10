@@ -18,6 +18,7 @@ import type {
   Check,
   Collection as CollectionRecord,
   Deposit,
+  CollectionRemittance,
   DisbursementVoucher,
   Employee,
   EstimatedReceipt,
@@ -409,6 +410,14 @@ export const useCollections = (fiscalYear: number, fundCode: string) =>
     COL.collections,
     [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('orDate', 'desc')],
     ['collections', fiscalYear, fundCode],
+  );
+
+/** Patch 160: the collectors' remittances to the Liquidating Officer. */
+export const useRemittances = (fiscalYear: number, fundCode: string) =>
+  useCollection<CollectionRemittance>(
+    COL.collectionRemittances,
+    [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('remittanceDate', 'desc')],
+    ['collectionRemittances', fiscalYear, fundCode],
   );
 
 export const useUndepositedCollections = (fundCode: string) => {

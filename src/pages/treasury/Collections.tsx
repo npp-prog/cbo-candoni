@@ -17,7 +17,14 @@ import { LineSubsidiary } from '@/components/pickers/LineSubsidiary';
 import { missingSubsidiaries } from '@/lib/collectionSubsidiary';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useAccounts, useBarangays, useCollections, useTrustPrograms } from '@/data/queries';
+import {
+  useAccounts,
+  useBarangays,
+  useCollections,
+  useRemittances,
+  useTrustPrograms,
+} from '@/data/queries';
+import { allocateRemittances } from '@/lib/remittances';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
@@ -116,6 +123,13 @@ export default function Collections() {
    */
   const incomplete = useMemo(() => rows.filter((c) => receiptIsIncomplete(c)), [rows]);
 
+  /* Patch 160: the remittances, applied to the receipts in AF series order. */
+  const remittances = useRemittances(fiscalYear, fundCode);
+  const remitted = useMemo(
+    () => allocateRemittances(data as never, remittances.data as never),
+    [data, remittances.data],
+  );
+
   const columns: Column<Collection>[] = [
     {
       key: 'orNumber',
@@ -197,6 +211,26 @@ export default function Collections() {
       width: '8rem',
       value: (c) => c.status,
       cell: (c) => <StatusBadge status={c.status} />,
+    },
+    {
+      // Patch 160: turned over to the Liquidating Officer yet? See Remittances.
+      key: 'remitted',
+      header: 'Remitted',
+      width: '8rem',
+      value: (c) => remitted.byReceipt.get(c.id)?.state ?? '',
+      cell: (c) => {
+        const a = remitted.byReceipt.get(c.id);
+        if (!a) return <span className="text-slate-400">-</span>;
+        return a.state === 'REMITTED' ? (
+          <span className="text-xs text-emerald-700">Remitted</span>
+        ) : a.state === 'PARTIAL' ? (
+          <span className="text-xs text-amber-700">
+            Part - {formatPeso(a.unremitted, { symbol: false })} due
+          </span>
+        ) : (
+          <span className="text-xs text-rose-700">Not yet</span>
+        );
+      },
     },
   ];
 

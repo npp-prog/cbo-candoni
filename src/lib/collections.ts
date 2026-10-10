@@ -106,6 +106,8 @@ export const COL = {
   treasuryImports: 'treasuryImports',
   openingBalances: 'openingBalances',
   deposits: 'deposits',
+  /** Patch 160: the collector's remittances to the Liquidating Officer. */
+  collectionRemittances: 'collectionRemittances',
   cashPositions: 'cashPositions',
 
   // Reconciliation

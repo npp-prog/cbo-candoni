@@ -47,6 +47,11 @@ export const COLLECTION_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }>
        * counted twice with the cash.
        */
       { label: 'e-Collections', to: '/treasury/collections/electronic' },
+      /*
+       * Patch 160: the collector's turnover to the Liquidating Officer, between
+       * the receipts and the deposit.
+       */
+      { label: 'Remittances', to: '/treasury/collections/remittances' },
       { label: 'Deposits', to: '/treasury/collections/deposits' },
     ],
   },
@@ -65,8 +70,8 @@ export const COLLECTION_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }>
     ],
   },
   {
-    /* What is certified and sent to Accounting. */
-    group: 'RCD',
+    /* What is certified and sent to Accounting, and the summaries of it. */
+    group: 'Reports',
     tabs: [
       { label: 'Report of Collections and Deposits (RCD)', to: '/treasury/collections/rcd' },
       /*
@@ -89,11 +94,7 @@ export const COLLECTION_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }>
        */
       /* Patch 156: Collector's Report and Consolidated Collection Report removed. */
       { label: 'Summary of RCDs (Transmittal)', to: '/reports/rcd-transmittal' },
-    ],
-  },
-  {
-    group: 'Reports',
-    tabs: [
+      /* Patch 160: the RCD and Reports groups are one - "Reports". */
       { label: 'Summary of Collections', to: '/reports/summary-of-collections' },
       { label: 'Collection Reports and Cashbook', to: '/reports/treasury' },
     ],

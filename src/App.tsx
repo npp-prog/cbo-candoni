@@ -66,6 +66,7 @@ const ECollections = lazy(() => import('./pages/treasury/ECollections'));
 const ECollectionReports = lazy(() => import('./pages/treasury/ECollectionReports'));
 const Rcd = lazy(() => import('./pages/treasury/Rcd'));
 const Deposits = lazy(() => import('./pages/treasury/Deposits'));
+const Remittances = lazy(() => import('./pages/treasury/Remittances'));
 const CashPosition = lazy(() => import('./pages/treasury/CashPosition'));
 const AccountableForms = lazy(() => import('./pages/treasury/AccountableForms'));
 const RcdAppendix34 = lazy(() => import('./pages/treasury/RcdAppendix34'));
@@ -404,6 +405,7 @@ export default function App() {
               kept as a redirect so bookmarks and older notifications still
               land somewhere sensible. */}
           <Route path="/treasury/collections/deposits" element={<Guard module="treasury"><Deposits /></Guard>} />
+          <Route path="/treasury/collections/remittances" element={<Guard module="treasury"><Remittances /></Guard>} />
           <Route path="/treasury/deposits" element={<Navigate to="/treasury/collections/deposits" replace />} />
           <Route path="/treasury/cash-position" element={<Guard module="treasury"><CashPosition /></Guard>} />
           {/* The running book for one account, as against the Cash Position

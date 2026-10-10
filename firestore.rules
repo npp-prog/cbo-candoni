@@ -984,6 +984,23 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Patch 160: a collector's remittance to the Liquidating Officer. Applied
+    // to the receipts by arithmetic on the screen (src/lib/remittances.ts); it
+    // books nothing, so the Treasury records it and may correct or cancel it.
+    match /collectionRemittances/{id} {
+      allow read: if canRead();
+      allow create: if signedIn()
+        && hasAny(treasuryRoles())
+        && createdByCaller()
+        && request.resource.data.status == 'RECORDED'
+        && fundAllowed(request.resource.data.fundCode);
+      allow update: if signedIn()
+        && hasAny(treasuryRoles())
+        && resource.data.status == 'RECORDED'
+        && didNotChange(['createdBy', 'fiscalYear', 'fundCode']);
+      allow delete: if false;
+    }
+
     match /deposits/{id} {
       allow read: if canRead();
       allow create: if signedIn()

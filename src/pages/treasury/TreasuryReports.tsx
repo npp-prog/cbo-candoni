@@ -114,6 +114,7 @@ const ACCOUNTS = {
 export default function TreasuryReports({
   reportType,
   aside,
+  tableFilters,
 }: {
   reportType: TreasuryReportType;
   /**
@@ -123,6 +124,8 @@ export default function TreasuryReports({
    * than taking three.
    */
   aside?: ReactNode;
+  /** Patch 160: controls in the table's own toolbar, before Columns. */
+  tableFilters?: ReactNode;
 }) {
   const { fiscalYear, fundCode } = useFilters();
   const { can, user, profile } = useAuth();
@@ -315,6 +318,7 @@ export default function TreasuryReports({
           loading={loading}
           error={error}
           searchPlaceholder={`${short} number or serial`}
+          filters={tableFilters}
           /*
             THE WHOLE ROW OPENS THE REPORT. It lights under the pointer, which
             is what says it can be clicked - a list whose rows look like

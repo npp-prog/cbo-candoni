@@ -329,6 +329,46 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const totalDeposits = rcd.totalDeposits;
   const balance = beginning + totalCollections - totalDeposits;
 
+  /*
+   * Patch 160: the ACCOUNTING ENTRIES are the report's own entry - the one
+   * certified and journalized, with the deposits it books (patch 159). The
+   * form read an `accountSummary` that only the old RCD record had; on every
+   * RCD prepared as a treasury report it was missing and the whole form
+   * failed to open (a blank page). The old record still prints its summary.
+   */
+  const reportEntry = (report?.entry ?? []) as Array<{
+    accountCode: string;
+    accountName: string;
+    debit: number;
+    credit: number;
+    subsidiaryName?: string | null;
+  }>;
+  const legacySummary =
+    ((rcd as { accountSummary?: Array<{ accountCode: string; accountName: string; amount: number }> })
+      .accountSummary ?? []);
+  const entryRows = reportEntry.length
+    ? reportEntry
+    : [
+        ...(totalCollections
+          ? [
+              {
+                accountCode: CASH_LOCAL_TREASURY.code,
+                accountName: CASH_LOCAL_TREASURY.name,
+                debit: totalCollections,
+                credit: 0,
+                subsidiaryName: null,
+              },
+            ]
+          : []),
+        ...legacySummary.map((a) => ({
+          accountCode: a.accountCode,
+          accountName: a.accountName,
+          debit: 0,
+          credit: a.amount,
+          subsidiaryName: null,
+        })),
+      ];
+
   const status = (rcd as { status?: string }).status;
   const certified = isCertifiedCopy(status);
 
@@ -696,23 +736,20 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
               too. Both now come from the same constant, so they cannot
               disagree.
             */}
-            <tr>
-              <td className="border border-slate-400 px-1.5 py-1">{CASH_LOCAL_TREASURY.name}</td>
-              <td className="border border-slate-400 px-1.5 py-1 font-mono">
-                {CASH_LOCAL_TREASURY.code}
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                {formatAmount(totalCollections, false)}
-              </td>
-              <td className="border border-slate-400 px-1.5 py-1" />
-            </tr>
-            {rcd.accountSummary.map((s) => (
-              <tr key={s.accountCode}>
-                <td className="border border-slate-400 px-1.5 py-1 pl-5">{s.accountName}</td>
+            {entryRows.map((s, i) => (
+              <tr key={`${s.accountCode}-${i}`}>
+                <td className={`border border-slate-400 px-1.5 py-1 ${s.credit ? 'pl-5' : ''}`}>
+                  {s.accountName}
+                  {s.subsidiaryName ? (
+                    <span className="text-slate-500"> - {s.subsidiaryName}</span>
+                  ) : null}
+                </td>
                 <td className="border border-slate-400 px-1.5 py-1 font-mono">{s.accountCode}</td>
-                <td className="border border-slate-400 px-1.5 py-1" />
                 <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                  {formatAmount(s.amount, false)}
+                  {s.debit ? formatAmount(s.debit, false) : ''}
+                </td>
+                <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
+                  {s.credit ? formatAmount(s.credit, false) : ''}
                 </td>
               </tr>
             ))}

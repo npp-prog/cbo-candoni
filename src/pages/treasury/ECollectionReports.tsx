@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import TreasuryReports from './TreasuryReports';
+import { Select } from '@/components/ui/Field';
 import { E_COLLECTION_KINDS } from './eCollectionKinds';
 import type { ECollectionReportType } from '@/types/enums';
 
@@ -27,33 +28,29 @@ import type { ECollectionReportType } from '@/types/enums';
 export default function ECollectionReports() {
   const [reportType, setReportType] = useState<ECollectionReportType>('ERCD_EOR');
 
+  /*
+   * Patch 160: the choice of report is a dropdown in the table's toolbar,
+   * beside Columns - as the kind is on the e-Collections register - not two
+   * cards above it.
+   */
+  const chosen = E_COLLECTION_KINDS.find((k) => k.reportType === reportType);
   return (
     <TreasuryReports
       reportType={reportType}
-      aside={
-        <div className="mb-4">
-          <p className="cbo-label mb-2">Which report?</p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {E_COLLECTION_KINDS.map((k) => {
-              const active = k.reportType === reportType;
-              return (
-                <button
-                  key={k.reportType}
-                  onClick={() => setReportType(k.reportType)}
-                  aria-pressed={active}
-                  className={`rounded-lg border p-3 text-left transition ${
-                    active
-                      ? 'border-navy-500 bg-navy-50 ring-1 ring-navy-200'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <p className="text-xs font-semibold text-navy-900">{k.label}</p>
-                  <p className="mt-1 text-xs leading-snug text-slate-600">{k.when}</p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      tableFilters={
+        <Select
+          aria-label="Which report"
+          value={reportType}
+          onChange={(e) => setReportType(e.target.value as ECollectionReportType)}
+          className="w-auto min-w-[16rem]"
+          title={chosen?.when}
+        >
+          {E_COLLECTION_KINDS.map((k) => (
+            <option key={k.reportType} value={k.reportType}>
+              {k.label}
+            </option>
+          ))}
+        </Select>
       }
     />
   );

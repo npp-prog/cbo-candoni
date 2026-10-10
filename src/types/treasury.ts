@@ -269,6 +269,27 @@ export interface Rcd extends Partial<AuditStamps> {
 // deposits/{id}
 // ---------------------------------------------------------------------------
 
+/**
+ * Patch 160 - collectionRemittances/{id}: money a collecting officer handed
+ * to the Liquidating Officer (for Collection). Applied to the collector's
+ * cash receipts in accountable-form series order - see src/lib/remittances.ts.
+ */
+export interface CollectionRemittance extends Partial<AuditStamps> {
+  id: Id;
+  fiscalYear: FiscalYear;
+  fundCode: string;
+  remittanceDate: IsoDate;
+  collectingOfficerId: Id | null;
+  collectingOfficerName: string;
+  liquidatingOfficerId: Id | null;
+  liquidatingOfficerName: string;
+  amount: Centavos;
+  referenceNo?: string | null;
+  remarks?: string | null;
+  status: 'RECORDED' | 'CANCELLED';
+  cancelReason?: string | null;
+}
+
 export interface Deposit extends Partial<AuditStamps> {
   id: Id;
   fiscalYear: FiscalYear;
