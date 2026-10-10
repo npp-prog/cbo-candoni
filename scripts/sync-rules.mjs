@@ -119,6 +119,9 @@ const PAIRS = [
   // the check that the year ends on the cash the next year opened with.
   { source: 'src/lib/cashFlowLines.ts', target: 'functions/src/lib/cashFlowLines.ts' },
   { source: 'src/lib/priorCashFlow.ts', target: 'functions/src/lib/priorCashFlow.ts' },
+  // Patch 171: the fiscal years offered - the screen lists them, and the
+  // engine adds only the next one.
+  { source: 'src/lib/fiscalYears.ts', target: 'functions/src/lib/fiscalYears.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

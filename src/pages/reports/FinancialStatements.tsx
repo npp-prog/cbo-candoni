@@ -475,11 +475,11 @@ function Row({ label, amount, prior }: { label: string; amount: Centavos; prior?
   return (
     <div className="flex items-baseline justify-between gap-4 py-1 pl-4">
       <span className="flex-1 text-sm text-navy-800">{label}</span>
-      <span className="w-44 text-right font-mono text-sm tabular text-navy-900">
+      <span className="w-44 shrink-0 text-right font-mono text-sm tabular text-navy-900">
         {formatPeso(amount, { symbol: false, parens: true })}
       </span>
       {prior !== undefined && (
-        <span className="w-44 text-right font-mono text-sm tabular text-navy-900">
+        <span className="w-44 shrink-0 text-right font-mono text-sm tabular text-navy-900">
           {formatPeso(prior, { symbol: false, parens: true })}
         </span>
       )}
@@ -491,11 +491,11 @@ function GrandTotal({ label, value, prior }: { label: string; value: Centavos; p
   return (
     <div className="mt-2 flex items-baseline justify-between gap-4 border-t-2 border-navy-800 py-1.5">
       <span className="flex-1 text-sm font-semibold text-navy-900">{label}</span>
-      <span className="w-44 text-right font-mono text-sm font-semibold tabular text-navy-900">
+      <span className="w-44 shrink-0 text-right font-mono text-sm font-semibold tabular text-navy-900">
         {formatPeso(value, { symbol: false, parens: true })}
       </span>
       {prior !== undefined && (
-        <span className="w-44 text-right font-mono text-sm font-semibold tabular text-navy-900">
+        <span className="w-44 shrink-0 text-right font-mono text-sm font-semibold tabular text-navy-900">
           {formatPeso(prior, { symbol: false, parens: true })}
         </span>
       )}
@@ -628,8 +628,8 @@ function CashFlowStatement({
       {prior ? (
         <div className="flex items-baseline justify-between gap-4 border-b border-slate-300 pb-1 text-xs font-semibold uppercase tracking-wider text-slate-600">
           <span className="flex-1" />
-          <span className="w-44 text-right">{fiscalYear}</span>
-          <span className="w-44 text-right">{fiscalYear - 1}</span>
+          <span className="w-44 shrink-0 text-right">{fiscalYear}</span>
+          <span className="w-44 shrink-0 text-right">{fiscalYear - 1}</span>
         </div>
       ) : (
         <Alert tone="warning" className="mb-4 no-print">
@@ -672,11 +672,11 @@ function CashFlowStatement({
                 Net Cash Provided by (Used in){' '}
                 {SECTION_LABELS[block.section].replace('Cash Flows From ', '')}
               </span>
-              <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
+              <span className="w-44 shrink-0 text-right font-mono text-sm font-medium tabular text-navy-900">
                 {formatPeso(block.net, { symbol: false, parens: true })}
               </span>
               {prior && (
-                <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
+                <span className="w-44 shrink-0 text-right font-mono text-sm font-medium tabular text-navy-900">
                   {formatPeso(ps?.net ?? 0, { symbol: false, parens: true })}
                 </span>
               )}
@@ -778,22 +778,21 @@ function CashFlowRowView({ row, prior }: { row: CashFlowStatementRow; prior?: Ce
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="text-left text-sm text-navy-800 underline decoration-dotted underline-offset-2 hover:text-navy-900"
+            className="flex-1 text-left text-sm text-navy-800 underline decoration-dotted underline-offset-2 hover:text-navy-900"
           >
             {row.caption}
           </button>
         ) : (
-          <span className="text-sm text-slate-400">{row.caption}</span>
+          <span className="flex-1 text-sm text-slate-400">{row.caption}</span>
         )}
-        <span className="flex-1" />
         <span
-          className={`w-44 text-right font-mono text-sm tabular ${row.amount === 0 ? 'text-slate-400' : 'text-navy-900'}`}
+          className={`w-44 shrink-0 text-right font-mono text-sm tabular ${row.amount === 0 ? 'text-slate-400' : 'text-navy-900'}`}
         >
           {formatPeso(row.amount, { symbol: false, parens: true })}
         </span>
         {prior !== undefined && (
           <span
-            className={`w-44 text-right font-mono text-sm tabular ${prior === 0 ? 'text-slate-400' : 'text-navy-900'}`}
+            className={`w-44 shrink-0 text-right font-mono text-sm tabular ${prior === 0 ? 'text-slate-400' : 'text-navy-900'}`}
           >
             {formatPeso(prior, { symbol: false, parens: true })}
           </span>
@@ -809,7 +808,7 @@ function CashFlowRowView({ row, prior }: { row: CashFlowStatementRow; prior?: Ce
               <span className="font-mono text-2xs text-slate-400">{a.accountCode}</span>{' '}
               {a.accountName}
             </span>
-            <span className="w-44 text-right font-mono text-xs tabular text-slate-500">
+            <span className="w-44 shrink-0 text-right font-mono text-xs tabular text-slate-500">
               {formatPeso(a.amount, { symbol: false, parens: true })}
             </span>
             {prior !== undefined && <span className="w-44" />}

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFilters } from '@/context/FilterContext';
-import { useFunds, useNotifications } from '@/data/queries';
+import { useFiscalYearRecords, useFunds, useNotifications } from '@/data/queries';
+import { fiscalYearList, nearestFiscalYear } from '@/lib/fiscalYears';
 import { ENVIRONMENT, IS_PRODUCTION } from '@/lib/firebase';
 import { monthName, todayPh } from '@/lib/dates';
 import { ROLE_LABELS, type Role } from '@/types/system';
@@ -34,8 +35,20 @@ export function Header({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const navigate = useNavigate();
 
-  const currentYear = Number(todayPh().slice(0, 4));
-  const years = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
+  /*
+   * Patch 171: 2026 (the comparative year) and 2027 (the first year of
+   * CFMS), and every year the administrator has added since - not years
+   * counted back from the calendar.
+   */
+  const fyRecords = useFiscalYearRecords();
+  const years = useMemo(
+    () => fiscalYearList(fyRecords.data.map((r) => Number(r.year ?? r.id))),
+    [fyRecords.data],
+  );
+  useEffect(() => {
+    if (fyRecords.loading || years.includes(fiscalYear)) return;
+    setFiscalYear(nearestFiscalYear(years, Number(todayPh().slice(0, 4))));
+  }, [fyRecords.loading, years, fiscalYear, setFiscalYear]);
 
   return (
     <>
@@ -135,7 +148,14 @@ export function Header({
               className="relative rounded p-1.5 text-slate-500 hover:bg-slate-100"
               aria-label={`Notifications${notifications.length ? `, ${notifications.length} unread` : ''}`}
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.6}
+                aria-hidden="true"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -177,7 +197,9 @@ export function Header({
                       </p>
                       <p className="truncate text-xs text-slate-500">{user?.email}</p>
                       {profile?.officeName && (
-                        <p className="mt-0.5 truncate text-xs text-slate-500">{profile.officeName}</p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                          {profile.officeName}
+                        </p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-1">
                         {roles.map((r) => (
@@ -221,7 +243,10 @@ export function Header({
 }
 
 function initials(name: string): string {
-  const parts = name.replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
+  const parts = name
+    .replace(/@.*/, '')
+    .split(/[\s._-]+/)
+    .filter(Boolean);
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();

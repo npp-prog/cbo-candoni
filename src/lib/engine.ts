@@ -853,6 +853,9 @@ export const engine = {
       { id: string; lineCount: number; total: number; namesDiffer: number; openingChecked: boolean }
     >('savePriorTrialBalance', p),
 
+  /** Patch 171: adds the next fiscal year to the list (administrators). */
+  addFiscalYear: (p: { year: number }) => call<typeof p, { year: number }>('addFiscalYear', p),
+
   /**
    * Patch 170: the preceding year's Statement of Cash Flows, by caption, for
    * the comparative column. Posts nothing.

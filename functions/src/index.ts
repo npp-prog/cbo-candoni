@@ -76,6 +76,7 @@ export { postRcd, recordDeposit } from './treasury/collections';
 export { postOpeningBalances, reopenOpeningBalances } from './accounting/opening';
 export { savePriorTrialBalance } from './accounting/priorTrialBalance';
 export { savePriorCashFlow } from './accounting/priorCashFlow';
+export { addFiscalYear } from './admin/fiscalYears';
 export {
   certifyTreasuryReport,
   forwardTreasuryReport,

@@ -211,6 +211,22 @@
   a[href]::after {
     content: '';
   }
+
+  /*
+    Patch 171: every printed report, form and statement is in BLACK. The
+    colours that help on screen - blue links, grey nil figures, red and green
+    notes, navy headings, coloured status badges - all print black. Shading
+    and lines are left as they are; only the text is forced.
+  */
+  body,
+  body * {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+  }
+
+  body svg text {
+    fill: #000 !important;
+  }
 }
 
 .print-only {

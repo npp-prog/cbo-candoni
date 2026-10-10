@@ -70,6 +70,14 @@ const ACTIVE = where('active', '==', true);
 export const useFunds = () =>
   useCollection<Fund>(COL.funds, [ACTIVE, orderBy('sortOrder')], ['funds']);
 
+/** Patch 171: the fiscal years the administrator has added (see lib/fiscalYears). */
+export const useFiscalYearRecords = () =>
+  useCollection<{ id: string; year: number; status: string; addedAt?: string; addedBy?: { name?: string } }>(
+    COL.fiscalYears,
+    [],
+    ['fiscalYears'],
+  );
+
 export const useAccounts = (postableOnly = true) =>
   useCollection<Account>(
     COL.accounts,

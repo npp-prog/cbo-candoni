@@ -13,6 +13,8 @@ import { engine } from '@/lib/engine';
 import { formatInstant, monthName } from '@/lib/dates';
 import type { AccountingPeriod } from '@/types/accounting';
 import { fundLabel } from '../budget/Obligations';
+import { useFiscalYearRecords } from '@/data/queries';
+import { BASE_FISCAL_YEARS, fiscalYearList, nextFiscalYear } from '@/lib/fiscalYears';
 
 /**
  * Accounting period control.
@@ -32,7 +34,10 @@ export default function Periods() {
   const { hasRole } = useAuth();
   const toast = useToast();
 
-  const [action, setAction] = useState<{ kind: 'close' | 'reopen' | 'lock' | 'unlock'; period: number } | null>(null);
+  const [action, setAction] = useState<{
+    kind: 'close' | 'reopen' | 'lock' | 'unlock';
+    period: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const { data } = useCollection<AccountingPeriod & { reopenCount?: number }>(
@@ -75,6 +80,14 @@ export default function Periods() {
 
   const reopenings = periods.reduce((s, p) => s + p.reopenCount, 0);
 
+  /* Patch 171: the fiscal years CFMS offers, and adding the next one. */
+  const fyRecords = useFiscalYearRecords();
+  const added = fyRecords.data.map((r) => Number(r.year ?? r.id));
+  const years = fiscalYearList(added);
+  const next = nextFiscalYear(added);
+  const isAdmin = hasRole('SUPER_ADMIN');
+  const [addingYear, setAddingYear] = useState(false);
+
   return (
     <div>
       <PageHeader
@@ -83,10 +96,61 @@ export default function Periods() {
         breadcrumbs={[{ label: 'Administration' }, { label: 'Accounting Periods' }]}
       />
 
+      <Card className="mb-4" bodyClassName="py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-navy-900">Fiscal years</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              The years in the FY list at the top of every screen. CFMS starts in{' '}
+              {BASE_FISCAL_YEARS[1]}; {BASE_FISCAL_YEARS[0]} is kept for the comparative column of
+              the {BASE_FISCAL_YEARS[1]} statements. Add the next year when the office is ready to
+              work in it - one year at a time.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {years.map((y) => {
+                const r = fyRecords.data.find((d) => Number(d.year ?? d.id) === y);
+                return (
+                  <Badge key={y} tone={r?.status === 'CLOSED' ? 'slate' : 'blue'}>
+                    FY {y}
+                    {r?.status === 'CLOSED' ? ' - closed' : ''}
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
+          {isAdmin && (
+            <Button size="sm" variant="primary" onClick={() => setAddingYear(true)}>
+              Add FY {next}
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      <ConfirmDialog
+        open={addingYear}
+        onCancel={() => setAddingYear(false)}
+        onConfirm={() =>
+          void run(async () => {
+            await engine.addFiscalYear({ year: next });
+            setAddingYear(false);
+            toast.success(`FY ${next} added`, 'It is now in the FY list at the top of the screen.');
+          }, 'Could not add the year')
+        }
+        loading={busy}
+        title={`Add fiscal year ${next}`}
+        confirmLabel={`Add FY ${next}`}
+        message={
+          <p>
+            FY {next} will appear in the fiscal year list of every user. A year once added stays in
+            the list - it is recorded in the audit trail.
+          </p>
+        }
+      />
+
       {!canControl && (
         <Alert tone="info" className="mb-4">
-          Only the Municipal Accountant and administrators may close or reopen an accounting
-          period. You can see the state of each month here.
+          Only the Municipal Accountant and administrators may close or reopen an accounting period.
+          You can see the state of each month here.
         </Alert>
       )}
 
@@ -109,9 +173,7 @@ export default function Periods() {
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <StatusBadge status={p.status} />
                   {p.reopenCount > 0 && (
-                    <Badge tone="violet">
-                      reopened {p.reopenCount}&times;
-                    </Badge>
+                    <Badge tone="violet">reopened {p.reopenCount}&times;</Badge>
                   )}
                 </div>
               </div>
@@ -119,12 +181,20 @@ export default function Periods() {
               {canControl && (
                 <div className="flex shrink-0 flex-col gap-1.5">
                   {p.status === 'CLOSED' ? (
-                    <Button size="sm" variant="danger" onClick={() => setAction({ kind: 'reopen', period: p.period })}>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => setAction({ kind: 'reopen', period: p.period })}
+                    >
                       Reopen
                     </Button>
                   ) : (
                     <>
-                      <Button size="sm" variant="primary" onClick={() => setAction({ kind: 'close', period: p.period })}>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => setAction({ kind: 'close', period: p.period })}
+                      >
                         Close
                       </Button>
                       <Button
@@ -155,7 +225,9 @@ export default function Periods() {
                 {p.reopenedAt && (
                   <div className="text-amber-700">
                     Reopened {formatInstant(p.reopenedAt)}
-                    {p.reopenReason && <span className="block italic">&ldquo;{p.reopenReason}&rdquo;</span>}
+                    {p.reopenReason && (
+                      <span className="block italic">&ldquo;{p.reopenReason}&rdquo;</span>
+                    )}
                   </div>
                 )}
               </dl>
@@ -200,7 +272,12 @@ export default function Periods() {
         onCancel={() => setAction(null)}
         onConfirm={(reason) =>
           void run(async () => {
-            await engine.reopenPeriod({ fiscalYear, period: action!.period, fundCode, reason: reason! });
+            await engine.reopenPeriod({
+              fiscalYear,
+              period: action!.period,
+              fundCode,
+              reason: reason!,
+            });
             toast.success(`${monthName(action!.period)} ${fiscalYear} reopened`);
           }, 'The period was not reopened')
         }
@@ -246,8 +323,8 @@ export default function Periods() {
         confirmLabel={action?.kind === 'lock' ? 'Lock' : 'Unlock'}
         message={
           <p>
-            A temporary lock stops new postings while the month is reviewed, without closing it.
-            It can be lifted at any time by the Municipal Accountant.
+            A temporary lock stops new postings while the month is reviewed, without closing it. It
+            can be lifted at any time by the Municipal Accountant.
           </p>
         }
       />
