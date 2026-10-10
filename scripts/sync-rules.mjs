@@ -122,6 +122,9 @@ const PAIRS = [
   // Patch 171: the fiscal years offered - the screen lists them, and the
   // engine adds only the next one.
   { source: 'src/lib/fiscalYears.ts', target: 'functions/src/lib/fiscalYears.ts' },
+  // Patch 172: the backup file's format, and what a restore would do - the
+  // screen explains it and the engine does it from one copy.
+  { source: 'src/lib/backupFormat.ts', target: 'functions/src/lib/backupFormat.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

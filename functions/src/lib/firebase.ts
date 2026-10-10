@@ -105,6 +105,8 @@ export const COL = {
   priorTrialBalances: 'priorTrialBalances',
   /** Patch 170: the preceding year's Statement of Cash Flows, by caption. */
   priorCashFlows: 'priorCashFlows',
+  /** Patch 172: the register of backup files (the files are in Cloud Storage, backups/). */
+  backups: 'backups',
   deposits: 'deposits',
   /** Patch 160/161: collectors' remittances to the Liquidating Officer. */
   collectionRemittances: 'collectionRemittances',

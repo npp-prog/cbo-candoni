@@ -424,6 +424,7 @@ export const NAVIGATION: NavItem[] = [
       { label: 'Accounting Periods', to: '/administration/periods' },
       { label: 'Numbering', to: '/administration/numbering' },
       { label: 'Settings', to: '/administration/settings' },
+      { label: 'Backup and Restore', to: '/administration/backup' },
     ],
   },
   { label: 'Audit Trail', to: '/audit-trail', module: 'auditTrail', icon: 'auditTrail' },

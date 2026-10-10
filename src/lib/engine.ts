@@ -1,6 +1,22 @@
 import { httpsCallable, type HttpsCallableResult } from 'firebase/functions';
 import { functions } from './firebase';
 import type { Centavos, Id, IsoDate } from '@/types/common';
+import type { BackupHeader, BackupKind, RestoreCounts, RestoreMode } from './backupFormat';
+
+/** Patch 172: one backup file, as the register lists it. */
+export interface BackupRecordView {
+  id: string;
+  fileName: string;
+  path: string;
+  kind: BackupKind;
+  note: string | null;
+  createdAt: string;
+  createdBy: { uid: string; name: string };
+  collections: Record<string, number>;
+  docCount: number;
+  size: number;
+  sha256: string;
+}
 
 /** One figure the budget repair found to differ from its documents. */
 export interface RepairDrift {
@@ -38,9 +54,14 @@ export class EngineError extends Error {
   }
 }
 
-async function call<Req, Res>(name: string, payload: Req): Promise<Res> {
+async function call<Req, Res>(name: string, payload: Req, timeoutMs?: number): Promise<Res> {
   try {
-    const fn = httpsCallable<Req, Res>(functions, name);
+    /* Patch 172: a backup or a restore may run for many minutes. */
+    const fn = httpsCallable<Req, Res>(
+      functions,
+      name,
+      timeoutMs ? { timeout: timeoutMs } : undefined,
+    );
     const result: HttpsCallableResult<Res> = await fn(payload);
     return result.data;
   } catch (err) {
@@ -852,6 +873,41 @@ export const engine = {
       typeof p,
       { id: string; lineCount: number; total: number; namesDiffer: number; openingChecked: boolean }
     >('savePriorTrialBalance', p),
+
+  // -------------------------------------------------------------------------
+  // Patch 172: backup and restore (Super Administrator)
+  // -------------------------------------------------------------------------
+
+  createBackup: (p: { note?: string }) =>
+    call<typeof p, BackupRecordView>('createBackup', p, 30 * 60 * 1000),
+
+  readBackupChunk: (p: { backupId: string; offset: number }) =>
+    call<
+      typeof p,
+      { fileName: string; size: number; offset: number; next: number | null; data: string }
+    >('readBackupChunk', p, 5 * 60 * 1000),
+
+  previewRestore: (p: { source: { backupId?: string; uploadPath?: string } }) =>
+    call<
+      typeof p,
+      {
+        file: string;
+        header: BackupHeader;
+        counts: Record<string, RestoreCounts>;
+        effect: Record<RestoreMode, { created: number; overwritten: number; removed: number }>;
+      }
+    >('previewRestore', p, 30 * 60 * 1000),
+
+  restoreBackup: (p: {
+    source: { backupId?: string; uploadPath?: string };
+    mode: RestoreMode;
+    confirm: string;
+    reason: string;
+  }) =>
+    call<
+      typeof p,
+      { created: number; overwritten: number; removed: number; safetyBackup: string | null }
+    >('restoreBackup', p, 30 * 60 * 1000),
 
   /** Patch 171: adds the next fiscal year to the list (administrators). */
   addFiscalYear: (p: { year: number }) => call<typeof p, { year: number }>('addFiscalYear', p),

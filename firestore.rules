@@ -937,6 +937,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Patch 172: the register of backups. The Super Administrator alone may
+    // see it; only the backup functions write it.
+    match /backups/{id} {
+      allow read: if signedIn() && isAdmin();
+      allow write: if false;
+    }
+
     match /treasuryReports/{id} {
       allow read: if canRead();
       /*

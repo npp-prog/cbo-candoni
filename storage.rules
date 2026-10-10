@@ -136,6 +136,21 @@ service firebase.storage {
       allow write: if false;
     }
 
+    // Patch 172. Backup files (backups/) have no rule of their own: the
+    // default below denies every browser, and they leave only through the
+    // readBackupChunk function, which checks the role each time.
+    //
+    // A backup file the Super Administrator uploads from the computer, to
+    // restore from. Only into a folder of their own; never read back by a
+    // browser; removed by the engine once the restore has run.
+    match /restore-uploads/{uid}/{fileName} {
+      allow read: if false;
+      allow create: if isAdmin()
+        && request.auth.uid == uid
+        && request.resource.size <= 500 * 1024 * 1024;
+      allow update, delete: if false;
+    }
+
     // Default deny for everything outside the paths above.
     match /{allPaths=**} {
       allow read, write: if false;

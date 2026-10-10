@@ -101,6 +101,7 @@ const QuarterlyReceipts = lazy(() => import('./pages/reports/QuarterlyReceipts')
 const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
 const PriorTrialBalances = lazy(() => import('./pages/accounting/PriorTrialBalances'));
 const PriorCashFlows = lazy(() => import('./pages/accounting/PriorCashFlows'));
+const Backup = lazy(() => import('./pages/admin/Backup'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
 const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
@@ -565,6 +566,7 @@ export default function App() {
           <Route path="/administration/periods" element={<Guard module="administration"><Periods /></Guard>} />
           <Route path="/administration/numbering" element={<Guard module="administration"><Numbering /></Guard>} />
           <Route path="/administration/settings" element={<Guard module="administration"><Settings /></Guard>} />
+          <Route path="/administration/backup" element={<Guard module="administration"><Backup /></Guard>} />
           <Route path="/audit-trail" element={<Guard module="auditTrail"><AuditTrail /></Guard>} />
           <Route path="/notifications" element={<Notifications />} />
 

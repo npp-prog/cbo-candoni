@@ -78,6 +78,13 @@ export { savePriorTrialBalance } from './accounting/priorTrialBalance';
 export { savePriorCashFlow } from './accounting/priorCashFlow';
 export { addFiscalYear } from './admin/fiscalYears';
 export {
+  createBackup,
+  nightlyBackup,
+  readBackupChunk,
+  previewRestore,
+  restoreBackup,
+} from './admin/backup';
+export {
   certifyTreasuryReport,
   forwardTreasuryReport,
   journalizeTreasuryReport,
