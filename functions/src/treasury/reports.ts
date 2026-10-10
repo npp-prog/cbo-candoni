@@ -602,7 +602,12 @@ export const certifyTreasuryReport = onCall(
               totalDeposits?: number;
             };
             if (e.fundCode !== report.fundCode) continue;
-            if (e.status !== 'CERTIFIED' && e.status !== 'JOURNALIZED') continue;
+            /*
+             * Patch 166: the officer's RCDs count whether certified or not -
+             * the office deposits a remittance without waiting for the
+             * remittance RCD to be certified. Only a cancelled one is out.
+             */
+            if (e.status === 'CANCELLED') continue;
             carried +=
               Number(e.totalAmount ?? 0) + Number(e.totalRemittances ?? 0) - Number(e.totalDeposits ?? 0);
           }

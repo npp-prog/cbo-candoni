@@ -89,6 +89,8 @@ interface RawReceipt {
   lines?: RawLine[];
   cancelled?: boolean;
   remarks?: string;
+  /** Patch 166: an e-collection's transaction reference number (TRN). */
+  trn?: string;
 }
 
 const peso = (c: number) => (c / 100).toFixed(2);
@@ -124,7 +126,9 @@ export const importCollections = onCall(
     const raw = data.receipts;
     if (!Array.isArray(raw) || raw.length === 0) throw invalid('The file has no receipts to post.');
     if (raw.length > MAX_RECEIPTS) {
-      throw invalid(`One call takes at most ${MAX_RECEIPTS} receipts; this one carried ${raw.length}.`);
+      throw invalid(
+        `One call takes at most ${MAX_RECEIPTS} receipts; this one carried ${raw.length}.`,
+      );
     }
 
     assertFundInScope(caller, fundCode);
@@ -246,7 +250,10 @@ export const importCollections = onCall(
       const e = doc.data() as { displayName?: string; active?: boolean; payeeId?: string };
       if (e.active === false || !e.displayName || tiedEmployees.has(doc.id) || e.payeeId) continue;
       const k = nameKey(e.displayName);
-      people.set(k, [...(people.get(k) ?? []), { type: 'EMPLOYEE', id: doc.id, name: e.displayName }]);
+      people.set(k, [
+        ...(people.get(k) ?? []),
+        { type: 'EMPLOYEE', id: doc.id, name: e.displayName },
+      ]);
     }
     const needsSubsidiary = (code: string) =>
       !code.startsWith('4') || accounts.get(code)?.requiresSubsidiary === true;
@@ -277,6 +284,7 @@ export const importCollections = onCall(
       formCode: string | null;
       cancelled: boolean;
       remarks: string;
+      trn: string;
       revenueSource: string;
       lines: Array<{
         lineNo: number;
@@ -297,7 +305,8 @@ export const importCollections = onCall(
       const orNumber = String(r.orNumber ?? '').trim();
       const reportRef = String(r.reportRef ?? '').trim();
       const date = String(r.date ?? '').trim();
-      const add = (problem: string) => problems.push({ orNumber: orNumber || '(no O.R.)', problem });
+      const add = (problem: string) =>
+        problems.push({ orNumber: orNumber || '(no O.R.)', problem });
 
       if (!orNumber) {
         add('no O.R. number');
@@ -310,6 +319,12 @@ export const importCollections = onCall(
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         add('no readable date');
+        continue;
+      }
+      // Patch 166: an e-collection names its transaction reference number.
+      const trn = String(r.trn ?? '').trim();
+      if (kind && !r.cancelled && !trn) {
+        add('no TRN (transaction reference number)');
         continue;
       }
 
@@ -417,6 +432,7 @@ export const importCollections = onCall(
         formCode,
         cancelled: Boolean(r.cancelled),
         remarks: String(r.remarks ?? '').trim(),
+        trn,
         revenueSource,
         lines,
         totalAmount: total,
@@ -448,7 +464,10 @@ export const importCollections = onCall(
       throw new HttpsError(
         'failed-precondition',
         `${problems.length} receipt${problems.length === 1 ? '' : 's'} could not be read, so nothing was posted: ` +
-          problems.slice(0, 10).map((p) => `${p.orNumber} - ${p.problem}`).join('; ') +
+          problems
+            .slice(0, 10)
+            .map((p) => `${p.orNumber} - ${p.problem}`)
+            .join('; ') +
           (problems.length > 10 ? `; and ${problems.length - 10} more.` : '.'),
         { problems },
       );
@@ -532,8 +551,16 @@ export const importCollections = onCall(
           abstractReportRef: r.reportRef || null,
           importFileName: data.fileName ?? null,
           status: r.cancelled ? 'CANCELLED' : 'ISSUED',
-          cancelledReason: r.cancelled ? r.remarks || 'Cancelled per Abstract of Collections' : null,
-          remarks: r.remarks || null,
+          cancelledReason: r.cancelled
+            ? r.remarks || 'Cancelled per Abstract of Collections'
+            : null,
+          // Patch 166: the TRN, and the particulars written from it as the screen does.
+          ...(kind
+            ? {
+                transactionRef: r.trn || null,
+                remarks: r.remarks || (r.trn ? `Collection of TRN ${r.trn}` : null),
+              }
+            : { remarks: r.remarks || null }),
           createdBy: stamp,
         });
         posted += 1;

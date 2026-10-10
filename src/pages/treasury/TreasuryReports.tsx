@@ -494,10 +494,9 @@ function PrepareReport({
   /** Undeposited from the officer's earlier certified RCDs (as Section D). */
   const carried = useMemo(() => {
     if (reportType !== 'RCD' || !officerId) return 0;
+    // Patch 166: certified or not - only a cancelled RCD is left out.
     const earlier = rcdReportsQ.data.filter(
-      (r) =>
-        r.accountableOfficerId === officerId &&
-        (r.status === 'CERTIFIED' || r.status === 'JOURNALIZED'),
+      (r) => r.accountableOfficerId === officerId && r.status !== 'CANCELLED',
     );
     const ids = new Set(earlier.map((r) => r.id));
     const inHand = earlier.reduce(
@@ -512,15 +511,7 @@ function PrepareReport({
     return Math.max(0, inHand - remitted);
   }, [reportType, officerId, rcdReportsQ.data, remittancesQ.data]);
   /** Patch 165: what the officer's DRAFT RCDs would add once certified. */
-  const carriedDraft = useMemo(() => {
-    if (reportType !== 'RCD' || !officerId) return 0;
-    return rcdReportsQ.data
-      .filter((r) => r.accountableOfficerId === officerId && r.status === 'DRAFT')
-      .reduce(
-        (t, r) => t + (r.totalAmount ?? 0) + (r.totalRemittances ?? 0) - (r.totalDeposits ?? 0),
-        0,
-      );
-  }, [reportType, officerId, rcdReportsQ.data]);
+
   const chosenDeposits = reportableDeposits.filter((d) => selectedDeposits.has(d.id));
   const depositTotal = chosenDeposits.reduce((s, d) => s + d.amount, 0);
 
@@ -1051,7 +1042,7 @@ function PrepareReport({
      * their earlier RCDs left undeposited.
      */
     if (reportType === 'RCD' && depositTotal > 0) {
-      const available = carried + carriedDraft + total + remittanceTotal;
+      const available = carried + total + remittanceTotal;
       if (depositTotal > available) {
         toast.error(
           'Deposits without a remittance',
@@ -1584,18 +1575,12 @@ function PrepareReport({
               reports it: Dr Cash in Bank / Cr Cash - Local Treasury, in the entry below.
             </p>
             {officerId && (
-              <div className="mb-3 grid gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:grid-cols-3">
+              <div className="mb-3 grid gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:grid-cols-2">
                 <span>
                   Remitted to this officer and not yet deposited:{' '}
                   <span className="cbo-amount font-semibold">{formatPeso(carried)}</span>
                 </span>
-                {carriedDraft > 0 && (
-                  <span className="text-xs text-amber-700">
-                    {formatPeso(carriedDraft)} more on RCDs not yet certified - certify them first,
-                    or certification of this RCD will refuse the deposit.
-                  </span>
-                )}
-                <span className={depositTotal > carried + carriedDraft ? 'text-rose-700' : ''}>
+                <span className={depositTotal > carried ? 'text-rose-700' : ''}>
                   Deposits ticked: <span className="cbo-amount">{formatPeso(depositTotal)}</span>
                 </span>
               </div>

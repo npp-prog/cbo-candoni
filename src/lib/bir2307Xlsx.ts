@@ -19,6 +19,7 @@ import { mmddyyyy, pesos, tinBoxes, type Form2307, type Form2307Row } from './bi
 
 const DRAWING = '/xl/drawings/drawing1.xml';
 const SHEET = '/xl/worksheets/sheet1.xml';
+const STYLES = '/xl/styles.xml';
 
 /** Shape ids of the BIR form's text boxes. */
 export const BOX = {
@@ -83,21 +84,43 @@ export function fillTextBox(xml: string, id: number, text: string, slots?: numbe
   const end = xml.indexOf('</xdr:sp>', start);
   let shape = xml.slice(start, end);
 
+  /*
+   * Patch 166: every attribute of the box's text body is set, not only some.
+   * The BIR's boxes are 13 to 20 points high with 3.6-point insets top and
+   * bottom and wrap="square": the spaced digits came out a hair wider than
+   * the box, the last one wrapped onto a second line, and the date, the TIN
+   * and the ZIP printed as "0 1 0" over "1". Now: no wrapping, no top or
+   * bottom inset, centred - one line, in the middle of its boxes.
+   */
+  const setAttr = (xml: string, name: string, value: string) =>
+    new RegExp(`<a:bodyPr\\b[^>]*\\b${name}="`).test(xml)
+      ? xml.replace(new RegExp(`(<a:bodyPr\\b[^>]*\\b${name}=")[^"]*"`), `$1${value}"`)
+      : xml.replace(/<a:bodyPr\b/, `<a:bodyPr ${name}="${value}"`);
+  const body = (attrs: Record<string, string>) => {
+    for (const [k, v] of Object.entries(attrs)) shape = setAttr(shape, k, v);
+  };
+
   let run: string;
   if (slots) {
     const width = WIDTH_PT[id] ?? slots * 13;
     const pitch = width / slots;
-    const spc = Math.max(0, Math.round((pitch - MONO_CHAR_PT) * 100));
-    const inset = Math.max(0, Math.round(((pitch - MONO_CHAR_PT) / 2) * 12700));
-    shape = shape.replace(/<a:bodyPr\b([^>]*?)lIns="\d+"/, `<a:bodyPr$1lIns="${inset}"`);
-    shape = shape.replace(/<a:bodyPr\b([^>]*?)rIns="\d+"/, '<a:bodyPr$1rIns="0"');
-    shape = shape.replace(/<a:bodyPr\b([^>]*?)anchor="t"/, '<a:bodyPr$1anchor="ctr"');
+    // Courier New: every character the same width, so the gap is the pitch less the glyph.
+    const gap = Math.max(0, pitch - MONO_CHAR_PT);
+    const spc = Math.round(gap * 100);
+    body({
+      wrap: 'none',
+      lIns: String(Math.round((gap / 2) * 12700)),
+      rIns: '0',
+      tIns: '0',
+      bIns: '0',
+      anchor: 'ctr',
+    });
     run =
       `<a:r><a:rPr lang="en-US" sz="1000" b="1" spc="${spc}">` +
       '<a:latin typeface="Courier New"/><a:cs typeface="Courier New"/></a:rPr>' +
       `<a:t>${esc(text.slice(0, slots))}</a:t></a:r>`;
   } else {
-    shape = shape.replace(/<a:bodyPr\b([^>]*?)anchor="t"/, '<a:bodyPr$1anchor="ctr"');
+    body({ tIns: '0', bIns: '0', anchor: 'ctr' });
     run =
       '<a:r><a:rPr lang="en-US" sz="1000" b="1">' +
       '<a:latin typeface="Arial"/><a:cs typeface="Arial"/></a:rPr>' +
@@ -110,6 +133,35 @@ export function fillTextBox(xml: string, id: number, text: string, slots?: numbe
   if (at < 0) return xml;
   shape = shape.slice(0, at) + run + shape.slice(at);
   return xml.slice(0, start) + shape + xml.slice(end);
+}
+
+/**
+ * Patch 166: a copy of cell style `base` aligned to the bottom, appended to
+ * the workbook's cellXfs. Returns the new style's index.
+ */
+export function addBottomAlignedStyle(
+  styles: string,
+  base: number,
+): { xml: string; index: number } | null {
+  const m = /<cellXfs count="(\d+)">([\s\S]*?)<\/cellXfs>/.exec(styles);
+  if (!m) return null;
+  const xfs = m[2].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
+  const xf = xfs[base];
+  if (!xf) return null;
+  let copy: string;
+  if (/<alignment\b/.test(xf)) {
+    copy = /vertical="/.test(xf)
+      ? xf.replace(/(<alignment\b[^>]*vertical=")[^"]*"/, '$1bottom"')
+      : xf.replace(/<alignment\b/, '<alignment vertical="bottom"');
+  } else if (xf.endsWith('/>')) {
+    copy = `${xf.slice(0, -2).replace(/applyAlignment="\d"/, '')} applyAlignment="1"><alignment vertical="bottom"/></xf>`;
+  } else {
+    copy = xf.replace('</xf>', '<alignment vertical="bottom"/></xf>');
+  }
+  const index = xfs.length;
+  const body = `${m[2]}${copy}`;
+  const xml = styles.replace(m[0], `<cellXfs count="${index + 1}">${body}</cellXfs>`);
+  return { xml, index };
 }
 
 /** Writes a text value into an existing (empty) cell, keeping its style. */
@@ -186,7 +238,23 @@ export function fill2307(template: ArrayBuffer | Uint8Array, form: Form2307): Ui
   let s = read(SHEET);
   s = writeRows(s, form.ewt, 38, 48);
   s = writeRows(s, form.business, 51, 61);
-  if (form.signatory) s = setCell(s, 'A63', form.signatory.toUpperCase());
+  if (form.signatory) {
+    s = setCell(s, 'A63', form.signatory.toUpperCase());
+    /*
+     * Patch 166: the name sits on the signature line - at the BOTTOM of the
+     * merged A63:AN65 - not at the top, where the template's style puts it.
+     * A copy of that style, aligned to the bottom, is added to the workbook.
+     */
+    const styles = read(STYLES);
+    const base = Number(/<c r="A63" s="(\d+)"/.exec(s)?.[1] ?? NaN);
+    if (Number.isFinite(base)) {
+      const added = addBottomAlignedStyle(styles, base);
+      if (added) {
+        write(STYLES, added.xml);
+        s = s.replace(/<c r="A63" s="\d+"/, `<c r="A63" s="${added.index}"`);
+      }
+    }
+  }
   write(SHEET, s);
 
   // The SheetJS placeholder entry is not part of the workbook.

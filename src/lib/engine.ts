@@ -737,6 +737,8 @@ export const engine = {
       collector?: string;
       cancelled?: boolean;
       remarks?: string;
+      /** Patch 166: an e-collection's transaction reference number. */
+      trn?: string;
       lines: Array<{
         revenueCode: string;
         description?: string;

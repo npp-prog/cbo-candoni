@@ -53,12 +53,16 @@ export interface AbstractReceipt {
   totalAmount: number;
   cancelled: boolean;
   remarks: string;
+  /** Patch 166: an e-collection's transaction reference number. */
+  trn: string;
   problem?: string;
 }
 
 const COLUMNS = {
   date: [/^date/i, /date/i],
-  reportRef: [/primary\s*report/i, /report\s*no/i, /^primary/i, /reference/i],
+  // "Transaction Reference No." is the TRN below, not a report reference.
+  reportRef: [/primary\s*report/i, /report\s*no/i, /^primary/i, /^(?!.*transaction).*reference/i],
+  trn: [/^trn\b/i, /\btrn\b/i, /transaction\s*ref/i],
   accountableForm: [/accountable\s*form/i, /^form/i, /^af\b/i],
   orNumber: [/serial\s*\/?\s*o\.?\s*r/i, /o\.?\s*r\.?\s*no/i, /^serial/i, /receipt\s*no/i],
   payor: [/payor/i, /payer/i, /^name/i],
@@ -116,6 +120,7 @@ export async function parseAbstractFile(file: File): Promise<AbstractReceipt[]> 
         totalAmount: 0,
         cancelled,
         remarks,
+        trn: findText(raw, COLUMNS.trn),
         problem: undefined,
       };
       receipts.set(key, receipt);

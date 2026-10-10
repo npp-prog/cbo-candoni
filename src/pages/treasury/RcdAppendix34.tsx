@@ -1,9 +1,17 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, type ReactNode } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PageHeader, Alert, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useFilters } from '@/context/FilterContext';
-import { useCollections, useDeposits, useFormMovements, useRcds, useAccountableFormTypes, useTreasuryReports, useRemittances } from '@/data/queries';
+import {
+  useCollections,
+  useDeposits,
+  useFormMovements,
+  useRcds,
+  useAccountableFormTypes,
+  useTreasuryReports,
+  useRemittances,
+} from '@/data/queries';
 import { formatAmount, amountInWords } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import {
@@ -61,6 +69,30 @@ const FORM_CODE = (c: { accountableForm?: string; accountableFormId?: string }) 
   String(c.accountableForm ?? c.accountableFormId ?? '')
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
+
+/**
+ * Patch 166: Collection, Remittance or Deposit - as chosen when the RCD was
+ * prepared (patch 165), or read from what an older RCD carries.
+ */
+export function rcdKindLabel(report?: TreasuryReport | null): string {
+  if (!report) return '';
+  const k =
+    report.rcdKind ??
+    ((report.lines ?? []).length
+      ? 'COLLECTION'
+      : (report.remittances ?? []).length
+        ? 'REMITTANCE'
+        : (report.deposits ?? []).length
+          ? 'DEPOSIT'
+          : null);
+  return k === 'COLLECTION'
+    ? 'Collection'
+    : k === 'REMITTANCE'
+      ? 'Remittance'
+      : k === 'DEPOSIT'
+        ? 'Deposit'
+        : '';
+}
 
 export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const entity = useEntity();
@@ -276,7 +308,9 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       // What they held when the day opened: everything ever issued to them,
       // less anything issued today, less every receipt already written.
       const beginning = subtract(subtract(issuedToOfficer, receiptedNow), usedBefore);
-      const issuedNow = collapse(covered.filter((c) => FORM_CODE(c) === code).map((c) => c.orNumber));
+      const issuedNow = collapse(
+        covered.filter((c) => FORM_CODE(c) === code).map((c) => c.orNumber),
+      );
 
       out.push({
         printed: type?.printedAs ?? code,
@@ -291,7 +325,8 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
     const split = { cash: 0, check: 0, online: 0 };
     for (const c of covered) {
       if (c.paymentForm === 'CHECK') split.check += c.totalAmount;
-      else if (c.paymentForm === 'ONLINE' || c.paymentForm === 'CARD') split.online += c.totalAmount;
+      else if (c.paymentForm === 'ONLINE' || c.paymentForm === 'CARD')
+        split.online += c.totalAmount;
       else split.cash += c.totalAmount;
     }
     return split;
@@ -333,7 +368,9 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       const banked =
         earlier.reduce((t, r) => t + (r.totalDeposits ?? 0), 0) +
         remittances
-          .filter((m) => m.status !== 'CANCELLED' && m.collectorReportId && ids.has(m.collectorReportId))
+          .filter(
+            (m) => m.status !== 'CANCELLED' && m.collectorReportId && ids.has(m.collectorReportId),
+          )
           .reduce((t, m) => t + m.amount, 0);
       return Math.max(0, collected - banked);
     }
@@ -386,8 +423,11 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
     subsidiaryName?: string | null;
   }>;
   const legacySummary =
-    ((rcd as { accountSummary?: Array<{ accountCode: string; accountName: string; amount: number }> })
-      .accountSummary ?? []);
+    (
+      rcd as {
+        accountSummary?: Array<{ accountCode: string; accountName: string; amount: number }>;
+      }
+    ).accountSummary ?? [];
   const entryRows = reportEntry.length
     ? reportEntry
     : [
@@ -451,7 +491,6 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       </div>
 
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-
         <Letterhead
           appendix="Appendix 34"
           title="Report of Collections and Deposits"
@@ -464,6 +503,15 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
           left={[
             ['Fund:', fundLabel(fundCode)],
             ['Name of Accountable Officer:', rcd.collectingOfficerName],
+            // Patch 166: what the RCD is for - Collection, Remittance or Deposit.
+            ...(rcdKindLabel(report)
+              ? [
+                  [
+                    'RCD for:',
+                    <span className="font-semibold uppercase">{rcdKindLabel(report)}</span>,
+                  ] as [string, ReactNode],
+                ]
+              : []),
           ]}
           right={[
             ['Report No.:', <span className="font-mono">{rcd.rcdNo}</span>],
@@ -482,7 +530,10 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
               <th className="border border-slate-400 px-1.5 py-1 text-center" colSpan={2}>
                 Official Receipt / Serial No.
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '8rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-right"
+                style={{ width: '8rem' }}
+              >
                 Amount
               </th>
             </tr>
@@ -523,10 +574,16 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
               <th className="border border-slate-400 px-1.5 py-1 text-left">
                 Name of Accountable Officer
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '9rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-left"
+                style={{ width: '9rem' }}
+              >
                 Report No.
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '8rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-right"
+                style={{ width: '8rem' }}
+              >
                 Amount
               </th>
             </tr>
@@ -564,10 +621,16 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
               <th className="border border-slate-400 px-1.5 py-1 text-left">
                 Accountable Officer / Bank
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '12rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-left"
+                style={{ width: '12rem' }}
+              >
                 Reference
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '8rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-right"
+                style={{ width: '8rem' }}
+              >
                 Amount
               </th>
             </tr>
@@ -706,7 +769,9 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
             <tbody>
               {checks.map((c) => (
                 <tr key={c.id}>
-                  <td className="border border-slate-400 px-1.5 py-1 font-mono">{c.checkNo ?? ''}</td>
+                  <td className="border border-slate-400 px-1.5 py-1 font-mono">
+                    {c.checkNo ?? ''}
+                  </td>
                   <td className="border border-slate-400 px-1.5 py-1">{c.payorName}</td>
                   <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
                     {formatAmount(c.totalAmount, false)}
@@ -762,13 +827,22 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
           <thead>
             <tr className="bg-slate-100">
               <th className="border border-slate-400 px-1.5 py-1 text-left">Particulars</th>
-              <th className="border border-slate-400 px-1.5 py-1 text-left" style={{ width: '10rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-left"
+                style={{ width: '10rem' }}
+              >
                 Account
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '7rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-right"
+                style={{ width: '7rem' }}
+              >
                 Debit
               </th>
-              <th className="border border-slate-400 px-1.5 py-1 text-right" style={{ width: '7rem' }}>
+              <th
+                className="border border-slate-400 px-1.5 py-1 text-right"
+                style={{ width: '7rem' }}
+              >
                 Credit
               </th>
             </tr>
@@ -822,4 +896,3 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
     </div>
   );
 }
-

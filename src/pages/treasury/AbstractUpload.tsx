@@ -89,12 +89,11 @@ export default function AbstractUpload() {
     try {
       const parsed = (await parseAbstractFile(file)).map((r) => {
         // An e-collection file need not carry a report reference.
-        if (!kind || !r.problem) return r;
-        const rest = r.problem
-          .split(', ')
-          .filter((p) => p !== 'no report reference')
-          .join(', ');
-        return { ...r, problem: rest || undefined };
+        if (!kind) return r;
+        const parts = (r.problem ?? '').split(', ').filter((p) => p && p !== 'no report reference');
+        // Patch 166: but every e-collection carries its TRN.
+        if (!r.cancelled && !r.trn) parts.push('no TRN (transaction reference number)');
+        return { ...r, problem: parts.length ? parts.join(', ') : undefined };
       });
       if (!parsed.length) {
         toast.error('Nothing to read', 'No receipts were found in the first sheet of that file.');
@@ -142,6 +141,7 @@ export default function AbstractUpload() {
               collector: r.collector || undefined,
               cancelled: r.cancelled,
               remarks: r.remarks || undefined,
+              ...(kind && r.trn ? { trn: r.trn } : {}),
               lines: r.lines.map((l) => ({
                 revenueCode: l.revenueCode,
                 description: l.description || undefined,
@@ -182,7 +182,7 @@ export default function AbstractUpload() {
     <div>
       <PageHeader
         title={kind ? 'Bulk upload of e-Collections' : 'Bulk upload of Collections'}
-        subtitle="One row per revenue account, grouped into the receipts that were issued - the Abstract of Collections as the Treasurer's office produces it. A row on a receivable or payable (or revenue kept per party) names its subsidiary in a Subsidiary column, as it is on Names; left blank, the payor is taken."
+        subtitle="One row per revenue account, grouped into the receipts that were issued - the Abstract of Collections as the Treasurer's office produces it. A row on a receivable or payable (or revenue kept per party) names its subsidiary in a Subsidiary column, as it is on Names; left blank, the payor is taken. An e-collection file carries a TRN column (transaction reference number) on every receipt."
         breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Upload' }]}
       />
 
@@ -237,8 +237,8 @@ export default function AbstractUpload() {
               <Card title="Which fund is which">
                 <p className="mb-3 text-sm text-slate-600">
                   The file names its own funds. Say which CFMS fund each one is - a month of trust
-                  fund collections landing in the General Fund is not something the books would
-                  flag afterwards.
+                  fund collections landing in the General Fund is not something the books would flag
+                  afterwards.
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {fileFunds.map((label) => (
@@ -309,7 +309,12 @@ export default function AbstractUpload() {
                     ? `Choose a fund for ${unassignedFunds.map((f) => `"${f}"`).join(' and ')}.`
                     : `${receipts.length} receipts ready.`)}
               </p>
-              <Button variant="primary" loading={busy} disabled={!ready || busy} onClick={() => void post()}>
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={!ready || busy}
+                onClick={() => void post()}
+              >
                 Record {receipts.length} receipt{receipts.length === 1 ? '' : 's'}
               </Button>
             </div>
@@ -341,14 +346,21 @@ function ReceiptPreview({ receipts }: { receipts: AbstractReceipt[] }) {
             {shown.map((r) => (
               <tr
                 key={`${r.reportRef}__${r.orNumber}`}
-                className={r.problem ? 'bg-rose-50' : r.cancelled ? 'bg-slate-50 text-slate-500' : undefined}
+                className={
+                  r.problem ? 'bg-rose-50' : r.cancelled ? 'bg-slate-50 text-slate-500' : undefined
+                }
               >
                 <td className="px-2 py-1.5">{r.date ? formatShortDate(r.date) : '-'}</td>
                 <td className="px-2 py-1.5 font-mono text-slate-500">{r.reportRef}</td>
-                <td className="px-2 py-1.5 font-mono">{r.orNumber}</td>
+                <td className="px-2 py-1.5 font-mono">
+                  {r.orNumber}
+                  {r.trn && <span className="block text-[11px] text-slate-500">TRN {r.trn}</span>}
+                </td>
                 <td className="px-2 py-1.5">
                   {r.payor}
-                  {r.problem && <span className="block text-[11px] text-rose-700">{r.problem}</span>}
+                  {r.problem && (
+                    <span className="block text-[11px] text-rose-700">{r.problem}</span>
+                  )}
                 </td>
                 <td className="px-2 py-1.5 text-slate-500">{r.fund}</td>
                 <td className="px-2 py-1.5 text-slate-500">

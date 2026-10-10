@@ -43,7 +43,8 @@ export function Bir2307Button({ dv }: { dv: DisbursementVoucher }) {
       address: entity.headingLines[2] ?? '',
       zip: entity.zipCode ?? '',
     },
-    signatory: entity.localTreasurer,
+    // Patch 166: the Municipal Accountant signs the 2307 for the payor.
+    signatory: entity.municipalAccountant,
   });
   if (!form) return null;
 
