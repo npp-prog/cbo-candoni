@@ -42,6 +42,7 @@ type RefundPrefill = NonNullable<ReturnType<typeof refundReceiptDraft>>;
 import { fundLabel } from '../budget/Obligations';
 import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 import { CollectionDetail } from './CollectionDetail';
+import { OfflineSetupDownload } from './OfflineSetupDownload';
 
 
 /**
@@ -59,6 +60,7 @@ export default function Collections() {
   const { data, loading, error } = useCollections(fiscalYear, fundCode);
 
   const [showForm, setShowForm] = useState(false);
+  const [offlineSetup, setOfflineSetup] = useState(false);
   /* The receipt being corrected, if any. See collectionEditable. */
   const [editing, setEditing] = useState<Collection | null>(null);
   /* The receipt being READ. The row opens this; the detail offers the edit. */
@@ -250,6 +252,10 @@ export default function Collections() {
               <Link to="/treasury/collections/upload">
                 <Button size="sm">Bulk upload</Button>
               </Link>
+              {/* Patch 173: the setup file for the offline Collections app. */}
+              <Button size="sm" onClick={() => setOfflineSetup(true)}>
+                Offline app setup
+              </Button>
               <Button variant="primary" size="sm" onClick={() => setShowForm(true)}>
                 Record collection
               </Button>
@@ -259,6 +265,8 @@ export default function Collections() {
       />
 
       <GroupedSectionTabs groups={COLLECTION_TAB_GROUPS} />
+
+      {offlineSetup && <OfflineSetupDownload onClose={() => setOfflineSetup(false)} />}
 
       {incomplete.length > 0 && (
         <Alert
