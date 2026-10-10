@@ -100,6 +100,7 @@ const QuarterlyFinancialReport = lazy(() => import('./pages/reports/QuarterlyFin
 const QuarterlyReceipts = lazy(() => import('./pages/reports/QuarterlyReceipts'));
 const OpeningBalances = lazy(() => import('./pages/reports/OpeningBalances'));
 const PriorTrialBalances = lazy(() => import('./pages/accounting/PriorTrialBalances'));
+const PriorCashFlows = lazy(() => import('./pages/accounting/PriorCashFlows'));
 const TreasuryReports = lazy(() => import('./pages/reports/TreasuryReports'));
 
 const MasterData = lazy(() => import('./pages/masterdata/MasterData'));
@@ -495,6 +496,10 @@ export default function App() {
           <Route
             path="/accounting/prior-trial-balances"
             element={<Guard module="accounting"><PriorTrialBalances /></Guard>}
+          />
+          <Route
+            path="/accounting/prior-cash-flows"
+            element={<Guard module="accounting"><PriorCashFlows /></Guard>}
           />
           {/* The screen used to live under Reports. Anything already linking
               there - a bookmark, an older runbook - still arrives. */}

@@ -103,6 +103,8 @@ export const COL = {
   openingBalances: 'openingBalances',
   /** Patch 169: the preceding year's pre- and post-closing trial balances. */
   priorTrialBalances: 'priorTrialBalances',
+  /** Patch 170: the preceding year's Statement of Cash Flows, by caption. */
+  priorCashFlows: 'priorCashFlows',
   deposits: 'deposits',
   /** Patch 160/161: collectors' remittances to the Liquidating Officer. */
   collectionRemittances: 'collectionRemittances',

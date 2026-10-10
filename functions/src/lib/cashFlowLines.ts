@@ -1,3 +1,9 @@
+// =============================================================================
+// GENERATED FILE - DO NOT EDIT.
+// Copied verbatim from src/lib/cashFlowLines.ts by scripts/sync-rules.mjs.
+// Edit the canonical file and run `npm run functions:build` (or `npm --prefix
+// functions run sync:rules`) to regenerate. CI fails if the two diverge.
+// =============================================================================
 import { cashFlowClassFor } from './chartOfAccounts';
 import { TRUST_FUND_CODE } from './trustPrograms';
 

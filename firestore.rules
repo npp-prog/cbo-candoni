@@ -931,6 +931,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Patch 170: the preceding year's cash flows. savePriorCashFlow only.
+    match /priorCashFlows/{id} {
+      allow read: if canRead();
+      allow write: if false;
+    }
+
     match /treasuryReports/{id} {
       allow read: if canRead();
       /*

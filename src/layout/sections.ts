@@ -157,6 +157,8 @@ export const ACCOUNTING_SETUP_TABS: SectionTab[] = [
   { label: 'Opening Balances', to: '/accounting/opening-balances' },
   /* Patch 169: the preceding year's trial balances, for the comparative statements. */
   { label: 'Prior Year Trial Balances', to: '/accounting/prior-trial-balances' },
+  /* Patch 170: the preceding year's Statement of Cash Flows, by caption. */
+  { label: 'Prior Year Cash Flows', to: '/accounting/prior-cash-flows' },
 ];
 
 // ---------------------------------------------------------------------------

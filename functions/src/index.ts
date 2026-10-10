@@ -75,6 +75,7 @@ export { postLiquidation, numberLiquidationEntry } from './accounting/liquidatio
 export { postRcd, recordDeposit } from './treasury/collections';
 export { postOpeningBalances, reopenOpeningBalances } from './accounting/opening';
 export { savePriorTrialBalance } from './accounting/priorTrialBalance';
+export { savePriorCashFlow } from './accounting/priorCashFlow';
 export {
   certifyTreasuryReport,
   forwardTreasuryReport,

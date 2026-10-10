@@ -853,6 +853,26 @@ export const engine = {
       { id: string; lineCount: number; total: number; namesDiffer: number; openingChecked: boolean }
     >('savePriorTrialBalance', p),
 
+  /**
+   * Patch 170: the preceding year's Statement of Cash Flows, by caption, for
+   * the comparative column. Posts nothing.
+   */
+  savePriorCashFlow: (p: {
+    fiscalYear: number;
+    fundCode: string;
+    beginningCash: number;
+    lines: Array<{
+      section: 'OPERATING' | 'INVESTING' | 'FINANCING';
+      direction: 'IN' | 'OUT';
+      caption: string;
+      amount: number;
+    }>;
+  }) =>
+    call<typeof p, { id: string; endingCash: number; checkedAgainst: string[] }>(
+      'savePriorCashFlow',
+      p,
+    ),
+
   // -------------------------------------------------------------------------
   // Reconciliation
   // -------------------------------------------------------------------------

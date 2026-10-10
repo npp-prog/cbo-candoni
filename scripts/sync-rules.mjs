@@ -115,6 +115,10 @@ const PAIRS = [
   // post-closing trial balance disagrees with the opening balances; the engine
   // refuses the upload on the same comparison.
   { source: 'src/lib/priorTrialBalance.ts', target: 'functions/src/lib/priorTrialBalance.ts' },
+  // Patch 170: the prior year's cash flows. The captions (cashFlowLines) and
+  // the check that the year ends on the cash the next year opened with.
+  { source: 'src/lib/cashFlowLines.ts', target: 'functions/src/lib/cashFlowLines.ts' },
+  { source: 'src/lib/priorCashFlow.ts', target: 'functions/src/lib/priorCashFlow.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

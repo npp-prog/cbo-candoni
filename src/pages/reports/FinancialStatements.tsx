@@ -43,6 +43,12 @@ import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { useDocument } from '@/hooks/useFirestore';
 import { COL } from '@/lib/collections';
 import { priorTbId } from '@/lib/priorTrialBalance';
+import {
+  cashFlowKey,
+  priorCashFlowId,
+  priorCashFlowTotals,
+} from '@/lib/priorCashFlow';
+import type { StoredPriorCashFlow } from '../accounting/PriorCashFlows';
 import type { StoredPriorTb } from '../accounting/PriorTrialBalances';
 import { REPORT_TAB_GROUPS } from '@/layout/sections';
 
@@ -152,6 +158,11 @@ export default function FinancialStatements() {
       post: Boolean(post),
     };
   }, [priorLedger.data, preTb.data, postTb.data]);
+  /* Patch 170: the preceding year's cash flows, set up by caption. */
+  const priorCashFlow = useDocument<StoredPriorCashFlow>(
+    COL.priorCashFlows,
+    priorCashFlowId(fiscalYear - 1, fundCode),
+  );
   const priorAll = priorSource?.all ?? priorLedger.data;
   const priorPosition = priorSource?.position ?? priorLedger.data;
 
@@ -431,7 +442,8 @@ export default function FinancialStatements() {
       ) : statement === 'cashflow' ? (
         <CashFlowStatement
           ledger={ledger.data as unknown as CashFlowEntry[]}
-          priorLedger={priorLedger.data}
+          priorLedger={priorLedger.data as unknown as CashFlowEntry[]}
+          priorSetUp={priorCashFlow.data}
           throughPeriod={throughPeriod}
           fiscalYear={fiscalYear}
           fundCode={fundCode}
@@ -458,24 +470,35 @@ function StatementSection({ title, children }: { title: string; children: React.
   );
 }
 
-function Row({ label, amount }: { label: string; amount: Centavos }) {
+/** Patch 170: `prior` adds the preceding year's figure beside the year's. */
+function Row({ label, amount, prior }: { label: string; amount: Centavos; prior?: Centavos }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1 pl-4">
-      <span className="text-sm text-navy-800">{label}</span>
+      <span className="flex-1 text-sm text-navy-800">{label}</span>
       <span className="w-44 text-right font-mono text-sm tabular text-navy-900">
         {formatPeso(amount, { symbol: false, parens: true })}
       </span>
+      {prior !== undefined && (
+        <span className="w-44 text-right font-mono text-sm tabular text-navy-900">
+          {formatPeso(prior, { symbol: false, parens: true })}
+        </span>
+      )}
     </div>
   );
 }
 
-function GrandTotal({ label, value }: { label: string; value: Centavos }) {
+function GrandTotal({ label, value, prior }: { label: string; value: Centavos; prior?: Centavos }) {
   return (
     <div className="mt-2 flex items-baseline justify-between gap-4 border-t-2 border-navy-800 py-1.5">
-      <span className="text-sm font-semibold text-navy-900">{label}</span>
+      <span className="flex-1 text-sm font-semibold text-navy-900">{label}</span>
       <span className="w-44 text-right font-mono text-sm font-semibold tabular text-navy-900">
         {formatPeso(value, { symbol: false, parens: true })}
       </span>
+      {prior !== undefined && (
+        <span className="w-44 text-right font-mono text-sm font-semibold tabular text-navy-900">
+          {formatPeso(prior, { symbol: false, parens: true })}
+        </span>
+      )}
     </div>
   );
 }
@@ -494,12 +517,15 @@ function GrandTotal({ label, value }: { label: string; value: Centavos }) {
 function CashFlowStatement({
   ledger,
   priorLedger,
+  priorSetUp,
   throughPeriod,
   fiscalYear,
   fundCode,
 }: {
   ledger: CashFlowEntry[];
-  priorLedger: Array<{ accountCode: string; signedAmount: number }>;
+  priorLedger: CashFlowEntry[];
+  /** Patch 170: the preceding year as set up on Accounting > Setup. */
+  priorSetUp?: StoredPriorCashFlow | null;
   throughPeriod: number;
   fiscalYear: number;
   fundCode?: string;
@@ -518,6 +544,49 @@ function CashFlowStatement({
   );
 
   const openedTwice = data.priorClosingCash !== 0 && data.openingFromOpeningEntry !== 0;
+
+  /*
+   * Patch 170 - THE COMPARATIVE COLUMN. From the General Ledger where it has
+   * the preceding year; otherwise from the figures set up on Accounting >
+   * Setup > Prior Year Cash Flows; otherwise there is none, and the statement
+   * says where to set it up.
+   */
+  const prior = useMemo(() => {
+    if (priorLedger.length > 0) {
+      const p = buildCashFlows({ entries: priorLedger, throughPeriod: 12, priorClosingCash: 0, fundCode });
+      const amounts = new Map<string, number>();
+      for (const b of p.blocks) {
+        for (const r of [...b.inflows, ...b.outflows]) {
+          amounts.set(cashFlowKey(r.section, r.direction, r.caption), r.amount);
+        }
+      }
+      return {
+        source: 'ledger' as const,
+        amounts,
+        bySection: Object.fromEntries(
+          p.blocks.map((b) => [b.section, { totalIn: b.totalIn, totalOut: b.totalOut, net: b.net }]),
+        ) as Record<string, { totalIn: number; totalOut: number; net: number }>,
+        netFlows: p.netFlows,
+        openingCash: p.openingCash,
+        closingCash: p.closingCash,
+      };
+    }
+    if (priorSetUp) {
+      const t = priorCashFlowTotals(priorSetUp.lines ?? [], priorSetUp.beginningCash ?? 0);
+      return {
+        source: 'setup' as const,
+        amounts: new Map(
+          (priorSetUp.lines ?? []).map((l) => [cashFlowKey(l.section, l.direction, l.caption), l.amount]),
+        ),
+        bySection: t.bySection as Record<string, { totalIn: number; totalOut: number; net: number }>,
+        netFlows: t.netFlows,
+        openingCash: priorSetUp.beginningCash ?? 0,
+        closingCash: t.endingCash,
+      };
+    }
+    return null;
+  }, [priorLedger, priorSetUp, fundCode]);
+  const pr = (key: string) => (prior ? (prior.amounts.get(key) ?? 0) : undefined);
 
   return (
     <>
@@ -556,42 +625,95 @@ function CashFlowStatement({
         </Alert>
       )}
 
-      {data.blocks.map((block) => (
-        <StatementSection key={block.section} title={SECTION_LABELS[block.section]}>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">
-            Cash Inflows
-          </p>
-          {block.inflows.map((r) => (
-            <CashFlowRowView key={r.caption} row={r} />
-          ))}
-          <Row label="Total Cash Inflows" amount={block.totalIn} />
+      {prior ? (
+        <div className="flex items-baseline justify-between gap-4 border-b border-slate-300 pb-1 text-xs font-semibold uppercase tracking-wider text-slate-600">
+          <span className="flex-1" />
+          <span className="w-44 text-right">{fiscalYear}</span>
+          <span className="w-44 text-right">{fiscalYear - 1}</span>
+        </div>
+      ) : (
+        <Alert tone="warning" className="mb-4 no-print">
+          There is no {fiscalYear - 1} column: the General Ledger has no {fiscalYear - 1}, and the{' '}
+          {fiscalYear - 1} cash flows have not been set up. Set them up under Accounting &rarr; Setup
+          &rarr; Prior Year Cash Flows.
+        </Alert>
+      )}
 
-          <p className="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-slate-500">
-            Cash Outflows
-          </p>
-          {block.outflows.map((r) => (
-            <CashFlowRowView key={r.caption} row={r} />
-          ))}
-          <Row label="Total Cash Outflows" amount={block.totalOut} />
+      {data.blocks.map((block) => {
+        const ps = prior?.bySection[block.section];
+        return (
+          <StatementSection key={block.section} title={SECTION_LABELS[block.section]}>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">
+              Cash Inflows
+            </p>
+            {block.inflows.map((r) => (
+              <CashFlowRowView
+                key={r.caption}
+                row={r}
+                prior={pr(cashFlowKey(r.section, r.direction, r.caption))}
+              />
+            ))}
+            <Row label="Total Cash Inflows" amount={block.totalIn} prior={ps?.totalIn} />
 
-          <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-slate-300 py-1">
-            <span className="text-sm font-medium text-navy-900">
-              Net Cash Provided by (Used in){' '}
-              {SECTION_LABELS[block.section].replace('Cash Flows From ', '')}
-            </span>
-            <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
-              {formatPeso(block.net, { symbol: false, parens: true })}
-            </span>
-          </div>
-        </StatementSection>
-      ))}
+            <p className="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-slate-500">
+              Cash Outflows
+            </p>
+            {block.outflows.map((r) => (
+              <CashFlowRowView
+                key={r.caption}
+                row={r}
+                prior={pr(cashFlowKey(r.section, r.direction, r.caption))}
+              />
+            ))}
+            <Row label="Total Cash Outflows" amount={block.totalOut} prior={ps?.totalOut} />
+
+            <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-slate-300 py-1">
+              <span className="flex-1 text-sm font-medium text-navy-900">
+                Net Cash Provided by (Used in){' '}
+                {SECTION_LABELS[block.section].replace('Cash Flows From ', '')}
+              </span>
+              <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
+                {formatPeso(block.net, { symbol: false, parens: true })}
+              </span>
+              {prior && (
+                <span className="w-44 text-right font-mono text-sm font-medium tabular text-navy-900">
+                  {formatPeso(ps?.net ?? 0, { symbol: false, parens: true })}
+                </span>
+              )}
+            </div>
+          </StatementSection>
+        );
+      })}
 
       <Row
         label="Total Cash Provided by Operating, Investing and Financing Activities"
         amount={data.netFlows}
+        prior={prior?.netFlows}
       />
-      <Row label={`Add: Cash Balance, Beginning ${fiscalYear}`} amount={data.openingCash} />
-      <GrandTotal label="Cash Balance, End of the Period" value={data.closingCash} />
+      <Row
+        label={prior ? 'Add: Cash Balance, Beginning' : `Add: Cash Balance, Beginning ${fiscalYear}`}
+        amount={data.openingCash}
+        prior={prior?.openingCash}
+      />
+      <GrandTotal
+        label="Cash Balance, End of the Period"
+        value={data.closingCash}
+        prior={prior?.closingCash}
+      />
+      {prior?.source === 'setup' && (
+        <p className="mt-2 text-xs text-slate-500">
+          The {fiscalYear - 1} column is as set up under Accounting &rarr; Setup &rarr; Prior Year
+          Cash Flows, the General Ledger having no {fiscalYear - 1}.
+        </p>
+      )}
+      {prior && prior.closingCash !== data.openingCash && (
+        <Alert tone="warning" className="mt-3">
+          The {fiscalYear - 1} column ends on {formatPeso(prior.closingCash)} but {fiscalYear}{' '}
+          begins on {formatPeso(data.openingCash)} - a difference of{' '}
+          {formatPeso(prior.closingCash - data.openingCash)}. One year&rsquo;s closing cash is the
+          next year&rsquo;s opening cash.
+        </Alert>
+      )}
 
       {data.tiesOut && (
         <Alert tone="success" className="mt-4">
@@ -645,7 +767,7 @@ function CashFlowStatement({
 }
 
 /** One caption, with the counterpart accounts behind it available on demand. */
-function CashFlowRowView({ row }: { row: CashFlowStatementRow }) {
+function CashFlowRowView({ row, prior }: { row: CashFlowStatementRow; prior?: Centavos }) {
   const [open, setOpen] = useState(false);
   const canOpen = row.accounts.length > 0;
 
@@ -663,11 +785,19 @@ function CashFlowRowView({ row }: { row: CashFlowStatementRow }) {
         ) : (
           <span className="text-sm text-slate-400">{row.caption}</span>
         )}
+        <span className="flex-1" />
         <span
           className={`w-44 text-right font-mono text-sm tabular ${row.amount === 0 ? 'text-slate-400' : 'text-navy-900'}`}
         >
           {formatPeso(row.amount, { symbol: false, parens: true })}
         </span>
+        {prior !== undefined && (
+          <span
+            className={`w-44 text-right font-mono text-sm tabular ${prior === 0 ? 'text-slate-400' : 'text-navy-900'}`}
+          >
+            {formatPeso(prior, { symbol: false, parens: true })}
+          </span>
+        )}
       </div>
       {open &&
         row.accounts.map((a) => (
@@ -682,6 +812,7 @@ function CashFlowRowView({ row }: { row: CashFlowStatementRow }) {
             <span className="w-44 text-right font-mono text-xs tabular text-slate-500">
               {formatPeso(a.amount, { symbol: false, parens: true })}
             </span>
+            {prior !== undefined && <span className="w-44" />}
           </div>
         ))}
     </>
