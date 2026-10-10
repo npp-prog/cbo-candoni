@@ -148,3 +148,43 @@ export function SignatureLine({ label, name, role }: { label: string; name?: str
     </div>
   );
 }
+
+/**
+ * Patch 161: the particulars under a form's heading - fund, officer and the
+ * like at the LEFT, and Report No., Sheet No. and Date at the FAR RIGHT, one
+ * under the other, labels and values each in their own aligned column (as on
+ * the RCI and the RADAI since patch 146).
+ */
+export function FormHeaderFields({
+  left,
+  right,
+}: {
+  left: Array<[string, ReactNode]>;
+  right: Array<[string, ReactNode]>;
+}) {
+  return (
+    <div className="mb-3 flex items-start justify-between gap-6 text-2xs">
+      <div className="space-y-0.5">
+        {left.map(([label, value]) => (
+          <p key={label}>
+            <span className="text-slate-500">{label}</span> <span className="font-semibold">{value}</span>
+          </p>
+        ))}
+      </div>
+      <table className="cbo-form-inline shrink-0" style={{ width: 'auto' }}>
+        <tbody>
+          {right.map(([label, value]) => (
+            <tr key={label}>
+              <td className="text-slate-500" style={{ padding: 0, paddingRight: '0.5rem' }}>
+                {label}
+              </td>
+              <td className="font-semibold" style={{ padding: 0 }}>
+                {value}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

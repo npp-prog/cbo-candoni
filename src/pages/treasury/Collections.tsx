@@ -18,6 +18,8 @@ import { missingSubsidiaries } from '@/lib/collectionSubsidiary';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import {
+  useAccountableFormTypes,
+  useFormMovements,
   useAccounts,
   useBarangays,
   useCollections,
@@ -25,6 +27,7 @@ import {
   useTrustPrograms,
 } from '@/data/queries';
 import { allocateRemittances } from '@/lib/remittances';
+import { holdsSerial, normaliseFormCode, officerHoldings } from '@/lib/formCustody';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
@@ -416,6 +419,18 @@ function CollectionForm({
   const barangays = useBarangays();
 
   const [orNumber, setOrNumber] = useState(existing?.orNumber ?? '');
+  /*
+   * Patch 161: the accountable form the receipt was written on - its Type
+   * (Form No.) on the RCD, and the booklet Section C accounts for.
+   */
+  const [formCode, setFormCode] = useState<string>(
+    (existing as { accountableForm?: string } | null | undefined)?.accountableForm ??
+      (existing as { accountableFormId?: string } | null | undefined)?.accountableFormId ??
+      '',
+  );
+  const formTypes = useAccountableFormTypes();
+  const movementsNow = useFormMovements(fiscalYear);
+  const movementsBefore = useFormMovements(fiscalYear - 1);
   const [orDate, setOrDate] = useState(existing?.orDate ?? todayPh());
   const [officerId, setOfficerId] = useState<string | null>(existing?.collectingOfficerId ?? null);
   const [officerName, setOfficerName] = useState(existing?.collectingOfficerName ?? '');
@@ -498,6 +513,30 @@ function CollectionForm({
       toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
       return;
     }
+    /*
+     * Patch 161: the receipt must be on a form the collecting officer holds -
+     * issued to them, not yet returned, spoiled or cancelled, on that date.
+     */
+    if (!formCode) {
+      toast.error('Which accountable form?', 'Choose the accountable form (Type / Form No.) the receipt was written on.');
+      return;
+    }
+    {
+      const held = officerHoldings(
+        [...movementsBefore.data, ...movementsNow.data] as never,
+        officerId,
+        formCode,
+        orDate,
+      );
+      if (!holdsSerial(held, orNumber.trim())) {
+        const t = formTypes.data.find((x) => normaliseFormCode(x.code) === normaliseFormCode(formCode));
+        toast.error(
+          'That receipt was not issued to this collector',
+          `${t?.printedAs ?? formCode} No. ${orNumber.trim()} is not in any booklet issued to ${officerName || 'the collecting officer'} as at ${orDate}. Issue the booklet to them first (Treasury > Accountable Forms > Issue), or check the receipt number and the form.`,
+        );
+        return;
+      }
+    }
     setSaving(true);
     try {
       const payload = {
@@ -506,6 +545,9 @@ function CollectionForm({
           fundCode,
           orNumber: orNumber.trim().toUpperCase(),
           orDate,
+          // Patch 161: Type (Form No.) - the RCD's Section A.1 and C read it.
+          accountableForm: formCode,
+          accountableFormId: formCode,
           collectingOfficerId: officerId,
           collectingOfficerName: officerName,
           revenueSource,
@@ -598,6 +640,16 @@ function CollectionForm({
       }
     >
       <div className="grid gap-4 sm:grid-cols-3">
+        <Field label="Accountable form" required htmlFor="orForm">
+          <Select id="orForm" value={formCode} onChange={(e) => setFormCode(e.target.value)}>
+            <option value="">Type (Form No.)</option>
+            {formTypes.data.map((t) => (
+              <option key={t.id} value={t.code}>
+                {t.printedAs || t.name} ({t.code})
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="OR number" required htmlFor="orNo">
           <TextInput
             id="orNo"

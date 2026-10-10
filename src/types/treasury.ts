@@ -288,6 +288,12 @@ export interface CollectionRemittance extends Partial<AuditStamps> {
   remarks?: string | null;
   status: 'RECORDED' | 'CANCELLED';
   cancelReason?: string | null;
+  /** Patch 161: the collector's RCD this remittance turns over. */
+  collectorReportId?: Id | null;
+  collectorReportNo?: string | null;
+  /** Patch 161: the Liquidating Officer's RCD that reports it (Section A.2). */
+  liquidatingReportId?: Id | null;
+  liquidatingReportNo?: string | null;
 }
 
 export interface Deposit extends Partial<AuditStamps> {
@@ -599,6 +605,20 @@ export interface TreasuryReport extends Partial<AuditStamps> {
    * - Local Treasury) - every one not posted on its own before. Set when the
    * report is certified.
    */
+  /**
+   * Patch 161: Section A.2 - the collectors' remittances this (Liquidating
+   * Officer's) RCD reports as received. No entry: they move accountability.
+   */
+  remittances?: Array<{
+    sourceId: Id;
+    collectorName: string;
+    collectorReportNo?: string | null;
+    date: IsoDate;
+    amount: Centavos;
+  }>;
+  totalRemittances?: Centavos;
+  /** Patch 161: set when the RCD's entry is reversed (deposits released). */
+  reversedByJevNo?: string | null;
   depositsBookedTotal?: Centavos;
 
   /**

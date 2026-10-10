@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
@@ -6,7 +7,8 @@ import { useEntity } from '@/data/useEntity';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import { hasDocumentNumber } from '@/lib/jevNumbers';
-import { Letterhead, blankRows } from '@/components/print/formParts';
+import { FormHeaderFields, Letterhead, blankRows } from '@/components/print/formParts';
+import { reportSerials } from '@/lib/reportSerials';
 import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { FormBackButton } from './FormBackButton';
 import { TREASURY_REPORT_LABELS, TREASURY_REPORT_SHORT } from '@/types/enums';
@@ -222,8 +224,14 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
   const leadingColumns = spec.withResponsibilityCentre ? 6 : 4;
   const columns = leadingColumns + 1 + breakdown.length;
 
-  const from = report.serialFrom ?? '________';
-  const to = report.serialTo ?? '________';
+  /*
+   * Patch 161: the eOR / AR numbers from the report's own lines, certified or
+   * not - a draft is printed to be checked, and blanks there hid the very
+   * numbers to check.
+   */
+  const serials = reportSerials(report);
+  const from = serials.from ?? '________';
+  const to = serials.to ?? '________';
   const transactions = (report.lines ?? []).filter((l) => !l.excluded).length;
 
   return (
@@ -286,59 +294,40 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
           }
         />
 
-        <table className="mb-2 w-full text-2xs">
-          <tbody>
-            <tr>
-              <td className="w-3/5 py-0.5">
-                <span className="text-slate-500">Entity Name :</span>{' '}
-                <span className="font-semibold">{entity.headingLines[1] ?? ''}</span>
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">Report No. :</span>{' '}
-                <span className="font-mono font-semibold">
-                  {hasDocumentNumber(report.reportNo) ? report.reportNo : ''}
-                </span>
-              </td>
-            </tr>
-            <tr>
-              <td className="py-0.5">
-                <span className="text-slate-500">Fund Cluster :</span>{' '}
-                <span className="font-semibold">{fundLabel(report.fundCode)}</span>
-              </td>
-              <td className="py-0.5">
-                {/*
-                  One sheet, for the reason given on the Treasurer's reports:
-                  CFMS prints the report as one continuous page and lets the
-                  browser break it, so a sheet number counted from a break the
-                  printer decides would be wrong as often as it was right.
-                */}
-                <span className="text-slate-500">Sheet No. :</span>{' '}
-                <span className="font-semibold">1 of 1</span>
-              </td>
-            </tr>
-            <tr>
-              <td className="py-0.5">
-                {spec.headerThirdLine === 'INTERMEDIARY' && (
-                  <>
-                    <span className="text-slate-500">Intermediary :</span>{' '}
-                    <span className="font-semibold">{intermediaryName}</span>
-                  </>
-                )}
-                {spec.headerThirdLine === 'BANK' && (
-                  <>
-                    <span className="text-slate-500">Bank / Account number :</span>{' '}
-                    <span className="font-semibold">{report.bankName ?? ''}</span>{' '}
-                    <span className="font-mono">{report.bankAccountNumber ?? ''}</span>
-                  </>
-                )}
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">Date :</span>{' '}
-                <span className="font-semibold">{formatShortDate(report.reportDate)}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        {/*
+          Patch 161: Report No., Sheet No. and Date at the far right, labels
+          and values aligned. Sheet No. is 1 of 1: CFMS prints the report as
+          one continuous page and lets the browser break it.
+        */}
+        <FormHeaderFields
+          left={[
+            ['Entity Name :', entity.headingLines[1] ?? ''],
+            ['Fund Cluster :', fundLabel(report.fundCode)],
+            ...(spec.headerThirdLine === 'INTERMEDIARY'
+              ? ([['Intermediary :', intermediaryName]] as Array<[string, ReactNode]>)
+              : spec.headerThirdLine === 'BANK'
+                ? ([
+                    [
+                      'Bank / Account number :',
+                      <>
+                        {report.bankName ?? ''}{' '}
+                        <span className="font-mono">{report.bankAccountNumber ?? ''}</span>
+                      </>,
+                    ],
+                  ] as Array<[string, ReactNode]>)
+                : []),
+          ]}
+          right={[
+            [
+              'Report No. :',
+              <span className="font-mono">
+                {hasDocumentNumber(report.reportNo) ? report.reportNo : ''}
+              </span>,
+            ],
+            ['Sheet No. :', '1 of 1'],
+            ['Date :', formatShortDate(report.reportDate)],
+          ]}
+        />
 
         <table className="w-full border-collapse text-2xs">
           <thead>

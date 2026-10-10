@@ -312,7 +312,7 @@ export default function TreasuryReportDetail() {
   const depositsOnly =
     report?.reportType === 'RCD' &&
     (report.lines ?? []).filter((l) => !l.excluded).length === 0 &&
-    (report.deposits?.length ?? 0) > 0 &&
+    ((report.deposits?.length ?? 0) > 0 || (report.remittances?.length ?? 0) > 0) &&
     // Patch 159: deposits the RCD books make an entry like any other.
     !(report.depositsBookedTotal ?? 0);
 
@@ -932,7 +932,7 @@ export default function TreasuryReportDetail() {
                       disabled={!postable}
                     >
                       {/* Patch 157: an RCD of deposits only has no entry. */}
-                      {depositsOnly ? 'Take up - deposits only, no entry' : 'Post journal entry'}
+                      {depositsOnly ? 'Take up - no entry' : 'Post journal entry'}
                     </Button>
                   )}
                   {(draftEntry || amendingEntry) && (

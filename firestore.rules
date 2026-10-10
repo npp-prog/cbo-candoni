@@ -997,7 +997,11 @@ service cloud.firestore {
       allow update: if signedIn()
         && hasAny(treasuryRoles())
         && resource.data.status == 'RECORDED'
-        && didNotChange(['createdBy', 'fiscalYear', 'fundCode']);
+        // Patch 161: once a Liquidating Officer's RCD reports it, it is that
+        // report's evidence; which report claimed it is the engine's to write.
+        && resource.data.get('liquidatingReportId', null) == null
+        && didNotChange(['createdBy', 'fiscalYear', 'fundCode',
+                         'liquidatingReportId', 'liquidatingReportNo']);
       allow delete: if false;
     }
 

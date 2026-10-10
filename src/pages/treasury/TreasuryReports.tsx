@@ -31,6 +31,7 @@ import {
   useAda,
   useCollections,
   useDeposits,
+  useRemittances,
   usePayrolls,
   useAccounts,
   useBankAccounts,
@@ -414,6 +415,10 @@ function PrepareReport({
   /* Patch 157: an RCD's deposits (Section B), chosen apart from its collections. */
   const [selectedDeposits, setSelectedDeposits] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  /* Patch 161: Section A.2 - the remittances the officer received. */
+  const [selectedRemittances, setSelectedRemittances] = useState<Set<string>>(new Set());
+  const remittancesQ = useRemittances(fiscalYear, fundCode);
+  const rcdReportsQ = useTreasuryReports('RCD', fiscalYear, fundCode);
 
   const checks = useChecks(reportType === 'RCI' ? (bankAccountId ?? undefined) : undefined);
   const ada = useAda(reportType === 'RADAI' ? (bankAccountId ?? undefined) : undefined);
@@ -434,6 +439,40 @@ function PrepareReport({
             .sort((a, b) => a.depositDate.localeCompare(b.depositDate)),
     [reportType, depositsQ.data, fundCode],
   );
+  /*
+   * Patch 161: the remittances the RCD's officer received from collectors and
+   * no RCD has reported yet (Section A.2).
+   */
+  const reportableRemittances = useMemo(
+    () =>
+      reportType !== 'RCD'
+        ? []
+        : remittancesQ.data
+            .filter((m) => m.status === 'RECORDED' && !m.liquidatingReportId)
+            .filter((m) => !officerId || m.liquidatingOfficerId === officerId)
+            .sort((a, b) => a.remittanceDate.localeCompare(b.remittanceDate)),
+    [reportType, remittancesQ.data, officerId],
+  );
+  const chosenRemittances = reportableRemittances.filter((m) => selectedRemittances.has(m.id));
+  const remittanceTotal = chosenRemittances.reduce((t, m) => t + m.amount, 0);
+  /** Undeposited from the officer's earlier certified RCDs (as Section D). */
+  const carried = useMemo(() => {
+    if (reportType !== 'RCD' || !officerId) return 0;
+    const earlier = rcdReportsQ.data.filter(
+      (r) =>
+        r.accountableOfficerId === officerId &&
+        (r.status === 'CERTIFIED' || r.status === 'JOURNALIZED'),
+    );
+    const ids = new Set(earlier.map((r) => r.id));
+    const inHand = earlier.reduce(
+      (t, r) => t + (r.totalAmount ?? 0) + (r.totalRemittances ?? 0) - (r.totalDeposits ?? 0),
+      0,
+    );
+    const remitted = remittancesQ.data
+      .filter((m) => m.status !== 'CANCELLED' && m.collectorReportId && ids.has(m.collectorReportId))
+      .reduce((t, m) => t + m.amount, 0);
+    return Math.max(0, inHand - remitted);
+  }, [reportType, officerId, rcdReportsQ.data, remittancesQ.data]);
   const chosenDeposits = reportableDeposits.filter((d) => selectedDeposits.has(d.id));
   const depositTotal = chosenDeposits.reduce((s, d) => s + d.amount, 0);
 
@@ -882,8 +921,11 @@ function PrepareReport({
     reportType === 'RCD' || reportType === 'RCDISB' || isECollectionReport(reportType);
 
   const save = async () => {
-    // Patch 157: an RCD may carry deposits only.
-    if (!chosen.length && !(reportType === 'RCD' && chosenDeposits.length)) {
+    // Patch 157 / 161: an RCD may carry deposits or remittances received only.
+    if (
+      !chosen.length &&
+      !(reportType === 'RCD' && (chosenDeposits.length || chosenRemittances.length))
+    ) {
       toast.error(
         'Nothing selected',
         reportType === 'RCD'
@@ -891,6 +933,21 @@ function PrepareReport({
           : 'Choose at least one document to report.',
       );
       return;
+    }
+    /*
+     * Patch 161: NO DEPOSIT WITHOUT THE MONEY - the officer deposits what they
+     * hold: this RCD's collections, the remittances received in A.2, and what
+     * their earlier RCDs left undeposited.
+     */
+    if (reportType === 'RCD' && depositTotal > 0) {
+      const available = carried + total + remittanceTotal;
+      if (depositTotal > available) {
+        toast.error(
+          'Deposits without a remittance',
+          `The deposits chosen (${formatPeso(depositTotal)}) are more than the officer holds: ${formatPeso(available)} - collections ${formatPeso(total)}, remittances received ${formatPeso(remittanceTotal)}, undeposited from earlier RCDs ${formatPeso(carried)}. Tick the remittances the deposit was made from under "Remittances received (A.2)".`,
+        );
+        return;
+      }
     }
     if (reportType === 'RCDISB' && payrollOfficers.length > 1) {
       toast.error(
@@ -1025,6 +1082,15 @@ function PrepareReport({
                   amount: d.amount,
                 })),
                 totalDeposits: depositTotal,
+                // Patch 161: Section A.2.
+                remittances: chosenRemittances.map((m) => ({
+                  sourceId: m.id,
+                  collectorName: m.collectingOfficerName,
+                  collectorReportNo: m.collectorReportNo ?? null,
+                  date: m.remittanceDate,
+                  amount: m.amount,
+                })),
+                totalRemittances: remittanceTotal,
               }
             : {}),
           ...(reportType === 'RCDISB'
@@ -1067,7 +1133,12 @@ function PrepareReport({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save} loading={saving} disabled={!chosen.length}>
+          <Button
+            onClick={save}
+            loading={saving}
+            // Patch 161: an RCD of deposits or remittances only may be saved too.
+            disabled={!chosen.length && !chosenDeposits.length && !chosenRemittances.length}
+          >
             Save draft
           </Button>
         </>
@@ -1210,6 +1281,73 @@ function PrepareReport({
           </div>
         )}
       </div>
+
+      {/* Patch 161: Section A.2 - remittances received from collectors. */}
+      {reportType === 'RCD' && (
+        <div className="mt-5">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h3 className="text-sm font-semibold text-navy-900">Remittances received (A.2)</h3>
+            <span className="text-xs text-slate-500">
+              {chosenRemittances.length} selected, {formatPeso(remittanceTotal)}
+            </span>
+          </div>
+          <p className="mb-2 text-xs text-slate-500">
+            The collectors&apos; remittances {officerId ? 'this officer' : 'the officer'} received
+            (Treasury &gt; Collections and Deposits &gt; Remittances). They transfer accountability
+            and are not in the entry. A deposit is made from them: the deposits below cannot exceed
+            the remittances received, this RCD&apos;s own collections and what is still undeposited
+            from earlier RCDs ({formatPeso(carried)}).
+          </p>
+          {reportableRemittances.length === 0 ? (
+            <Alert tone="info">
+              {officerId
+                ? 'No remittance received by this officer is waiting to be reported.'
+                : 'Choose the officer first; the remittances they received are listed here.'}
+            </Alert>
+          ) : (
+            <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="w-10 px-3 py-2" />
+                    <th className="px-3 py-2 text-left">Collector</th>
+                    <th className="px-3 py-2 text-left">Collector&apos;s RCD</th>
+                    <th className="px-3 py-2 text-left">Date</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportableRemittances.map((m) => (
+                    <tr key={m.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedRemittances.has(m.id)}
+                          onChange={() =>
+                            setSelectedRemittances((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(m.id)) next.delete(m.id);
+                              else next.add(m.id);
+                              return next;
+                            })
+                          }
+                          aria-label={`Include remittance of ${m.collectingOfficerName}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">{m.collectingOfficerName}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{m.collectorReportNo ?? '-'}</td>
+                      <td className="px-3 py-2">{formatShortDate(m.remittanceDate)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span className="cbo-amount">{formatPeso(m.amount)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Patch 157: Section B - the deposits this RCD accounts for. */}
       {reportType === 'RCD' && (

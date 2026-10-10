@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useCollections, useRemittances } from '@/data/queries';
+import { useCollections, useRemittances, useTreasuryReports } from '@/data/queries';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
@@ -105,6 +105,20 @@ export default function Remittances() {
       cell: (m) => m.referenceNo ?? '',
     },
     {
+      key: 'rcd',
+      header: "Collector's RCD",
+      value: (m) => m.collectorReportNo ?? '',
+      cell: (m) => <span className="font-mono text-xs">{m.collectorReportNo ?? '-'}</span>,
+    },
+    {
+      key: 'loRcd',
+      header: 'Reported on (A.2)',
+      value: (m) => m.liquidatingReportNo ?? '',
+      cell: (m) => (
+        <span className="font-mono text-xs">{m.liquidatingReportNo ?? 'Not yet'}</span>
+      ),
+    },
+    {
       key: 'covers',
       header: 'Receipts covered (AF series)',
       value: (m) => describeAllocation(alloc.byRemittance.get(m.id) ?? [], totals),
@@ -134,7 +148,7 @@ export default function Remittances() {
       cell: (m) => (
         <div className="flex items-center justify-end gap-1.5">
           <StatusBadge status={m.status} />
-          {m.status === 'RECORDED' && can('treasury', 'create') && (
+          {m.status === 'RECORDED' && !m.liquidatingReportId && can('treasury', 'create') && (
             <Button
               size="sm"
               variant="ghost"
@@ -310,6 +324,7 @@ export default function Remittances() {
           fiscalYear={fiscalYear}
           fundCode={fundCode}
           unremittedOf={(key) => alloc.officers.find((o) => o.key === key)?.unremitted ?? 0}
+          remittances={remittances.data}
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false);
@@ -365,12 +380,14 @@ function RemittanceForm({
   fiscalYear,
   fundCode,
   unremittedOf,
+  remittances,
   onClose,
   onSaved,
 }: {
   fiscalYear: number;
   fundCode: string;
   unremittedOf: (officerKey: string) => number;
+  remittances: CollectionRemittance[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -386,7 +403,36 @@ function RemittanceForm({
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const due = collectorId ? unremittedOf(collectorId) : 0;
+  /*
+   * Patch 161: a remittance turns over a collector's RCD - so the RCD is
+   * chosen first, and the remittance is at most what is left of it. Short is
+   * allowed (and applied in AF series order); more is not.
+   */
+  const rcds = useTreasuryReports('RCD', fiscalYear, fundCode);
+  const [reportId, setReportId] = useState('');
+  const theirRcds = useMemo(
+    () =>
+      collectorId
+        ? rcds.data
+            .filter(
+              (r) =>
+                r.accountableOfficerId === collectorId &&
+                r.status !== 'CANCELLED' &&
+                (r.lines ?? []).some((l) => !l.excluded),
+            )
+            .map((r) => {
+              const remitted = remittances
+                .filter((m) => m.collectorReportId === r.id && m.status !== 'CANCELLED')
+                .reduce((t, m) => t + m.amount, 0);
+              return { report: r, remaining: (r.totalAmount ?? 0) - remitted };
+            })
+            .filter((x) => x.remaining > 0)
+            .sort((a, b) => a.report.reportDate.localeCompare(b.report.reportDate))
+        : [],
+    [rcds.data, remittances, collectorId],
+  );
+  const chosenRcd = theirRcds.find((x) => x.report.id === reportId) ?? null;
+  const due = chosenRcd ? chosenRcd.remaining : collectorId ? unremittedOf(collectorId) : 0;
 
   const save = async () => {
     if (!user) return;
@@ -394,6 +440,20 @@ function RemittanceForm({
       toast.error(
         'Incomplete',
         'The collecting officer, the Liquidating Officer who received it, and the amount are required.',
+      );
+      return;
+    }
+    if (!chosenRcd) {
+      toast.error(
+        "Choose the collector's RCD",
+        'A remittance turns over the collections of one of the collector\'s RCDs. Prepare the RCD first, then record its remittance.',
+      );
+      return;
+    }
+    if (amount > chosenRcd.remaining) {
+      toast.error(
+        'More than the RCD',
+        `RCD ${chosenRcd.report.reportNo ?? ''} has ${formatPeso(chosenRcd.remaining)} not yet remitted. A remittance may be short, never more.`,
       );
       return;
     }
@@ -410,6 +470,8 @@ function RemittanceForm({
           liquidatingOfficerId: loId,
           liquidatingOfficerName: loName,
           amount,
+          collectorReportId: chosenRcd.report.id,
+          collectorReportNo: chosenRcd.report.reportNo ?? null,
           referenceNo: referenceNo.trim() || null,
           remarks: remarks.trim() || null,
           status: 'RECORDED',
@@ -469,8 +531,38 @@ function RemittanceForm({
             onChange={(v, emp) => {
               setCollectorId(v);
               setCollectorName(emp?.name ?? '');
+              setReportId('');
             }}
           />
+        </Field>
+        <Field
+          label="Collector's RCD"
+          required
+          htmlFor="remRcd"
+          hint={
+            collectorId && theirRcds.length === 0
+              ? 'This collector has no RCD with collections left to remit. Prepare the RCD first.'
+              : 'The report whose collections are turned over.'
+          }
+        >
+          <Select
+            id="remRcd"
+            value={reportId}
+            onChange={(e) => {
+              setReportId(e.target.value);
+              const x = theirRcds.find((y) => y.report.id === e.target.value);
+              if (x) setAmount(x.remaining);
+            }}
+            disabled={!collectorId}
+          >
+            <option value="">{collectorId ? 'Choose the RCD' : 'Choose the collector first'}</option>
+            {theirRcds.map((x) => (
+              <option key={x.report.id} value={x.report.id}>
+                {x.report.reportNo ?? '(draft)'} - {formatShortDate(x.report.reportDate)} -{' '}
+                {formatPeso(x.remaining)} to remit
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="Received by (Liquidating Officer)" required htmlFor="remLo">
           <EmployeePicker

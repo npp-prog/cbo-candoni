@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { PageHeader, Alert, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useFilters } from '@/context/FilterContext';
-import { useCollections, useDeposits, useFormMovements, useRcds, useAccountableFormTypes, useTreasuryReports } from '@/data/queries';
+import { useCollections, useDeposits, useFormMovements, useRcds, useAccountableFormTypes, useTreasuryReports, useRemittances } from '@/data/queries';
 import { formatAmount, amountInWords } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import {
@@ -17,6 +17,7 @@ import {
   type SerialRange,
 } from '@/lib/serials';
 import {
+  FormHeaderFields,
   Letterhead,
   SectionTitle,
   SignatureLine,
@@ -24,6 +25,7 @@ import {
   blankRows,
 } from '@/components/print/formParts';
 import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
+import { officerHoldings } from '@/lib/formCustody';
 import { useEntity } from '@/data/useEntity';
 import { FormPrintStyle, isCertifiedCopy } from '@/components/print/FormPrintStyle';
 import { FormBackButton } from './FormBackButton';
@@ -70,8 +72,33 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const { data: deposits } = useDeposits();
   /* Patch 159: this officer's earlier RCDs, for the Section D beginning balance. */
   const { data: rcdReports } = useTreasuryReports('RCD', fiscalYear, fundCode);
-  const { data: movements } = useFormMovements(fiscalYear);
+  /* Patch 161: remittances - received (A.2) and made (B). */
+  const { data: remittances } = useRemittances(fiscalYear, fundCode);
+  const received = report?.remittances ?? [];
+  const totalReceived = received.reduce((t, r) => t + r.amount, 0);
+  const made = useMemo(
+    () =>
+      report
+        ? remittances.filter((m) => m.collectorReportId === report.id && m.status !== 'CANCELLED')
+        : [],
+    [remittances, report],
+  );
+  const totalMade = made.reduce((t, m) => t + m.amount, 0);
+  /*
+   * Patch 161: last year's movements too - a booklet issued in December is
+   * still in the collector's hands in January, and Section C's beginning
+   * balance must show it.
+   */
+  const { data: movementsNow } = useFormMovements(fiscalYear);
+  const { data: movementsPrev } = useFormMovements(fiscalYear - 1);
+  const movements = useMemo(
+    () => [...movementsPrev, ...movementsNow],
+    [movementsPrev, movementsNow],
+  );
   const { data: formTypes } = useAccountableFormTypes();
+  /* Patch 161: a form type by its code however it is written ("AF-51" = "AF51"). */
+  const typeOf = (code: string) =>
+    formTypes.find((t) => FORM_CODE({ accountableForm: t.code }) === code);
 
   /*
    * ---------------------------------------------------------------------------
@@ -163,7 +190,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       perForm.set(code, [...(perForm.get(code) ?? []), c]);
     }
     for (const [code, list] of perForm) {
-      const size = formTypes.find((t) => t.code === code)?.bookletSize ?? 50;
+      const size = typeOf(code)?.bookletSize ?? 50;
       groups.set(code, {
         ranges: renderSet(collapse(list.map((c) => c.orNumber)), size),
         amount: list.reduce((s, c) => s + c.totalAmount, 0),
@@ -175,7 +202,8 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const a1Rows = useMemo(() => {
     const rows: Array<{ form: string; range: SerialRange; amount: number; first: boolean }> = [];
     for (const [code, group] of byForm) {
-      const printed = formTypes.find((t) => t.code === code)?.printedAs ?? code;
+      // Patch 161: a receipt with no form recorded prints as such, not "-".
+      const printed = code === '-' ? 'Form not recorded' : (typeOf(code)?.printedAs ?? code);
       group.ranges.forEach((range, i) => {
         // The amount is apportioned to the range by the receipts inside it, so
         // a booklet split does not put one booklet's money on the other's line.
@@ -184,7 +212,10 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
         const hi = toNumber(range.to);
         const amount = covered
           .filter((c) => {
-            if (FORM_CODE(c) !== code) return false;
+            // Patch 161: the same key the receipts were grouped by - a receipt
+            // with no form is grouped under "-", and was then never matched
+            // here, so its amount printed as 0.00 beside a correct total.
+            if ((FORM_CODE(c) || '-') !== code) return false;
             const n = toNumber(c.orNumber);
             if (n === null || lo === null || hi === null) return false;
             return n >= lo && n <= hi;
@@ -209,15 +240,16 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
     const out: Array<{ printed: string; acc: ReturnType<typeof accountability> }> = [];
 
     for (const [code] of byForm) {
-      const type = formTypes.find((t) => t.code === code);
+      // Patch 161: no form recorded - nothing to account for in Section C.
+      if (code === '-') continue;
+      const type = typeOf(code);
       const size = type?.bookletSize ?? 50;
 
       // What the officer had been issued, less what they had already used
       // before this report's date.
-      const issuedToOfficer = live
-        .filter((m) => m.kind === 'ISSUE' && m.formCode === code && m.custodianId === rcd.collectingOfficerId)
-        .map((m) => rangeFrom(m.serialFrom, m.serialTo))
-        .filter((r): r is NumericRange => r !== null);
+      // Patch 161: what the officer HOLDS by the report date - issued to them,
+      // less anything returned, spoiled or cancelled (the RAAF's replay).
+      const issuedToOfficer = officerHoldings(live, rcd.collectingOfficerId, code, rcd.rcdDate);
 
       const usedBefore = collapse(
         collections
@@ -234,7 +266,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
         .filter(
           (m) =>
             m.kind === 'ISSUE' &&
-            m.formCode === code &&
+            FORM_CODE({ accountableForm: m.formCode }) === code &&
             m.custodianId === rcd.collectingOfficerId &&
             m.movementDate === rcd.rcdDate,
         )
@@ -291,8 +323,18 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
           (r.reportDate < report.reportDate ||
             (r.reportDate === report.reportDate && r.reportNo < no)),
       );
-      const collected = earlier.reduce((t, r) => t + (r.totalAmount ?? 0), 0);
-      const banked = earlier.reduce((t, r) => t + (r.totalDeposits ?? 0), 0);
+      // Patch 161: what the officer took in (collections, remittances received)
+      // less what left their hands (deposits, remittances made).
+      const ids = new Set(earlier.map((r) => r.id));
+      const collected = earlier.reduce(
+        (t, r) => t + (r.totalAmount ?? 0) + (r.totalRemittances ?? 0),
+        0,
+      );
+      const banked =
+        earlier.reduce((t, r) => t + (r.totalDeposits ?? 0), 0) +
+        remittances
+          .filter((m) => m.status !== 'CANCELLED' && m.collectorReportId && ids.has(m.collectorReportId))
+          .reduce((t, m) => t + m.amount, 0);
       return Math.max(0, collected - banked);
     }
     const earlier = (x: { treasuryReportType?: string; treasuryReportNo?: string }) =>
@@ -306,7 +348,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       .filter((d) => earlier(d as never))
       .reduce((t, d) => t + d.amount, 0);
     return Math.max(0, reported - banked);
-  }, [report, collections, deposits, rcdReports]);
+  }, [report, collections, deposits, rcdReports, remittances]);
 
   // Patch 156: saved to PDF as "Report of Collections and Deposits_<No.>".
   usePrintTitle(rcd ? printFileName('Report of Collections and Deposits', rcd.rcdNo) : null);
@@ -327,7 +369,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
 
   const totalCollections = rcd.totalCollections;
   const totalDeposits = rcd.totalDeposits;
-  const balance = beginning + totalCollections - totalDeposits;
+  const balance = beginning + totalCollections + totalReceived - totalDeposits - totalMade;
 
   /*
    * Patch 160: the ACCOUNTING ENTRIES are the report's own entry - the one
@@ -374,7 +416,8 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
 
   return (
     <div>
-      <FormPrintStyle />
+      {/* Patch 161: the RCD on A4 PORTRAIT, the seal centred above the heading. */}
+      <FormPrintStyle orientation="portrait" />
 
       {/* The chrome was printing with the form. It is a web page's furniture
           and has no business on a document the Treasurer signs. */}
@@ -413,39 +456,21 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
           appendix="Appendix 34"
           title="Report of Collections and Deposits"
           lines={entity.headingLines}
-          seal="left"
+          seal="center"
         />
 
-        <table className="mb-4 w-full text-2xs">
-          <tbody>
-            <tr>
-              <td className="py-0.5">
-                <span className="text-slate-500">Fund: </span>
-                <span className="font-semibold">{fundLabel(fundCode)}</span>
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">Report No.: </span>
-                <span className="font-mono font-semibold">{rcd.rcdNo}</span>
-              </td>
-            </tr>
-            <tr>
-              <td className="py-0.5">
-                <span className="text-slate-500">Name of Accountable Officer: </span>
-                <span className="font-semibold">{rcd.collectingOfficerName}</span>
-              </td>
-              <td className="py-0.5">
-                <span className="text-slate-500">Date: </span>
-                <span className="font-semibold">{formatShortDate(rcd.rcdDate)}</span>
-                {rcd.primaryReportNo && (
-                  <span className="ml-3 text-slate-500">
-                    Gathered into primary{' '}
-                    <span className="font-mono font-semibold">{rcd.primaryReportNo}</span>
-                  </span>
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        {/* Patch 161: Report No., Sheet No. and Date at the far right, aligned. */}
+        <FormHeaderFields
+          left={[
+            ['Fund:', fundLabel(fundCode)],
+            ['Name of Accountable Officer:', rcd.collectingOfficerName],
+          ]}
+          right={[
+            ['Report No.:', <span className="font-mono">{rcd.rcdNo}</span>],
+            ['Sheet No.:', '1 of 1'],
+            ['Date:', formatShortDate(rcd.rcdDate)],
+          ]}
+        />
 
         {/* --- A. COLLECTIONS -------------------------------------------- */}
         <SectionTitle>A. Collections</SectionTitle>
@@ -507,13 +532,25 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
             </tr>
           </thead>
           <tbody>
-            {blankRows(BLANK_ROWS.a2, 3, 'a2')}
+            {/* Patch 161: the collectors' remittances this officer received. */}
+            {received.map((r) => (
+              <tr key={r.sourceId}>
+                <td className="border border-slate-400 px-1.5 py-1">{r.collectorName}</td>
+                <td className="border border-slate-400 px-1.5 py-1 font-mono">
+                  {r.collectorReportNo ?? ''}
+                </td>
+                <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
+                  {formatAmount(r.amount, false)}
+                </td>
+              </tr>
+            ))}
+            {blankRows(BLANK_ROWS.a2 - received.length, 3, 'a2')}
             <tr className="font-bold">
               <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={2}>
                 TOTAL
               </td>
               <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                {formatAmount(0, false)}
+                {formatAmount(totalReceived, false)}
               </td>
             </tr>
           </tbody>
@@ -547,13 +584,27 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
                 </td>
               </tr>
             ))}
-            {blankRows(BLANK_ROWS.b - coveredDeposits.length, 3, 'b')}
+            {/* Patch 161: what this collector remitted to the Liquidating Officer. */}
+            {made.map((m) => (
+              <tr key={m.id}>
+                <td className="border border-slate-400 px-1.5 py-1">
+                  {m.liquidatingOfficerName} (Liquidating Officer)
+                </td>
+                <td className="border border-slate-400 px-1.5 py-1 font-mono">
+                  {m.referenceNo ?? formatShortDate(m.remittanceDate)}
+                </td>
+                <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
+                  {formatAmount(m.amount, false)}
+                </td>
+              </tr>
+            ))}
+            {blankRows(BLANK_ROWS.b - coveredDeposits.length - made.length, 3, 'b')}
             <tr className="font-bold">
               <td className="border border-slate-400 px-1.5 py-1 text-right" colSpan={2}>
                 TOTAL
               </td>
               <td className="border border-slate-400 px-1.5 py-1 text-right tabular-nums">
-                {formatAmount(totalDeposits, false)}
+                {formatAmount(totalDeposits + totalMade, false)}
               </td>
             </tr>
           </tbody>
@@ -627,8 +678,14 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
               <SummaryLine label="Cash" value={tender.cash} indent />
               <SummaryLine label="Online Payment" value={tender.online} indent />
               <SummaryLine label="Check/s" value={tender.check} indent />
-              <SummaryLine label="Total" value={totalCollections} bold />
-              <SummaryLine label="Less: Remittance / Deposit to Depository Bank" value={totalDeposits} />
+              {totalReceived > 0 && (
+                <SummaryLine label="Remittances received (A.2)" value={totalReceived} indent />
+              )}
+              <SummaryLine label="Total" value={totalCollections + totalReceived} bold />
+              <SummaryLine
+                label="Less: Remittance / Deposit to Depository Bank"
+                value={totalDeposits + totalMade}
+              />
               <SummaryLine label="Balance" value={balance} bold double />
             </tbody>
           </table>

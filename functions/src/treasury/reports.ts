@@ -158,6 +158,19 @@ interface ReportDoc {
    * from the deposits' own records, when the report is certified.
    */
   depositsBookedTotal?: number;
+  /**
+   * Patch 161 - RCD only, Section A.2: the collectors' remittances the
+   * Liquidating Officer received and reports. They move accountability from
+   * the collector to the Liquidating Officer; they book nothing.
+   */
+  remittances?: Array<{
+    sourceId: string;
+    collectorName?: string;
+    collectorReportNo?: string | null;
+    date?: string;
+    amount: number;
+  }>;
+  totalRemittances?: number;
   status: string;
   /**
    * Patch 143. Certifying and forwarding are two acts. A report certified
@@ -344,7 +357,7 @@ export const certifyTreasuryReport = onCall(
 
       const lines = (report.lines ?? []).filter((l) => !l.excluded);
       const depositLines = type === 'RCD' ? (report.deposits ?? []) : [];
-      if (!lines.length && !depositLines.length) {
+      if (!lines.length && !depositLines.length && !(report.remittances ?? []).length) {
         throw invalid(`This ${label} lists no documents.`);
       }
 
@@ -524,6 +537,84 @@ export const certifyTreasuryReport = onCall(
         if (!dep.jevId) verifiedToBook += d.amount;
       }
 
+      // ---- patch 161: the remittances received (Section A.2) --------------
+      const remittanceLines = type === 'RCD' ? (report.remittances ?? []) : [];
+      const remittanceSnaps = await Promise.all(
+        remittanceLines.map((r) => tx.get(db.collection(COL.collectionRemittances).doc(r.sourceId))),
+      );
+      let verifiedRemittances = 0;
+      for (let i = 0; i < remittanceLines.length; i++) {
+        const r = remittanceLines[i];
+        const rs = remittanceSnaps[i];
+        const who = r.collectorName || 'A collector';
+        if (!rs.exists) throw invalid(`The remittance of ${who} on this RCD no longer exists. Remove it.`);
+        const rem = rs.data() as {
+          status?: string;
+          fundCode?: string;
+          amount?: number;
+          liquidatingOfficerId?: string;
+          liquidatingReportId?: string;
+        };
+        if (rem.status === 'CANCELLED') {
+          throw invalid(`The remittance of ${who} is cancelled and must not be reported. Remove it.`);
+        }
+        if (rem.fundCode !== report.fundCode) {
+          throw invalid(`The remittance of ${who} belongs to the ${String(rem.fundCode)} fund, not ${report.fundCode}.`);
+        }
+        if (rem.liquidatingReportId && rem.liquidatingReportId !== reportId) {
+          throw invalid(`The remittance of ${who} is already reported on another RCD. A remittance is reported once.`);
+        }
+        if (report.accountableOfficerId && rem.liquidatingOfficerId !== report.accountableOfficerId) {
+          throw invalid(
+            `The remittance of ${who} was received by another officer, not by ${report.accountableOfficerName ?? 'the officer of this RCD'}. It is reported on the RCD of the officer who received it.`,
+          );
+        }
+        if (Number(rem.amount) !== r.amount) {
+          throw invalid(
+            `The remittance of ${who} is ${(Number(rem.amount) / 100).toFixed(2)} on its own record but ${(r.amount / 100).toFixed(2)} on this RCD. Prepare the RCD again.`,
+          );
+        }
+        verifiedRemittances += r.amount;
+      }
+
+      /*
+       * Patch 161: NO DEPOSIT WITHOUT THE MONEY. An officer deposits only what
+       * is in their hands: what they collected on this RCD, what collectors
+       * remitted to them on it, and what was left undeposited on their earlier
+       * RCDs.
+       */
+      if (type === 'RCD' && verifiedDeposits > 0) {
+        let carried = 0;
+        if (report.accountableOfficerId) {
+          const earlier = await tx.get(
+            db
+              .collection(COL.treasuryReports)
+              .where('accountableOfficerId', '==', report.accountableOfficerId)
+              .where('reportType', '==', 'RCD'),
+          );
+          for (const d of earlier.docs) {
+            if (d.id === reportId) continue;
+            const e = d.data() as {
+              status?: string;
+              fundCode?: string;
+              totalAmount?: number;
+              totalRemittances?: number;
+              totalDeposits?: number;
+            };
+            if (e.fundCode !== report.fundCode) continue;
+            if (e.status !== 'CERTIFIED' && e.status !== 'JOURNALIZED') continue;
+            carried +=
+              Number(e.totalAmount ?? 0) + Number(e.totalRemittances ?? 0) - Number(e.totalDeposits ?? 0);
+          }
+        }
+        const available = Math.max(0, carried) + verifiedTotal + verifiedRemittances;
+        if (verifiedDeposits > available) {
+          throw invalid(
+            `The deposits on this RCD (${(verifiedDeposits / 100).toFixed(2)}) are more than the officer holds: ${(available / 100).toFixed(2)} - collections ${(verifiedTotal / 100).toFixed(2)}, remittances received ${(verifiedRemittances / 100).toFixed(2)}, undeposited from earlier RCDs ${(Math.max(0, carried) / 100).toFixed(2)}. A deposit is made from a remittance in Section A.2 (or the officer's own collections).`,
+          );
+        }
+      }
+
       // ---- the proposed entry ---------------------------------------------
 
       const entry = report.entry ?? [];
@@ -602,6 +693,13 @@ export const certifyTreasuryReport = onCall(
           treasuryReportType: type,
         });
       }
+      // Patch 161: and the remittances it reports, received by its officer.
+      for (const r of remittanceLines) {
+        tx.update(db.collection(COL.collectionRemittances).doc(r.sourceId), {
+          liquidatingReportId: reportId,
+          liquidatingReportNo: reportNo,
+        });
+      }
 
       const serials = lines.map((l) => l.sourceNo).sort();
 
@@ -622,7 +720,11 @@ export const certifyTreasuryReport = onCall(
         serialTo: serials[serials.length - 1] ?? null,
         totalAmount: verifiedTotal,
         ...(type === 'RCD'
-          ? { totalDeposits: verifiedDeposits, depositsBookedTotal: verifiedToBook }
+          ? {
+              totalDeposits: verifiedDeposits,
+              depositsBookedTotal: verifiedToBook,
+              totalRemittances: verifiedRemittances,
+            }
           : {}),
         ...(type === 'RCDISB'
           ? { totalGross: verifiedGross, totalDeductions: verifiedDeductions }
@@ -832,14 +934,19 @@ export const journalizeTreasuryReport = onCall(
        */
       const noCollections = (report.lines ?? []).filter((l) => !l.excluded).length === 0;
       const toBook = type === 'RCD' ? Number(report.depositsBookedTotal ?? 0) : 0;
-      if (type === 'RCD' && noCollections && (report.deposits?.length ?? 0) > 0 && toBook === 0) {
+      if (
+        type === 'RCD' &&
+        noCollections &&
+        toBook === 0 &&
+        ((report.deposits?.length ?? 0) > 0 || (report.remittances?.length ?? 0) > 0)
+      ) {
         const now = new Date().toISOString();
         tx.update(ref, {
           status: 'JOURNALIZED',
           jevId: null,
           jevNo: null,
           journalizedAt: now,
-          remarks: 'Deposits already in the books only - no entry.',
+          remarks: 'Remittances received and/or deposits already in the books only - no entry.',
           postedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
         });
         recordTransition(tx, {
@@ -1044,6 +1151,13 @@ export const cancelTreasuryReport = onCall(
             treasuryReportId: null,
             treasuryReportNo: null,
             treasuryReportType: null,
+          });
+        }
+        // Patch 161: and its remittances received.
+        for (const r of report.remittances ?? []) {
+          tx.update(db.collection(COL.collectionRemittances).doc(r.sourceId), {
+            liquidatingReportId: null,
+            liquidatingReportNo: null,
           });
         }
       }
