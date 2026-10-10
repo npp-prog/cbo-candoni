@@ -14,13 +14,15 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm disabled:bg-brand-300',
+  // Patch 167: navy label, a navy-tinted border and hover, from the mark's navy.
   secondary:
-    'bg-white text-navy-800 border border-slate-300 hover:bg-slate-50 active:bg-slate-100 shadow-sm disabled:text-slate-400',
-  ghost: 'text-navy-700 hover:bg-slate-100 active:bg-slate-200 disabled:text-slate-400',
+    'bg-white text-navy-700 border border-navy-200 hover:bg-navy-50 hover:border-navy-300 active:bg-navy-100 shadow-sm disabled:text-slate-400 disabled:border-slate-200',
+  ghost: 'text-navy-700 hover:bg-navy-50 active:bg-navy-100 disabled:text-slate-400',
   // Reserved for irreversible acts: cancelling a voucher, reversing a posted
   // entry, reopening a closed period.
   danger: 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm disabled:bg-rose-300',
-  success: 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 shadow-sm disabled:bg-emerald-300',
+  // Patch 167: the teal of the CFMS mark's bars, darkened to read white on.
+  success: 'bg-accent-600 text-white hover:bg-accent-700 active:bg-accent-800 shadow-sm disabled:bg-accent-300',
 };
 
 /*

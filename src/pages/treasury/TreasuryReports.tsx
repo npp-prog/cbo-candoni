@@ -1226,6 +1226,7 @@ function PrepareReport({
         Cancel
       </Button>
       <Button
+        variant="primary"
         onClick={save}
         loading={saving}
         // Patch 161: an RCD of deposits or remittances only may be saved too.
