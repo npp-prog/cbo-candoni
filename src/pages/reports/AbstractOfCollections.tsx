@@ -206,6 +206,7 @@ export default function AbstractOfCollections({
 
   return (
     <ReportShell
+      printLayout="landscape"
       meta={{
         title:
           scope === 'ELECTRONIC' ? 'Abstract of General e-Collections' : 'Abstract of General Collection',

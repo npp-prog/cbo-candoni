@@ -55,6 +55,7 @@ export default function RcdTransmittal() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       meta={{
         title: 'Summary of Reports of Collection and Deposit',
         fundLabel: fundLabel(fundCode),

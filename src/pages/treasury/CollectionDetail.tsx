@@ -98,7 +98,7 @@ export function CollectionDetail({
 
       {/* ---- what the money was credited to ----------------------------- */}
       <div className="mt-5">
-        <p className="cbo-label mb-2">Revenue accounts</p>
+        <p className="cbo-label mb-2">Accounts</p>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr>
@@ -118,6 +118,12 @@ export function CollectionDetail({
                   ) : null}
                   {line.trustProgramName ? (
                     <span className="text-xs text-slate-500"> &middot; {line.trustProgramName}</span>
+                  ) : null}
+                  {/* Patch 158: the subsidiary ledger account. */}
+                  {line.subsidiaryName ? (
+                    <span className="block text-xs text-slate-500">
+                      Subsidiary: {line.subsidiaryName}
+                    </span>
                   ) : null}
                 </td>
                 <td className="cbo-td text-sm text-slate-600">{line.particulars ?? ''}</td>

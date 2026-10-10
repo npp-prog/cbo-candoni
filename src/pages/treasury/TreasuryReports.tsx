@@ -5,6 +5,7 @@ import { hereAsReturn, withReturn } from '@/lib/returnTo';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { JevLink } from '@/components/JevLink';
 import { newestFirst } from '@/lib/registerOrder';
+import { creditsByAccountAndSubsidiary, missingSubsidiaries } from '@/lib/collectionSubsidiary';
 import {
   cashInBankLine,
   ACCOUNTS_PAYABLE,
@@ -323,6 +324,12 @@ export default function TreasuryReports({
           */
           onRowClick={(r) => openReport(r.id)}
           emptyMessage={`No ${short} for ${fundLabel(fundCode)}, fiscal year ${fiscalYear}.`}
+          exportMeta={{
+            title: label,
+            fundLabel: fundLabel(fundCode),
+            periodLabel: `For the fiscal year ${fiscalYear}`,
+          }}
+          printLayout="landscape"
         />
       </Card>
 
@@ -717,20 +724,15 @@ function PrepareReport({
      */
     // Patch 157: an RCD of deposits only proposes no entry.
     if (chosen.length === 0) return [];
-    const byAccount = new Map<string, { accountCode: string; accountName: string; amount: number }>();
-    for (const doc of chosen) {
-      const collection = collections.data.find((c) => c.id === doc.id);
-      for (const line of collection?.lines ?? []) {
-        const existing = byAccount.get(line.accountCode);
-        if (existing) existing.amount += line.amount;
-        else
-          byAccount.set(line.accountCode, {
-            accountCode: line.accountCode,
-            accountName: line.accountName,
-            amount: line.amount,
-          });
-      }
-    }
+    /*
+     * Patch 158: one credit per account AND subsidiary ledger account - a
+     * refund of an advance credits Advances for Payroll in the officer's own
+     * account, a bidder's bond the bidder's, and revenue kept per party its
+     * payor's.
+     */
+    const credits = creditsByAccountAndSubsidiary(
+      chosen.flatMap((doc) => collections.data.find((c) => c.id === doc.id)?.lines ?? []),
+    );
     /*
      * Patch 156: e-collections are presented as DEPOSITED. Nobody held the
      * money - it was credited to the bank account directly - so an eRCD
@@ -753,9 +755,16 @@ function PrepareReport({
             credit: 0,
             particulars: `Collections per ${short}`,
           },
-      ...[...byAccount.values()].map((a) => ({
+      ...credits.map((a) => ({
         accountCode: a.accountCode,
         accountName: a.accountName,
+        ...(a.subsidiaryId
+          ? {
+              subsidiaryType: a.subsidiaryType,
+              subsidiaryId: a.subsidiaryId,
+              subsidiaryName: a.subsidiaryName,
+            }
+          : {}),
         debit: 0,
         credit: a.amount,
         particulars: `Collections per ${short}`,
@@ -837,6 +846,29 @@ function PrepareReport({
         `${bankAccount?.bankName ?? 'The selected account'} ${bankAccount?.accountNumber ?? ''} needs its "General Ledger account" field filled in - the Cash in Bank code it posts to, such as 10102020. Master Data > Banks, open this account, fill that field, save. The entry credits that account, so the report cannot be prepared without it.`,
       );
       return;
+    }
+    /*
+     * Patch 158: a receipt line on a receivable or a payable (or a revenue
+     * account kept per party) names its subsidiary ledger account, and the
+     * entry credits it there. One that came in without - a bulk upload, or a
+     * receipt recorded before patch 158 - is corrected on the receipt first.
+     */
+    if (reportType === 'RCD' || isECollectionReport(reportType)) {
+      const lacking = chosen.flatMap((doc) => {
+        const c = collections.data.find((x) => x.id === doc.id);
+        const miss = missingSubsidiaries(
+          c?.lines ?? [],
+          (code) => accounts.data.find((a) => a.code === code) ?? null,
+        );
+        return miss.length ? [`OR ${doc.sourceNo} ${miss.join(', ')}`] : [];
+      });
+      if (lacking.length > 0) {
+        toast.error(
+          'A receipt does not name its subsidiary ledger account',
+          `${lacking.join('; ')}. Open the receipt, Correct, and choose whose account it is - the entry credits that account per party.`,
+        );
+        return;
+      }
     }
     if (!entryBalances && chosen.length > 0) {
       toast.error(
@@ -1208,7 +1240,12 @@ function PrepareReport({
               {entry.map((line, i) => (
                 <tr key={`${line.accountCode}-${i}`} className="border-t border-slate-100">
                   <td className="py-1.5 font-mono text-xs text-slate-600">{line.accountCode}</td>
-                  <td className="py-1.5">{line.accountName}</td>
+                  <td className="py-1.5">
+                    {line.accountName}
+                    {'subsidiaryName' in line && line.subsidiaryName ? (
+                      <span className="block text-xs text-slate-500">{line.subsidiaryName}</span>
+                    ) : null}
+                  </td>
                   <td className="py-1.5 text-right">
                     {line.debit ? <span className="cbo-amount">{formatPeso(line.debit)}</span> : null}
                   </td>

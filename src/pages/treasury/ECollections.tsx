@@ -9,6 +9,8 @@ import { Modal } from '@/components/ui/Modal';
 import { Field, Select, DateInput, AmountInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, EmployeePicker } from '@/components/pickers';
+import { LineSubsidiary } from '@/components/pickers/LineSubsidiary';
+import { missingSubsidiaries } from '@/lib/collectionSubsidiary';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import {
@@ -17,6 +19,7 @@ import {
   useIntermediaries,
   useOffices,
   useTrustPrograms,
+  useAccounts,
 } from '@/data/queries';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
@@ -232,6 +235,7 @@ export default function ECollections() {
         }
         emptyTitle="No e-collections recorded"
         emptyMessage="Record each electronic receipt as the intermediary's list or the proof of deposit comes in."
+        printLayout="landscape"
         exportMeta={{
           title: 'Report of e-Collections and Deposits',
           fundLabel: fundLabel(fundCode),
@@ -341,6 +345,9 @@ function ECollectionForm({
     editingRecord?.lines?.length ? editingRecord.lines.map((l) => ({ ...l })) : [{ lineNo: 1 }],
   );
   const [saving, setSaving] = useState(false);
+  /* Patch 158: the chart, to know which lines are kept per party. */
+  const accounts = useAccounts(true);
+  const accountOf = (code: string) => accounts.data.find((a) => a.code === code) ?? null;
 
   const total = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
   const anyRpt = useMemo(() => lines.some((l) => isRptAccount(l.accountCode ?? '')), [lines]);
@@ -404,6 +411,16 @@ function ECollectionForm({
       toast.error('The receipt is missing detail the reports need', describeProblems(problems));
       return;
     }
+    // Patch 158: a receivable, a payable, or a revenue account kept per party
+    // names its subsidiary ledger account.
+    const noSub = missingSubsidiaries(lines, accountOf);
+    if (noSub.length > 0) {
+      toast.error(
+        'Choose the subsidiary ledger account',
+        `The account on ${noSub.join(', ')} is kept per party: say whose account it is.`,
+      );
+      return;
+    }
 
     const chosen = intermediaries.data.find((i) => i.id === intermediaryId);
 
@@ -448,6 +465,10 @@ function ECollectionForm({
             rptTaxYear: isRptAccount(l.accountCode ?? '') ? (l.rptTaxYear ?? null) : null,
             barangayId: isRptAccount(l.accountCode ?? '') ? (l.barangayId ?? null) : null,
             barangayName: isRptAccount(l.accountCode ?? '') ? (l.barangayName ?? null) : null,
+            // Patch 158: the subsidiary ledger account, where the line has one.
+            subsidiaryType: l.subsidiaryId ? (l.subsidiaryType ?? null) : null,
+            subsidiaryId: l.subsidiaryId ?? null,
+            subsidiaryName: l.subsidiaryId ? (l.subsidiaryName ?? null) : null,
           })),
           totalAmount: total,
           paymentForm: 'ONLINE',
@@ -640,7 +661,7 @@ function ECollectionForm({
       </div>
 
       <div className="mt-5">
-        <p className="cbo-label">Revenue accounts</p>
+        <p className="cbo-label">Accounts</p>
         <p className="mb-2 text-xs text-slate-500">
           These become the Breakdown of Collections columns on the printed report, one column per
           account.
@@ -664,9 +685,28 @@ function ECollectionForm({
                     onChange={(code, account) =>
                       setLines((ls) =>
                         ls.map((l, i) =>
-                          i === index ? { ...l, accountCode: code ?? undefined, accountName: account?.name } : l,
+                          i === index
+                            ? {
+                                ...l,
+                                accountCode: code ?? undefined,
+                                accountName: account?.name,
+                                // Patch 158: a new account, a new subsidiary.
+                                ...(code !== l.accountCode
+                                  ? { subsidiaryType: null, subsidiaryId: null, subsidiaryName: null }
+                                  : {}),
+                              }
+                            : l,
                         ),
                       )
+                    }
+                  />
+                  <LineSubsidiary
+                    accountCode={line.accountCode}
+                    account={accountOf(line.accountCode ?? '')}
+                    fundCode={fundCode}
+                    value={line}
+                    onChange={(sub) =>
+                      setLines((ls) => ls.map((l, i) => (i === index ? { ...l, ...sub } : l)))
                     }
                   />
                 </td>

@@ -2,6 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { Button } from './Button';
 import { EmptyState, Spinner } from './Layout';
+import { ReportHeading } from '../ReportShell';
+import { ReportPrintStyle } from '../print/ReportPrintStyle';
 import { exportCsv, exportXlsx, printReport, type ExportColumn, type ReportMeta } from '@/lib/export';
 import { totalsLayout } from './totalsRow';
 
@@ -69,6 +71,12 @@ interface Props<T> {
   } | null;
   dense?: boolean;
   className?: string;
+  /**
+   * Patch 158: printed as a report - A4 in this orientation, fitted to the
+   * width of the sheet, under the municipal heading with the seal at its left
+   * (`exportMeta` gives the title). Omitted, the table prints as it is.
+   */
+  printLayout?: 'portrait' | 'landscape';
 }
 
 export function DataTable<T>({
@@ -88,6 +96,7 @@ export function DataTable<T>({
   totals,
   dense,
   className,
+  printLayout,
 }: Props<T>) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -182,7 +191,23 @@ export function DataTable<T>({
     }));
 
   return (
-    <div className={clsx('cbo-card overflow-hidden', className)}>
+    <div
+      className={clsx(
+        'cbo-card overflow-hidden',
+        printLayout && exportMeta && 'cbo-report-sheet print:border-0',
+        className,
+      )}
+    >
+      {printLayout && exportMeta && (
+        <>
+          <ReportPrintStyle orientation={printLayout} />
+          {/* The screen's notices above the register stay off the printed report. */}
+          <style>{'@media print { .cbo-alert:not(.cbo-report-sheet .cbo-alert) { display: none !important; } }'}</style>
+          <div className="hidden print:block">
+            <ReportHeading meta={exportMeta} seal="left" />
+          </div>
+        </>
+      )}
       {(searchPlaceholder || filters || exportMeta) && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2.5 no-print">
           {searchPlaceholder && (

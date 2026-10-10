@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { openPayrollAdvances, payrollParticulars, payrollProformaEntry } from './payrollAdvances';
+import {
+  openPayrollAdvances,
+  payrollParticulars,
+  payrollProformaEntry,
+  refundReceiptDraft,
+} from './payrollAdvances';
 
 const ADV = '10305020';
 
@@ -82,6 +87,71 @@ describe('openPayrollAdvances (patch 155)', () => {
       ADV,
     );
     expect(out[0].officer).toEqual({ type: 'PAYEE', id: 'pay9', name: 'Juan Dela Cruz' });
+  });
+});
+
+describe('the refund (patch 158)', () => {
+  it('counts the refund declared on a payroll as accounted for', () => {
+    const out = openPayrollAdvances(
+      [dv({})],
+      [{ id: 'p1', dvId: 'dv1', status: 'DRAFT', totalNet: 700_000, refundAmount: 200_000 }],
+      ADV,
+    );
+    expect(out[0]).toMatchObject({ liquidated: 900_000, outstanding: 100_000 });
+  });
+
+  it('closes the advance when net and refund make it up', () => {
+    expect(
+      openPayrollAdvances(
+        [dv({})],
+        [{ id: 'p1', dvId: 'dv1', status: 'DRAFT', totalNet: 950_000, refundAmount: 50_000 }],
+        ADV,
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps the refund out of the entry - net paid only', () => {
+    const e = payrollProformaEntry({
+      net: 950_000,
+      officer: { type: 'EMPLOYEE', id: 'emp7', name: 'Juan Dela Cruz' },
+      particulars: 'x',
+      dueToOfficers: { code: '20101020', name: 'Due to Officers and Employees' },
+      advancesForPayroll: { code: ADV, name: 'Advances for Payroll' },
+    });
+    expect(e.reduce((s, l) => s + l.debit, 0)).toBe(950_000);
+  });
+});
+
+describe('refundReceiptDraft (patch 158)', () => {
+  const payroll = {
+    id: 'pr1',
+    payrollNo: 'PR-1',
+    dvNo: '2026-10-0100',
+    refundAmount: 50_000,
+    disbursingOfficer: { type: 'EMPLOYEE', id: 'emp7', name: 'Juan Dela Cruz' },
+  };
+  const afp = { code: ADV, name: 'Advances for Payroll' };
+
+  it('credits Advances for Payroll in the officer account', () => {
+    const d = refundReceiptDraft(payroll, afp)!;
+    expect(d.payorName).toBe('Juan Dela Cruz');
+    expect(d.lines).toEqual([
+      {
+        lineNo: 1,
+        accountCode: ADV,
+        accountName: 'Advances for Payroll',
+        amount: 50_000,
+        subsidiaryType: 'EMPLOYEE',
+        subsidiaryId: 'emp7',
+        subsidiaryName: 'Juan Dela Cruz',
+      },
+    ]);
+  });
+
+  it('asks only what is still to be refunded, and nothing when it is all in', () => {
+    expect(refundReceiptDraft(payroll, afp, 20_000)!.lines[0].amount).toBe(30_000);
+    expect(refundReceiptDraft(payroll, afp, 50_000)).toBeNull();
+    expect(refundReceiptDraft({ ...payroll, refundAmount: 0 }, afp)).toBeNull();
   });
 });
 

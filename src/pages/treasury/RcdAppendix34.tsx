@@ -348,7 +348,12 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
 
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
 
-        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" lines={entity.headingLines} />
+        <Letterhead
+          appendix="Appendix 34"
+          title="Report of Collections and Deposits"
+          lines={entity.headingLines}
+          seal="left"
+        />
 
         <table className="mb-4 w-full text-2xs">
           <tbody>

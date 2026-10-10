@@ -50,6 +50,7 @@ export default function TreasuryReports() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       meta={{
         title,
         fundLabel: fundLabel(fundCode),

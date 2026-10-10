@@ -261,7 +261,7 @@ async function searchPayee(term: string): Promise<Hit[]> {
       const data = d.data();
       hits.push({
         id: d.id,
-        kind: 'Payee',
+        kind: 'Name',
         ref: data.name as string,
         secondary: [data.payeeType, data.tin ? `TIN ${data.tin}` : null].filter(Boolean).join(' - '),
         to: `/accounting/index-of-payments?payee=${d.id}`,

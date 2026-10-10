@@ -327,6 +327,7 @@ export default function AccountableForms() {
             </Button>
           ) : undefined
         }
+        printLayout="landscape"
         exportMeta={{
           title: 'Register of Accountable Forms',
           periodLabel: `Fiscal year ${fiscalYear}`,

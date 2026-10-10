@@ -16,7 +16,8 @@ import { COL } from '@/lib/collections';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import { FPP_CODES, fppLabel } from '@/lib/fppCodes';
 import { formatPeso } from '@/lib/money';
-import { liquidatableByDefault } from '@/lib/chartOfAccounts';
+import { liquidatableByDefault, requiresSubsidiaryFor } from '@/lib/chartOfAccounts';
+import { employeeMirror, planNameMerge } from '@/lib/names';
 import {
   ACCOUNT_CLASSES,
   CASH_FLOW_CLASSES,
@@ -68,6 +69,11 @@ interface FieldSpec {
    * and saving the form for any other reason would quietly clear it.
    */
   whenUnset?: (record: Record<string, unknown>) => unknown;
+  /**
+   * Patch 158: shown on the form - and required, if `required` - only when
+   * this says so. Names: the employee details, for a name of type Employee.
+   */
+  showWhen?: (values: Record<string, unknown>) => boolean;
 }
 
 interface EntityConfig {
@@ -83,6 +89,9 @@ interface EntityConfig {
   /** Roles beyond the general master-data writers, if any. */
   note?: string;
 }
+
+/** Patch 158: the employee details show for a name of type Employee. */
+const isEmployeeName = (v: Record<string, unknown>) => v.payeeType === 'EMPLOYEE';
 
 const CONFIGS: Record<string, EntityConfig> = {
   /*
@@ -273,7 +282,15 @@ const CONFIGS: Record<string, EntityConfig> = {
         hint: 'Leave this ticked for a normal account. Clear it only for grouping headers that exist in reports but are never posted to.',
       },
       { key: 'isControl', label: 'Control account', type: 'checkbox', hint: 'Posts through a subsidiary ledger, e.g. Accounts Payable.' },
-      { key: 'requiresSubsidiary', label: 'Requires a subsidiary on every line', type: 'checkbox' },
+      {
+        key: 'requiresSubsidiary',
+        label: 'Has a subsidiary ledger',
+        type: 'checkbox',
+        inTable: true,
+        width: '7rem',
+        hint: 'Kept per party: every line on this account names its subsidiary ledger account (payee, employee, office...). Patch 158: on a receipt, a non-revenue line (a receivable or a payable) always asks for one; tick this on a REVENUE account that is kept per party too, and its receipts will ask as well.',
+        whenUnset: (r) => requiresSubsidiaryFor(String(r.code ?? '')),
+      },
       {
         key: 'liquidatable',
         label: 'Advance subject to liquidation',
@@ -286,17 +303,30 @@ const CONFIGS: Record<string, EntityConfig> = {
     ],
   },
 
-  payees: {
-    slug: 'payees',
+  /*
+   * Patch 158: Payees and Employees are one list - Names. A name of type
+   * Employee carries the employee details as well, and they are mirrored to
+   * the employee record the officer pickers and the EMPLOYEE subsidiary
+   * ledgers read (see lib/names.ts).
+   */
+  names: {
+    slug: 'names',
     collection: COL.payees,
-    title: 'Payees',
-    singular: 'payee',
+    title: 'Names',
+    singular: 'name',
     description:
-      'Suppliers, contractors, employees, barangays and agencies the municipality pays. The TIN and the default withholding treatment recorded here flow onto every voucher.',
+      'Everyone the municipality deals with: suppliers, contractors, barangays, agencies - and its own officials and employees, whose employee details are kept here too. The TIN and bank details flow onto every voucher.',
     defaultSort: 'name',
     fields: [
-      { key: 'code', label: 'Payee code', type: 'text', inTable: true, mono: true, width: '8rem' },
-      { key: 'name', label: 'Name', type: 'text', required: true, inTable: true },
+      { key: 'code', label: 'Code', type: 'text', inTable: true, mono: true, width: '8rem' },
+      {
+        key: 'name',
+        label: 'Name',
+        type: 'text',
+        required: true,
+        inTable: true,
+        hint: 'For an employee, as it should print on a payroll register, e.g. "DELA CRUZ, Juan M."',
+      },
       {
         key: 'payeeType',
         label: 'Type',
@@ -313,31 +343,25 @@ const CONFIGS: Record<string, EntityConfig> = {
       { key: 'bankName', label: 'Bank', type: 'text', hint: 'Used for ADA and LDDAP payments.' },
       { key: 'bankAccountNumber', label: 'Bank account number', type: 'text', mono: true },
       { key: 'bankAccountName', label: 'Bank account name', type: 'text' },
-    ],
-  },
-
-  employees: {
-    slug: 'employees',
-    collection: COL.employees,
-    title: 'Employees',
-    singular: 'employee',
-    description:
-      'Officials and employees, used by payroll, cash advances and collecting-officer accountability.',
-    defaultSort: 'displayName',
-    fields: [
-      { key: 'employeeNumber', label: 'Employee number', type: 'text', required: true, inTable: true, mono: true, width: '9rem' },
-      { key: 'displayName', label: 'Name', type: 'text', required: true, inTable: true, hint: 'As it should print on a payroll register, e.g. "DELA CRUZ, Juan M."' },
-      { key: 'lastName', label: 'Last name', type: 'text', required: true },
-      { key: 'firstName', label: 'First name', type: 'text', required: true },
-      { key: 'middleName', label: 'Middle name', type: 'text' },
-      { key: 'position', label: 'Position', type: 'text', inTable: true },
+      // ---- the employee details, for a name of type Employee -------------
+      {
+        key: 'employeeNumber',
+        label: 'Employee number',
+        type: 'text',
+        required: true,
+        mono: true,
+        showWhen: isEmployeeName,
+      },
+      { key: 'lastName', label: 'Last name', type: 'text', required: true, showWhen: isEmployeeName },
+      { key: 'firstName', label: 'First name', type: 'text', required: true, showWhen: isEmployeeName },
+      { key: 'middleName', label: 'Middle name', type: 'text', showWhen: isEmployeeName },
+      { key: 'position', label: 'Position', type: 'text', inTable: true, showWhen: isEmployeeName },
       {
         key: 'employmentType',
         label: 'Employment type',
         type: 'select',
         required: true,
-        inTable: true,
-        width: '11rem',
+        showWhen: isEmployeeName,
         options: [
           { value: 'PERMANENT', label: 'Permanent' },
           { value: 'CASUAL', label: 'Casual' },
@@ -347,12 +371,16 @@ const CONFIGS: Record<string, EntityConfig> = {
           { value: 'COTERMINOUS', label: 'Coterminous' },
         ],
       },
-      { key: 'tin', label: 'TIN', type: 'text', mono: true },
-      { key: 'gsisNumber', label: 'GSIS number', type: 'text', mono: true },
-      { key: 'philhealthNumber', label: 'PhilHealth number', type: 'text', mono: true },
-      { key: 'pagibigNumber', label: 'Pag-IBIG number', type: 'text', mono: true },
-      { key: 'monthlyRate', label: 'Monthly rate', type: 'amount' },
-      { key: 'bankAccountNumber', label: 'Bank account number', type: 'text', mono: true },
+      { key: 'gsisNumber', label: 'GSIS number', type: 'text', mono: true, showWhen: isEmployeeName },
+      {
+        key: 'philhealthNumber',
+        label: 'PhilHealth number',
+        type: 'text',
+        mono: true,
+        showWhen: isEmployeeName,
+      },
+      { key: 'pagibigNumber', label: 'Pag-IBIG number', type: 'text', mono: true, showWhen: isEmployeeName },
+      { key: 'monthlyRate', label: 'Monthly rate', type: 'amount', showWhen: isEmployeeName },
     ],
   },
 
@@ -582,7 +610,7 @@ const CONFIGS: Record<string, EntityConfig> = {
  */
 const TAB_GROUPS: Array<{ group: string; slugs: string[] }> = [
   { group: 'Ledger', slugs: ['accounts', 'funds'] },
-  { group: 'People and places', slugs: ['payees', 'employees', 'offices', 'barangays'] },
+  { group: 'People and places', slugs: ['names', 'offices', 'barangays'] },
   // GCash, Maya, a bank's online portal - beside the banks, because that is
   // what an officer is thinking of when they go looking for one.
   { group: 'Banking', slugs: ['banks', 'intermediaries'] },
@@ -623,6 +651,10 @@ export const MASTER_DATA_TABS = MASTER_DATA_TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function MasterData() {
   const { entity } = useParams<{ entity: string }>();
+  // Patch 158: Payees and Employees are Names now.
+  if (entity === 'payees' || entity === 'employees') {
+    return <Navigate to="/master-data/names" replace />;
+  }
   const config = entity ? CONFIGS[entity] : undefined;
 
   if (!config) return <Navigate to="/master-data/accounts" replace />;
@@ -701,7 +733,13 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => actor && void reactivateMaster(config.collection, r.id, actor)}
+                  onClick={() => {
+                    if (!actor) return;
+                    void reactivateMaster(config.collection, r.id, actor);
+                    // Patch 158: and the employee record behind a Name.
+                    if (config.slug === 'names' && r.employeeId)
+                      void reactivateMaster(COL.employees, String(r.employeeId), actor);
+                  }}
                 >
                   Reactivate
                 </Button>
@@ -743,6 +781,10 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
       />
 
       <GroupedSectionTabs groups={MASTER_DATA_TAB_GROUPS} />
+
+      {config.slug === 'names' && actor && can('masterData', 'edit') && (
+        <BringInEmployees names={data} actor={actor} />
+      )}
 
       <DataTable
         rows={rows}
@@ -788,6 +830,12 @@ function MasterDataScreen({ config }: { config: EntityConfig }) {
           if (!deactivating || !actor) return;
           setBusy(true);
           void deactivateMaster(config.collection, deactivating.id as string, actor, reason)
+            .then(() =>
+              // Patch 158: a Name that is an employee takes its employee record with it.
+              config.slug === 'names' && deactivating.employeeId
+                ? deactivateMaster(COL.employees, String(deactivating.employeeId), actor, reason)
+                : undefined,
+            )
             .then(() => {
               toast.success('Deactivated', 'It no longer appears in the pickers. Historical records that use it are unaffected.');
               setDeactivating(null);
@@ -843,9 +891,13 @@ function EntityForm({
   const isNew = !record.id;
 
   const set = (key: string, value: unknown) => setValues((v) => ({ ...v, [key]: value }));
+  /* Patch 158: a field with showWhen is on the form only when it applies. */
+  const shownFields = config.fields.filter((f) => !f.showWhen || f.showWhen(values));
 
   const save = async () => {
-    const missing = config.fields.filter((f) => f.required && !values[f.key]).map((f) => f.label);
+    const missing = shownFields
+      .filter((f) => f.required && !values[f.key])
+      .map((f) => f.label);
     if (missing.length) {
       toast.error('Incomplete', `Required: ${missing.join(', ')}.`);
       return;
@@ -858,6 +910,15 @@ function EntityForm({
         (config.idField ? String(values[config.idField]) : undefined) ??
         crypto.randomUUID();
 
+      /*
+       * Patch 158: a Name of type Employee keeps its employee record in step -
+       * the one the officer pickers and the EMPLOYEE subsidiary ledgers read.
+       */
+      const mirror =
+        config.slug === 'names' && values.payeeType === 'EMPLOYEE'
+          ? employeeMirror({ ...values, active: values.active ?? true }, id)
+          : null;
+
       await upsertMaster(
         config.collection,
         id,
@@ -865,9 +926,11 @@ function EntityForm({
           ...values,
           id,
           active: values.active ?? true,
+          ...(mirror ? { employeeId: mirror.id } : {}),
         },
         actor,
       );
+      if (mirror) await upsertMaster(COL.employees, mirror.id, mirror.data, actor);
       onSaved();
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : String(err));
@@ -892,7 +955,7 @@ function EntityForm({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        {config.fields.map((f) => (
+        {shownFields.map((f) => (
           <Field
             key={f.key}
             label={f.label}
@@ -956,5 +1019,103 @@ function EntityForm({
         </Alert>
       )}
     </Modal>
+  );
+}
+
+/**
+ * Patch 158: the employees on file that are not yet on Names.
+ *
+ * Before Names, an employee was entered on the Employees screen and, if paid
+ * on a voucher, a second time as a payee. This brings each of them in once:
+ * tied to the payee of the same name where there is exactly one, otherwise
+ * made a Name of their own (same id, so every EMPLOYEE subsidiary already
+ * posted still finds them). Nothing is deleted and nothing posted changes.
+ */
+function BringInEmployees({
+  names,
+  actor,
+}: {
+  names: Array<Record<string, unknown> & { id: string }>;
+  actor: ReturnType<typeof actorStamp>;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const employees = useCollection<Record<string, unknown> & { id: string }>(
+    COL.employees,
+    [orderBy('displayName')],
+    [COL.employees],
+  );
+  const plan = useMemo(
+    () => (employees.loading ? null : planNameMerge(names, employees.data)),
+    [names, employees.data, employees.loading],
+  );
+  const count = plan ? plan.links.length + plan.creates.length : 0;
+  if (!plan || count === 0) return null;
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const byId = new Map(employees.data.map((e) => [e.id, e]));
+      for (const l of plan.links) {
+        const e = byId.get(l.employeeId) ?? ({} as Record<string, unknown>);
+        const details = Object.fromEntries(
+          Object.entries(e).filter(([k, v]) =>
+            [
+              'employeeNumber',
+              'lastName',
+              'firstName',
+              'middleName',
+              'position',
+              'employmentType',
+              'gsisNumber',
+              'philhealthNumber',
+              'pagibigNumber',
+              'monthlyRate',
+            ].includes(k) && v !== undefined && v !== null,
+          ),
+        );
+        // The payee's own TIN and bank account stand; the employee's fill a blank.
+        const payee = names.find((n) => n.id === l.payeeId) ?? ({} as Record<string, unknown>);
+        const fill: Record<string, unknown> = {};
+        for (const k of ['tin', 'bankAccountNumber'])
+          if (!payee[k] && e[k]) fill[k] = e[k];
+        await upsertMaster(
+          COL.payees,
+          l.payeeId,
+          { ...details, ...fill, payeeType: 'EMPLOYEE', employeeId: l.employeeId },
+          actor,
+        );
+        await upsertMaster(COL.employees, l.employeeId, { payeeId: l.payeeId }, actor);
+      }
+      for (const c of plan.creates) {
+        await upsertMaster(COL.payees, c.employeeId, c.name, actor);
+        await upsertMaster(COL.employees, c.employeeId, { payeeId: c.employeeId }, actor);
+      }
+      toast.success(
+        'Employees brought into Names',
+        `${plan.links.length} tied to the payee of the same name, ${plan.creates.length} added as new names.`,
+      );
+    } catch (err) {
+      toast.error('Could not finish', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Alert
+      tone="info"
+      className="mb-4"
+      title={`${count} employee${count === 1 ? '' : 's'} not yet on Names`}
+    >
+      <p>
+        Payees and Employees are one list now. {plan.links.length} of these match a payee by name
+        and will be tied to it; {plan.creates.length} will be added as names of type Employee.
+        Nothing is deleted, and entries already posted are not touched.
+      </p>
+      <Button size="sm" variant="primary" className="mt-2" loading={busy} onClick={() => void run()}>
+        Bring them in
+      </Button>
+    </Alert>
   );
 }

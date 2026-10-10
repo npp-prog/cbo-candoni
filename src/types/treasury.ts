@@ -84,6 +84,14 @@ export interface CollectionLine {
   trustProgramId?: Id;
   trustProgramName?: string;
   /**
+   * Patch 158: the subsidiary ledger account the line is kept under - asked
+   * for on a non-revenue line (a receivable or a payable) and on a revenue
+   * account the chart says has a subsidiary ledger. Carried into the RCD entry.
+   */
+  subsidiaryType?: string | null;
+  subsidiaryId?: string | null;
+  subsidiaryName?: string | null;
+  /**
    * Which tax year this payment settles. Real property tax only.
    *
    * GAM Appendix 45 splits both the basic tax and the Special Education Fund
@@ -205,6 +213,9 @@ export interface Collection extends Partial<AuditStamps> {
   status: 'ISSUED' | 'IN_RCD' | 'DEPOSITED' | 'CANCELLED';
   cancelledReason?: string;
   remarks?: string;
+  /** Patch 158: the payroll whose unexpended advance this receipt refunds. */
+  refundForPayrollId?: Id | null;
+  refundForPayrollNo?: string | null;
 }
 
 // ---------------------------------------------------------------------------

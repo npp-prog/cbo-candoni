@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useDisbursementVouchers, usePayrolls } from '@/data/queries';
+import { useCollections, useDisbursementVouchers, usePayrolls } from '@/data/queries';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso, formatAmount } from '@/lib/money';
@@ -69,6 +69,9 @@ export default function PayrollDetail() {
   const [employeeCount, setEmployeeCount] = useState('');
   const [particulars, setParticulars] = useState('');
   const [net, setNet] = useState<number | null>(null);
+  /* Patch 158: what the officer gives back - not in the entry, receipted. */
+  const [refund, setRefund] = useState<number | null>(null);
+  const collections = useCollections(fiscalYear, fundCode);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -94,6 +97,7 @@ export default function PayrollDetail() {
     );
     setParticulars(existing.particulars ?? '');
     setNet(existing.totalNet);
+    setRefund(existing.refundAmount ?? null);
     setLoaded(true);
   }, [isNew, existing, loaded]);
   useEffect(() => {
@@ -128,7 +132,21 @@ export default function PayrollDetail() {
     setAdvance(a);
     setParticulars(payrollParticulars(a.particulars));
     setNet(a.outstanding);
+    setRefund(null);
   };
+
+  /* Patch 158: the receipts that refunded this payroll's advance. */
+  const refundReceipts = useMemo(
+    () =>
+      isNew || !existing
+        ? []
+        : collections.data.filter(
+            (c) => c.refundForPayrollId === existing.id && c.status !== 'CANCELLED',
+          ),
+    [collections.data, isNew, existing],
+  );
+  const refundReceipted = refundReceipts.reduce((s, c) => s + (c.totalAmount ?? 0), 0);
+  const unspent = outstanding !== null && net !== null ? outstanding - net : null;
 
   const save = async () => {
     if (!user) return;
@@ -148,10 +166,14 @@ export default function PayrollDetail() {
       toast.error('Period reversed', 'The period ends before it begins.');
       return;
     }
-    if (outstanding !== null && net > outstanding) {
+    if (refund !== null && refund < 0) {
+      toast.error('Refund below zero', 'The amount to be refunded cannot be negative.');
+      return;
+    }
+    if (outstanding !== null && net + (refund ?? 0) > outstanding) {
       toast.error(
         'More than the advance',
-        `The net paid, ${formatPeso(net)}, is more than is outstanding on DV ${advance?.dvNo}: ${formatPeso(outstanding)}. A payroll cannot liquidate more than was advanced.`,
+        `The net paid, ${formatPeso(net)}${refund ? `, plus the refund, ${formatPeso(refund)},` : ''} is more than is outstanding on DV ${advance?.dvNo}: ${formatPeso(outstanding)}. A payroll cannot liquidate more than was advanced.`,
       );
       return;
     }
@@ -174,6 +196,8 @@ export default function PayrollDetail() {
       totalNet: net,
       totalGross: net,
       totalDeductions: 0,
+      // Patch 158: declared here, journalized by the RCD of its receipt.
+      refundAmount: refund ?? 0,
     };
 
     setSaving(true);
@@ -396,8 +420,36 @@ export default function PayrollDetail() {
                 disabled={!editable}
               />
             </Field>
-            <Field label="Net amount paid" required htmlFor="prNet">
+            <Field
+              label="Net amount paid"
+              required
+              htmlFor="prNet"
+              hint="The actual amount paid to the employees. The only figure in the entry."
+            >
               <AmountInput id="prNet" value={net} onChange={setNet} disabled={!editable} />
+            </Field>
+            <Field
+              label="Amount to be refunded"
+              htmlFor="prRefund"
+              hint={
+                unspent !== null && unspent > 0
+                  ? `Not paid out of the advance: ${formatPeso(unspent)}. Receipted in Collections - not in this entry.`
+                  : 'What the disbursing officer returns. Receipted in Collections - not in this entry.'
+              }
+            >
+              <div className="flex gap-2">
+                <AmountInput
+                  id="prRefund"
+                  value={refund}
+                  onChange={setRefund}
+                  disabled={!editable}
+                />
+                {editable && unspent !== null && unspent > 0 && refund !== unspent && (
+                  <Button size="sm" onClick={() => setRefund(unspent)}>
+                    The balance
+                  </Button>
+                )}
+              </div>
             </Field>
           </div>
         </Card>
@@ -437,6 +489,51 @@ export default function PayrollDetail() {
             </tbody>
           </table>
           <p className="mt-2 text-xs italic text-slate-500">{entry[0].particulars}</p>
+        </Card>
+      )}
+
+      {/* ---- 4. the refund (patch 158) ------------------------------------- */}
+      {(refund ?? 0) > 0 && (
+        <Card
+          className="mt-4"
+          title="Refund"
+          subtitle="Not in the entry above. The officer pays it back on an official receipt, and the RCD reporting that receipt journalizes it: Dr Cash - Local Treasury / Cr Advances for Payroll - the officer."
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p>
+              To be refunded: <span className="cbo-amount">{formatPeso(refund ?? 0)}</span>
+              {refundReceipts.length > 0 && (
+                <>
+                  {' '}
+                  - receipted on{' '}
+                  {refundReceipts.map((c, i) => (
+                    <span key={c.id} className="font-mono text-xs">
+                      {i > 0 ? ', ' : ''}OR {c.orNumber}
+                    </span>
+                  ))}{' '}
+                  (<span className="cbo-amount">{formatPeso(refundReceipted)}</span>)
+                </>
+              )}
+            </p>
+            {!isNew &&
+              existing &&
+              (existing.refundAmount ?? 0) > 0 &&
+              refundReceipted < (existing.refundAmount ?? 0) &&
+              can('treasury', 'edit') && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => navigate(`/treasury/collections?refundOf=${existing.id}`)}
+                >
+                  Receipt the refund
+                </Button>
+              )}
+          </div>
+          {isNew && (
+            <p className="mt-2 text-xs text-slate-500">
+              Save the payroll first; the receipt is then started from here.
+            </p>
+          )}
         </Card>
       )}
     </div>

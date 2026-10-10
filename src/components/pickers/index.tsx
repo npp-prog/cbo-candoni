@@ -420,7 +420,7 @@ export type { Option };
 export type SubsidiaryKind = 'PAYEE' | 'EMPLOYEE' | 'OFFICE' | 'BANK_ACCOUNT' | 'TAX_CODE';
 
 const SUBSIDIARY_KIND_LABELS: Record<SubsidiaryKind, string> = {
-  PAYEE: 'Payee',
+  PAYEE: 'Name',
   EMPLOYEE: 'Employee',
   OFFICE: 'Office',
   BANK_ACCOUNT: 'Bank account',
@@ -480,7 +480,7 @@ export function SubsidiaryPicker({
       out.push({
         value: `PAYEE:${p.id}`,
         label: p.name,
-        detail: p.tin ? `Payee - TIN ${p.tin}` : 'Payee',
+        detail: p.tin ? `Name - TIN ${p.tin}` : 'Name',
       });
     }
     for (const e of employees.data) {

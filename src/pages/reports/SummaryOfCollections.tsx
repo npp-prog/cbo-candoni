@@ -115,6 +115,8 @@ export default function SummaryOfCollections() {
 
   return (
     <ReportShell
+      printLayout="portrait"
+      seal="center"
       meta={{
         title: 'Summary of Collections',
         fundLabel: fundLabel(fundCode),

@@ -88,6 +88,7 @@ export default function RptAbstract() {
 
   return (
     <ReportShell
+      printLayout="landscape"
       meta={{
         title: 'Abstract of Real Property Tax Collections',
         fundLabel: fundLabel(fundCode),

@@ -172,6 +172,7 @@ export default function Rcd() {
         searchPlaceholder="RCD number or collecting officer"
         emptyTitle="No reports of collections"
         emptyMessage="An RCD gathers a collecting officer's receipts and recognises them in the books."
+        printLayout="landscape"
         exportMeta={{
           title: 'Report of Collections and Deposits',
           fundLabel: fundLabel(fundCode),

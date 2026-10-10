@@ -94,6 +94,14 @@ export default function Payroll() {
       cell: (p) => formatPeso(p.totalNet, { symbol: false }),
     },
     {
+      // Patch 158: declared on the payroll, receipted in Collections.
+      key: 'refund',
+      header: 'To be refunded',
+      kind: 'amount',
+      value: (p) => p.refundAmount ?? 0,
+      cell: (p) => (p.refundAmount ? formatPeso(p.refundAmount, { symbol: false }) : ''),
+    },
+    {
       key: 'rcdisb',
       header: 'RCDisb',
       width: '9rem',
@@ -146,6 +154,7 @@ export default function Payroll() {
         searchPlaceholder="Payroll number, DV number or officer"
         emptyTitle="No payrolls recorded"
         emptyMessage="Record each payroll against the advance for payroll it liquidates, then report the net paid on an RCDisb."
+        printLayout="landscape"
         exportMeta={{
           title: 'Payroll Register',
           fundLabel: fundLabel(fundCode),

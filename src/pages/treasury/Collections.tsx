@@ -1,5 +1,9 @@
-import { Link } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useDocument } from '@/hooks/useFirestore';
+import { ADVANCES_FOR_PAYROLL } from '@/lib/chartOfAccounts';
+import { refundReceiptDraft } from '@/lib/payrollAdvances';
+import type { Payroll as PayrollRecord } from '@/types/accounting';
 import { PageHeader, Alert } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -9,9 +13,11 @@ import { Modal } from '@/components/ui/Modal';
 import { Field, Select, DateInput, AmountInput, TextInput } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { AccountPicker, EmployeePicker } from '@/components/pickers';
+import { LineSubsidiary } from '@/components/pickers/LineSubsidiary';
+import { missingSubsidiaries } from '@/lib/collectionSubsidiary';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
-import { useBarangays, useCollections, useTrustPrograms } from '@/data/queries';
+import { useAccounts, useBarangays, useCollections, useTrustPrograms } from '@/data/queries';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso } from '@/lib/money';
@@ -21,6 +27,8 @@ import { receiptDetailProblems, describeProblems, receiptIsIncomplete } from '@/
 import { formatShortDate, monthName, todayPh } from '@/lib/dates';
 import { REVENUE_SOURCES } from '@/types/treasury';
 import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury';
+
+type RefundPrefill = NonNullable<ReturnType<typeof refundReceiptDraft>>;
 import { fundLabel } from '../budget/Obligations';
 import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 import { CollectionDetail } from './CollectionDetail';
@@ -46,6 +54,31 @@ export default function Collections() {
   /* The receipt being READ. The row opens this; the detail offers the edit. */
   const [viewing, setViewing] = useState<Collection | null>(null);
   const [source, setSource] = useState('');
+
+  /*
+   * Patch 158: "Receipt the refund" on a payroll comes here with
+   * ?refundOf=<payroll>. The form opens with the officer as payor and one
+   * line: Advances for Payroll, in the officer's subsidiary account, for the
+   * refund the payroll declared.
+   */
+  const [params, setParams] = useSearchParams();
+  const refundOf = params.get('refundOf');
+  const refundPayroll = useDocument<PayrollRecord>(refundOf ? COL.payrolls : null, refundOf);
+  const [refundPrefill, setRefundPrefill] = useState<RefundPrefill | null>(null);
+  useEffect(() => {
+    if (!refundOf || !refundPayroll.data) return;
+    const receipted = data
+      .filter((c) => c.refundForPayrollId === refundOf && c.status !== 'CANCELLED')
+      .reduce((sum, c) => sum + (c.totalAmount ?? 0), 0);
+    const draft = refundReceiptDraft(refundPayroll.data, ADVANCES_FOR_PAYROLL, receipted);
+    if (draft) {
+      setRefundPrefill(draft);
+      setShowForm(true);
+    }
+    const next = new URLSearchParams(params);
+    next.delete('refundOf');
+    setParams(next, { replace: true });
+  }, [refundOf, refundPayroll.data, data, params, setParams]);
 
   /*
    * The counter's own receipts, and only those.
@@ -248,6 +281,7 @@ export default function Collections() {
             ))}
           </Select>
         }
+        printLayout="landscape"
         exportMeta={{
           title: 'Revenue Collection Report',
           fundLabel: fundLabel(fundCode),
@@ -290,9 +324,14 @@ export default function Collections() {
         <CollectionForm
           fiscalYear={fiscalYear}
           fundCode={fundCode}
-          onClose={() => setShowForm(false)}
+          prefill={refundPrefill}
+          onClose={() => {
+            setShowForm(false);
+            setRefundPrefill(null);
+          }}
           onSaved={(orNumber) => {
             setShowForm(false);
+            setRefundPrefill(null);
             toast.success(`Official Receipt ${orNumber} recorded`);
           }}
         />
@@ -305,6 +344,7 @@ function CollectionForm({
   fiscalYear,
   fundCode,
   existing,
+  prefill,
   onClose,
   onSaved,
 }: {
@@ -320,6 +360,8 @@ function CollectionForm({
    * the recording screen would have refused.
    */
   existing?: Collection | null;
+  /** Patch 158: a new receipt started from a payroll's refund. */
+  prefill?: RefundPrefill | null;
   onClose: () => void;
   onSaved: (orNumber: string) => void;
 }) {
@@ -343,7 +385,7 @@ function CollectionForm({
   const [orDate, setOrDate] = useState(existing?.orDate ?? todayPh());
   const [officerId, setOfficerId] = useState<string | null>(existing?.collectingOfficerId ?? null);
   const [officerName, setOfficerName] = useState(existing?.collectingOfficerName ?? '');
-  const [payorName, setPayorName] = useState(existing?.payorName ?? '');
+  const [payorName, setPayorName] = useState(existing?.payorName ?? prefill?.payorName ?? '');
   const [payorTin, setPayorTin] = useState(existing?.payorTin ?? '');
   const [revenueSource, setRevenueSource] = useState<RevenueSource>(
     existing?.revenueSource ?? 'FEES_AND_CHARGES',
@@ -361,13 +403,20 @@ function CollectionForm({
    * was coming out blank on every cash receipt.
    */
   const [particulars, setParticulars] = useState(
-    existing?.remarks ?? existing?.lines?.[0]?.particulars ?? '',
+    existing?.remarks ?? existing?.lines?.[0]?.particulars ?? prefill?.particulars ?? '',
   );
   const [checkNo, setCheckNo] = useState(existing?.checkNo ?? '');
   const [lines, setLines] = useState<Array<Partial<CollectionLine>>>(
-    existing?.lines?.length ? existing.lines.map((l) => ({ ...l })) : [{ lineNo: 1 }],
+    existing?.lines?.length
+      ? existing.lines.map((l) => ({ ...l }))
+      : prefill
+        ? prefill.lines.map((l) => ({ ...l }))
+        : [{ lineNo: 1 }],
   );
   const [saving, setSaving] = useState(false);
+  /* Patch 158: the chart, to know which lines are kept per party. */
+  const accounts = useAccounts(true);
+  const accountOf = (code: string) => accounts.data.find((a) => a.code === code) ?? null;
 
   const total = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
 
@@ -398,6 +447,16 @@ function CollectionForm({
     const problems = receiptDetailProblems(lines, fundCode);
     if (problems.length > 0) {
       toast.error('The receipt is missing detail the reports need', describeProblems(problems));
+      return;
+    }
+    // Patch 158: a receivable, a payable, or a revenue account kept per party
+    // names its subsidiary ledger account.
+    const noSub = missingSubsidiaries(lines, accountOf);
+    if (noSub.length > 0) {
+      toast.error(
+        'Choose the subsidiary ledger account',
+        `The account on ${noSub.join(', ')} is kept per party: say whose account it is.`,
+      );
       return;
     }
     // Patch 156: particulars are required on every entry.
@@ -435,6 +494,10 @@ function CollectionForm({
             rptTaxYear: isRptAccount(l.accountCode ?? '') ? (l.rptTaxYear ?? null) : null,
             barangayId: isRptAccount(l.accountCode ?? '') ? (l.barangayId ?? null) : null,
             barangayName: isRptAccount(l.accountCode ?? '') ? (l.barangayName ?? null) : null,
+            // Patch 158: the subsidiary ledger account, where the line has one.
+            subsidiaryType: l.subsidiaryId ? (l.subsidiaryType ?? null) : null,
+            subsidiaryId: l.subsidiaryId ?? null,
+            subsidiaryName: l.subsidiaryId ? (l.subsidiaryName ?? null) : null,
           })),
           totalAmount: total,
           paymentForm,
@@ -459,7 +522,18 @@ function CollectionForm({
          */
         await updateDraft(COL.collections, existing.id, payload, stamp);
       } else {
-        await createDraft(COL.collections, { ...payload, status: 'ISSUED' }, stamp);
+        await createDraft(
+          COL.collections,
+          {
+            ...payload,
+            status: 'ISSUED',
+            // Patch 158: the payroll whose refund this receipts.
+            ...(prefill
+              ? { refundForPayrollId: prefill.payrollId, refundForPayrollNo: prefill.payrollNo }
+              : {}),
+          },
+          stamp,
+        );
       }
       onSaved(orNumber.trim().toUpperCase());
     } catch (err) {
@@ -558,7 +632,7 @@ function CollectionForm({
       </div>
 
       <div className="mt-5">
-        <p className="cbo-label">Revenue accounts</p>
+        <p className="cbo-label">Accounts</p>
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -578,9 +652,28 @@ function CollectionForm({
                     onChange={(code, account) =>
                       setLines((ls) =>
                         ls.map((l, i) =>
-                          i === index ? { ...l, accountCode: code ?? undefined, accountName: account?.name } : l,
+                          i === index
+                            ? {
+                                ...l,
+                                accountCode: code ?? undefined,
+                                accountName: account?.name,
+                                // Patch 158: a new account, a new subsidiary.
+                                ...(code !== l.accountCode
+                                  ? { subsidiaryType: null, subsidiaryId: null, subsidiaryName: null }
+                                  : {}),
+                              }
+                            : l,
                         ),
                       )
+                    }
+                  />
+                  <LineSubsidiary
+                    accountCode={line.accountCode}
+                    account={accountOf(line.accountCode ?? '')}
+                    fundCode={fundCode}
+                    value={line}
+                    onChange={(sub) =>
+                      setLines((ls) => ls.map((l, i) => (i === index ? { ...l, ...sub } : l)))
                     }
                   />
                 </td>

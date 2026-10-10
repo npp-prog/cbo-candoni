@@ -17,6 +17,11 @@
  * one figure the liquidation needs. (The gross and the deductions were booked
  * on the payroll's own voucher, by Accounting.)
  *
+ * Patch 158: what was NOT paid out is refunded by the officer. The payroll
+ * declares it (refundAmount) so the advance is fully accounted for, but the
+ * refund is not in the payroll's entry - it is receipted in Collections and
+ * the RCD journalizes it: Dr Cash - Local Treasury / Cr Advances for Payroll.
+ *
  * This file is the arithmetic of that: which advances are still open, by how
  * much, and the entry a payroll proposes.
  */
@@ -46,6 +51,8 @@ export interface PayrollAgainstAdvance {
   dvId?: string | null;
   status: string;
   totalNet: number;
+  /** Patch 158: the unspent part, refunded through Collections. */
+  refundAmount?: number | null;
 }
 
 export interface Officer {
@@ -65,7 +72,10 @@ export interface OpenAdvance {
   officeName: string | null;
   /** The advance for payroll the voucher granted. */
   advance: number;
-  /** Net already reported on payrolls drawn on it. */
+  /**
+   * Accounted for by the payrolls drawn on it: the net paid plus the refund
+   * each declared (patch 158).
+   */
   liquidated: number;
   outstanding: number;
 }
@@ -87,7 +97,9 @@ export function openPayrollAdvances(
   const used = new Map<string, number>();
   for (const p of payrolls) {
     if (!p.dvId || p.status === 'CANCELLED' || p.id === exceptPayrollId) continue;
-    used.set(p.dvId, (used.get(p.dvId) ?? 0) + (p.totalNet || 0));
+    // Patch 158: a refund declared on a payroll accounts for that part of the
+    // advance too - it is collected, not paid out on another payroll.
+    used.set(p.dvId, (used.get(p.dvId) ?? 0) + (p.totalNet || 0) + (p.refundAmount || 0));
   }
 
   const out: OpenAdvance[] = [];
@@ -193,4 +205,58 @@ export function payrollProformaEntry(input: {
       particulars: input.particulars,
     },
   ];
+}
+
+/**
+ * Patch 158 - the receipt for a payroll's refund: the disbursing officer pays
+ * back what the payroll did not use, and the receipt credits Advances for
+ * Payroll in the officer's subsidiary account - so the RCD that reports it
+ * closes the rest of the advance. Null when the payroll declared no refund.
+ */
+export function refundReceiptDraft(
+  payroll: {
+    id: string;
+    payrollNo: string;
+    dvNo?: string | null;
+    refundAmount?: number | null;
+    disbursingOfficer?: Officer | null;
+  },
+  advancesForPayroll: { code: string; name: string },
+  /** What earlier receipts have already refunded, so this one asks only the rest. */
+  alreadyReceipted = 0,
+): {
+  payrollId: string;
+  payrollNo: string;
+  payorName: string;
+  particulars: string;
+  lines: Array<{
+    lineNo: number;
+    accountCode: string;
+    accountName: string;
+    amount: number;
+    subsidiaryType: string | null;
+    subsidiaryId: string | null;
+    subsidiaryName: string | null;
+  }>;
+} | null {
+  const amount = (payroll.refundAmount ?? 0) - alreadyReceipted;
+  if (!(amount > 0)) return null;
+  const o = payroll.disbursingOfficer ?? null;
+  return {
+    payrollId: payroll.id,
+    payrollNo: payroll.payrollNo,
+    payorName: o?.name ?? '',
+    particulars: `Refund of unexpended payroll advance - Payroll ${payroll.payrollNo}${payroll.dvNo ? `, DV ${payroll.dvNo}` : ''}`,
+    lines: [
+      {
+        lineNo: 1,
+        accountCode: advancesForPayroll.code,
+        accountName: advancesForPayroll.name,
+        amount,
+        subsidiaryType: o?.type ?? null,
+        subsidiaryId: o?.id ?? null,
+        subsidiaryName: o?.name ?? null,
+      },
+    ],
+  };
 }

@@ -617,6 +617,13 @@ export interface Payroll extends Partial<AuditStamps> {
   /** All deductions withheld, as one figure. */
   totalDeductions: Centavos;
   totalNet: Centavos;
+  /**
+   * Patch 158: the part of the advance NOT paid out, to be refunded by the
+   * disbursing officer. It is not in the payroll's entry - only the net paid
+   * is. The refund is receipted in Collections (Cr Advances for Payroll - the
+   * officer) and journalized by the RCD that reports it.
+   */
+  refundAmount?: Centavos;
   /** How many people the payroll covers. Recorded for the report heading only. */
   employeeCount?: number;
   /** Patch 156: who the payroll covers, as typed - "45 regular employees". */

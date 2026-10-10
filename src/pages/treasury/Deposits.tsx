@@ -214,6 +214,7 @@ export default function Deposits() {
             </Select>
           </>
         }
+        printLayout="landscape"
         exportMeta={{
           title: 'Deposit Register',
           fundLabel: fundLabel(fundCode),

@@ -14,6 +14,8 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useRaafReports } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatShortDate } from '@/lib/dates';
+import { printAs, printFileName } from '@/lib/printTitle';
+import { RAAF_TITLE, RaafPrintSheet } from './RaafPrintSheet';
 import type { Raaf as RaafRecord, RaafBasis, RaafLine, RaafSerialRange } from '@/types/accountableForms';
 
 /**
@@ -204,6 +206,7 @@ export default function Raaf() {
             </Button>
           ) : undefined
         }
+        printLayout="landscape"
         exportMeta={{
           title: 'Reports of Accountability for Accountable Forms',
           periodLabel: `Fiscal year ${fiscalYear}`,
@@ -424,12 +427,17 @@ function RaafDetail({ raaf, onClose }: { raaf: RaafRecord; onClose: () => void }
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>
-          <Button variant="primary" onClick={() => window.print()}>
+          <Button
+            variant="primary"
+            onClick={() => printAs(printFileName(RAAF_TITLE, raaf.raafNo ?? 'draft'))}
+          >
             Print
           </Button>
         </>
       }
     >
+      {/* Patch 158: what the Print button prints. */}
+      <RaafPrintSheet raaf={raaf} />
       <Card bodyClassName="p-0" className="mb-4">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">

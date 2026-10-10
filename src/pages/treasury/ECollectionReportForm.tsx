@@ -277,6 +277,7 @@ export default function ECollectionReportForm({ report }: { report: TreasuryRepo
       <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
 
         <Letterhead
+          seal="left"
           appendix={spec.annex}
           title={spec.title}
           lines={entity.headingLines}

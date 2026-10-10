@@ -61,8 +61,12 @@ export function ReportShell<T>({
    * Omitted, a report prints as it always has.
    */
   printLayout?: 'portrait' | 'landscape';
-  /** Patch 145: the municipal seal at the left of the heading, without changing the print layout. */
-  seal?: boolean;
+  /**
+   * Patch 145: the municipal seal at the left of the heading, without changing
+   * the print layout. Patch 158: 'center' puts it above the heading instead
+   * (the Summary of Collections).
+   */
+  seal?: boolean | 'left' | 'center';
 }) {
   const canExport = Boolean(rows && exportColumns);
 
@@ -124,7 +128,22 @@ export function ReportShell<T>({
   );
 }
 
-export function ReportHeading({ meta, seal }: { meta: ReportMeta; seal?: boolean }) {
+export function ReportHeading({
+  meta,
+  seal,
+}: {
+  meta: ReportMeta;
+  seal?: boolean | 'left' | 'center';
+}) {
+  /* Patch 158: the seal centred above the heading lines. */
+  if (seal === 'center') {
+    return (
+      <header className="report-header mb-5 text-center">
+        <Seal className="mx-auto mb-2 h-24 w-24" />
+        <HeadingText meta={meta} />
+      </header>
+    );
+  }
   /*
     With the seal: at the far left of the heading, the heading itself still
     centred on the page - the seal's column is matched by an empty one on the

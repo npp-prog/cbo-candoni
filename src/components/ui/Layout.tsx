@@ -187,7 +187,7 @@ export function Alert({
   className?: string;
 }) {
   return (
-    <div className={clsx('rounded-md border px-4 py-3 text-sm', ALERT_STYLES[tone], className)}>
+    <div className={clsx('cbo-alert rounded-md border px-4 py-3 text-sm', ALERT_STYLES[tone], className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {title && <p className="font-medium">{title}</p>}

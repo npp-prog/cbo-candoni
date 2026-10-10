@@ -1,3 +1,4 @@
+import { FormPrintStyle } from '@/components/print/FormPrintStyle';
 import { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PageHeader, Alert, Spinner } from '@/components/ui/Layout';
@@ -130,8 +131,15 @@ export default function PrimaryAppendix34() {
         </Alert>
       )}
 
-      <div className="cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
-        <Letterhead appendix="Appendix 34" title="Report of Collections and Deposits" lines={entity.headingLines} />
+      {/* Patch 158: A4 landscape, fitted to the width, like the other RCDs. */}
+      <FormPrintStyle />
+      <div className="cbo-form-sheet cbo-card px-6 py-6 text-xs print:border-0 print:px-0 print:py-0">
+        <Letterhead
+          appendix="Appendix 34"
+          title="Report of Collections and Deposits"
+          lines={entity.headingLines}
+          seal="left"
+        />
 
         <table className="mb-4 w-full text-2xs">
           <tbody>
