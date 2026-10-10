@@ -1,4 +1,5 @@
 import { useCallback, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import {
   fieldStyle,
@@ -242,6 +243,32 @@ export function SheetPrintStyle({ sheet }: { sheet: SheetSize }) {
   .cbo-print-sheet:last-child { page-break-after: auto; break-after: auto; }
 }`;
   return <style>{css}</style>;
+}
+
+/**
+ * Patch 163 - the sheets, and ONLY the sheets, on paper.
+ *
+ * The preview sits in a card under the page heading, beside the calibration
+ * panel. Printed in place, the heading, the tabs and the card's title went
+ * onto the small check-sized pages first and the check came out on page 3.
+ * So the sheets are laid out a second time, here, in a portal at the top of
+ * <body>: hidden on screen, and while printing everything else is left off
+ * the paper. The first page is the first check.
+ */
+export function SheetPrintPortal({ children }: { children: ReactNode }) {
+  const only = `
+@media print {
+  body > *:not(.cbo-sheet-print) { display: none !important; }
+  body > .cbo-sheet-print { display: block !important; }
+  .cbo-sheet-print .cbo-print-sheet { display: block; position: relative; overflow: hidden; }
+}`;
+  return createPortal(
+    <div className="cbo-sheet-print hidden">
+      <style>{only}</style>
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 /**

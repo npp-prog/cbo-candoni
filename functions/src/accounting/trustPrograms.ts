@@ -65,6 +65,13 @@ export const recordTrustProgram = onCall(
       received?: number;
       status?: string;
       notes?: string;
+      fundSource?: string | null;
+      location?: string | null;
+      dateStarted?: string | null;
+      targetCompletion?: string | null;
+      extensions?: number | null;
+      percentComplete?: number | null;
+      statusRemarks?: string | null;
     };
 
     /*
@@ -193,6 +200,7 @@ export const recordTrustProgram = onCall(
           accountCode: accountCode || null,
           status: input.status as TrustProgramStatus,
           notes: String(data.notes ?? '').trim() || null,
+          ...fdpFields(data),
           ...figures,
           updatedAt: now,
           updatedBy: stamp,
@@ -221,6 +229,43 @@ export const recordTrustProgram = onCall(
     });
   },
 );
+
+/**
+ * Patch 163 - the FDP report fields: where the money came from (FDP Form 6
+ * reports only programmes funded by a national agency or another LGU) and
+ * the Form 6 columns the office states. Each is cleaned, never trusted as
+ * sent: an unknown source is dropped, a date must be YYYY-MM-DD, the
+ * completion is held to 0-100.
+ */
+const FUND_SOURCES = ['NATIONAL', 'LOCAL', 'OWN', 'LDRRMF'];
+export function fdpFields(data: {
+  fundSource?: string | null;
+  location?: string | null;
+  dateStarted?: string | null;
+  targetCompletion?: string | null;
+  extensions?: number | null;
+  percentComplete?: number | null;
+  statusRemarks?: string | null;
+}) {
+  const text = (v: unknown, max = 300) => String(v ?? '').trim().slice(0, max) || null;
+  const date = (v: unknown) => {
+    const d = String(v ?? '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+  };
+  const source = String(data.fundSource ?? '').trim().toUpperCase();
+  const ext = Number(data.extensions);
+  const pctRaw = data.percentComplete;
+  const pct = pctRaw === null || pctRaw === undefined || String(pctRaw) === '' ? NaN : Number(pctRaw);
+  return {
+    fundSource: FUND_SOURCES.includes(source) ? source : null,
+    location: text(data.location),
+    dateStarted: date(data.dateStarted),
+    targetCompletion: date(data.targetCompletion),
+    extensions: Number.isInteger(ext) && ext >= 0 ? ext : null,
+    percentComplete: Number.isFinite(pct) ? Math.min(100, Math.max(0, Math.round(pct * 100) / 100)) : null,
+    statusRemarks: text(data.statusRemarks),
+  };
+}
 
 /** Loaded by the certification and the voucher, so the shape is defined once. */
 export interface TrustProgramData {

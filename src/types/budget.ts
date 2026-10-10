@@ -671,6 +671,32 @@ export interface TrustProgram {
 
   status: 'ACTIVE' | 'CLOSED';
   notes?: string;
+  /**
+   * Patch 163 - for the FDP reports. Where the money came from: FDP Form 6
+   * reports only the programmes funded by a national agency or another LGU;
+   * the LDRRMF transferred to the Special Trust Fund goes to Form 8; the
+   * municipality's own trusts (BAC, fiesta, SK training, PhilHealth) to
+   * neither. Unset on an older programme until the Accountant sets it.
+   */
+  fundSource?: TrustFundSource | null;
+  /** Form 6 columns, stated by the office. */
+  location?: string | null;
+  dateStarted?: string | null;
+  targetCompletion?: string | null;
+  extensions?: number | null;
+  /** Physical completion, 0-100. Empty: utilised / programmed. */
+  percentComplete?: number | null;
+  /** The Remarks column of Form 6. */
+  statusRemarks?: string | null;
   updatedAt: string;
   updatedBy?: { uid: Id; name: string };
 }
+
+export type TrustFundSource = 'NATIONAL' | 'LOCAL' | 'OWN' | 'LDRRMF';
+
+export const TRUST_FUND_SOURCE_LABELS: Record<TrustFundSource, string> = {
+  NATIONAL: 'National government agency',
+  LOCAL: 'Another local government unit',
+  OWN: "The municipality's own (BAC, fiesta, SK, PhilHealth ...)",
+  LDRRMF: 'Unexpended LDRRMF (Special Trust Fund)',
+};

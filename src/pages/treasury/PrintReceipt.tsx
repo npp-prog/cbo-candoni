@@ -20,6 +20,7 @@ import {
   AlignmentGuide,
   CalibrationSheet,
   SheetPrintStyle,
+  SheetPrintPortal,
   type SheetValue,
 } from '@/components/print/CalibrationSheet';
 import { CalibrationPanel } from '@/components/print/CalibrationPanel';
@@ -151,6 +152,22 @@ export default function PrintReceipt() {
   return (
     <div>
       <SheetPrintStyle sheet={OR_SHEET} />
+      {mode === 'print' && queue.length > 0 && (
+        <SheetPrintPortal>
+          {queue.map((c) => (
+            <div key={c.id} className="cbo-print-sheet">
+              <CalibrationSheet
+                sheet={OR_SHEET}
+                fields={OR_FIELDS}
+                calibration={calibration}
+                value={toSheet(c)}
+                mode="print"
+              />
+              {showGuide && <AlignmentGuide sheet={OR_SHEET} />}
+            </div>
+          ))}
+        </SheetPrintPortal>
+      )}
 
       <PageHeader
         title="Print receipts"
@@ -286,7 +303,7 @@ export default function PrintReceipt() {
                 {queue.map((c) => (
                   <div
                     key={c.id}
-                    className="cbo-print-sheet relative inline-block border border-slate-200"
+                    className="relative inline-block border border-slate-200"
                   >
                     <CalibrationSheet
                       sheet={OR_SHEET}

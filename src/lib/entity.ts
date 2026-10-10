@@ -49,6 +49,8 @@ export interface EntityDetails {
   municipalAccountant: Official;
   /** Whoever prepares the forms in Accounting. */
   bookkeeper: Official;
+  /** Patch 163: signs FDP Form 6 (Trust Fund Utilization). */
+  budgetOfficer: Official;
   /** Patch 162: the municipality's TIN and ZIP code - Part II of BIR Form 2307. */
   tin?: string;
   zipCode?: string;
@@ -71,6 +73,7 @@ const FALLBACK: EntityDetails = {
   municipalMayor: { name: '', position: 'Municipal Mayor' },
   municipalAccountant: { name: '', position: 'Municipal Accountant' },
   bookkeeper: { name: '', position: 'Bookkeeper' },
+  budgetOfficer: { name: '', position: 'Municipal Budget Officer' },
 };
 
 /**
@@ -116,6 +119,7 @@ export function entityFrom(data: EntitySettings | null | undefined): EntityDetai
     municipalMayor: data.officials?.municipalMayor ?? FALLBACK.municipalMayor,
     municipalAccountant: data.officials?.municipalAccountant ?? FALLBACK.municipalAccountant,
     bookkeeper: data.officials?.bookkeeper ?? FALLBACK.bookkeeper,
+    budgetOfficer: data.officials?.budgetOfficer ?? FALLBACK.budgetOfficer,
     tin: data.tin?.trim() || undefined,
     zipCode: data.zipCode?.trim() || undefined,
   };

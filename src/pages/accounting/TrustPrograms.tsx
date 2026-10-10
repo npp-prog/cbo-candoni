@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { TrustTabs } from './trustTabs';
 import { Button } from '@/components/ui/Button';
-import { Field, Select, TextInput, TextArea, AmountInput } from '@/components/ui/Field';
+import { Field, Select, TextInput, TextArea, AmountInput, DateInput } from '@/components/ui/Field';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -13,7 +13,7 @@ import { useTrustPrograms } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatPeso, formatAmount } from '@/lib/money';
 import { checkTrustProgram, TRUST_PROGRAM_STATUSES } from '@/lib/trustPrograms';
-import type { TrustProgram } from '@/types/budget';
+import { TRUST_FUND_SOURCE_LABELS, type TrustFundSource, type TrustProgram } from '@/types/budget';
 import type { Centavos } from '@/types/common';
 
 /**
@@ -54,6 +54,14 @@ interface FormState {
   received: Centavos | null;
   status: 'ACTIVE' | 'CLOSED';
   notes: string;
+  /* Patch 163 - for the FDP reports (Accounting > Monitoring > FDPP Reports). */
+  fundSource: TrustFundSource | '';
+  location: string;
+  dateStarted: string;
+  targetCompletion: string;
+  extensions: string;
+  percentComplete: string;
+  statusRemarks: string;
 }
 
 const empty = (startYear: number): FormState => ({
@@ -67,6 +75,13 @@ const empty = (startYear: number): FormState => ({
   received: null,
   status: 'ACTIVE',
   notes: '',
+  fundSource: '',
+  location: '',
+  dateStarted: '',
+  targetCompletion: '',
+  extensions: '',
+  percentComplete: '',
+  statusRemarks: '',
 });
 
 const fromProgram = (p: TrustProgram): FormState => ({
@@ -81,6 +96,14 @@ const fromProgram = (p: TrustProgram): FormState => ({
   received: p.received,
   status: p.status,
   notes: p.notes ?? '',
+  fundSource: p.fundSource ?? '',
+  location: p.location ?? '',
+  dateStarted: p.dateStarted ?? '',
+  targetCompletion: p.targetCompletion ?? '',
+  extensions: p.extensions === null || p.extensions === undefined ? '' : String(p.extensions),
+  percentComplete:
+    p.percentComplete === null || p.percentComplete === undefined ? '' : String(p.percentComplete),
+  statusRemarks: p.statusRemarks ?? '',
 });
 
 export default function TrustPrograms() {
@@ -143,6 +166,13 @@ export default function TrustPrograms() {
         received: form.received ?? 0,
         status: form.status,
         notes: form.notes.trim() || undefined,
+        fundSource: form.fundSource || null,
+        location: form.location.trim() || null,
+        dateStarted: form.dateStarted || null,
+        targetCompletion: form.targetCompletion || null,
+        extensions: form.extensions.trim() === '' ? null : Number(form.extensions),
+        percentComplete: form.percentComplete.trim() === '' ? null : Number(form.percentComplete),
+        statusRemarks: form.statusRemarks.trim() || null,
       });
       toast.success(
         `${result.programCode} ${form.programId ? 'amended' : 'recorded'}`,
@@ -410,6 +440,61 @@ export default function TrustPrograms() {
                   </option>
                 ))}
               </Select>
+            </Field>
+
+            <Field
+              label="Source of the fund"
+              hint="FDP Form 6 reports only programmes funded by a national agency or another LGU."
+              className="sm:col-span-2"
+            >
+              <Select
+                value={form.fundSource}
+                onChange={(e) => set({ fundSource: e.target.value as TrustFundSource | '' })}
+              >
+                <option value="">Not set</option>
+                {(Object.keys(TRUST_FUND_SOURCE_LABELS) as TrustFundSource[]).map((k) => (
+                  <option key={k} value={k}>
+                    {TRUST_FUND_SOURCE_LABELS[k]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Location" hint="FDP Form 6. Empty prints CANDONI.">
+              <TextInput value={form.location} onChange={(e) => set({ location: e.target.value })} />
+            </Field>
+            <Field label="Date started">
+              <DateInput value={form.dateStarted} onChange={(v) => set({ dateStarted: v })} />
+            </Field>
+            <Field label="Target completion date">
+              <DateInput
+                value={form.targetCompletion}
+                onChange={(v) => set({ targetCompletion: v })}
+              />
+            </Field>
+            <Field label="No. of extensions">
+              <TextInput
+                inputMode="numeric"
+                value={form.extensions}
+                onChange={(e) => set({ extensions: e.target.value.replace(/\D/g, '') })}
+              />
+            </Field>
+            <Field
+              label="% of completion"
+              hint="Physical completion. Empty: what is utilised over what is programmed."
+            >
+              <TextInput
+                inputMode="decimal"
+                value={form.percentComplete}
+                onChange={(e) => set({ percentComplete: e.target.value.replace(/[^\d.]/g, '') })}
+              />
+            </Field>
+            <Field label="Remarks on FDP Form 6" className="sm:col-span-2">
+              <TextInput
+                value={form.statusRemarks}
+                placeholder="On-going project / Fully utilized / ..."
+                onChange={(e) => set({ statusRemarks: e.target.value })}
+              />
             </Field>
 
             <Field label="Notes" className="sm:col-span-2">

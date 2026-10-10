@@ -72,6 +72,7 @@ export default function Settings() {
     municipalMayor: { name: '', position: 'Municipal Mayor' },
     municipalAccountant: { name: '', position: 'Municipal Accountant' },
     bookkeeper: { name: '', position: 'Bookkeeper' },
+    budgetOfficer: { name: '', position: 'Municipal Budget Officer' },
   });
   const [checkStaleMonths, setCheckStaleMonths] = useState(6);
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(45);
@@ -102,6 +103,7 @@ export default function Settings() {
         municipalMayor: data.officials?.municipalMayor ?? current.municipalMayor,
         municipalAccountant: data.officials?.municipalAccountant ?? current.municipalAccountant,
         bookkeeper: data.officials?.bookkeeper ?? current.bookkeeper,
+        budgetOfficer: data.officials?.budgetOfficer ?? current.budgetOfficer,
       }));
     }
     setCheckStaleMonths(data.checkStaleMonths ?? 6);
@@ -274,6 +276,7 @@ export default function Settings() {
                 ['municipalMayor', 'Municipal Mayor'],
                 ['municipalAccountant', 'Municipal Accountant'],
                 ['bookkeeper', 'Bookkeeper'],
+                ['budgetOfficer', 'Municipal Budget Officer'],
               ] as const
             ).map(([key, label]) => (
               <Field key={key} label={label} htmlFor={key}>

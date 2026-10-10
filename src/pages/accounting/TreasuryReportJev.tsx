@@ -57,6 +57,15 @@ import type { TreasuryReportType } from '@/types/enums';
  * Sorted oldest first on purpose. A report that has sat for a week is the one
  * that matters, and newest-first would bury it.
  */
+/** Patch 163 - eRCD (AR) and eRCD share one tab. */
+const ERCD_TAB = 'ERCD';
+const isERcd = (t: string) => t === 'ERCD_AR' || t === 'ERCD_EOR' || t === ERCD_TAB;
+const tabOf = (t: string) => (isERcd(t) ? ERCD_TAB : t);
+const tabLabel = (tab: string) =>
+  tab === ERCD_TAB
+    ? 'Report of e-Collections and Deposits'
+    : TREASURY_REPORT_LABELS[tab as TreasuryReportType];
+
 export default function TreasuryReportJev() {
   const { fiscalYear } = useFilters();
   const { hasRole } = useAuth();
@@ -74,7 +83,12 @@ export default function TreasuryReportJev() {
     path a report carries back here. See src/lib/returnTo.ts.
   */
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') ?? '';
+  /*
+   * Patch 163: the two e-collection reports are one tab, "eRCD". An old link
+   * to either of them opens it.
+   */
+  const rawTab = params.get('tab') ?? '';
+  const tab = isERcd(rawTab) ? ERCD_TAB : rawTab;
   const status = params.get('status') ?? '';
   const setParam = useCallback(
     (key: string, value: string) =>
@@ -111,7 +125,7 @@ export default function TreasuryReportJev() {
    */
   const rows = useMemo(() => {
     // Patch 143: a certified report reaches Accounting only once forwarded.
-    let out = (tab ? data.filter((r) => r.reportType === tab) : data).filter(isForwarded);
+    let out = (tab ? data.filter((r) => tabOf(r.reportType) === tab) : data).filter(isForwarded);
     if (status) out = out.filter((r) => r.status === status);
     return newestFirst(out, (r) => ({ ref: r.reportNo, date: r.reportDate }));
   }, [data, tab, status]);
@@ -138,9 +152,9 @@ export default function TreasuryReportJev() {
   const tabs = useMemo(
     () => [
       { id: '', label: 'All reports' },
-      ...TREASURY_REPORT_TYPES.map((t) => ({
-        id: t,
-        label: TREASURY_REPORT_SHORT[t],
+      ...TREASURY_REPORT_TYPES.filter((t) => t !== 'ERCD_AR').map((t) => ({
+        id: tabOf(t),
+        label: isERcd(t) ? 'eRCD' : TREASURY_REPORT_SHORT[t],
       })),
     ],
     [],
@@ -154,7 +168,10 @@ export default function TreasuryReportJev() {
       value: (r) => r.reportType,
       cell: (r) => (
         <span className="text-sm font-semibold text-navy-900">
-          {TREASURY_REPORT_SHORT[r.reportType]}
+          {isERcd(r.reportType) ? 'eRCD' : TREASURY_REPORT_SHORT[r.reportType]}
+          {r.reportType === 'ERCD_AR' && (
+            <span className="block text-2xs font-normal text-slate-500">by intermediary</span>
+          )}
         </span>
       ),
     },
@@ -305,13 +322,13 @@ export default function TreasuryReportJev() {
           /* Patch 152: Columns, Excel, CSV and Print, as on the other registers. */
           exportMeta={{
             title: tab
-              ? `${TREASURY_REPORT_LABELS[tab as TreasuryReportType]} - received by Accounting`
+              ? `${tabLabel(tab)} - received by Accounting`
               : 'Treasury Reports received by Accounting',
             periodLabel: `Fiscal year ${fiscalYear}`,
           }}
-          emptyTitle={tab ? `No ${TREASURY_REPORT_SHORT[tab as TreasuryReportType]} received` : 'Nothing received'}
+          emptyTitle={tab ? `No ${tab === ERCD_TAB ? 'eRCD' : TREASURY_REPORT_SHORT[tab as TreasuryReportType]} received` : 'Nothing received'}
           emptyMessage={`No ${
-            tab ? TREASURY_REPORT_LABELS[tab as TreasuryReportType] : 'treasury report'
+            tab ? tabLabel(tab) : 'treasury report'
           } for fiscal year ${fiscalYear} has reached Accounting. A report appears here the moment the Treasurer certifies it, and stays here after it is journalized.`}
         />
       </Card>

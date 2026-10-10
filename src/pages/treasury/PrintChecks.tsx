@@ -21,6 +21,7 @@ import {
   CalibrationSheet,
   CheckSpecimen,
   SheetPrintStyle,
+  SheetPrintPortal,
   type SheetValue,
 } from '@/components/print/CalibrationSheet';
 import { CalibrationPanel } from '@/components/print/CalibrationPanel';
@@ -67,16 +68,11 @@ function boxDate(date: string): string {
 }
 
 /**
- * The figures with leading asterisks.
- *
- * Not decoration. The fill closes the gap between the peso sign and the first
- * digit, which is where a figure gets a digit added to it after it leaves the
- * office. Every bank's own cheque writer does this and so does this one.
+ * The figures as written: 18,928.57. Patch 163 - no leading asterisks; the
+ * office writes the amount plainly in the box.
  */
 function protectedFigures(amount: number): string {
-  const body = formatPeso(amount, { symbol: false });
-  const fill = '*'.repeat(Math.max(3, 16 - body.length));
-  return `${fill}${body}`;
+  return formatPeso(amount, { symbol: false });
 }
 
 const PRINTABLE = ['SIGNED', 'RELEASED'];
@@ -169,6 +165,22 @@ export default function PrintChecks() {
   return (
     <div>
       <SheetPrintStyle sheet={CHECK_SHEET} />
+      {mode === 'print' && queue.length > 0 && (
+        <SheetPrintPortal>
+          {queue.map((c) => (
+            <div key={c.id} className="cbo-print-sheet">
+              <CalibrationSheet
+                sheet={CHECK_SHEET}
+                fields={CHECK_FIELDS}
+                calibration={calibration}
+                value={toSheet(c)}
+                mode="print"
+              />
+              {showGuide && <AlignmentGuide sheet={CHECK_SHEET} />}
+            </div>
+          ))}
+        </SheetPrintPortal>
+      )}
 
       <PageHeader
         title="Print checks"
@@ -306,7 +318,7 @@ export default function PrintChecks() {
             ) : (
               <div className="space-y-4">
                 {queue.map((c) => (
-                  <div key={c.id} className="cbo-print-sheet relative inline-block border border-slate-200">
+                  <div key={c.id} className="relative inline-block border border-slate-200">
                     <CalibrationSheet
                       sheet={CHECK_SHEET}
                       fields={CHECK_FIELDS}

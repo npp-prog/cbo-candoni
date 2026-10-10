@@ -298,6 +298,14 @@ export const engine = {
     received: Centavos;
     status: 'ACTIVE' | 'CLOSED';
     notes?: string;
+    /** Patch 163 - the FDP report fields. */
+    fundSource?: string | null;
+    location?: string | null;
+    dateStarted?: string | null;
+    targetCompletion?: string | null;
+    extensions?: number | null;
+    percentComplete?: number | null;
+    statusRemarks?: string | null;
   }) =>
     call<
       typeof p,

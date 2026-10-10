@@ -141,6 +141,8 @@ export const ACCOUNTING_MONITORING_TABS: SectionTab[] = [
   // older links still work; `sectionHeadForPath` is what tells the sidebar it
   // belongs to Accounting.
   { label: 'Aging Reports', to: '/reports/aging' },
+  // Patch 163: the five quarterly forms of the Full Disclosure Policy Portal.
+  { label: 'FDPP Reports', to: '/accounting/fdpp' },
 ];
 
 /**

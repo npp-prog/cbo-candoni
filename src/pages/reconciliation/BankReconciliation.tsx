@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -24,7 +25,10 @@ import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, periodRange, todayPh } from '@/lib/dates';
-import { computeReconciliation } from '@/lib/accounting-rules';
+import { buildBrs, type Brs } from '@/lib/brs';
+import { downloadBrs } from '@/lib/brsXlsx';
+import { useEntity } from '@/data/useEntity';
+import { BrsPrintSheet, bankShortName } from './BrsPrintSheet';
 import { parseStatementFile, readStatementHeaders, type ParsedStatementRow } from '@/lib/export';
 import type { BankTransaction } from '@/types/treasury';
 import type { Centavos } from '@/types/common';
@@ -62,6 +66,21 @@ export default function BankReconciliation() {
   });
   const [balancePerBank, setBalancePerBank] = useState<number | null>(null);
   const [tab, setTab] = useState<'statement' | 'openItems' | 'summary'>('statement');
+  const entity = useEntity();
+  /*
+   * The BRS sheet is mounted only for its own Print, so the Print of the
+   * statement-lines table below still prints that table.
+   */
+  const [printingBrs, setPrintingBrs] = useState(false);
+  const printBrs = () => {
+    flushSync(() => setPrintingBrs(true));
+    const done = () => {
+      setPrintingBrs(false);
+      window.removeEventListener('afterprint', done);
+    };
+    window.addEventListener('afterprint', done);
+    window.print();
+  };
   const [showImport, setShowImport] = useState(false);
   const [confirmFinalize, setConfirmFinalize] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -90,42 +109,97 @@ export default function BankReconciliation() {
     [ledger.data, period],
   );
 
+  /*
+   * Patch 163: the open items are those of the statement's month or earlier -
+   * the ledger is read through that month, so a check written after it is not
+   * yet in the book balance either.
+   */
+  const asOf = `${statementDate.slice(0, 7)}-31`;
   const outstandingChecks = useMemo(
-    () => checks.data.filter((c) => ['RELEASED', 'SIGNED', 'PREPARED'].includes(c.status)),
-    [checks.data],
+    () =>
+      checks.data.filter(
+        (c) => ['RELEASED', 'SIGNED', 'PREPARED'].includes(c.status) && c.checkDate <= asOf,
+      ),
+    [checks.data, asOf],
   );
-  const outstandingChecksTotal = outstandingChecks.reduce((s, c) => s + c.netAmount, 0);
 
   const depositsInTransit = useMemo(
     // Patch 159: only a deposit in the BOOKS can be in transit - one recorded
     // but not yet booked by its RCD is on neither side yet.
-    () => deposits.data.filter((d) => ['IN_TRANSIT', 'RECORDED'].includes(d.status) && !!d.jevId),
-    [deposits.data],
+    () =>
+      deposits.data.filter(
+        (d) => ['IN_TRANSIT', 'RECORDED'].includes(d.status) && !!d.jevId && d.depositDate <= asOf,
+      ),
+    [deposits.data, asOf],
   );
-  const depositsInTransitTotal = depositsInTransit.reduce((s, d) => s + d.amount, 0);
 
-  /**
-   * Bank-originated items the municipality has not booked: charges and
-   * interest that appear on the statement and need a journal entry.
+  /*
+   * Patch 163 - the Bank Reconciliation Statement in the office's format:
+   * Book and Bank columns, the six lines of reconciling items, and a
+   * schedule behind each (src/lib/brs.ts).
    */
-  const bookAdjustments = useMemo(() => {
-    const charges = transactions.data
-      .filter((t) => t.matchStatus === 'BANK_CHARGE')
-      .reduce((s, t) => s + t.debit, 0);
-    const interest = transactions.data
-      .filter((t) => t.matchStatus === 'INTEREST_INCOME')
-      .reduce((s, t) => s + t.credit, 0);
-    return { charges, interest, net: interest - charges };
-  }, [transactions.data]);
+  const brs: Brs = useMemo(
+    () =>
+      buildBrs({
+        statementDate,
+        bankShortName: bankShortName(bank?.bankName ?? ''),
+        lguShortName: 'LGU',
+        bookBalance: balancePerBooks,
+        bankBalance: balancePerBank ?? 0,
+        checks: outstandingChecks.map((c) => ({
+          date: c.checkDate,
+          ref: c.checkNo,
+          name: c.payeeName,
+          amount: c.netAmount,
+        })),
+        deposits: depositsInTransit.map((d) => ({
+          date: d.depositDate,
+          ref: d.depositSlipNo,
+          name: d.collectingOfficerName ?? d.rcdNo ?? '',
+          amount: d.amount,
+        })),
+        statementLines: transactions.data
+          .filter((t) => ['BANK_CHARGE', 'INTEREST_INCOME', 'ERROR'].includes(t.matchStatus))
+          .map((t) => ({
+            date: t.transactionDate,
+            ref: t.referenceNo ?? '',
+            description: t.description,
+            debit: t.debit,
+            credit: t.credit,
+            kind: t.matchStatus as 'BANK_CHARGE' | 'INTEREST_INCOME' | 'ERROR',
+          })),
+      }),
+    [statementDate, bank?.bankName, balancePerBooks, balancePerBank, outstandingChecks, depositsInTransit, transactions.data],
+  );
+  const outstandingChecksTotal = brs.outstandingChecks;
+  const depositsInTransitTotal = brs.depositsInTransit;
+  const memos = brs.lines.find((l) => l.key === 'MEMOS_NOT_TAKEN_UP')!;
+  const bookAdjustments = {
+    charges: -memos.items.filter((i) => i.amount < 0).reduce((t, i) => t + i.amount, 0),
+    interest: memos.items.filter((i) => i.amount > 0).reduce((t, i) => t + i.amount, 0),
+    net: brs.bookAdjustments,
+  };
 
-  const totals = computeReconciliation({
-    balancePerBank: balancePerBank ?? 0,
-    depositsInTransit: depositsInTransitTotal,
-    outstandingChecks: outstandingChecksTotal,
-    bankAdjustments: 0,
-    balancePerBooks,
-    bookAdjustments: bookAdjustments.net,
-  });
+  const totals = {
+    adjustedBankBalance: brs.adjustedBank,
+    adjustedBookBalance: brs.adjustedBook,
+    difference: brs.difference,
+    reconciled: brs.difference === 0,
+  };
+
+  const brsHeader = {
+    entityName: 'Municipal Government of Candoni',
+    statementDate,
+    bankName: bank?.bankName ?? '',
+    branch: bank?.branch ?? '',
+    fundLabel: fundLabel(fundCode),
+    accountNumber: bank?.accountNumber ?? '',
+    preparedBy: {
+      name: entity.bookkeeper.name || profile?.displayName || '',
+      position: entity.bookkeeper.position || profile?.position || '',
+    },
+    certifiedBy: entity.municipalAccountant,
+  };
 
   const unmatched = transactions.data.filter((t) => t.matchStatus === 'UNMATCHED');
   const suggested = transactions.data.filter((t) => t.matchStatus === 'SUGGESTED');
@@ -283,6 +357,12 @@ export default function BankReconciliation() {
             <Button size="sm" onClick={() => setShowImport(true)} disabled={!bankAccountId}>
               Import statement
             </Button>
+            <Button size="sm" onClick={() => downloadBrs(brs, brsHeader)} disabled={!bankAccountId}>
+              BRS Excel
+            </Button>
+            <Button size="sm" onClick={printBrs} disabled={!bankAccountId}>
+              Print BRS
+            </Button>
             <Button size="sm" loading={busy} onClick={() => void autoMatch()} disabled={!bankAccountId}>
               Match automatically
             </Button>
@@ -326,13 +406,9 @@ export default function BankReconciliation() {
         </Alert>
       ) : (
         <>
+          {printingBrs && <BrsPrintSheet brs={brs} header={brsHeader} />}
           <ReconciliationStatement
-            balancePerBank={balancePerBank ?? 0}
-            depositsInTransit={depositsInTransitTotal}
-            depositsInTransitCount={depositsInTransit.length}
-            outstandingChecks={outstandingChecksTotal}
-            outstandingChecksCount={outstandingChecks.length}
-            balancePerBooks={balancePerBooks}
+            brs={brs}
             bankCharges={bookAdjustments.charges}
             interestIncome={bookAdjustments.interest}
             totals={totals}
@@ -344,8 +420,8 @@ export default function BankReconciliation() {
                 { id: 'statement', label: 'Bank statement', count: transactions.data.length },
                 {
                   id: 'openItems',
-                  label: 'Open items',
-                  count: outstandingChecks.length + depositsInTransit.length,
+                  label: 'Schedules',
+                  count: brs.lines.reduce((t, l) => t + l.items.length, 0),
                 },
                 { id: 'summary', label: 'Previous reconciliations', count: reconciliations.data.length },
               ]}
@@ -391,42 +467,19 @@ export default function BankReconciliation() {
             )}
 
             {tab === 'openItems' && (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card
-                  title="Outstanding checks"
-                  subtitle={`${outstandingChecks.length} checks, ${formatPeso(outstandingChecksTotal)}`}
-                  bodyClassName="p-0"
-                >
-                  <OpenItemList
-                    items={outstandingChecks.map((c) => ({
-                      id: c.id,
-                      ref: c.checkNo,
-                      name: c.payeeName,
-                      date: c.checkDate,
-                      amount: c.netAmount,
-                      status: c.status,
-                    }))}
-                    emptyMessage="No checks are outstanding."
-                  />
-                </Card>
-
-                <Card
-                  title="Deposits in transit"
-                  subtitle={`${depositsInTransit.length} deposits, ${formatPeso(depositsInTransitTotal)}`}
-                  bodyClassName="p-0"
-                >
-                  <OpenItemList
-                    items={depositsInTransit.map((d) => ({
-                      id: d.id,
-                      ref: d.depositSlipNo,
-                      name: d.collectingOfficerName ?? d.rcdNo ?? '',
-                      date: d.depositDate,
-                      amount: d.amount,
-                      status: d.status,
-                    }))}
-                    emptyMessage="No deposits are in transit."
-                  />
-                </Card>
+              <div className="space-y-4">
+                {brs.lines.map((l, i) => (
+                  <Card
+                    key={l.key}
+                    title={`${i + 1}. ${l.label}`}
+                    subtitle={`${l.column === 'BOOK' ? 'Book' : 'Bank'} - ${l.items.length} item${
+                      l.items.length === 1 ? '' : 's'
+                    }, ${formatPeso(l.amount)}`}
+                    bodyClassName="p-0"
+                  >
+                    <ScheduleTable line={l} />
+                  </Card>
+                ))}
               </div>
             )}
 
@@ -499,7 +552,7 @@ export default function BankReconciliation() {
                 balancePerBank: balancePerBank ?? 0,
                 depositsInTransit: depositsInTransitTotal,
                 outstandingChecks: outstandingChecksTotal,
-                bankAdjustments: 0,
+                bankAdjustments: brs.bankAdjustments,
                 adjustedBankBalance: totals.adjustedBankBalance,
                 balancePerBooks,
                 bookAdjustments: bookAdjustments.net,
@@ -557,60 +610,59 @@ export default function BankReconciliation() {
 // ---------------------------------------------------------------------------
 
 function ReconciliationStatement({
-  balancePerBank,
-  depositsInTransit,
-  depositsInTransitCount,
-  outstandingChecks,
-  outstandingChecksCount,
-  balancePerBooks,
+  brs,
   bankCharges,
   interestIncome,
   totals,
 }: {
-  balancePerBank: Centavos;
-  depositsInTransit: Centavos;
-  depositsInTransitCount: number;
-  outstandingChecks: Centavos;
-  outstandingChecksCount: number;
-  balancePerBooks: Centavos;
+  brs: Brs;
   bankCharges: Centavos;
   interestIncome: Centavos;
   totals: { adjustedBankBalance: Centavos; adjustedBookBalance: Centavos; difference: Centavos; reconciled: boolean };
 }) {
+  const fig = (v: number | null) =>
+    v === null ? '' : v === 0 ? '-' : v < 0 ? `(${formatPeso(-v, { symbol: false })})` : formatPeso(v, { symbol: false });
+  const TD = 'px-3 py-1.5 text-right font-mono tabular';
   return (
-    <Card title="Bank Reconciliation Statement">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Bank side</h3>
-          <dl className="space-y-1.5">
-            <Line label="Balance per bank statement" value={balancePerBank} />
-            <Line
-              label={`Add: deposits in transit (${depositsInTransitCount})`}
-              value={depositsInTransit}
-              sign="+"
-            />
-            <Line
-              label={`Less: outstanding checks (${outstandingChecksCount})`}
-              value={-outstandingChecks}
-              sign="-"
-            />
-            <div className="border-t border-navy-800 pt-1.5">
-              <Line label="Adjusted bank balance" value={totals.adjustedBankBalance} bold />
-            </div>
-          </dl>
-        </div>
-
-        <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Book side</h3>
-          <dl className="space-y-1.5">
-            <Line label="Balance per books (General Ledger)" value={balancePerBooks} />
-            {interestIncome > 0 && <Line label="Add: interest income credited by bank" value={interestIncome} sign="+" />}
-            {bankCharges > 0 && <Line label="Less: bank charges" value={-bankCharges} sign="-" />}
-            <div className="border-t border-navy-800 pt-1.5">
-              <Line label="Adjusted book balance" value={totals.adjustedBookBalance} bold />
-            </div>
-          </dl>
-        </div>
+    <Card title="Bank Reconciliation Statement" subtitle={`For the Month of ${brs.monthLabel}`}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[40rem] text-sm">
+          <thead>
+            <tr className="border-b border-slate-300 text-xs uppercase tracking-wider text-slate-500">
+              <th className="px-3 py-1.5 text-left font-semibold">Particular</th>
+              <th className="w-40 px-3 py-1.5 text-right font-semibold">Book</th>
+              <th className="w-40 px-3 py-1.5 text-right font-semibold">Bank</th>
+              <th className="w-56 px-3 py-1.5 text-left font-semibold">Explanatory Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="font-medium text-navy-900">
+              <td className="px-3 py-1.5">Unadjusted Balances</td>
+              <td className={TD}>{fig(brs.bookBalance)}</td>
+              <td className={TD}>{fig(brs.bankBalance)}</td>
+              <td />
+            </tr>
+            <tr>
+              <td className="px-3 pt-2 text-slate-600" colSpan={4}>
+                Reconciling Items:
+              </td>
+            </tr>
+            {brs.lines.map((l) => (
+              <tr key={l.key} className="text-slate-700">
+                <td className="py-1 pl-8 pr-3">{l.label}</td>
+                <td className={TD}>{l.column === 'BOOK' ? fig(l.amount) : ''}</td>
+                <td className={TD}>{l.column === 'BANK' ? fig(l.amount) : ''}</td>
+                <td className="px-3 py-1 text-xs text-slate-500">{l.note}</td>
+              </tr>
+            ))}
+            <tr className="border-t-2 border-navy-800 font-semibold text-navy-900">
+              <td className="px-3 py-1.5">Adjusted Balances</td>
+              <td className={TD}>{fig(totals.adjustedBookBalance)}</td>
+              <td className={TD}>{fig(totals.adjustedBankBalance)}</td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div
@@ -627,13 +679,13 @@ function ReconciliationStatement({
         <p className="mt-1 text-xs">
           {totals.reconciled
             ? 'The bank and the books agree. The reconciliation can be finalised.'
-            : 'A reconciliation can only be finalised at a difference of exactly zero. Match the remaining statement lines, classify bank charges and interest, and journalise any book-side adjustment.'}
+            : 'A reconciliation can only be finalised at a difference of exactly zero. Match the remaining statement lines, classify bank charges, interest and bank errors, and journalise any book-side adjustment.'}
         </p>
       </div>
 
       {(bankCharges > 0 || interestIncome > 0) && (
         <Alert tone="warning" className="mt-4">
-          Bank charges of {formatPeso(bankCharges)} and interest income of {formatPeso(interestIncome)}{' '}
+          Bank debit memos of {formatPeso(bankCharges)} and credit memos of {formatPeso(interestIncome)}{' '}
           appear on the statement but are not yet in the books. Post a journal entry for them - the
           server refuses to finalise a reconciliation whose book-side adjustments have not reached
           the ledger.
@@ -643,55 +695,44 @@ function ReconciliationStatement({
   );
 }
 
-function Line({
-  label,
-  value,
-  bold,
-  sign,
-}: {
-  label: string;
-  value: Centavos;
-  bold?: boolean;
-  sign?: '+' | '-';
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <dt className={`text-sm ${bold ? 'font-medium text-navy-900' : 'text-slate-600'}`}>
-        {sign && <span className="mr-1 text-slate-400">{sign}</span>}
-        {label}
-      </dt>
-      <dd className={`font-mono text-sm tabular ${bold ? 'font-semibold text-navy-900' : 'text-navy-800'}`}>
-        {formatPeso(Math.abs(value), { symbol: false })}
-      </dd>
-    </div>
-  );
-}
-
-function OpenItemList({
-  items,
-  emptyMessage,
-}: {
-  items: Array<{ id: string; ref: string; name: string; date: string; amount: Centavos; status: string }>;
-  emptyMessage: string;
-}) {
-  if (items.length === 0) {
-    return <p className="px-4 py-8 text-center text-sm text-slate-500">{emptyMessage}</p>;
+function ScheduleTable({ line }: { line: Brs['lines'][number] }) {
+  const fig = (v: number) =>
+    v < 0 ? `(${formatPeso(-v, { symbol: false })})` : formatPeso(v, { symbol: false });
+  if (line.items.length === 0) {
+    return <p className="px-4 py-4 text-sm text-slate-500">None.</p>;
   }
   return (
-    <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto">
-      {items.map((item) => (
-        <li key={item.id} className="flex items-center gap-3 px-4 py-2.5">
-          <div className="min-w-0 flex-1">
-            <p className="font-mono text-xs text-navy-900">{item.ref}</p>
-            <p className="truncate text-xs text-slate-500">
-              {item.name} - {formatShortDate(item.date)}
-            </p>
-          </div>
-          <StatusBadge status={item.status} />
-          <span className="cbo-amount text-navy-800">{formatPeso(item.amount)}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="max-h-96 overflow-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+            <th className="w-28 px-3 py-1.5 text-left font-semibold">Date</th>
+            <th className="w-36 px-3 py-1.5 text-left font-semibold">Reference No</th>
+            <th className="px-3 py-1.5 text-left font-semibold">Name</th>
+            <th className="w-36 px-3 py-1.5 text-right font-semibold">Amount</th>
+            <th className="px-3 py-1.5 text-left font-semibold">Remarks</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {line.items.map((it, i) => (
+            <tr key={`${it.ref}-${i}`}>
+              <td className="px-3 py-1.5 text-xs">{formatShortDate(it.date)}</td>
+              <td className="px-3 py-1.5 font-mono text-xs">{it.ref || '-'}</td>
+              <td className="px-3 py-1.5 text-xs">{it.name}</td>
+              <td className="px-3 py-1.5 text-right font-mono text-xs tabular">{fig(it.amount)}</td>
+              <td className="px-3 py-1.5 text-xs text-slate-500">{it.remarks}</td>
+            </tr>
+          ))}
+          <tr className="font-semibold text-navy-900">
+            <td colSpan={3} className="px-3 py-1.5 text-right text-xs">
+              Subtotal
+            </td>
+            <td className="px-3 py-1.5 text-right font-mono text-xs tabular">{fig(line.amount)}</td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
