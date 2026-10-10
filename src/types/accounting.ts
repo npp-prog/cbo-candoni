@@ -587,7 +587,8 @@ export interface Ada extends Partial<AuditStamps> {
 export interface Payroll extends Partial<AuditStamps> {
   id: Id;
   payrollNo: string;
-  payrollType: PayrollType;
+  /** No longer asked for (patch 155); present on payrolls recorded before. */
+  payrollType?: PayrollType;
   fiscalYear: FiscalYear;
   period: PeriodNo;
   fundCode: string;
@@ -599,8 +600,15 @@ export interface Payroll extends Partial<AuditStamps> {
 
   obligationId?: Id;
   obrNo?: string;
+  /** Patch 155: the advance-for-payroll voucher this payroll liquidates. */
   dvId?: Id;
   dvNo?: string;
+  /**
+   * Patch 155: the disbursing officer - the subsidiary account the advance was
+   * booked to (else the voucher's payee). Both lines of the payroll's entry,
+   * on the RCDisb, are posted to this subsidiary.
+   */
+  disbursingOfficer?: { type: string; id: string; name: string } | null;
 
   /** What the payroll covers, e.g. "Regular employees, Office of the Mayor". */
   particulars?: string;

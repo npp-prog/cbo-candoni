@@ -83,6 +83,8 @@ interface SourceDoc {
   deductions?: number;
   /** Patch 138: an ADA for several payees - its list, for the entry and the bank file. */
   payees?: Array<{ payeeId: string; payeeName: string; accountNumber: string; amount: number }>;
+  /** Patch 155: a payroll's disbursing officer - the subsidiary of its entry. */
+  officer?: { type: string; id: string; name: string } | null;
   /** Patch 153: a carried-forward payable on another liability (Due to BIR, ...). */
   payableAccount?: { code: string; name: string } | null;
   treasuryReportId?: string;
@@ -491,7 +493,9 @@ function PrepareReport({
         id: p.id,
         sourceNo: p.payrollNo ?? '(unnumbered)',
         date: p.periodTo,
-        payeeName: p.officeName,
+        // Patch 155: the disbursing officer, where the payroll names one.
+        payeeName: p.disbursingOfficer?.name ?? p.officeName,
+        officer: p.disbursingOfficer ?? null,
         particulars:
           p.particulars ??
           (p.employeeCount ? `${p.employeeCount} employees` : undefined),
@@ -596,32 +600,52 @@ function PrepareReport({
        * for. Where it somehow does not, the lines go without rather than
        * guessing, and the subsidiary ledger shows a gap that can be found.
        */
-      const officer =
-        officerId && officerName
-          ? {
-              subsidiaryType: 'EMPLOYEE' as const,
-              subsidiaryId: officerId,
-              subsidiaryName: officerName,
-            }
-          : {};
+      const chosenOfficer =
+        officerId && officerName ? { type: 'EMPLOYEE', id: officerId, name: officerName } : null;
+
+      /*
+       * Patch 155: each payroll names its own disbursing officer - the
+       * subsidiary its advance was booked to - and its lines go to THAT
+       * subsidiary account, so the advance is liquidated where it was
+       * granted. A payroll recorded before patch 155 has none, and takes the
+       * officer chosen for the report, as before. One pair of lines per
+       * officer; one payroll's particulars when the officer has one payroll.
+       */
+      const groups = new Map<
+        string,
+        { officer: { type: string; id: string; name: string } | null; amount: number; parts: string[] }
+      >();
+      for (const d of chosen) {
+        const o = d.officer ?? chosenOfficer;
+        const key = o ? `${o.type}:${o.id}` : '';
+        const g = groups.get(key) ?? { officer: o, amount: 0, parts: [] };
+        g.amount += d.amount;
+        if (d.particulars) g.parts.push(d.particulars);
+        groups.set(key, g);
+      }
+      const sub = (o: { type: string; id: string; name: string } | null) =>
+        o ? { subsidiaryType: o.type, subsidiaryId: o.id, subsidiaryName: o.name } : {};
+      const words = (g: { parts: string[] }) =>
+        g.parts.length === 1 ? g.parts[0] : `Liquidation of payroll per ${short}`;
+      const list = [...groups.values()];
 
       return [
-        {
+        ...list.map((g) => ({
           accountCode: ACCOUNTS.dueToOfficersAndEmployees.code,
           accountName: ACCOUNTS.dueToOfficersAndEmployees.name,
-          ...officer,
-          debit: total,
+          ...sub(g.officer),
+          debit: g.amount,
           credit: 0,
-          particulars: `Net pay disbursed per ${short}`,
-        },
-        {
+          particulars: words(g),
+        })),
+        ...list.map((g) => ({
           accountCode: ACCOUNTS.advancesForPayroll.code,
           accountName: ACCOUNTS.advancesForPayroll.name,
-          ...officer,
+          ...sub(g.officer),
           debit: 0,
-          credit: total,
-          particulars: `Liquidation of payroll cash advance per ${short}`,
-        },
+          credit: g.amount,
+          particulars: words(g),
+        })),
       ];
     }
 

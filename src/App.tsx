@@ -55,6 +55,7 @@ const PaymentUploads = lazy(() => import('./pages/treasury/PaymentUploads'));
 const AbstractUpload = lazy(() => import('./pages/treasury/AbstractUpload'));
 const TreasuryReportJev = lazy(() => import('./pages/accounting/TreasuryReportJev'));
 const Payroll = lazy(() => import('./pages/treasury/Payroll'));
+const PayrollDetail = lazy(() => import('./pages/treasury/PayrollDetail'));
 const CashAdvances = lazy(() => import('./pages/accounting/CashAdvances'));
 const Liquidation = lazy(() => import('./pages/accounting/Liquidation'));
 const LiquidationDetail = lazy(() => import('./pages/accounting/LiquidationDetail'));
@@ -339,6 +340,9 @@ export default function App() {
           {/* Payroll is Treasury's: the payroll officer disburses it and reports
               the cash paid on an RCDisb. */}
           <Route path="/treasury/payroll" element={<Guard module="treasury"><Payroll /></Guard>} />
+          {/* Patch 155: a payroll on its own page. "rcdisb" above is a fixed path and wins over :id. */}
+          <Route path="/treasury/payroll/new" element={<Guard module="treasury" action="create"><PayrollDetail /></Guard>} />
+          <Route path="/treasury/payroll/:id" element={<Guard module="treasury"><PayrollDetail /></Guard>} />
           <Route path="/accounting/payroll" element={<Navigate to="/treasury/payroll" replace />} />
           <Route path="/accounting/cash-advances" element={<Guard module="accounting"><CashAdvances /></Guard>} />
           <Route path="/accounting/liquidation" element={<Guard module="accounting"><Liquidation /></Guard>} />
