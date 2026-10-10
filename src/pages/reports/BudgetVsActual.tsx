@@ -180,6 +180,9 @@ export default function BudgetVsActual() {
 
   return (
     <ReportShell
+      /* Patch 165: A4 fitted to the width, with the municipal seal. */
+      printLayout="landscape"
+      seal="left"
       meta={{
         title: 'Statement of Comparison of Budget and Actual Amounts',
         fundLabel: fundLabel(fundCode),

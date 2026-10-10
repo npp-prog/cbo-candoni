@@ -132,6 +132,9 @@ export default function Saob() {
 
   return (
     <ReportShell
+      /* Patch 165: A4 fitted to the width, with the municipal seal. */
+      printLayout="landscape"
+      seal="left"
       tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: 'Statement of Appropriations, Obligations and Balances',

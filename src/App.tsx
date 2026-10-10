@@ -346,7 +346,8 @@ export default function App() {
           <Route path="/treasury/payroll/:id" element={<Guard module="treasury"><PayrollDetail /></Guard>} />
           <Route path="/accounting/payroll" element={<Navigate to="/treasury/payroll" replace />} />
           <Route path="/accounting/cash-advances" element={<Guard module="accounting"><CashAdvances /></Guard>} />
-          <Route path="/accounting/fdpp" element={<Guard module="accounting"><FdppReports /></Guard>} />
+          {/* Patch 165: the FDPP reports moved to Reports; the old address still works. */}
+          <Route path="/accounting/fdpp" element={<Navigate to="/reports/fdpp" replace />} />
           <Route path="/accounting/liquidation" element={<Guard module="accounting"><Liquidation /></Guard>} />
           <Route
             path="/accounting/liquidation/new"
@@ -442,6 +443,7 @@ export default function App() {
           <Route path="/reports/subsidiary-ledger" element={<Guard module="reports"><SubsidiaryLedger /></Guard>} />
           <Route path="/reports/journals" element={<Guard module="reports"><Journals /></Guard>} />
           <Route path="/reports/registers" element={<Guard module="reports"><Registers /></Guard>} />
+          <Route path="/reports/fdpp" element={<Guard module="reports"><FdppReports /></Guard>} />
           <Route path="/reports/aging" element={<Guard module="reports"><Aging /></Guard>} />
           {/* GAM Annex 8, the statement that is submitted. */}
           <Route

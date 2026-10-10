@@ -50,6 +50,11 @@ export function ReportPrintStyle({ orientation }: { orientation: 'portrait' | 'l
     overflow: visible !important;
   }
 
+  /* Patch 165: a statement kept narrow on screen takes the full width on paper. */
+  .cbo-report-sheet [class*="max-w-"] {
+    max-width: none !important;
+  }
+
   .cbo-report-sheet table {
     width: 100% !important;
     min-width: 0 !important;

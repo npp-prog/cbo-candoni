@@ -112,7 +112,8 @@ export default function Deposits() {
     },
     {
       key: 'officer',
-      header: 'Collecting officer',
+      // Patch 165: the Liquidating Officer or the Treasurer who made the deposit.
+      header: 'Deposited by',
       value: (d) => d.collectingOfficerName ?? '',
       cell: (d) => <span className="text-xs text-slate-600">{d.collectingOfficerName ?? '-'}</span>,
       optional: true,
@@ -313,7 +314,7 @@ function DepositDetail({
             <span className="text-slate-500">Not yet</span>
           )}
         </DetailField>
-        <DetailField label="Collecting officer" className="sm:col-span-2">
+        <DetailField label="Deposited by" className="sm:col-span-2">
           {deposit.collectingOfficerName ?? <span className="text-slate-400">&mdash;</span>}
         </DetailField>
         <DetailField label="Receipts banked" className="sm:col-span-2">
@@ -574,7 +575,12 @@ function DepositForm({
         </Field>
 
         {banked.length === 0 && (
-          <Field label="Collecting officer" htmlFor="depOfficer" className="sm:col-span-2">
+          <Field
+            label="Deposited by (Liquidating Officer or Treasurer)"
+            htmlFor="depOfficer"
+            className="sm:col-span-2"
+            hint="The RCD of deposits is prepared in this officer's name."
+          >
             <EmployeePicker
               id="depOfficer"
               value={officerId}

@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { PageHeader, Card, Alert, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, Select } from '@/components/ui/Field';
-import { SectionTabs } from '@/components/ui/SectionTabs';
+import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportPrintStyle } from '@/components/print/ReportPrintStyle';
 import { Seal } from '@/components/ui/Seal';
 import { useFilters } from '@/context/FilterContext';
@@ -17,7 +17,7 @@ import {
   useObligations,
   useTrustPrograms,
 } from '@/data/queries';
-import { ACCOUNTING_MONITORING_TABS } from '@/layout/sections';
+import { REPORT_TAB_GROUPS } from '@/layout/sections';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { isCashAccount } from '@/lib/cashFlowLines';
@@ -44,7 +44,8 @@ import {
 import { downloadFdp, type FdpSheetSpec, type XCell } from '@/lib/fdppXlsx';
 
 /**
- * Patch 163 - Accounting > Monitoring > FDPP Reports.
+ * Patch 163 - FDPP Reports. Patch 165: under Reports, the tab after Books
+ * (it was Accounting > Monitoring).
  *
  * The five quarterly forms the municipality posts on the Full Disclosure
  * Policy Portal, prepared from the books (src/lib/fdpp.ts):
@@ -123,9 +124,9 @@ export default function FdppReports() {
       <PageHeader
         title="FDPP Reports"
         subtitle={`Full Disclosure Policy Portal - calendar year ${fiscalYear}, ${ORD[quarter]} quarter`}
-        breadcrumbs={[{ label: 'Accounting' }, { label: 'Monitoring' }, { label: 'FDPP Reports' }]}
+        breadcrumbs={[{ label: 'Reports' }, { label: 'FDPP Reports' }]}
       />
-      <SectionTabs tabs={ACCOUNTING_MONITORING_TABS} />
+      <GroupedSectionTabs groups={REPORT_TAB_GROUPS} />
 
       <Card className="mb-4 no-print" bodyClassName="py-3">
         <div className="grid gap-4 sm:grid-cols-3">

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { CoveringCell } from './CoveringCell';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { hereAsReturn, withReturn } from '@/lib/returnTo';
 import { proposePaymentEntry } from '@/lib/treasuryEntry';
 import { JevLink } from '@/components/JevLink';
@@ -19,8 +19,7 @@ import { GroupedSectionTabs, SectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { Field, DateInput, TextInput } from '@/components/ui/Field';
+import { Field, DateInput, TextInput, Select } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker, EmployeePicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
@@ -70,6 +69,9 @@ import { kindForReport } from './eCollectionKinds';
  * Treasurer can see what the report will ask Accounting to book. But the
  * Accountant is the one who may change it: this screen has no way to post.
  */
+
+/** Patch 165: what an RCD is for - see PrepareReport. */
+type RcdKind = 'COLLECTION' | 'REMITTANCE' | 'DEPOSIT';
 
 interface SourceDoc {
   id: string;
@@ -154,18 +156,32 @@ export default function TreasuryReports({
     [data],
   );
 
-  const [showForm, setShowForm] = useState(false);
+  /*
+   * Patch 165: PREPARE opens in the page itself, not in a window over it - the
+   * register gives way to the form, and the browser's Back returns to it.
+   */
+  const [params, setParams] = useSearchParams();
+  const showForm = params.get('prepare') === '1';
+  const setShowForm = (on: boolean) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (on) next.set('prepare', '1');
+        else next.delete('prepare');
+        return next;
+      },
+      { replace: !on },
+    );
 
   const canPrepare = can('treasury', 'create');
 
-  const actor =
-    user
-      ? actorStamp({
-          uid: user.uid,
-          name: profile?.displayName ?? user.email ?? user.uid,
-          position: profile?.position,
-        })
-      : null;
+  const actor = user
+    ? actorStamp({
+        uid: user.uid,
+        name: profile?.displayName ?? user.email ?? user.uid,
+        position: profile?.position,
+      })
+    : null;
 
   const columns: Column<TreasuryReport>[] = [
     {
@@ -258,7 +274,25 @@ export default function TreasuryReports({
     },
   ];
 
+  const strip = sectionGroups ? (
+    <GroupedSectionTabs groups={sectionGroups} />
+  ) : (
+    <SectionTabs tabs={SECTION_TABS[reportType]} />
+  );
 
+  if (showForm && actor) {
+    return (
+      <PrepareReport
+        reportType={reportType}
+        fiscalYear={fiscalYear}
+        fundCode={fundCode}
+        actor={actor}
+        tabs={strip}
+        onClose={() => setShowForm(false)}
+        onSaved={() => setShowForm(false)}
+      />
+    );
+  }
 
   return (
     <>
@@ -337,18 +371,6 @@ export default function TreasuryReports({
           printLayout="landscape"
         />
       </Card>
-
-      {showForm && actor && (
-        <PrepareReport
-          reportType={reportType}
-          fiscalYear={fiscalYear}
-          fundCode={fundCode}
-          actor={actor}
-          onClose={() => setShowForm(false)}
-          onSaved={() => setShowForm(false)}
-        />
-      )}
-
     </>
   );
 }
@@ -365,6 +387,7 @@ function PrepareReport({
   fiscalYear,
   fundCode,
   actor,
+  tabs,
   onClose,
   onSaved,
 }: {
@@ -372,6 +395,8 @@ function PrepareReport({
   fiscalYear: number;
   fundCode: string;
   actor: ReturnType<typeof actorStamp>;
+  /** Patch 165: the section's tab strip, drawn above the form. */
+  tabs?: ReactNode;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -411,6 +436,16 @@ function PrepareReport({
   );
   const [officerId, setOfficerId] = useState<string | null>(null);
   const [officerName, setOfficerName] = useState('');
+  /*
+   * Patch 165 - WHAT THIS RCD IS FOR, chosen first:
+   *   COLLECTION  a collecting officer's own receipts (A.1);
+   *   REMITTANCE  the collectors' RCDs remitted to the Liquidating Officer (A.2);
+   *   DEPOSIT     the deposits the Liquidating Officer or the Treasurer made of
+   *               what was remitted to them (B).
+   * The officer list and the documents offered follow the choice.
+   */
+  const isRcd = reportType === 'RCD';
+  const [rcdKind, setRcdKind] = useState<RcdKind>('COLLECTION');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /* Patch 157: an RCD's deposits (Section B), chosen apart from its collections. */
   const [selectedDeposits, setSelectedDeposits] = useState<Set<string>>(new Set());
@@ -431,13 +466,14 @@ function PrepareReport({
    */
   const reportableDeposits = useMemo(
     () =>
-      reportType !== 'RCD'
+      reportType !== 'RCD' || rcdKind !== 'DEPOSIT'
         ? []
         : depositsQ.data
             .filter((d) => d.fundCode === fundCode && d.status !== 'CANCELLED')
             .filter((d) => !d.treasuryReportId)
+            .filter((d) => !officerId || d.collectingOfficerId === officerId)
             .sort((a, b) => a.depositDate.localeCompare(b.depositDate)),
-    [reportType, depositsQ.data, fundCode],
+    [reportType, rcdKind, officerId, depositsQ.data, fundCode],
   );
   /*
    * Patch 161: the remittances the RCD's officer received from collectors and
@@ -445,13 +481,13 @@ function PrepareReport({
    */
   const reportableRemittances = useMemo(
     () =>
-      reportType !== 'RCD'
+      reportType !== 'RCD' || rcdKind !== 'REMITTANCE'
         ? []
         : remittancesQ.data
             .filter((m) => m.status === 'RECORDED' && !m.liquidatingReportId)
             .filter((m) => !officerId || m.liquidatingOfficerId === officerId)
             .sort((a, b) => a.remittanceDate.localeCompare(b.remittanceDate)),
-    [reportType, remittancesQ.data, officerId],
+    [reportType, rcdKind, remittancesQ.data, officerId],
   );
   const chosenRemittances = reportableRemittances.filter((m) => selectedRemittances.has(m.id));
   const remittanceTotal = chosenRemittances.reduce((t, m) => t + m.amount, 0);
@@ -469,10 +505,22 @@ function PrepareReport({
       0,
     );
     const remitted = remittancesQ.data
-      .filter((m) => m.status !== 'CANCELLED' && m.collectorReportId && ids.has(m.collectorReportId))
+      .filter(
+        (m) => m.status !== 'CANCELLED' && m.collectorReportId && ids.has(m.collectorReportId),
+      )
       .reduce((t, m) => t + m.amount, 0);
     return Math.max(0, inHand - remitted);
   }, [reportType, officerId, rcdReportsQ.data, remittancesQ.data]);
+  /** Patch 165: what the officer's DRAFT RCDs would add once certified. */
+  const carriedDraft = useMemo(() => {
+    if (reportType !== 'RCD' || !officerId) return 0;
+    return rcdReportsQ.data
+      .filter((r) => r.accountableOfficerId === officerId && r.status === 'DRAFT')
+      .reduce(
+        (t, r) => t + (r.totalAmount ?? 0) + (r.totalRemittances ?? 0) - (r.totalDeposits ?? 0),
+        0,
+      );
+  }, [reportType, officerId, rcdReportsQ.data]);
   const chosenDeposits = reportableDeposits.filter((d) => selectedDeposits.has(d.id));
   const depositTotal = chosenDeposits.reduce((s, d) => s + d.amount, 0);
 
@@ -546,9 +594,12 @@ function PrepareReport({
      */
     if (reportType === 'RCD' || isECollectionReport(reportType)) {
       const wantedKind = kindForReport(reportType);
+      // Patch 165: an RCD of collections shows the chosen officer's receipts only.
+      if (reportType === 'RCD' && (rcdKind !== 'COLLECTION' || !officerId)) return [];
       return collections.data
         .filter((c) => unreported(c as never))
         .filter((c) => (c.eCollectionKind ?? null) === wantedKind)
+        .filter((c) => reportType !== 'RCD' || c.collectingOfficerId === officerId)
         .map((c) => ({
           id: c.id,
           sourceNo: c.orNumber,
@@ -573,7 +624,55 @@ function PrepareReport({
         gross: p.totalGross,
         deductions: p.totalDeductions,
       }));
-  }, [reportType, checks.data, ada.data, collections.data, payrolls.data, fundCode]);
+  }, [
+    reportType,
+    rcdKind,
+    officerId,
+    checks.data,
+    ada.data,
+    collections.data,
+    payrolls.data,
+    fundCode,
+  ]);
+
+  /*
+   * Patch 165: the officers an RCD of each kind can be prepared for - those
+   * with something waiting: receipts not yet reported (collection), remittances
+   * received and not yet reported (remittance), deposits not yet reported
+   * (deposit).
+   */
+  const rcdOfficers = useMemo(() => {
+    if (!isRcd) return [];
+    const m = new Map<string, { id: string; name: string; count: number; amount: number }>();
+    const add = (
+      id: string | null | undefined,
+      name: string | null | undefined,
+      amount: number,
+    ) => {
+      if (!id) return;
+      const cur = m.get(id) ?? { id, name: name ?? id, count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += amount;
+      m.set(id, cur);
+    };
+    if (rcdKind === 'COLLECTION') {
+      for (const c of collections.data) {
+        if (c.treasuryReportId || c.status === 'CANCELLED' || c.eCollectionKind) continue;
+        add(c.collectingOfficerId, c.collectingOfficerName, c.totalAmount);
+      }
+    } else if (rcdKind === 'REMITTANCE') {
+      for (const r of remittancesQ.data) {
+        if (r.status !== 'RECORDED' || r.liquidatingReportId) continue;
+        add(r.liquidatingOfficerId, r.liquidatingOfficerName, r.amount);
+      }
+    } else {
+      for (const d of depositsQ.data) {
+        if (d.fundCode !== fundCode || d.status === 'CANCELLED' || d.treasuryReportId) continue;
+        add(d.collectingOfficerId, d.collectingOfficerName, d.amount);
+      }
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [isRcd, rcdKind, collections.data, remittancesQ.data, depositsQ.data, fundCode]);
 
   const chosen = available.filter((d) => selected.has(d.id));
   const total = chosen.reduce((s, d) => s + d.amount, 0);
@@ -700,7 +799,11 @@ function PrepareReport({
        */
       const groups = new Map<
         string,
-        { officer: { type: string; id: string; name: string } | null; amount: number; parts: string[] }
+        {
+          officer: { type: string; id: string; name: string } | null;
+          amount: number;
+          parts: string[];
+        }
       >();
       for (const d of chosen) {
         const o = d.officer ?? chosenOfficer;
@@ -844,7 +947,11 @@ function PrepareReport({
   );
   const toBookTotal = depositsToBook.reduce((s, d) => s + d.amount, 0);
   /** A deposit's bank, from the slip or else from its bank account record. */
-  const bankOfDeposit = (d: { bankAccountId: string; bankName?: string; bankAccountNumber?: string }) => {
+  const bankOfDeposit = (d: {
+    bankAccountId: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+  }) => {
     const b = banks.data.find((x) => x.id === d.bankAccountId);
     return {
       bankName: d.bankName || b?.bankName || '',
@@ -929,7 +1036,11 @@ function PrepareReport({
       toast.error(
         'Nothing selected',
         reportType === 'RCD'
-          ? 'Choose at least one collection or one deposit to report.'
+          ? rcdKind === 'COLLECTION'
+            ? 'Choose the collecting officer and at least one of their receipts.'
+            : rcdKind === 'REMITTANCE'
+              ? 'Choose the Liquidating Officer and at least one remittance they received.'
+              : 'Choose the officer and at least one deposit they made.'
           : 'Choose at least one document to report.',
       );
       return;
@@ -940,7 +1051,7 @@ function PrepareReport({
      * their earlier RCDs left undeposited.
      */
     if (reportType === 'RCD' && depositTotal > 0) {
-      const available = carried + total + remittanceTotal;
+      const available = carried + carriedDraft + total + remittanceTotal;
       if (depositTotal > available) {
         toast.error(
           'Deposits without a remittance',
@@ -1046,9 +1157,7 @@ function PrepareReport({
         particulars: d.particulars ?? null,
         amount: d.amount,
         ...(d.payees && d.payees.length ? { payees: d.payees } : {}),
-        ...(reportType === 'RCDISB'
-          ? { gross: d.gross ?? 0, deductions: d.deductions ?? 0 }
-          : {}),
+        ...(reportType === 'RCDISB' ? { gross: d.gross ?? 0, deductions: d.deductions ?? 0 } : {}),
       }));
 
       await createDraft(
@@ -1073,6 +1182,7 @@ function PrepareReport({
           totalAmount: total,
           ...(reportType === 'RCD'
             ? {
+                rcdKind,
                 deposits: chosenDeposits.map((d) => ({
                   sourceId: d.id,
                   depositSlipNo: d.depositSlipNo ?? '',
@@ -1102,10 +1212,7 @@ function PrepareReport({
         actor,
       );
 
-      toast.success(
-        `${short} draft saved`,
-        'Review it, then certify to forward it to Accounting.',
-      );
+      toast.success(`${short} draft saved`, 'Review it, then certify to forward it to Accounting.');
       onSaved();
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : String(err));
@@ -1122,157 +1229,493 @@ function PrepareReport({
       return next;
     });
 
+  const buttons = (
+    <>
+      <Button variant="secondary" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button
+        onClick={save}
+        loading={saving}
+        // Patch 161: an RCD of deposits or remittances only may be saved too.
+        disabled={!chosen.length && !chosenDeposits.length && !chosenRemittances.length}
+      >
+        Save draft
+      </Button>
+    </>
+  );
+
+  const RCD_KINDS: Array<{ id: RcdKind; label: string; hint: string }> = [
+    {
+      id: 'COLLECTION',
+      label: 'Collection',
+      hint: "A collecting officer's own receipts (Section A.1).",
+    },
+    {
+      id: 'REMITTANCE',
+      label: 'Remittance',
+      hint: "The collectors' RCDs remitted to the Liquidating Officer (Section A.2).",
+    },
+    {
+      id: 'DEPOSIT',
+      label: 'Deposit',
+      hint: 'The deposits the Liquidating Officer or the Treasurer made of what was remitted (Section B).',
+    },
+  ];
+  const officerLabel =
+    rcdKind === 'COLLECTION'
+      ? 'Collecting officer'
+      : rcdKind === 'REMITTANCE'
+        ? 'Liquidating officer'
+        : 'Liquidating officer or Treasurer';
+
   return (
-    <Modal
-      open
-      title={`Prepare ${short}`}
-      size="xl"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={save}
-            loading={saving}
-            // Patch 161: an RCD of deposits or remittances only may be saved too.
-            disabled={!chosen.length && !chosenDeposits.length && !chosenRemittances.length}
-          >
-            Save draft
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={`${short} number`} required hint="From the Treasurer's own book.">
-          <TextInput
-            value={reportNo}
-            onChange={(e) => setReportNo(e.target.value)}
-            placeholder="100-26-10-0001"
-            className="font-mono"
-          />
-        </Field>
-
-        <Field label="Report date" required>
-          <DateInput value={reportDate} onChange={setReportDate} />
-        </Field>
-
-        {needsBank && (
-          <Field
-            label="Bank account"
-            required
-            hint={
-              isECollectionReport(reportType)
-                ? 'The account the e-collections were credited to. Its General Ledger account is what the entry debits.'
-                : 'The account the payments were drawn on. Its General Ledger account is what the entry credits.'
-            }
-          >
-            <BankAccountPicker
-              value={bankAccountId}
-              fundCode={fundCode}
-              onChange={(id) => {
-                setBankAccountId(id);
-                setSelected(new Set());
-              }}
+    <>
+      {/* Patch 165: the form fills the page instead of opening in a window. */}
+      <PageHeader
+        title={`Prepare ${short}`}
+        breadcrumbs={[{ label: 'Treasury' }, { label: short }, { label: 'Prepare' }]}
+        subtitle={TREASURY_REPORT_LABELS[reportType]}
+        actions={buttons}
+      />
+      {tabs}
+      <Card>
+        {isRcd && (
+          <div className="mb-5">
+            <p className="cbo-label mb-2">This RCD is for</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {RCD_KINDS.map((k) => (
+                <label
+                  key={k.id}
+                  className={`flex cursor-pointer gap-2 rounded-md border px-3 py-2 text-sm ${
+                    rcdKind === k.id
+                      ? 'border-brand-500 bg-brand-50 text-navy-900'
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="rcdKind"
+                    className="mt-0.5"
+                    checked={rcdKind === k.id}
+                    onChange={() => {
+                      setRcdKind(k.id);
+                      setOfficerId(null);
+                      setOfficerName('');
+                      setSelected(new Set());
+                      setSelectedDeposits(new Set());
+                      setSelectedRemittances(new Set());
+                    }}
+                  />
+                  <span>
+                    <span className="font-semibold">{k.label}</span>
+                    <span className="block text-xs text-slate-500">{k.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={`${short} number`} required hint="From the Treasurer's own book.">
+            <TextInput
+              value={reportNo}
+              onChange={(e) => setReportNo(e.target.value)}
+              placeholder="100-26-10-0001"
+              className="font-mono"
             />
           </Field>
-        )}
 
-        {needsOfficer && (
-          <Field
-            label={
-              reportType === 'ERCD_AR'
-                ? 'Designated officer'
-                : reportType === 'RCD' || reportType === 'ERCD_EOR'
-                  ? 'Collecting officer'
-                  : 'Disbursing officer'
-            }
-            hint="The accountable officer this report belongs to, and who certifies it."
-          >
-            {reportType === 'RCDISB' && payrollOfficers.length > 0 ? (
-              /* Patch 156: the payee of the advance the payrolls liquidate. */
-              <p className="py-2 text-sm font-medium text-navy-900">
-                {payrollOfficer
-                  ? payrollOfficer.name
-                  : `Two officers chosen: ${payrollOfficers.map((o) => o.name).join(', ')}`}
-              </p>
-            ) : (
-              <EmployeePicker
-                value={officerId}
-                onChange={(id, employee) => {
-                  setOfficerId(id);
-                  setOfficerName(employee?.name ?? '');
+          <Field label="Report date" required>
+            <DateInput value={reportDate} onChange={setReportDate} />
+          </Field>
+
+          {needsBank && (
+            <Field
+              label="Bank account"
+              required
+              hint={
+                isECollectionReport(reportType)
+                  ? 'The account the e-collections were credited to. Its General Ledger account is what the entry debits.'
+                  : 'The account the payments were drawn on. Its General Ledger account is what the entry credits.'
+              }
+            >
+              <BankAccountPicker
+                value={bankAccountId}
+                fundCode={fundCode}
+                onChange={(id) => {
+                  setBankAccountId(id);
+                  setSelected(new Set());
                 }}
               />
-            )}
-          </Field>
-        )}
-      </div>
+            </Field>
+          )}
 
-      <div className="mt-5">
-        <div className="mb-2 flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-navy-900">
-            {isPayroll ? 'Payrolls to report' : 'Documents to report'}
-          </h3>
-          <span className="text-xs text-slate-500">
-            {chosen.length} selected, {formatPeso(total)}
-            {isPayroll ? ' paid in cash' : ''}
-          </span>
+          {needsOfficer && (
+            <Field
+              label={
+                isRcd
+                  ? officerLabel
+                  : reportType === 'ERCD_AR'
+                    ? 'Designated officer'
+                    : reportType === 'ERCD_EOR'
+                      ? 'Collecting officer'
+                      : 'Disbursing officer'
+              }
+              hint="The accountable officer this report belongs to, and who certifies it."
+            >
+              {isRcd ? (
+                /*
+                 * Patch 165: the officers with something waiting for this kind
+                 * of RCD - and, once one is chosen, only that officer's
+                 * documents below.
+                 */
+                rcdOfficers.length === 0 ? (
+                  <p className="py-2 text-sm text-slate-500">
+                    {rcdKind === 'COLLECTION'
+                      ? 'No collecting officer has receipts waiting to be reported.'
+                      : rcdKind === 'REMITTANCE'
+                        ? 'No remittance received is waiting to be reported.'
+                        : 'No deposit is waiting to be reported.'}
+                  </p>
+                ) : (
+                  <Select
+                    value={officerId ?? ''}
+                    onChange={(e) => {
+                      const o = rcdOfficers.find((x) => x.id === e.target.value);
+                      setOfficerId(o?.id ?? null);
+                      setOfficerName(o?.name ?? '');
+                      setSelected(new Set());
+                      setSelectedDeposits(new Set());
+                      setSelectedRemittances(new Set());
+                    }}
+                  >
+                    <option value="">Choose the officer</option>
+                    {rcdOfficers.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name} - {o.count} waiting, {formatPeso(o.amount)}
+                      </option>
+                    ))}
+                  </Select>
+                )
+              ) : reportType === 'RCDISB' && payrollOfficers.length > 0 ? (
+                /* Patch 156: the payee of the advance the payrolls liquidate. */
+                <p className="py-2 text-sm font-medium text-navy-900">
+                  {payrollOfficer
+                    ? payrollOfficer.name
+                    : `Two officers chosen: ${payrollOfficers.map((o) => o.name).join(', ')}`}
+                </p>
+              ) : (
+                <EmployeePicker
+                  value={officerId}
+                  onChange={(id, employee) => {
+                    setOfficerId(id);
+                    setOfficerName(employee?.name ?? '');
+                  }}
+                />
+              )}
+            </Field>
+          )}
         </div>
 
-        {(reportType === 'RCI' || reportType === 'RADAI') && !bankAccountId ? (
-          <Alert tone="info">Choose a bank account to see the documents drawn on it.</Alert>
-        ) : available.length === 0 ? (
-          <Alert tone="info">
-            Nothing left to report. Every document for this fund has already been covered by a
-            report, which is what should be the case once the period is closed out.
-          </Alert>
-        ) : (
-          <div className="max-h-72 overflow-y-auto rounded border border-slate-200">
+        {(!isRcd || rcdKind === 'COLLECTION') && (
+          <div className="mt-5">
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-navy-900">
+                {isPayroll
+                  ? 'Payrolls to report'
+                  : isRcd
+                    ? 'Receipts to report (A.1)'
+                    : 'Documents to report'}
+              </h3>
+              <span className="text-xs text-slate-500">
+                {chosen.length} selected, {formatPeso(total)}
+                {isPayroll ? ' paid in cash' : ''}
+              </span>
+            </div>
+
+            {(reportType === 'RCI' || reportType === 'RADAI') && !bankAccountId ? (
+              <Alert tone="info">Choose a bank account to see the documents drawn on it.</Alert>
+            ) : isRcd && !officerId ? (
+              <Alert tone="info">
+                Choose the collecting officer; their receipts are listed here.
+              </Alert>
+            ) : available.length === 0 ? (
+              <Alert tone="info">
+                Nothing left to report. Every document for this fund has already been covered by a
+                report, which is what should be the case once the period is closed out.
+              </Alert>
+            ) : (
+              <div className="max-h-72 overflow-y-auto rounded border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-600">
+                    <tr>
+                      <th className="w-10 px-3 py-2" />
+                      <th className="px-3 py-2 text-left">No.</th>
+                      <th className="px-3 py-2 text-left">Date</th>
+                      <th className="px-3 py-2 text-left">Payee / particulars</th>
+                      {isPayroll && <th className="px-3 py-2 text-right">Gross</th>}
+                      {isPayroll && <th className="px-3 py-2 text-right">Deductions</th>}
+                      <th className="px-3 py-2 text-right">{isPayroll ? 'Net paid' : 'Amount'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {available.map((doc) => (
+                      <tr key={doc.id} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(doc.id)}
+                            onChange={() => toggle(doc.id)}
+                            aria-label={`Include ${doc.sourceNo}`}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">{doc.sourceNo}</td>
+                        <td className="px-3 py-2">{formatShortDate(doc.date)}</td>
+                        <td className="px-3 py-2">
+                          {doc.payeeName ?? ''}
+                          {doc.particulars ? (
+                            <span className="block text-xs text-slate-500">{doc.particulars}</span>
+                          ) : null}
+                        </td>
+                        {isPayroll && (
+                          <td className="px-3 py-2 text-right">
+                            <span className="cbo-amount">{formatPeso(doc.gross ?? 0)}</span>
+                          </td>
+                        )}
+                        {isPayroll && (
+                          <td className="px-3 py-2 text-right">
+                            <span className="cbo-amount">{formatPeso(doc.deductions ?? 0)}</span>
+                          </td>
+                        )}
+                        <td className="px-3 py-2 text-right">
+                          <span className="cbo-amount">{formatPeso(doc.amount)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Patch 161: Section A.2 - remittances received from collectors. */}
+        {reportType === 'RCD' && rcdKind === 'REMITTANCE' && (
+          <div className="mt-5">
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-navy-900">Remittances received (A.2)</h3>
+              <span className="text-xs text-slate-500">
+                {chosenRemittances.length} selected, {formatPeso(remittanceTotal)}
+              </span>
+            </div>
+            <p className="mb-2 text-xs text-slate-500">
+              The collectors&apos; remittances {officerId ? 'this officer' : 'the officer'} received
+              (Treasury &gt; Collections and Deposits &gt; Remittances). They transfer
+              accountability and are not in the entry. A deposit is made from them: the deposits
+              below cannot exceed the remittances received, this RCD&apos;s own collections and what
+              is still undeposited from earlier RCDs ({formatPeso(carried)}).
+            </p>
+            {reportableRemittances.length === 0 ? (
+              <Alert tone="info">
+                {officerId
+                  ? 'No remittance received by this officer is waiting to be reported.'
+                  : 'Choose the officer first; the remittances they received are listed here.'}
+              </Alert>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="w-10 px-3 py-2" />
+                      <th className="px-3 py-2 text-left">Collector</th>
+                      <th className="px-3 py-2 text-left">Collector&apos;s RCD</th>
+                      <th className="px-3 py-2 text-left">Date</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportableRemittances.map((m) => (
+                      <tr key={m.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedRemittances.has(m.id)}
+                            onChange={() =>
+                              setSelectedRemittances((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(m.id)) next.delete(m.id);
+                                else next.add(m.id);
+                                return next;
+                              })
+                            }
+                            aria-label={`Include remittance of ${m.collectingOfficerName}`}
+                          />
+                        </td>
+                        <td className="px-3 py-2">{m.collectingOfficerName}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {m.collectorReportNo ?? '-'}
+                        </td>
+                        <td className="px-3 py-2">{formatShortDate(m.remittanceDate)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <span className="cbo-amount">{formatPeso(m.amount)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Patch 157: Section B - the deposits this RCD accounts for. */}
+        {reportType === 'RCD' && rcdKind === 'DEPOSIT' && (
+          <div className="mt-5">
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-navy-900">Deposits to report</h3>
+              <span className="text-xs text-slate-500">
+                {chosenDeposits.length} selected, {formatPeso(depositTotal)}
+              </span>
+            </div>
+            <p className="mb-2 text-xs text-slate-500">
+              The deposits {officerId ? 'this officer' : 'the officer'} made (Treasury &gt;
+              Collections and Deposits &gt; Deposits). Every deposit is booked by the RCD that
+              reports it: Dr Cash in Bank / Cr Cash - Local Treasury, in the entry below.
+            </p>
+            {officerId && (
+              <div className="mb-3 grid gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:grid-cols-3">
+                <span>
+                  Remitted to this officer and not yet deposited:{' '}
+                  <span className="cbo-amount font-semibold">{formatPeso(carried)}</span>
+                </span>
+                {carriedDraft > 0 && (
+                  <span className="text-xs text-amber-700">
+                    {formatPeso(carriedDraft)} more on RCDs not yet certified - certify them first,
+                    or certification of this RCD will refuse the deposit.
+                  </span>
+                )}
+                <span className={depositTotal > carried + carriedDraft ? 'text-rose-700' : ''}>
+                  Deposits ticked: <span className="cbo-amount">{formatPeso(depositTotal)}</span>
+                </span>
+              </div>
+            )}
+            {!officerId ? (
+              <Alert tone="info">Choose the officer; the deposits they made are listed here.</Alert>
+            ) : reportableDeposits.length === 0 ? (
+              <Alert tone="info">No deposit of this officer is waiting to be reported.</Alert>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="w-10 px-3 py-2" />
+                      <th className="px-3 py-2 text-left">Deposit slip</th>
+                      <th className="px-3 py-2 text-left">Date</th>
+                      <th className="px-3 py-2 text-left">Bank</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportableDeposits.map((d) => {
+                      const booked = Boolean(d.jevId);
+                      return (
+                        <tr key={d.id} className="border-t border-slate-100">
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedDeposits.has(d.id)}
+                              onChange={() =>
+                                setSelectedDeposits((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(d.id)) next.delete(d.id);
+                                  else next.add(d.id);
+                                  return next;
+                                })
+                              }
+                              aria-label={`Include deposit ${d.depositSlipNo}`}
+                            />
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {d.depositSlipNo}
+                            {booked && (
+                              <span className="block font-sans text-2xs text-slate-500">
+                                Already booked (posted before patch 159) - no second entry
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">{formatShortDate(d.depositDate)}</td>
+                          <td className="px-3 py-2 text-xs">
+                            {bankOfDeposit(d).bankName} {bankOfDeposit(d).bankAccountNumber}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span className="cbo-amount">{formatPeso(d.amount)}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isPayroll && chosen.length > 0 && (
+          <table className="mt-4 w-full border-collapse text-sm">
+            <tbody>
+              <tr className="border-t border-slate-200">
+                <td className="cbo-td">Gross</td>
+                <td className="cbo-td cbo-amount">
+                  {formatPeso(payrollTotals.gross, { symbol: false })}
+                </td>
+              </tr>
+              <tr className="border-t border-slate-100">
+                <td className="cbo-td">Less deductions</td>
+                <td className="cbo-td cbo-amount">
+                  {formatPeso(payrollTotals.deductions, { symbol: false, dash: true })}
+                </td>
+              </tr>
+              <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
+                <td className="cbo-td">Cash paid</td>
+                <td className="cbo-td cbo-amount">{formatPeso(total, { symbol: false })}</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+
+        {entry.length > 0 && (
+          <div className="mt-5">
+            <h3 className="mb-2 text-sm font-semibold text-navy-900">
+              Entry this report will propose
+            </h3>
+            <p className="mb-2 text-xs text-slate-500">
+              Accounting may adjust this before posting. The total cannot be changed - the journal
+              entry must agree with the report you certify.
+              {isPayroll
+                ? ' It liquidates the payroll cash advance: the expense and the deductions were recognised on the voucher, not here.'
+                : ''}
+            </p>
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-600">
-                <tr>
-                  <th className="w-10 px-3 py-2" />
-                  <th className="px-3 py-2 text-left">No.</th>
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-left">Payee / particulars</th>
-                  {isPayroll && <th className="px-3 py-2 text-right">Gross</th>}
-                  {isPayroll && <th className="px-3 py-2 text-right">Deductions</th>}
-                  <th className="px-3 py-2 text-right">{isPayroll ? 'Net paid' : 'Amount'}</th>
-                </tr>
-              </thead>
               <tbody>
-                {available.map((doc) => (
-                  <tr key={doc.id} className="border-t border-slate-100 hover:bg-slate-50">
-                    <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(doc.id)}
-                        onChange={() => toggle(doc.id)}
-                        aria-label={`Include ${doc.sourceNo}`}
-                      />
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs">{doc.sourceNo}</td>
-                    <td className="px-3 py-2">{formatShortDate(doc.date)}</td>
-                    <td className="px-3 py-2">
-                      {doc.payeeName ?? ''}
-                      {doc.particulars ? (
-                        <span className="block text-xs text-slate-500">{doc.particulars}</span>
+                {entry.map((line, i) => (
+                  <tr key={`${line.accountCode}-${i}`} className="border-t border-slate-100">
+                    <td className="py-1.5 font-mono text-xs text-slate-600">{line.accountCode}</td>
+                    <td className="py-1.5">
+                      {line.accountName}
+                      {'subsidiaryName' in line && line.subsidiaryName ? (
+                        <span className="block text-xs text-slate-500">{line.subsidiaryName}</span>
                       ) : null}
                     </td>
-                    {isPayroll && (
-                      <td className="px-3 py-2 text-right">
-                        <span className="cbo-amount">{formatPeso(doc.gross ?? 0)}</span>
-                      </td>
-                    )}
-                    {isPayroll && (
-                      <td className="px-3 py-2 text-right">
-                        <span className="cbo-amount">{formatPeso(doc.deductions ?? 0)}</span>
-                      </td>
-                    )}
-                    <td className="px-3 py-2 text-right">
-                      <span className="cbo-amount">{formatPeso(doc.amount)}</span>
+                    <td className="py-1.5 text-right">
+                      {line.debit ? (
+                        <span className="cbo-amount">{formatPeso(line.debit)}</span>
+                      ) : null}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {line.credit ? (
+                        <span className="cbo-amount">{formatPeso(line.credit)}</span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -1280,209 +1723,8 @@ function PrepareReport({
             </table>
           </div>
         )}
-      </div>
-
-      {/* Patch 161: Section A.2 - remittances received from collectors. */}
-      {reportType === 'RCD' && (
-        <div className="mt-5">
-          <div className="mb-2 flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-navy-900">Remittances received (A.2)</h3>
-            <span className="text-xs text-slate-500">
-              {chosenRemittances.length} selected, {formatPeso(remittanceTotal)}
-            </span>
-          </div>
-          <p className="mb-2 text-xs text-slate-500">
-            The collectors&apos; remittances {officerId ? 'this officer' : 'the officer'} received
-            (Treasury &gt; Collections and Deposits &gt; Remittances). They transfer accountability
-            and are not in the entry. A deposit is made from them: the deposits below cannot exceed
-            the remittances received, this RCD&apos;s own collections and what is still undeposited
-            from earlier RCDs ({formatPeso(carried)}).
-          </p>
-          {reportableRemittances.length === 0 ? (
-            <Alert tone="info">
-              {officerId
-                ? 'No remittance received by this officer is waiting to be reported.'
-                : 'Choose the officer first; the remittances they received are listed here.'}
-            </Alert>
-          ) : (
-            <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="w-10 px-3 py-2" />
-                    <th className="px-3 py-2 text-left">Collector</th>
-                    <th className="px-3 py-2 text-left">Collector&apos;s RCD</th>
-                    <th className="px-3 py-2 text-left">Date</th>
-                    <th className="px-3 py-2 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportableRemittances.map((m) => (
-                    <tr key={m.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedRemittances.has(m.id)}
-                          onChange={() =>
-                            setSelectedRemittances((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(m.id)) next.delete(m.id);
-                              else next.add(m.id);
-                              return next;
-                            })
-                          }
-                          aria-label={`Include remittance of ${m.collectingOfficerName}`}
-                        />
-                      </td>
-                      <td className="px-3 py-2">{m.collectingOfficerName}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{m.collectorReportNo ?? '-'}</td>
-                      <td className="px-3 py-2">{formatShortDate(m.remittanceDate)}</td>
-                      <td className="px-3 py-2 text-right">
-                        <span className="cbo-amount">{formatPeso(m.amount)}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Patch 157: Section B - the deposits this RCD accounts for. */}
-      {reportType === 'RCD' && (
-        <div className="mt-5">
-          <div className="mb-2 flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-navy-900">Deposits to report</h3>
-            <span className="text-xs text-slate-500">
-              {chosenDeposits.length} selected, {formatPeso(depositTotal)}
-            </span>
-          </div>
-          <p className="mb-2 text-xs text-slate-500">
-            An RCD may carry collections only, deposits only, or both - the Liquidating Officer
-            often banks a week&apos;s collections later, on a report of their own. Every deposit is
-            booked by the RCD that reports it: Dr Cash in Bank / Cr Cash - Local Treasury, in the
-            entry below.
-          </p>
-          {reportableDeposits.length === 0 ? (
-            <Alert tone="info">No deposit of this fund is waiting to be reported.</Alert>
-          ) : (
-            <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="w-10 px-3 py-2" />
-                    <th className="px-3 py-2 text-left">Deposit slip</th>
-                    <th className="px-3 py-2 text-left">Date</th>
-                    <th className="px-3 py-2 text-left">Bank</th>
-                    <th className="px-3 py-2 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportableDeposits.map((d) => {
-                    const booked = Boolean(d.jevId);
-                    return (
-                      <tr key={d.id} className="border-t border-slate-100">
-                        <td className="px-3 py-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedDeposits.has(d.id)}
-                            onChange={() =>
-                              setSelectedDeposits((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(d.id)) next.delete(d.id);
-                                else next.add(d.id);
-                                return next;
-                              })
-                            }
-                            aria-label={`Include deposit ${d.depositSlipNo}`}
-                          />
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {d.depositSlipNo}
-                          {booked && (
-                            <span className="block font-sans text-2xs text-slate-500">
-                              Already booked (posted before patch 159) - no second entry
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">{formatShortDate(d.depositDate)}</td>
-                        <td className="px-3 py-2 text-xs">
-                          {bankOfDeposit(d).bankName} {bankOfDeposit(d).bankAccountNumber}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <span className="cbo-amount">{formatPeso(d.amount)}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {isPayroll && chosen.length > 0 && (
-        <table className="mt-4 w-full border-collapse text-sm">
-          <tbody>
-            <tr className="border-t border-slate-200">
-              <td className="cbo-td">Gross</td>
-              <td className="cbo-td cbo-amount">
-                {formatPeso(payrollTotals.gross, { symbol: false })}
-              </td>
-            </tr>
-            <tr className="border-t border-slate-100">
-              <td className="cbo-td">Less deductions</td>
-              <td className="cbo-td cbo-amount">
-                {formatPeso(payrollTotals.deductions, { symbol: false, dash: true })}
-              </td>
-            </tr>
-            <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
-              <td className="cbo-td">Cash paid</td>
-              <td className="cbo-td cbo-amount">{formatPeso(total, { symbol: false })}</td>
-            </tr>
-          </tbody>
-        </table>
-      )}
-
-      {entry.length > 0 && (
-        <div className="mt-5">
-          <h3 className="mb-2 text-sm font-semibold text-navy-900">
-            Entry this report will propose
-          </h3>
-          <p className="mb-2 text-xs text-slate-500">
-            Accounting may adjust this before posting. The total cannot be changed - the journal
-            entry must agree with the report you certify.
-            {isPayroll
-              ? ' It liquidates the payroll cash advance: the expense and the deductions were recognised on the voucher, not here.'
-              : ''}
-          </p>
-          <table className="w-full text-sm">
-            <tbody>
-              {entry.map((line, i) => (
-                <tr key={`${line.accountCode}-${i}`} className="border-t border-slate-100">
-                  <td className="py-1.5 font-mono text-xs text-slate-600">{line.accountCode}</td>
-                  <td className="py-1.5">
-                    {line.accountName}
-                    {'subsidiaryName' in line && line.subsidiaryName ? (
-                      <span className="block text-xs text-slate-500">{line.subsidiaryName}</span>
-                    ) : null}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    {line.debit ? <span className="cbo-amount">{formatPeso(line.debit)}</span> : null}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    {line.credit ? (
-                      <span className="cbo-amount">{formatPeso(line.credit)}</span>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Modal>
+        <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">{buttons}</div>
+      </Card>
+    </>
   );
 }

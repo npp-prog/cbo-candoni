@@ -155,6 +155,9 @@ export default function FinancialStatements() {
 
   return (
     <ReportShell
+      /* Patch 165: A4 fitted to the width, with the municipal seal. */
+      printLayout="portrait"
+      seal="center"
       tabs={<GroupedSectionTabs groups={REPORT_TAB_GROUPS} />}
       meta={{
         title: statementTitle,

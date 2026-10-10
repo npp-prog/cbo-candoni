@@ -33,11 +33,7 @@ import type { Collection, CollectionLine, RevenueSource } from '@/types/treasury
 import { fundLabel } from '../budget/Obligations';
 import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 import { CollectionDetail } from './CollectionDetail';
-import {
-  E_COLLECTION_KINDS,
-  eCollectionKind,
-  type ECollectionKind,
-} from './eCollectionKinds';
+import { E_COLLECTION_KINDS, eCollectionKind, type ECollectionKind } from './eCollectionKinds';
 
 /**
  * e-Collections - money that arrived without anybody handing cash over a
@@ -99,8 +95,16 @@ export default function ECollections() {
       key: 'receiptNo',
       header: 'Receipt / reference',
       width: '11rem',
-      value: (c) => c.orNumber,
-      cell: (c) => <span className="font-mono text-xs text-navy-900">{c.orNumber}</span>,
+      value: (c) => `${c.orNumber} ${c.transactionRef ?? ''}`,
+      cell: (c) => (
+        <span className="font-mono text-xs text-navy-900">
+          {c.orNumber}
+          {/* Patch 165: the transaction reference number under it. */}
+          {c.transactionRef && (
+            <span className="block text-2xs text-slate-500">TRN {c.transactionRef}</span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'orDate',
@@ -133,7 +137,11 @@ export default function ECollections() {
       header: 'Resp. centre',
       width: '7rem',
       value: (c) => c.responsibilityCenterCode ?? '',
-      cell: (c) => <span className="font-mono text-xs text-slate-600">{c.responsibilityCenterCode ?? '—'}</span>,
+      cell: (c) => (
+        <span className="font-mono text-xs text-slate-600">
+          {c.responsibilityCenterCode ?? '—'}
+        </span>
+      ),
       optional: true,
     },
     {
@@ -141,7 +149,9 @@ export default function ECollections() {
       header: 'Amount',
       kind: 'amount',
       value: (c) => c.totalAmount,
-      cell: (c) => <span className="cbo-amount text-sm">{formatPeso(c.totalAmount, { symbol: false })}</span>,
+      cell: (c) => (
+        <span className="cbo-amount text-sm">{formatPeso(c.totalAmount, { symbol: false })}</span>
+      ),
     },
     {
       key: 'report',
@@ -196,13 +206,13 @@ export default function ECollections() {
 
       <div className="mb-3 flex flex-wrap gap-6 text-sm">
         <span className="text-slate-600">
-          Recorded: <span className="cbo-amount font-semibold text-navy-900">{formatPeso(total)}</span>
+          Recorded:{' '}
+          <span className="cbo-amount font-semibold text-navy-900">{formatPeso(total)}</span>
         </span>
         <span className="text-slate-600">
           Not yet on a report:{' '}
           <span className="cbo-amount font-semibold text-amber-700">{formatPeso(unreported)}</span>
         </span>
-
       </div>
 
       <DataTable
@@ -335,6 +345,23 @@ function ECollectionForm({
   const [prexcPap, setPrexcPap] = useState(editingRecord?.prexcPap ?? '');
   const [payorName, setPayorName] = useState(editingRecord?.payorName ?? '');
   const [payorTin, setPayorTin] = useState(editingRecord?.payorTin ?? '');
+  /*
+   * Patch 165 - the TRANSACTION REFERENCE NUMBER the bank or the intermediary
+   * gave the payment. It writes the start of the particulars for you -
+   * "Collection of TRN 123456 - " - which stays editable.
+   */
+  const [transactionRef, setTransactionRef] = useState(editingRecord?.transactionRef ?? '');
+  const trnPrefix = (t: string) => (t.trim() ? `Collection of TRN ${t.trim()} - ` : '');
+  const changeTrn = (next: string) => {
+    setParticulars((p) => {
+      const old = trnPrefix(transactionRef);
+      if (!p.trim()) return trnPrefix(next);
+      if (old && p.startsWith(old)) return trnPrefix(next) + p.slice(old.length);
+      if (old && p === old.trimEnd()) return trnPrefix(next);
+      return p;
+    });
+    setTransactionRef(next);
+  };
   const [revenueSource, setRevenueSource] = useState<RevenueSource>(
     editingRecord?.revenueSource ?? 'FEES_AND_CHARGES',
   );
@@ -424,65 +451,77 @@ function ECollectionForm({
 
     const chosen = intermediaries.data.find((i) => i.id === intermediaryId);
 
+    // Patch 165: the TRN on every new e-collection.
+    if (!editingRecord && !transactionRef.trim()) {
+      toast.error(
+        'The TRN is missing',
+        'Type the transaction reference number the bank or the intermediary gave the payment.',
+      );
+      return;
+    }
     // Patch 156: particulars are required on every entry.
     if (!particulars.trim()) {
-      toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
+      toast.error(
+        'Particulars are required',
+        'Say what this entry is for - it is printed on the reports.',
+      );
       return;
     }
     setSaving(true);
     try {
       const payload = {
-          fiscalYear,
-          period: Number(receiptDate.slice(5, 7)),
-          fundCode,
-          /*
-           * The receipt number goes in `orNumber`, the same field a counter
-           * receipt uses, so every report that already reads collections finds
-           * it without being taught about a second field.
-           */
-          orNumber: normalise(receiptNo),
-          orDate: receiptDate,
-          eCollectionKind: kind,
-          intermediaryId: spec.withIntermediary ? intermediaryId : null,
-          intermediaryName: spec.withIntermediary ? (chosen?.name ?? null) : null,
-          responsibilityCenterCode: spec.withResponsibilityCentre
-            ? responsibilityCenterCode.trim() || null
-            : null,
-          prexcPap: spec.withResponsibilityCentre ? prexcPap.trim() || null : null,
-          collectingOfficerId: officerId,
-          collectingOfficerName: officerName,
-          revenueSource,
-          payorName: payorName.trim(),
-          payorTin: payorTin.trim() || null,
-          lines: lines.map((l, i) => ({
-            lineNo: i + 1,
-            accountCode: l.accountCode ?? '',
-            accountName: l.accountName ?? '',
-            amount: l.amount ?? 0,
-            particulars: l.particulars ?? particulars.trim() ?? null,
-            trustProgramId: isTrust ? (l.trustProgramId ?? null) : null,
-            trustProgramName: isTrust ? (l.trustProgramName ?? null) : null,
-            rptTaxYear: isRptAccount(l.accountCode ?? '') ? (l.rptTaxYear ?? null) : null,
-            barangayId: isRptAccount(l.accountCode ?? '') ? (l.barangayId ?? null) : null,
-            barangayName: isRptAccount(l.accountCode ?? '') ? (l.barangayName ?? null) : null,
-            // Patch 158: the subsidiary ledger account, where the line has one.
-            subsidiaryType: l.subsidiaryId ? (l.subsidiaryType ?? null) : null,
-            subsidiaryId: l.subsidiaryId ?? null,
-            subsidiaryName: l.subsidiaryId ? (l.subsidiaryName ?? null) : null,
-          })),
-          totalAmount: total,
-          paymentForm: 'ONLINE',
-          /*
-           * No accountable form is consumed, and deliberately.
-           *
-           * A paper Official Receipt comes out of a numbered booklet the
-           * Treasurer signed for, and the RAAF accounts for every one of them.
-           * An electronic receipt has no booklet, so asking the RAAF to
-           * account for it would mean the Treasurer answering for serial
-           * numbers that were never issued to anybody.
-           */
-          accountableFormId: null,
-          remarks: particulars.trim() || null,
+        fiscalYear,
+        period: Number(receiptDate.slice(5, 7)),
+        fundCode,
+        /*
+         * The receipt number goes in `orNumber`, the same field a counter
+         * receipt uses, so every report that already reads collections finds
+         * it without being taught about a second field.
+         */
+        orNumber: normalise(receiptNo),
+        orDate: receiptDate,
+        eCollectionKind: kind,
+        intermediaryId: spec.withIntermediary ? intermediaryId : null,
+        intermediaryName: spec.withIntermediary ? (chosen?.name ?? null) : null,
+        responsibilityCenterCode: spec.withResponsibilityCentre
+          ? responsibilityCenterCode.trim() || null
+          : null,
+        prexcPap: spec.withResponsibilityCentre ? prexcPap.trim() || null : null,
+        collectingOfficerId: officerId,
+        collectingOfficerName: officerName,
+        revenueSource,
+        payorName: payorName.trim(),
+        payorTin: payorTin.trim() || null,
+        transactionRef: transactionRef.trim() || null,
+        lines: lines.map((l, i) => ({
+          lineNo: i + 1,
+          accountCode: l.accountCode ?? '',
+          accountName: l.accountName ?? '',
+          amount: l.amount ?? 0,
+          particulars: l.particulars ?? particulars.trim() ?? null,
+          trustProgramId: isTrust ? (l.trustProgramId ?? null) : null,
+          trustProgramName: isTrust ? (l.trustProgramName ?? null) : null,
+          rptTaxYear: isRptAccount(l.accountCode ?? '') ? (l.rptTaxYear ?? null) : null,
+          barangayId: isRptAccount(l.accountCode ?? '') ? (l.barangayId ?? null) : null,
+          barangayName: isRptAccount(l.accountCode ?? '') ? (l.barangayName ?? null) : null,
+          // Patch 158: the subsidiary ledger account, where the line has one.
+          subsidiaryType: l.subsidiaryId ? (l.subsidiaryType ?? null) : null,
+          subsidiaryId: l.subsidiaryId ?? null,
+          subsidiaryName: l.subsidiaryId ? (l.subsidiaryName ?? null) : null,
+        })),
+        totalAmount: total,
+        paymentForm: 'ONLINE',
+        /*
+         * No accountable form is consumed, and deliberately.
+         *
+         * A paper Official Receipt comes out of a numbered booklet the
+         * Treasurer signed for, and the RAAF accounts for every one of them.
+         * An electronic receipt has no booklet, so asking the RAAF to
+         * account for it would mean the Treasurer answering for serial
+         * numbers that were never issued to anybody.
+         */
+        accountableFormId: null,
+        remarks: particulars.trim() || null,
       };
 
       const stamp = actorStamp({
@@ -500,7 +539,10 @@ function ECollectionForm({
       }
       onSaved(normalise(receiptNo));
     } catch (err) {
-      toast.error('Could not record the e-collection', err instanceof Error ? err.message : String(err));
+      toast.error(
+        'Could not record the e-collection',
+        err instanceof Error ? err.message : String(err),
+      );
     } finally {
       setSaving(false);
     }
@@ -527,11 +569,7 @@ function ECollectionForm({
       }
     >
       <Field label="How did the money arrive?" required htmlFor="kind">
-        <Select
-          id="kind"
-          value={kind}
-          onChange={(e) => setKind(e.target.value as ECollectionKind)}
-        >
+        <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as ECollectionKind)}>
           {E_COLLECTION_KINDS.map((k) => (
             <option key={k.kind} value={k.kind}>
               {k.label}
@@ -606,7 +644,20 @@ function ECollectionForm({
           <TextInput id="payorTin" value={payorTin} onChange={(e) => setPayorTin(e.target.value)} />
         </Field>
 
-        <Field label="Particulars" required htmlFor="particulars" className="sm:col-span-3">
+        <Field
+          label="TRN"
+          required={!editingRecord}
+          htmlFor="transactionRef"
+          hint="Transaction reference number"
+        >
+          <TextInput
+            id="transactionRef"
+            value={transactionRef}
+            onChange={(e) => changeTrn(e.target.value)}
+            className="font-mono"
+          />
+        </Field>
+        <Field label="Particulars" required htmlFor="particulars" className="sm:col-span-2">
           <TextInput
             id="particulars"
             value={particulars}
@@ -640,7 +691,11 @@ function ECollectionForm({
               </Select>
             </Field>
             <Field label="PREXC / PAP" htmlFor="prexc">
-              <TextInput id="prexc" value={prexcPap} onChange={(e) => setPrexcPap(e.target.value)} />
+              <TextInput
+                id="prexc"
+                value={prexcPap}
+                onChange={(e) => setPrexcPap(e.target.value)}
+              />
             </Field>
           </>
         )}
@@ -692,7 +747,11 @@ function ECollectionForm({
                                 accountName: account?.name,
                                 // Patch 158: a new account, a new subsidiary.
                                 ...(code !== l.accountCode
-                                  ? { subsidiaryType: null, subsidiaryId: null, subsidiaryName: null }
+                                  ? {
+                                      subsidiaryType: null,
+                                      subsidiaryId: null,
+                                      subsidiaryName: null,
+                                    }
                                   : {}),
                               }
                             : l,
@@ -750,9 +809,7 @@ function ECollectionForm({
                                   ? {
                                       ...l,
                                       rptTaxYear: (e.target.value || undefined) as
-                                        | 'CURRENT'
-                                        | 'PRECEDING'
-                                        | undefined,
+                                        'CURRENT' | 'PRECEDING' | undefined,
                                     }
                                   : l,
                               ),
@@ -771,7 +828,9 @@ function ECollectionForm({
                               const chosen = barangays.data.find((b) => b.id === id);
                               setLines((ls) =>
                                 ls.map((l, i) =>
-                                  i === index ? { ...l, barangayId: id, barangayName: chosen?.name } : l,
+                                  i === index
+                                    ? { ...l, barangayId: id, barangayName: chosen?.name }
+                                    : l,
                                 ),
                               );
                             }}
@@ -793,7 +852,11 @@ function ECollectionForm({
                 <td className="cbo-td">
                   <AmountInput
                     value={line.amount ?? null}
-                    onChange={(v) => setLines((ls) => ls.map((l, i) => (i === index ? { ...l, amount: v ?? 0 } : l)))}
+                    onChange={(v) =>
+                      setLines((ls) =>
+                        ls.map((l, i) => (i === index ? { ...l, amount: v ?? 0 } : l)),
+                      )
+                    }
                     className="py-1.5"
                   />
                 </td>
@@ -815,13 +878,19 @@ function ECollectionForm({
               <td className="cbo-td" colSpan={1 + (isTrust ? 1 : 0) + (anyRpt ? 1 : 0)}>
                 Total collected
               </td>
-              <td className="cbo-td cbo-amount font-semibold">{formatPeso(total, { symbol: false })}</td>
+              <td className="cbo-td cbo-amount font-semibold">
+                {formatPeso(total, { symbol: false })}
+              </td>
               <td className="cbo-td" />
             </tr>
           </tfoot>
         </table>
 
-        <Button size="sm" className="mt-3" onClick={() => setLines((ls) => [...ls, { lineNo: ls.length + 1 }])}>
+        <Button
+          size="sm"
+          className="mt-3"
+          onClick={() => setLines((ls) => [...ls, { lineNo: ls.length + 1 }])}
+        >
           Add account
         </Button>
       </div>

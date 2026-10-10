@@ -130,6 +130,8 @@ export interface Collection extends Partial<AuditStamps> {
   revenueSource: RevenueSource;
   payorName: string;
   payorTin?: string;
+  /** Patch 165: an e-collection's transaction reference number (TRN). */
+  transactionRef?: string | null;
 
   lines: CollectionLine[];
   totalAmount: Centavos;
@@ -553,6 +555,8 @@ export interface TreasuryReportEntryLine {
 export interface TreasuryReport extends Partial<AuditStamps> {
   id: Id;
   reportType: TreasuryReportType;
+  /** Patch 165: an RCD's purpose - a collector's receipts, remittances received, or deposits. */
+  rcdKind?: 'COLLECTION' | 'REMITTANCE' | 'DEPOSIT' | null;
   /** Assigned when certified, so a draft cannot consume a number. */
   reportNo?: string;
   reportDate: IsoDate;
