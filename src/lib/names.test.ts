@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { employeeMirror, looseNameKey, nameKey, planNameMerge } from './names';
+import { employeeMirror, looseNameKey, nameKey, personResolver, planNameMerge } from './names';
 
 describe('nameKey (patch 158)', () => {
   it('reads a name the same in either order', () => {
@@ -104,5 +104,32 @@ describe('planNameMerge', () => {
     );
     expect(plan.links).toEqual([]);
     expect(plan.creates).toHaveLength(1);
+  });
+});
+
+describe('personResolver (patch 159)', () => {
+  const r = personResolver(
+    [
+      { id: 'p1', name: 'Juan Dela Cruz', employeeId: 'e1' },
+      { id: 'p2', name: 'Negros Hardware' },
+      { id: 'p3', name: 'Ana Reyes' },
+    ],
+    [{ id: 'e1' }, { id: 'e3', payeeId: 'p3' }, { id: 'e9' }],
+  );
+
+  it('resolves an employee tied to a Name to that Name', () => {
+    expect(r.key('EMPLOYEE', 'e1')).toBe('p1');
+    expect(r.key('PAYEE', 'p1')).toBe('p1');
+    expect(r.key('EMPLOYEE', 'e3')).toBe('p3');
+    expect(r.employeeOf('p3')).toBe('e3');
+    expect(r.payeeOf('e1')).toBe('p1');
+  });
+
+  it('leaves everyone else as they are', () => {
+    expect(r.key('EMPLOYEE', 'e9')).toBe('e9');
+    expect(r.key('PAYEE', 'p2')).toBe('p2');
+    expect(r.key('OFFICE', 'o1')).toBe('o1');
+    expect(r.key('PAYEE', '')).toBe('');
+    expect(r.name('p1')).toBe('Juan Dela Cruz');
   });
 });

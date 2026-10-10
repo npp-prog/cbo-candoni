@@ -57,7 +57,19 @@ interface RawLine {
   revenueCode?: string;
   description?: string;
   amount?: number;
+  /** Patch 159: the subsidiary ledger account, by name. */
+  subsidiary?: string;
 }
+
+/** "DELA CRUZ, Juan M." and "Juan M. Dela Cruz" read the same (as lib/names.ts). */
+const nameKey = (name: string) =>
+  String(name ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(' ');
 
 interface RawReceipt {
   lineNo?: number;
@@ -113,10 +125,11 @@ export const importCollections = onCall(
 
     // ---- master data, read once ------------------------------------------
 
-    const [codeSnap, accountSnap, employeeSnap] = await Promise.all([
+    const [codeSnap, accountSnap, employeeSnap, payeeSnap] = await Promise.all([
       db.collection(COL.revenueCodes).get(),
       db.collection(COL.accounts).get(),
       db.collection(COL.employees).get(),
+      db.collection(COL.payees).get(),
     ]);
 
     const revenueCodes = new Map<
@@ -142,11 +155,55 @@ export const importCollections = onCall(
       }
     }
 
-    const accounts = new Map<string, { name: string; postable?: boolean; active?: boolean }>();
+    const accounts = new Map<
+      string,
+      { name: string; postable?: boolean; active?: boolean; requiresSubsidiary?: boolean }
+    >();
     for (const doc of accountSnap.docs) {
-      const a = doc.data() as { code?: string; name?: string; postable?: boolean; active?: boolean };
-      if (a.code) accounts.set(a.code.trim(), { name: a.name ?? a.code, postable: a.postable, active: a.active });
+      const a = doc.data() as {
+        code?: string;
+        name?: string;
+        postable?: boolean;
+        active?: boolean;
+        requiresSubsidiary?: boolean;
+      };
+      if (a.code)
+        accounts.set(a.code.trim(), {
+          name: a.name ?? a.code,
+          postable: a.postable,
+          active: a.active,
+          requiresSubsidiary: a.requiresSubsidiary,
+        });
     }
+
+    /*
+     * Patch 159 - the subsidiary ledger account of a receivable or payable
+     * line (or revenue the chart keeps per party), found by name on Names.
+     * One person, one subsidiary: a Name tied to an employee record is that
+     * employee. Two Names of the same name is a question, not a guess.
+     */
+    const people = new Map<string, Array<{ type: string; id: string; name: string }>>();
+    const tiedEmployees = new Set<string>();
+    for (const doc of payeeSnap.docs) {
+      const p = doc.data() as { name?: string; active?: boolean; employeeId?: string };
+      if (p.active === false || !p.name) continue;
+      if (p.employeeId) tiedEmployees.add(p.employeeId);
+      const k = nameKey(p.name);
+      people.set(k, [
+        ...(people.get(k) ?? []),
+        p.employeeId
+          ? { type: 'EMPLOYEE', id: p.employeeId, name: p.name }
+          : { type: 'PAYEE', id: doc.id, name: p.name },
+      ]);
+    }
+    for (const doc of employeeSnap.docs) {
+      const e = doc.data() as { displayName?: string; active?: boolean; payeeId?: string };
+      if (e.active === false || !e.displayName || tiedEmployees.has(doc.id) || e.payeeId) continue;
+      const k = nameKey(e.displayName);
+      people.set(k, [...(people.get(k) ?? []), { type: 'EMPLOYEE', id: doc.id, name: e.displayName }]);
+    }
+    const needsSubsidiary = (code: string) =>
+      !code.startsWith('4') || accounts.get(code)?.requiresSubsidiary === true;
 
     const employees = new Map<string, { id: string; name: string }>();
     for (const doc of employeeSnap.docs) {
@@ -173,7 +230,16 @@ export const importCollections = onCall(
       cancelled: boolean;
       remarks: string;
       revenueSource: string;
-      lines: Array<{ lineNo: number; accountCode: string; accountName: string; amount: number; particulars: string }>;
+      lines: Array<{
+        lineNo: number;
+        accountCode: string;
+        accountName: string;
+        amount: number;
+        particulars: string;
+        subsidiaryType?: string | null;
+        subsidiaryId?: string | null;
+        subsidiaryName?: string | null;
+      }>;
       totalAmount: number;
     }
 
@@ -231,12 +297,33 @@ export const importCollections = onCall(
             continue;
           }
           if (lines.length === 0 && mapped.revenueSource) revenueSource = mapped.revenueSource;
+          // Patch 159: the subsidiary, where the account is kept per party -
+          // the line's own Subsidiary column, else the payor.
+          let sub: { type: string; id: string; name: string } | null = null;
+          if (needsSubsidiary(mapped.accountCode)) {
+            const wanted = String(l.subsidiary ?? '').trim() || String(r.payor ?? '').trim();
+            const hits = wanted ? (people.get(nameKey(wanted)) ?? []) : [];
+            if (hits.length !== 1) {
+              add(
+                !wanted
+                  ? `${mapped.accountCode} ${account.name} is kept per party, and the line names no subsidiary (Subsidiary column) and no payor`
+                  : hits.length === 0
+                    ? `${mapped.accountCode} ${account.name} is kept per party, and "${wanted}" is not on Names`
+                    : `${mapped.accountCode} ${account.name} is kept per party, and ${hits.length} Names are called "${wanted}" - put the exact one in the Subsidiary column`,
+              );
+              continue;
+            }
+            sub = hits[0];
+          }
           lines.push({
             lineNo: lines.length + 1,
             accountCode: mapped.accountCode,
             accountName: account.name,
             amount,
             particulars: String(l.description ?? mapped.description ?? ''),
+            ...(sub
+              ? { subsidiaryType: sub.type, subsidiaryId: sub.id, subsidiaryName: sub.name }
+              : {}),
           });
           total += amount;
         }

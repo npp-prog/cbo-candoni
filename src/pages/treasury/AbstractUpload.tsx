@@ -146,6 +146,7 @@ export default function AbstractUpload() {
                 revenueCode: l.revenueCode,
                 description: l.description || undefined,
                 amount: l.amount,
+                subsidiary: l.subsidiary || undefined,
               })),
             })),
           });
@@ -181,7 +182,7 @@ export default function AbstractUpload() {
     <div>
       <PageHeader
         title={kind ? 'Bulk upload of e-Collections' : 'Bulk upload of Collections'}
-        subtitle="One row per revenue account, grouped into the receipts that were issued - the Abstract of Collections as the Treasurer's office produces it."
+        subtitle="One row per revenue account, grouped into the receipts that were issued - the Abstract of Collections as the Treasurer's office produces it. A row on a receivable or payable (or revenue kept per party) names its subsidiary in a Subsidiary column, as it is on Names; left blank, the payor is taken."
         breadcrumbs={[...COLLECTION_CRUMBS, { label: 'Upload' }]}
       />
 

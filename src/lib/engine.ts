@@ -722,7 +722,13 @@ export const engine = {
       collector?: string;
       cancelled?: boolean;
       remarks?: string;
-      lines: Array<{ revenueCode: string; description?: string; amount: Centavos }>;
+      lines: Array<{
+        revenueCode: string;
+        description?: string;
+        amount: Centavos;
+        /** Patch 159: the subsidiary ledger account, by name. */
+        subsidiary?: string;
+      }>;
     }>;
   }) =>
     call<

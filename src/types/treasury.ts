@@ -340,7 +340,8 @@ export interface BankTransaction {
 
   /** Reconciliation state. */
   matchStatus: MatchStatus;
-  matchedType?: 'CHECK' | 'ADA' | 'RADAI' | 'DEPOSIT' | 'COLLECTION' | 'PAYROLL' | 'OTHER';
+  /** Patch 159: COLLECTION (an e-collection) and ERCD (an eRCD credited as one batch). */
+  matchedType?: 'CHECK' | 'ADA' | 'RADAI' | 'DEPOSIT' | 'COLLECTION' | 'ERCD' | 'PAYROLL' | 'OTHER';
   matchedId?: Id;
   matchedRef?: string;
   matchConfidence?: number;
@@ -572,6 +573,12 @@ export interface TreasuryReport extends Partial<AuditStamps> {
     amount: Centavos;
   }>;
   totalDeposits?: Centavos;
+  /**
+   * Patch 159: the deposits this RCD's entry books (Dr Cash in Bank / Cr Cash
+   * - Local Treasury) - every one not posted on its own before. Set when the
+   * report is certified.
+   */
+  depositsBookedTotal?: Centavos;
 
   /**
    * The accounting entry this report proposes. Built by the engine from the

@@ -4,7 +4,7 @@ import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { Field, DateInput, AmountInput, TextInput, Select } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { BankAccountPicker, EmployeePicker } from '@/components/pickers';
@@ -13,7 +13,6 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useCollections, useDeposits, useUndepositedCollections } from '@/data/queries';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
-import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import type { Deposit } from '@/types/treasury';
@@ -30,7 +29,7 @@ import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
  */
 export default function Deposits() {
   const { fiscalYear, fundCode } = useFilters();
-  const { can, hasRole } = useAuth();
+  const { can } = useAuth();
   const toast = useToast();
 
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
@@ -46,8 +45,6 @@ export default function Deposits() {
    */
   const [viewing, setViewing] = useState<Deposit | null>(null);
   const [editing, setEditing] = useState<Deposit | null>(null);
-  const [recording, setRecording] = useState<Deposit | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const { data, loading, error } = useDeposits(bankAccountId ?? undefined, status || undefined);
   const undeposited = useUndepositedCollections(fundCode);
@@ -60,7 +57,6 @@ export default function Deposits() {
   const inTransit = rows.filter((d) => d.status === 'IN_TRANSIT').reduce((s, d) => s + d.amount, 0);
   const undepositedTotal = undeposited.data.reduce((s, c) => s + c.totalAmount, 0);
 
-  const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT');
 
   const columns: Column<Deposit>[] = [
     {
@@ -148,13 +144,11 @@ export default function Deposits() {
       cell: (d) => (
         <div className="flex items-center gap-1.5">
           <StatusBadge status={d.status} />
-          {canPost && d.status === 'RECORDED' && !d.jevId && (
-            <Button size="sm" variant="primary" onClick={(e) => {
-                e.stopPropagation();
-                setRecording(d);
-              }}>
-              Post
-            </Button>
+          {/* Patch 159: no Post button - the RCD that reports it books it. */}
+          {d.status === 'RECORDED' && !d.jevId && (
+            <span className="text-2xs text-slate-500">
+              {d.treasuryReportNo ? `On RCD ${d.treasuryReportNo}` : 'To be reported on an RCD'}
+            </span>
           )}
         </div>
       ),
@@ -251,40 +245,14 @@ export default function Deposits() {
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false);
-            toast.success('Deposit recorded', 'Post it to move the cash from the collecting officer to the bank in the books.');
+            toast.success(
+              'Deposit recorded',
+              'Report it on an RCD (Deposits to report). The RCD\'s entry books it: Dr Cash in Bank / Cr Cash - Local Treasury.',
+            );
           }}
         />
       )}
 
-      <ConfirmDialog
-        open={Boolean(recording)}
-        onCancel={() => setRecording(null)}
-        onConfirm={() => {
-          if (!recording) return;
-          setBusy(true);
-          void engine
-            .recordDeposit({ depositId: recording.id })
-            .then(() => {
-              toast.success('Deposit posted', 'It is in transit until the bank statement shows the credit.');
-              setRecording(null);
-            })
-            .catch((err) => toast.error('The deposit was not posted', err.message))
-            .finally(() => setBusy(false));
-        }}
-        loading={busy}
-        title="Post deposit"
-        confirmLabel="Post"
-        variant="primary"
-        message={
-          recording && (
-            <p>
-              Debits Cash in Bank and credits Cash - Collecting Officers for{' '}
-              {formatPeso(recording.amount)}. The deposit stays in transit until reconciliation
-              matches it to the bank credit.
-            </p>
-          )
-        }
-      />
     </div>
   );
 }

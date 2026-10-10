@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { PageHeader, Alert, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useFilters } from '@/context/FilterContext';
-import { useCollections, useDeposits, useFormMovements, useRcds, useAccountableFormTypes } from '@/data/queries';
+import { useCollections, useDeposits, useFormMovements, useRcds, useAccountableFormTypes, useTreasuryReports } from '@/data/queries';
 import { formatAmount, amountInWords } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import {
@@ -68,6 +68,8 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const { data: rcds, loading } = useRcds(fiscalYear, fundCode);
   const { data: collections } = useCollections(fiscalYear, fundCode);
   const { data: deposits } = useDeposits();
+  /* Patch 159: this officer's earlier RCDs, for the Section D beginning balance. */
+  const { data: rcdReports } = useTreasuryReports('RCD', fiscalYear, fundCode);
   const { data: movements } = useFormMovements(fiscalYear);
   const { data: formTypes } = useAccountableFormTypes();
 
@@ -266,14 +268,33 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const checks = useMemo(() => covered.filter((c) => c.paymentForm === 'CHECK'), [covered]);
 
   /*
-   * Patch 157 - the BEGINNING BALANCE of Section D: cash collections reported
-   * on earlier RCDs of this fund that no earlier RCD has yet reported as
-   * deposited. With it, an RCD of deposits only (banking an earlier report's
-   * collections) ends at nil, not below it.
+   * Patch 157 - the BEGINNING BALANCE of Section D: collections reported on
+   * earlier RCDs not yet reported as deposited.
+   *
+   * Patch 159: PER ACCOUNTABLE OFFICER. The balance is what THIS officer
+   * still holds: the collections on their earlier certified RCDs less the
+   * deposits on them. Another officer's undeposited cash is not in this
+   * officer's hands and is not on this report. An RCD with no officer named
+   * (before patch 155) falls back to the fund, as before.
    */
   const beginning = useMemo(() => {
     if (!report?.reportNo) return 0;
     const no = report.reportNo;
+    const officer = report.accountableOfficerId ?? null;
+    if (officer) {
+      const earlier = rcdReports.filter(
+        (r) =>
+          r.id !== report.id &&
+          r.accountableOfficerId === officer &&
+          (r.status === 'CERTIFIED' || r.status === 'JOURNALIZED') &&
+          !!r.reportNo &&
+          (r.reportDate < report.reportDate ||
+            (r.reportDate === report.reportDate && r.reportNo < no)),
+      );
+      const collected = earlier.reduce((t, r) => t + (r.totalAmount ?? 0), 0);
+      const banked = earlier.reduce((t, r) => t + (r.totalDeposits ?? 0), 0);
+      return Math.max(0, collected - banked);
+    }
     const earlier = (x: { treasuryReportType?: string; treasuryReportNo?: string }) =>
       x.treasuryReportType === 'RCD' && !!x.treasuryReportNo && x.treasuryReportNo < no;
     const reported = collections
@@ -285,7 +306,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
       .filter((d) => earlier(d as never))
       .reduce((t, d) => t + d.amount, 0);
     return Math.max(0, reported - banked);
-  }, [report, collections, deposits]);
+  }, [report, collections, deposits, rcdReports]);
 
   // Patch 156: saved to PDF as "Report of Collections and Deposits_<No.>".
   usePrintTitle(rcd ? printFileName('Report of Collections and Deposits', rcd.rcdNo) : null);

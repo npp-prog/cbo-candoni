@@ -2,6 +2,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, notFound, invalid, type Role } from '../lib/context';
+import { matchECollectionCredit } from '../lib/eCollectionMatch';
 import { recordTransition } from '../lib/audit';
 import { ledgerBalance } from '../lib/ledger';
 import { computeReconciliation, checkReconciliationFinalizable } from '../lib/rules';
@@ -187,6 +188,7 @@ function rowFingerprint(bankAccountId: string, row: StatementRow): string {
  *   RADAI posted amount within 10 days                    -> SUGGESTED
  *   ADA reference + exact amount (less not posted)        -> MATCHED
  *   deposit slip number + exact amount                    -> MATCHED
+ *   e-collection / eRCD (patch 159, see below)             -> MATCHED
  *   exact amount within 5 days, single candidate          -> SUGGESTED
  *   exact amount, several candidates                      -> SUGGESTED (first)
  *   otherwise                                             -> UNMATCHED
@@ -204,7 +206,7 @@ export const autoMatchBankTransactions = onCall(
     };
     if (!bankAccountId) throw invalid('A bank account is required.');
 
-    const [txSnap, checkSnap, adaSnap, depositSnap, radaiSnap] = await Promise.all([
+    const [txSnap, checkSnap, adaSnap, depositSnap, radaiSnap, ercdSnap] = await Promise.all([
       db
         .collection(COL.bankTransactions)
         .where('bankAccountId', '==', bankAccountId)
@@ -231,6 +233,8 @@ export const autoMatchBankTransactions = onCall(
         .where('bankAccountId', '==', bankAccountId)
         .where('reportType', '==', 'RADAI')
         .get(),
+      // Patch 159: the e-collection reports credited to this account.
+      db.collection(COL.treasuryReports).where('bankAccountId', '==', bankAccountId).get(),
     ]);
 
     const checks = checkSnap.docs.map((d) => ({
@@ -276,6 +280,49 @@ export const autoMatchBankTransactions = onCall(
       amount: (d.data().amount as number) ?? 0,
       date: (d.data().depositDate as string) ?? '',
     }));
+
+    /*
+     * Patch 159 - E-COLLECTIONS, MATCHED AUTOMATICALLY.
+     *
+     * An e-collection is credited by the bank itself - the payor paid the
+     * account, or the intermediary remitted to it - and the eRCD that reports
+     * it debits Cash in Bank directly (patch 156). So its credit on the
+     * statement is matched to the e-collection, or to the eRCD as a whole when
+     * the intermediary remitted the batch as one credit:
+     *
+     *   receipt number in the statement text + exact amount   -> MATCHED
+     *   eRCD number in the text + the eRCD's total             -> MATCHED
+     *   the only e-collection of that amount within 5 days     -> MATCHED
+     *   the only eRCD of that total within 5 days              -> MATCHED
+     *   several of the same amount within 5 days               -> SUGGESTED
+     *
+     * Only certified or journalized eRCDs not yet matched; each e-collection
+     * and each eRCD is matched to one statement line at most.
+     */
+    const E_REPORTS = new Set(['ERCD_AR', 'ERCD_EOR', 'ERCD_DIRECT']);
+    const ercds = ercdSnap.docs
+      .map((d) => ({ ...(d.data() as Record<string, unknown>), id: d.id }) as Record<string, unknown> & { id: string })
+      .filter(
+        (r) =>
+          E_REPORTS.has(String(r.reportType)) &&
+          (r.status === 'CERTIFIED' || r.status === 'JOURNALIZED') &&
+          !r.bankCreditedAt,
+      )
+      .map((r) => ({
+        id: r.id,
+        reportNo: String(r.reportNo ?? ''),
+        date: String(r.reportDate ?? ''),
+        amount: Number(r.totalAmount ?? 0),
+        lines: ((r.lines ?? []) as Array<{
+          sourceId: string;
+          sourceNo: string;
+          date: string;
+          amount: number;
+          excluded?: boolean;
+          bankTransactionId?: string;
+        }>).filter((l) => !l.excluded),
+      }));
+    const usedE = new Set<string>();
 
     let matched = 0;
     let suggested = 0;
@@ -394,6 +441,15 @@ export const autoMatchBankTransactions = onCall(
             method: 'DEPOSIT_REF',
             confidence: 1,
           };
+        }
+
+        // ---- patch 159: e-collections (lib/eCollectionMatch.ts) ---------
+        if (!result) {
+          result = matchECollectionCredit(
+            { text: haystack, amount, date: t.transactionDate },
+            ercds,
+            usedE,
+          );
         }
 
         if (!result) {
@@ -660,6 +716,28 @@ export const finalizeReconciliation = onCall(
           clearBatch.update(db.collection(COL.ada).doc(l.sourceId), {
             status: 'DEBITED',
             dateDebited: d.transactionDate,
+            bankTransactionId: doc.id,
+          });
+        }
+      }
+      // Patch 159: an e-collection, or an eRCD credited as one batch.
+      if (d.matchedType === 'COLLECTION' && d.matchedId) {
+        clearBatch.update(db.collection(COL.collections).doc(d.matchedId as string), {
+          bankCreditedDate: d.transactionDate,
+          bankTransactionId: doc.id,
+        });
+      }
+      if (d.matchedType === 'ERCD' && d.matchedId) {
+        const reportRef = db.collection(COL.treasuryReports).doc(d.matchedId as string);
+        const report = await reportRef.get();
+        clearBatch.update(reportRef, {
+          bankCreditedAt: d.transactionDate,
+          bankTransactionId: doc.id,
+        });
+        const lines = (report.data()?.lines ?? []) as Array<{ sourceId: string; excluded?: boolean }>;
+        for (const l of lines.filter((x) => !x.excluded)) {
+          clearBatch.update(db.collection(COL.collections).doc(l.sourceId), {
+            bankCreditedDate: d.transactionDate,
             bankTransactionId: doc.id,
           });
         }

@@ -16,6 +16,7 @@ import { isBudgetChargeable } from '@/lib/chartOfAccounts';
 import { EXPENSE_CLASS_LABELS } from '@/types/enums';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
+import { personResolver } from '@/lib/names';
 
 /**
  * Domain pickers.
@@ -474,9 +475,28 @@ export function SubsidiaryPicker({
   const banks = useBankAccounts(fundCode);
   const taxCodes = useTaxCodes();
 
+  /*
+   * Patch 159: ONE PERSON, ONE ENTRY. An employee who is also a Name (paid on
+   * vouchers) is offered once - as the employee - not once as a payee and
+   * again as an employee. See personResolver in lib/names.ts.
+   */
+  const people = useMemo(
+    () => personResolver(payees.data, employees.data),
+    [payees.data, employees.data],
+  );
   const options = useMemo<Option[]>(() => {
     const out: Option[] = [];
+    const empById = new Map(employees.data.map((e) => [e.id, e]));
     for (const p of payees.data) {
+      const empId = people.employeeOf(p.id);
+      if (empId && empById.has(empId)) {
+        out.push({
+          value: `EMPLOYEE:${empId}`,
+          label: p.name,
+          detail: p.tin ? `Employee - TIN ${p.tin}` : 'Employee',
+        });
+        continue;
+      }
       out.push({
         value: `PAYEE:${p.id}`,
         label: p.name,
@@ -484,6 +504,8 @@ export function SubsidiaryPicker({
       });
     }
     for (const e of employees.data) {
+      // Already offered under its Name.
+      if (people.payeeOf(e.id)) continue;
       out.push({ value: `EMPLOYEE:${e.id}`, label: e.displayName, detail: 'Employee' });
     }
     for (const o of offices.data) {
@@ -505,13 +527,23 @@ export function SubsidiaryPicker({
       });
     }
     return out;
-  }, [payees.data, employees.data, offices.data, banks.data, taxCodes.data]);
+  }, [payees.data, employees.data, offices.data, banks.data, taxCodes.data, people]);
+
+  // A line already posted to PAYEE:<name> of a person now offered as the
+  // employee still shows who it is.
+  const shown = useMemo(() => {
+    if (!value?.startsWith('PAYEE:')) return value;
+    const empId = people.employeeOf(value.slice(6));
+    return empId && options.some((o) => o.value === `EMPLOYEE:${empId}`)
+      ? `EMPLOYEE:${empId}`
+      : value;
+  }, [value, people, options]);
 
   return (
     <Combobox
       id={id}
       options={options}
-      value={value}
+      value={shown}
       disabled={disabled}
       loading={
         payees.loading ||

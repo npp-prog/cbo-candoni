@@ -993,8 +993,12 @@ service cloud.firestore {
       allow update: if signedIn()
         && hasAny(treasuryRoles())
         && resource.data.status == 'RECORDED'
+        // Patch 159: once an RCD has claimed it, its entry books it from the
+        // record as certified - the record is not changed from a browser.
+        && resource.data.get('treasuryReportId', null) == null
         // Patch 157: which RCD reported it is the engine's to write.
-        && didNotChange(['createdBy', 'jevId', 'bankTransactionId', 'creditedDate',
+        && didNotChange(['createdBy', 'jevId', 'jevNo', 'bookedByTreasuryReportId',
+                         'bankTransactionId', 'creditedDate',
                          'treasuryReportId', 'treasuryReportNo', 'treasuryReportType']);
       allow delete: if false;
     }

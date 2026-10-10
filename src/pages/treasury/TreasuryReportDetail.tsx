@@ -304,13 +304,17 @@ export default function TreasuryReportDetail() {
   }, [lines]);
 
   const balanced = totals.debit === totals.credit;
-  const agreesWithReport = totals.debit === (report?.totalAmount ?? 0);
+  // Patch 159: an RCD's entry also books the deposits on it.
+  const agreesWithReport =
+    totals.debit === (report?.totalAmount ?? 0) + (report?.depositsBookedTotal ?? 0);
   const postable = balanced && agreesWithReport && lines.every((l) => l.accountCode);
   /* Patch 157: an RCD that reports deposits only. */
   const depositsOnly =
     report?.reportType === 'RCD' &&
     (report.lines ?? []).filter((l) => !l.excluded).length === 0 &&
-    (report.deposits?.length ?? 0) > 0;
+    (report.deposits?.length ?? 0) > 0 &&
+    // Patch 159: deposits the RCD books make an entry like any other.
+    !(report.depositsBookedTotal ?? 0);
 
   /*
    * Who may change the entry, and when.
@@ -417,7 +421,7 @@ export default function TreasuryReportDetail() {
         res.jevNo ? `JEV ${res.jevNo} posted` : `${short} ${res.reportNo} taken up`,
         res.jevNo
           ? `${short} ${res.reportNo} is journalized and in the General Ledger.`
-          : 'Deposits only - each deposit was booked when it was recorded, so there is no entry.',
+          : 'Deposits already in the books only - there is no entry.',
       );
       setDraftEntry(null);
       setConfirm(null);

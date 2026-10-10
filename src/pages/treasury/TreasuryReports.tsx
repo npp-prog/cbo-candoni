@@ -418,8 +418,7 @@ function PrepareReport({
   const depositsQ = useDeposits();
   /*
    * Patch 157. The deposits an RCD may report: this fund, not cancelled, not
-   * yet on an RCD. A deposit not yet POSTED (booked) is shown but cannot be
-   * chosen - the RCD reports a deposit; posting it is what books it.
+   * yet on an RCD. Patch 159: any of them - the RCD's entry books it.
    */
   const reportableDeposits = useMemo(
     () =>
@@ -581,7 +580,7 @@ function PrepareReport({
    * That is what makes the journal agree with the report at a glance, and the
    * detail lives on the report's own lines and in the source documents.
    */
-  const entry = useMemo(() => {
+  const collectionEntry = useMemo(() => {
     if (total === 0) return [];
 
     if (reportType === 'RCI' || reportType === 'RADAI') {
@@ -783,10 +782,86 @@ function PrepareReport({
     short,
   ]);
 
+  /*
+   * Patch 159 - EVERY DEPOSIT IS BOOKED BY THE RCD THAT REPORTS IT.
+   *
+   * A deposit used to be booked on its own, by Deposits > Post. It is now
+   * recorded there and booked here, in this RCD's entry:
+   *
+   *     Dr Cash in Bank - <the deposit's bank account>
+   *       Cr Cash - Local Treasury - <the collecting officer>
+   *
+   * so the RCD is the one document that moves the cash: collections in,
+   * deposits out. A deposit posted before patch 159 already has its entry
+   * and is reported without a second one.
+   */
+  const depositsToBook = useMemo(
+    () => (reportType === 'RCD' ? chosenDeposits.filter((d) => !d.jevId) : []),
+    [reportType, chosenDeposits],
+  );
+  const toBookTotal = depositsToBook.reduce((s, d) => s + d.amount, 0);
+  /** A deposit's bank, from the slip or else from its bank account record. */
+  const bankOfDeposit = (d: { bankAccountId: string; bankName?: string; bankAccountNumber?: string }) => {
+    const b = banks.data.find((x) => x.id === d.bankAccountId);
+    return {
+      bankName: d.bankName || b?.bankName || '',
+      bankAccountNumber: d.bankAccountNumber || b?.accountNumber || '',
+    };
+  };
+  const depositEntry = useMemo(() => {
+    const out: Array<{
+      accountCode: string;
+      accountName: string;
+      debit: number;
+      credit: number;
+      particulars: string;
+      subsidiaryType?: string | null;
+      subsidiaryId?: string | null;
+      subsidiaryName?: string | null;
+    }> = [];
+    for (const d of depositsToBook) {
+      const bank = banks.data.find((b) => b.id === d.bankAccountId);
+      const cib = bank ? cashInBankLine(bank, accountTitle) : null;
+      if (!cib) continue;
+      out.push({
+        ...cib,
+        debit: d.amount,
+        credit: 0,
+        particulars: `Deposit slip ${d.depositSlipNo}`,
+      });
+    }
+    for (const d of depositsToBook) {
+      out.push({
+        accountCode: ACCOUNTS.cashLocalTreasury.code,
+        accountName: ACCOUNTS.cashLocalTreasury.name,
+        ...(d.collectingOfficerId
+          ? {
+              subsidiaryType: 'EMPLOYEE',
+              subsidiaryId: d.collectingOfficerId,
+              subsidiaryName: d.collectingOfficerName ?? null,
+            }
+          : {}),
+        debit: 0,
+        credit: d.amount,
+        particulars: `Deposit of collections per slip ${d.depositSlipNo}`,
+      });
+    }
+    return out;
+  }, [depositsToBook, banks.data, accountTitle]);
+  /** A deposit whose bank account names no Cash in Bank account the chart has. */
+  const depositBankProblem = depositsToBook.find((d) => {
+    const bank = banks.data.find((b) => b.id === d.bankAccountId);
+    return !bank || !cashInBankLine(bank, accountTitle);
+  });
+  const entry = useMemo(
+    () => [...collectionEntry, ...depositEntry],
+    [collectionEntry, depositEntry],
+  );
+
   const entryBalances =
     entry.length > 0 &&
     entry.reduce((s, l) => s + l.debit, 0) === entry.reduce((s, l) => s + l.credit, 0) &&
-    entry.reduce((s, l) => s + l.debit, 0) === total;
+    entry.reduce((s, l) => s + l.debit, 0) === total + toBookTotal;
 
   const isPayroll = reportType === 'RCDISB';
   /*
@@ -870,7 +945,14 @@ function PrepareReport({
         return;
       }
     }
-    if (!entryBalances && chosen.length > 0) {
+    if (depositBankProblem) {
+      toast.error(
+        'A deposit cannot be booked',
+        `Deposit slip ${depositBankProblem.depositSlipNo} is to a bank account with no Cash in Bank account in the chart. Master Data > Banks, open the account and fill its General Ledger account.`,
+      );
+      return;
+    }
+    if (!entryBalances && (chosen.length > 0 || toBookTotal > 0)) {
       toast.error(
         'The entry does not foot',
         'The proposed entry does not equal the documents selected. Check the receipts on this report.',
@@ -934,8 +1016,8 @@ function PrepareReport({
                   sourceId: d.id,
                   depositSlipNo: d.depositSlipNo ?? '',
                   date: d.depositDate,
-                  bankName: d.bankName ?? '',
-                  bankAccountNumber: d.bankAccountNumber ?? '',
+                  bankName: bankOfDeposit(d).bankName,
+                  bankAccountNumber: bankOfDeposit(d).bankAccountNumber,
                   amount: d.amount,
                 })),
                 totalDeposits: depositTotal,
@@ -1136,9 +1218,9 @@ function PrepareReport({
           </div>
           <p className="mb-2 text-xs text-slate-500">
             An RCD may carry collections only, deposits only, or both - the Liquidating Officer
-            often banks a week&apos;s collections later, on a report of their own. Deposits are
-            booked when they are posted under Deposits, so they are not in this report&apos;s
-            entry.
+            often banks a week&apos;s collections later, on a report of their own. Every deposit is
+            booked by the RCD that reports it: Dr Cash in Bank / Cr Cash - Local Treasury, in the
+            entry below.
           </p>
           {reportableDeposits.length === 0 ? (
             <Alert tone="info">No deposit of this fund is waiting to be reported.</Alert>
@@ -1162,7 +1244,6 @@ function PrepareReport({
                         <td className="px-3 py-2">
                           <input
                             type="checkbox"
-                            disabled={!booked}
                             checked={selectedDeposits.has(d.id)}
                             onChange={() =>
                               setSelectedDeposits((prev) => {
@@ -1177,15 +1258,15 @@ function PrepareReport({
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">
                           {d.depositSlipNo}
-                          {!booked && (
-                            <span className="block font-sans text-2xs text-amber-700">
-                              Not posted yet - post it under Deposits first
+                          {booked && (
+                            <span className="block font-sans text-2xs text-slate-500">
+                              Already booked (posted before patch 159) - no second entry
                             </span>
                           )}
                         </td>
                         <td className="px-3 py-2">{formatShortDate(d.depositDate)}</td>
                         <td className="px-3 py-2 text-xs">
-                          {d.bankName} {d.bankAccountNumber}
+                          {bankOfDeposit(d).bankName} {bankOfDeposit(d).bankAccountNumber}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <span className="cbo-amount">{formatPeso(d.amount)}</span>

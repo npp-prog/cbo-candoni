@@ -30,6 +30,12 @@ export interface AbstractLine {
   revenueCode: string;
   description: string;
   amount: number;
+  /**
+   * Patch 159: whose subsidiary ledger account the line goes to - required
+   * where the account is a receivable or a payable (or revenue kept per
+   * party). A name as it is on Names. Blank, the server takes the payor.
+   */
+  subsidiary?: string;
 }
 
 export interface AbstractReceipt {
@@ -62,6 +68,7 @@ const COLUMNS = {
   accountName: [/account\s*name/i, /account\s*title/i, /description/i],
   amount: [/amount/i, /^total/i],
   remarks: [/remarks/i, /status/i, /note/i],
+  subsidiary: [/subsidiary/i, /sub.?ledger/i],
 };
 
 /**
@@ -126,10 +133,12 @@ export async function parseAbstractFile(file: File): Promise<AbstractReceipt[]> 
     const revenueCode = findText(raw, COLUMNS.accountCode);
     if (!revenueCode || !amount) return;
 
+    const subsidiary = findText(raw, COLUMNS.subsidiary);
     receipt.lines.push({
       revenueCode,
       description: findText(raw, COLUMNS.accountName),
       amount,
+      ...(subsidiary ? { subsidiary } : {}),
     });
     receipt.totalAmount += amount;
   });

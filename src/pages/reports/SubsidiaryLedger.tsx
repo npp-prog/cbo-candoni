@@ -7,6 +7,7 @@ import { Field, Select } from '@/components/ui/Field';
 import { AccountPicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAccounts, useLedgerEntries } from '@/data/queries';
+import { usePersonResolver } from '@/data/usePersonResolver';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
@@ -48,6 +49,13 @@ export default function SubsidiaryLedger() {
 
   const ledger = useLedgerEntries(fiscalYear, fundCode, { accountCode: accountCode ?? undefined });
   const account = accounts.data.find((a) => a.code === accountCode);
+  /*
+   * Patch 159: one person, one account. An employee who is also a Name may
+   * have entries under either key; both are read as the person.
+   */
+  const people = usePersonResolver();
+  const personOf = (e: { subsidiaryType?: string | null; subsidiaryId?: string | null }) =>
+    people.key(e.subsidiaryType, e.subsidiaryId);
 
   /** Every subsidiary with movement on this control account, with its balance. */
   const subsidiaries = useMemo(() => {
@@ -59,22 +67,23 @@ export default function SubsidiaryLedger() {
         unassigned += e.signedAmount ?? 0;
         continue;
       }
-      const entry = map.get(e.subsidiaryId) ?? {
-        id: e.subsidiaryId,
-        name: e.subsidiaryName ?? e.subsidiaryId,
+      const key = personOf(e);
+      const entry = map.get(key) ?? {
+        id: key,
+        name: people.name(key) ?? e.subsidiaryName ?? e.subsidiaryId,
         balance: 0,
         entries: 0,
       };
       entry.balance += e.signedAmount ?? 0;
       entry.entries++;
-      map.set(e.subsidiaryId, entry);
+      map.set(key, entry);
     }
 
     return {
       list: [...map.values()].sort((a, b) => a.name.localeCompare(b.name)),
       unassigned,
     };
-  }, [ledger.data]);
+  }, [ledger.data, people]);
 
   const controlBalance = ledger.data.reduce((s, e) => s + (e.signedAmount ?? 0), 0);
   const subsidiaryTotal = subsidiaries.list.reduce((s, x) => s + x.balance, 0);
@@ -84,7 +93,7 @@ export default function SubsidiaryLedger() {
     if (!subsidiaryId) return [];
     let running = 0;
     return ledger.data
-      .filter((e) => e.subsidiaryId === subsidiaryId)
+      .filter((e) => e.subsidiaryId && personOf(e) === subsidiaryId)
       .sort((a, b) => a.entryDate.localeCompare(b.entryDate))
       .map((e) => {
         running += e.signedAmount ?? 0;
@@ -100,7 +109,7 @@ export default function SubsidiaryLedger() {
           runningBalance: running,
         };
       });
-  }, [ledger.data, subsidiaryId]);
+  }, [ledger.data, subsidiaryId, people]);
 
   const chosen = subsidiaries.list.find((s) => s.id === subsidiaryId);
 

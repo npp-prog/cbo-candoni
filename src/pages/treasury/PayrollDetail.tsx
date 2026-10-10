@@ -10,13 +10,21 @@ import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useCollections, useDisbursementVouchers, usePayrolls } from '@/data/queries';
+import {
+  useCollections,
+  useDisbursementVouchers,
+  useLedgerEntries,
+  usePayrolls,
+} from '@/data/queries';
+import { JevLink } from '@/components/JevLink';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { formatPeso, formatAmount } from '@/lib/money';
 import { formatShortDate, todayPh } from '@/lib/dates';
 import { ADVANCES_FOR_PAYROLL, DUE_TO_OFFICERS_AND_EMPLOYEES } from '@/lib/chartOfAccounts';
 import {
+  isOpeningAdvanceId,
+  openingPayrollAdvances,
   openPayrollAdvances,
   payrollParticulars,
   payrollProformaEntry,
@@ -75,15 +83,22 @@ export default function PayrollDetail() {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  /* Patch 159: and the advances for payroll carried in the opening balances. */
+  const advanceLedger = useLedgerEntries(fiscalYear, fundCode, {
+    accountCode: ADVANCES_FOR_PAYROLL.code,
+  });
   const open = useMemo(
     () =>
       openPayrollAdvances(
-        dvs.data as never,
+        [
+          ...(dvs.data as never[]),
+          ...openingPayrollAdvances(advanceLedger.data as never, ADVANCES_FOR_PAYROLL.code),
+        ],
         payrolls.data as never,
         ADVANCES_FOR_PAYROLL.code,
         isNew ? null : id,
       ),
-    [dvs.data, payrolls.data, isNew, id],
+    [dvs.data, advanceLedger.data, payrolls.data, isNew, id],
   );
 
   // An existing payroll: its own figures, and the advance it was drawn on.
@@ -276,9 +291,9 @@ export default function PayrollDetail() {
         <Card
           className="mb-4"
           title="1. The advance for payroll it liquidates"
-          subtitle="Approved or paid vouchers debiting Advances for Payroll, with what is still to be liquidated."
+          subtitle="Approved or paid vouchers debiting Advances for Payroll - and advances for payroll carried in the opening balances - with what is still to be liquidated."
         >
-          {dvs.loading || payrolls.loading ? (
+          {dvs.loading || payrolls.loading || advanceLedger.loading ? (
             <Spinner label="Reading the advances" />
           ) : open.length === 0 ? (
             <Alert tone="info" title="No advance for payroll is outstanding">
@@ -310,7 +325,14 @@ export default function PayrollDetail() {
                         onClick={() => choose(a)}
                         className={`cursor-pointer border-b border-slate-100 hover:bg-brand-50/50 ${picked ? 'bg-brand-50' : ''}`}
                       >
-                        <td className="px-2 py-2 font-mono text-xs">{a.dvNo}</td>
+                        <td className="px-2 py-2 font-mono text-xs">
+                          {a.dvNo}
+                          {a.openingJevId && (
+                            <span className="block font-sans text-2xs text-slate-500">
+                              Opening balance
+                            </span>
+                          )}
+                        </td>
                         <td className="px-2 py-2 text-xs">{formatShortDate(a.dvDate)}</td>
                         <td className="px-2 py-2">{a.officer?.name ?? '-'}</td>
                         <td className="px-2 py-2 text-xs text-slate-600">{a.particulars}</td>
@@ -350,7 +372,22 @@ export default function PayrollDetail() {
         <Card className="mb-4" title={isNew ? '2. The payroll' : 'Payroll'}>
           <dl className="mb-4 grid gap-4 sm:grid-cols-3">
             <DetailField label="Advance (DV No.)" mono>
-              {(advance?.dvId ?? existing?.dvId) ? (
+              {isOpeningAdvanceId(advance?.dvId ?? existing?.dvId) ? (
+                // Patch 159: carried forward - the opening entry is its record.
+                <span>
+                  {advance?.dvNo ?? existing?.dvNo}{' '}
+                  <span className="font-sans text-2xs text-slate-500">
+                    (opening balance
+                    {advance?.openingJevId ? (
+                      <>
+                        {', '}
+                        <JevLink jevId={advance.openingJevId}>JEV</JevLink>
+                      </>
+                    ) : null}
+                    )
+                  </span>
+                </span>
+              ) : (advance?.dvId ?? existing?.dvId) ? (
                 <ReturnLink
                   to={`/accounting/disbursements/${advance?.dvId ?? existing?.dvId}`}
                   className="text-brand-700 underline"

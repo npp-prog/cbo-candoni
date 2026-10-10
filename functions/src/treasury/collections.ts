@@ -299,10 +299,23 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
  * credit. That intermediate state is what makes deposits-in-transit a real
  * figure on the reconciliation statement rather than a manual adjustment.
  */
+/** Patch 159: Deposits > Post is retired; the RCD books the deposit. */
+const DEPOSITS_BOOKED_BY_RCD = true as boolean;
+
 export const recordDeposit = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const caller = await requireCaller(request, TREASURY_APPROVERS);
   const { depositId } = (request.data ?? {}) as { depositId?: string };
   if (!depositId) throw invalid('A deposit id is required.');
+  /*
+   * Patch 159: every deposit is reported - and booked - by an RCD. Posting
+   * one on its own would book it twice once its RCD is journalized.
+   */
+  if (DEPOSITS_BOOKED_BY_RCD) {
+    throw new HttpsError(
+      'failed-precondition',
+      'A deposit is booked by the RCD that reports it. Prepare an RCD and tick this deposit under "Deposits to report"; its entry books Cash in Bank.',
+    );
+  }
 
   const jevConfig = await loadNumberingConfig('JEV');
 
@@ -330,6 +343,7 @@ export const recordDeposit = onCall({ region: REGION, enforceAppCheck: ENFORCE_A
     if (dep.jevId) {
       throw new HttpsError('failed-precondition', 'This deposit has already been recorded in the books.');
     }
+
     if (dep.status === 'CANCELLED') {
       throw new HttpsError('failed-precondition', 'This deposit is cancelled.');
     }

@@ -239,6 +239,8 @@ export interface Employee extends SoftDeletable {
   monthlyRate?: Centavos;
   dateHired?: IsoDate;
   dateSeparated?: IsoDate;
+  /** Patch 158: the Name this employee record belongs to. */
+  payeeId?: Id;
 }
 
 // ---------------------------------------------------------------------------

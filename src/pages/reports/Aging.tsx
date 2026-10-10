@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Field, DateInput, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useLedgerEntries, useAccounts } from '@/data/queries';
+import { usePersonResolver } from '@/data/usePersonResolver';
 import { formatPeso } from '@/lib/money';
 import { formatLongDate } from '@/lib/dates';
 import { todayPh } from '@/lib/dates';
@@ -170,6 +171,7 @@ export default function Aging() {
     );
   }, [accounts.data, side]);
 
+  const people = usePersonResolver();
   const groups = useMemo<AccountGroup[]>(() => {
     const chosen = accountCode
       ? relevantAccounts.filter((a) => a.code === accountCode)
@@ -184,7 +186,10 @@ export default function Aging() {
       if (!codes.has(entry.accountCode)) continue;
       if (ageDate(entry) > asOf) continue;
 
-      const partyId = entry.subsidiaryId ?? entry.payeeId ?? '__unidentified__';
+      // Patch 159: one person, one party - an employee who is also a Name.
+      const partyId = entry.subsidiaryId
+        ? people.key(entry.subsidiaryType, entry.subsidiaryId)
+        : (entry.payeeId ?? '__unidentified__');
       const partyName =
         entry.subsidiaryName ?? entry.payeeName ?? 'Not attributed to a party';
 
@@ -241,7 +246,7 @@ export default function Aging() {
     }
 
     return result.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-  }, [ledger.data, relevantAccounts, accountCode, asOf, side]);
+  }, [ledger.data, relevantAccounts, accountCode, asOf, side, people]);
 
   const grand = useMemo(
     () =>

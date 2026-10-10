@@ -9,6 +9,7 @@ import { upsertMaster, actorStamp } from '@/data/mutations';
 import { COL } from '@/lib/collections';
 import { PAYEE_TYPES } from '@/types/enums';
 import { findPayeeDuplicates, missingPayeeFields, type PayeeLike } from '@/lib/payees';
+import { employeeMirror } from '@/lib/names';
 
 /**
  * Add a payee without leaving the document being encoded.
@@ -50,9 +51,19 @@ export async function addPayeeToMaster(
     tin?: string;
     address?: string;
     bankAccountNumber?: string;
+    /** Patch 159: an employee's own details, for a name of type Employee. */
+    employee?: Record<string, string>;
   },
   actor: { uid: string; name: string; position?: string },
-): Promise<{ id: string; name: string; tin?: string; address?: string; bankAccountNumber?: string }> {
+): Promise<{
+  id: string;
+  name: string;
+  tin?: string;
+  address?: string;
+  bankAccountNumber?: string;
+  /** False when the employee record could not be written (see below). */
+  employeeSaved?: boolean;
+}> {
   const id = crypto.randomUUID();
   const tin = (fields.tin ?? '').trim();
   const address = (fields.address ?? '').trim();
@@ -66,8 +77,35 @@ export async function addPayeeToMaster(
     ...(bankAccountNumber ? { bankAccountNumber } : {}),
     active: true,
   };
-  await upsertMaster(COL.payees, id, payee, actorStamp(actor));
+  const employee =
+    fields.payeeType === 'EMPLOYEE' && fields.employee
+      ? Object.fromEntries(
+          Object.entries(fields.employee)
+            .map(([k, v]) => [k, String(v ?? '').trim()])
+            .filter(([, v]) => v),
+        )
+      : null;
+  await upsertMaster(COL.payees, id, { ...payee, ...(employee ?? {}) }, actorStamp(actor));
+  /*
+   * Patch 159: an employee added here is an employee everywhere at once - the
+   * employee record (same id) is written too, so the officer pickers offer
+   * them. Only Master Data writers may write employee records; for anyone
+   * else the Name is saved with the details on it, and the record is made
+   * the next time the Name is saved under Master Data > Names.
+   */
+  let employeeSaved: boolean | undefined;
+  if (employee) {
+    try {
+      const mirror = employeeMirror({ ...payee, ...employee }, id);
+      await upsertMaster(COL.employees, mirror.id, mirror.data, actorStamp(actor));
+      await upsertMaster(COL.payees, id, { employeeId: mirror.id }, actorStamp(actor));
+      employeeSaved = true;
+    } catch {
+      employeeSaved = false;
+    }
+  }
   return {
+    employeeSaved,
     id,
     name: payee.name,
     tin: tin || undefined,
@@ -116,6 +154,10 @@ export function NewPayeeModal({
   const askAccount = initialAccountNumber !== undefined;
   const [bankAccountNumber, setBankAccountNumber] = useState(initialAccountNumber ?? '');
   const [address, setAddress] = useState('');
+  /* Patch 159: the employee details, for a name of type Employee. */
+  const [emp, setEmp] = useState<Record<string, string>>({});
+  const setE = (k: string, v: string) => setEmp((e) => ({ ...e, [k]: v }));
+  const isEmployee = payeeType === 'EMPLOYEE';
   const [saving, setSaving] = useState(false);
 
   const duplicates = useMemo(
@@ -125,6 +167,15 @@ export function NewPayeeModal({
 
   const save = async () => {
     const missing = missingPayeeFields({ name, payeeType });
+    if (isEmployee) {
+      for (const [k, label] of [
+        ['employeeNumber', 'Employee number'],
+        ['lastName', 'Last name'],
+        ['firstName', 'First name'],
+        ['employmentType', 'Employment type'],
+      ])
+        if (!emp[k]?.trim()) missing.push(label);
+    }
     if (missing.length > 0) {
       toast.error('Incomplete', `Required: ${missing.join(', ')}.`);
       return;
@@ -134,17 +185,24 @@ export function NewPayeeModal({
     setSaving(true);
     try {
       const created = await addPayeeToMaster(
-        { name, payeeType, tin, address, bankAccountNumber },
+        { name, payeeType, tin, address, bankAccountNumber, employee: isEmployee ? emp : undefined },
         {
           uid: user.uid,
           name: profile?.displayName ?? user.email ?? user.uid,
           position: profile?.position,
         },
       );
-      toast.success(
-        'Payee added',
-        'Complete the bank and contact details under Master Data > Payees before paying them by ADA.',
-      );
+      if (created.employeeSaved === false) {
+        toast.success(
+          'Name added',
+          'The employee details are on the Name. Ask the Accountant or the Treasurer to open it under Master Data > Names and save it, so it is offered as an officer too.',
+        );
+      } else {
+        toast.success(
+          'Name added',
+          'Complete the bank and contact details under Master Data > Names before paying them by ADA.',
+        );
+      }
       onCreated(created);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -273,10 +331,67 @@ export function NewPayeeModal({
             onChange={(e) => setAddress(e.target.value)}
           />
         </Field>
+
+        {/* Patch 159: an employee is entered once, with their employee details. */}
+        {isEmployee && (
+          <>
+            <Field label="Employee number" required htmlFor="new-emp-no">
+              <TextInput
+                id="new-emp-no"
+                className="font-mono"
+                value={emp.employeeNumber ?? ''}
+                onChange={(e) => setE('employeeNumber', e.target.value)}
+              />
+            </Field>
+            <Field label="Employment type" required htmlFor="new-emp-type">
+              <Select
+                id="new-emp-type"
+                value={emp.employmentType ?? ''}
+                onChange={(e) => setE('employmentType', e.target.value)}
+              >
+                <option value="">Choose</option>
+                <option value="PERMANENT">Permanent</option>
+                <option value="CASUAL">Casual</option>
+                <option value="JOB_ORDER">Job Order</option>
+                <option value="CONTRACT_OF_SERVICE">Contract of Service</option>
+                <option value="ELECTIVE">Elective</option>
+                <option value="COTERMINOUS">Coterminous</option>
+              </Select>
+            </Field>
+            <Field label="Last name" required htmlFor="new-emp-last">
+              <TextInput
+                id="new-emp-last"
+                value={emp.lastName ?? ''}
+                onChange={(e) => setE('lastName', e.target.value)}
+              />
+            </Field>
+            <Field label="First name" required htmlFor="new-emp-first">
+              <TextInput
+                id="new-emp-first"
+                value={emp.firstName ?? ''}
+                onChange={(e) => setE('firstName', e.target.value)}
+              />
+            </Field>
+            <Field label="Middle name" htmlFor="new-emp-middle">
+              <TextInput
+                id="new-emp-middle"
+                value={emp.middleName ?? ''}
+                onChange={(e) => setE('middleName', e.target.value)}
+              />
+            </Field>
+            <Field label="Position" htmlFor="new-emp-position">
+              <TextInput
+                id="new-emp-position"
+                value={emp.position ?? ''}
+                onChange={(e) => setE('position', e.target.value)}
+              />
+            </Field>
+          </>
+        )}
       </div>
 
       <p className="mt-4 text-xs text-slate-500">
-        Bank details, contact number and email are entered under Master Data &rsaquo; Payees. They
+        Bank details, contact number and email are entered under Master Data &rsaquo; Names. They
         are needed before this payee is paid by ADA or LDDAP, not before the obligation is raised.
       </p>
     </Modal>

@@ -97,7 +97,9 @@ export default function BankReconciliation() {
   const outstandingChecksTotal = outstandingChecks.reduce((s, c) => s + c.netAmount, 0);
 
   const depositsInTransit = useMemo(
-    () => deposits.data.filter((d) => ['IN_TRANSIT', 'RECORDED'].includes(d.status)),
+    // Patch 159: only a deposit in the BOOKS can be in transit - one recorded
+    // but not yet booked by its RCD is on neither side yet.
+    () => deposits.data.filter((d) => ['IN_TRANSIT', 'RECORDED'].includes(d.status) && !!d.jevId),
     [deposits.data],
   );
   const depositsInTransitTotal = depositsInTransit.reduce((s, d) => s + d.amount, 0);
@@ -220,7 +222,12 @@ export default function BankReconciliation() {
           <div className="text-xs">
             <span className="font-mono text-navy-800">{t.matchedRef}</span>
             <span className="block text-slate-500">
-              {t.matchedType} {t.matchConfidence !== undefined && `- ${Math.round(t.matchConfidence * 100)}% confident`}
+              {t.matchedType === 'COLLECTION'
+                ? 'E-COLLECTION'
+                : t.matchedType === 'ERCD'
+                  ? 'eRCD'
+                  : t.matchedType}{' '}
+              {t.matchConfidence !== undefined && `- ${Math.round(t.matchConfidence * 100)}% confident`}
             </span>
           </div>
         ) : (

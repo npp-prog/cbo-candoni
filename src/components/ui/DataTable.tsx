@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import clsx from 'clsx';
 import { Button } from './Button';
 import { EmptyState, Spinner } from './Layout';
@@ -159,9 +160,34 @@ export function DataTable<T>({
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / perPage));
   const currentPage = Math.min(page, pageCount - 1);
+  /*
+   * Patch 159: PRINT TAKES EVERY ROW. The page on screen is a convenience of
+   * the screen; a printed register that stops at row 25 is a register with
+   * pages missing. While printing - the Print button or the browser's own
+   * Ctrl+P - the table lays out every row that passes the search and filters.
+   */
+  const [printingAll, setPrintingAll] = useState(false);
+  useEffect(() => {
+    const before = () => flushSync(() => setPrintingAll(true));
+    const after = () => setPrintingAll(false);
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', after);
+    return () => {
+      window.removeEventListener('beforeprint', before);
+      window.removeEventListener('afterprint', after);
+    };
+  }, []);
+  const printAll = (meta: ReportMeta) => {
+    flushSync(() => setPrintingAll(true));
+    printReport(meta);
+  };
+
   const paged = useMemo(
-    () => sorted.slice(currentPage * perPage, currentPage * perPage + perPage),
-    [sorted, currentPage, perPage],
+    () =>
+      printingAll
+        ? sorted
+        : sorted.slice(currentPage * perPage, currentPage * perPage + perPage),
+    [sorted, currentPage, perPage, printingAll],
   );
   const sizeOptions = [...new Set([25, 50, 100, pageSize])].sort((a, b) => a - b);
   const jump = () => {
@@ -289,7 +315,7 @@ export function DataTable<T>({
                 <Button size="sm" onClick={() => exportCsv(sorted, exportColumns, exportMeta)}>
                   CSV
                 </Button>
-                <Button size="sm" onClick={() => printReport(exportMeta)}>
+                <Button size="sm" onClick={() => printAll(exportMeta)}>
                   Print
                 </Button>
               </>

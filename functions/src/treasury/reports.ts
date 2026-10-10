@@ -22,6 +22,7 @@ import {
   TREASURY_SOURCE_REPORT_FIELD,
 } from '../lib/treasurySources';
 import { renumberPaymentEntry } from '../lib/treasuryEntry';
+import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import {
   createJevInTransaction,
   postJevInTransaction,
@@ -151,6 +152,12 @@ interface ReportDoc {
    */
   deposits?: Array<{ sourceId: string; depositSlipNo?: string; date?: string; amount: number }>;
   totalDeposits?: number;
+  /**
+   * Patch 159: the part of the deposits this RCD's entry books (Dr Cash in
+   * Bank / Cr Cash - Local Treasury) - every deposit not booked before. Set,
+   * from the deposits' own records, when the report is certified.
+   */
+  depositsBookedTotal?: number;
   status: string;
   /**
    * Patch 143. Certifying and forwarding are two acts. A report certified
@@ -485,6 +492,7 @@ export const certifyTreasuryReport = onCall(
         depositLines.map((d) => tx.get(db.collection(COL.deposits).doc(d.sourceId))),
       );
       let verifiedDeposits = 0;
+      let verifiedToBook = 0;
       for (let i = 0; i < depositLines.length; i++) {
         const d = depositLines[i];
         const ds = depositSnaps[i];
@@ -506,29 +514,30 @@ export const certifyTreasuryReport = onCall(
         if (dep.treasuryReportId && dep.treasuryReportId !== reportId) {
           throw invalid(`Deposit ${no} has already been reported on another RCD. A deposit is reported once.`);
         }
-        if (!dep.jevId) {
-          throw invalid(
-            `Deposit ${no} is not in the books yet. Post it first (Treasury, Collections and Deposits, Deposits, Post) - the RCD reports a deposit; recording it is what books Cash in Bank.`,
-          );
-        }
         if (Number(dep.amount) !== d.amount) {
           throw invalid(
             `Deposit ${no} is ${(Number(dep.amount) / 100).toFixed(2)} on its own record but ${(d.amount / 100).toFixed(2)} on this RCD. Prepare the RCD again.`,
           );
         }
         verifiedDeposits += d.amount;
+        // Patch 159: booked by this RCD unless it was posted on its own before.
+        if (!dep.jevId) verifiedToBook += d.amount;
       }
 
       // ---- the proposed entry ---------------------------------------------
 
       const entry = report.entry ?? [];
-      // Patch 157: an RCD of deposits only has nothing to journalize - every
-      // deposit on it was booked when it was recorded.
-      const depositsOnly = type === 'RCD' && lines.length === 0;
-      if (depositsOnly && entry.length) {
-        throw invalid('An RCD of deposits only carries no entry: each deposit was booked when it was recorded.');
+      /*
+       * Patch 157 / 159. An RCD's entry books its collections AND the
+       * deposits on it not booked before (Dr Cash in Bank / Cr Cash - Local
+       * Treasury). Only an RCD of deposits that were all posted on their own,
+       * before patch 159, has no entry.
+       */
+      const nothingToBook = type === 'RCD' && lines.length === 0 && verifiedToBook === 0;
+      if (nothingToBook && entry.length) {
+        throw invalid('An RCD of deposits already in the books carries no entry.');
       }
-      if (!depositsOnly && !entry.length) {
+      if (!nothingToBook && !entry.length) {
         throw invalid(
           `This ${label} carries no proposed accounting entry. It cannot be forwarded to Accounting without one.`,
         );
@@ -539,10 +548,24 @@ export const certifyTreasuryReport = onCall(
           `The proposed entry does not balance: debits ${(foot.debit / 100).toFixed(2)}, credits ${(foot.credit / 100).toFixed(2)}.`,
         );
       }
-      if (foot.debit !== verifiedTotal) {
+      if (foot.debit !== verifiedTotal + verifiedToBook) {
         throw invalid(
-          `The proposed entry is for ${(foot.debit / 100).toFixed(2)} but the documents total ${(verifiedTotal / 100).toFixed(2)}.`,
+          verifiedToBook
+            ? `The proposed entry is for ${(foot.debit / 100).toFixed(2)} but the collections (${(verifiedTotal / 100).toFixed(2)}) and the deposits it books (${(verifiedToBook / 100).toFixed(2)}) come to ${((verifiedTotal + verifiedToBook) / 100).toFixed(2)}.`
+            : `The proposed entry is for ${(foot.debit / 100).toFixed(2)} but the documents total ${(verifiedTotal / 100).toFixed(2)}.`,
         );
+      }
+      // The deposits leave the officer's hands: Cash - Local Treasury is
+      // credited by exactly what they bank.
+      if (type === 'RCD' && verifiedToBook > 0) {
+        const cltCredits = entry
+          .filter((l) => l.accountCode === CASH_LOCAL_TREASURY.code)
+          .reduce((t, l) => t + (l.credit || 0), 0);
+        if (cltCredits !== verifiedToBook) {
+          throw invalid(
+            `The deposits on this RCD come to ${(verifiedToBook / 100).toFixed(2)}, and the entry credits Cash - Local Treasury with ${(cltCredits / 100).toFixed(2)}. Prepare the RCD again.`,
+          );
+        }
       }
 
       // ---- number, lock the documents, forward ----------------------------
@@ -598,7 +621,9 @@ export const certifyTreasuryReport = onCall(
         serialFrom: serials[0] ?? null,
         serialTo: serials[serials.length - 1] ?? null,
         totalAmount: verifiedTotal,
-        ...(type === 'RCD' ? { totalDeposits: verifiedDeposits } : {}),
+        ...(type === 'RCD'
+          ? { totalDeposits: verifiedDeposits, depositsBookedTotal: verifiedToBook }
+          : {}),
         ...(type === 'RCDISB'
           ? { totalGross: verifiedGross, totalDeductions: verifiedDeductions }
           : {}),
@@ -806,14 +831,15 @@ export const journalizeTreasuryReport = onCall(
        * received - closed, with no journal entry of its own.
        */
       const noCollections = (report.lines ?? []).filter((l) => !l.excluded).length === 0;
-      if (type === 'RCD' && noCollections && (report.deposits?.length ?? 0) > 0) {
+      const toBook = type === 'RCD' ? Number(report.depositsBookedTotal ?? 0) : 0;
+      if (type === 'RCD' && noCollections && (report.deposits?.length ?? 0) > 0 && toBook === 0) {
         const now = new Date().toISOString();
         tx.update(ref, {
           status: 'JOURNALIZED',
           jevId: null,
           jevNo: null,
           journalizedAt: now,
-          remarks: 'Deposits only - each deposit was booked when it was recorded; no entry.',
+          remarks: 'Deposits already in the books only - no entry.',
           postedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
         });
         recordTransition(tx, {
@@ -853,11 +879,30 @@ export const journalizeTreasuryReport = onCall(
           `The entry does not balance: debits ${(foot.debit / 100).toFixed(2)}, credits ${(foot.credit / 100).toFixed(2)}.`,
         );
       }
-      if (foot.debit !== report.totalAmount) {
+      if (foot.debit !== report.totalAmount + toBook) {
         throw invalid(
-          `The entry is for ${(foot.debit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)}. The journal entry must agree with the report.`,
+          toBook
+            ? `The entry is for ${(foot.debit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)} of collections and ${(toBook / 100).toFixed(2)} of deposits to book. The journal entry must agree with the report.`
+            : `The entry is for ${(foot.debit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)}. The journal entry must agree with the report.`,
         );
       }
+
+      /*
+       * Patch 159: the deposits this entry books - read now, before anything
+       * is written (a transaction reads first). Each is stamped with the JEV
+       * and goes in transit, as Deposits > Post used to do.
+       */
+      const depositSnaps =
+        toBook > 0
+          ? await Promise.all(
+              (report.deposits ?? []).map((d) =>
+                tx.get(db.collection(COL.deposits).doc(d.sourceId)),
+              ),
+            )
+          : [];
+      const depositsToStamp = depositSnaps.filter(
+        (d) => d.exists && !(d.data() as { jevId?: string }).jevId,
+      );
 
       const bookCode = await bookCodeForFund(report.fundCode);
       const jevNo = await issueNumber(tx, jevConfig, {
@@ -910,6 +955,10 @@ export const journalizeTreasuryReport = onCall(
       postJevInTransaction(tx, caller, jevId, jevData);
 
       const now = new Date().toISOString();
+
+      for (const d of depositsToStamp) {
+        tx.update(d.ref, { jevId, jevNo, status: 'IN_TRANSIT', bookedByTreasuryReportId: reportId });
+      }
 
       tx.update(ref, {
         status: 'JOURNALIZED',

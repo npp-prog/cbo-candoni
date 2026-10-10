@@ -4,6 +4,7 @@ import {
   payrollParticulars,
   payrollProformaEntry,
   refundReceiptDraft,
+  openingPayrollAdvances,
 } from './payrollAdvances';
 
 const ADV = '10305020';
@@ -177,5 +178,51 @@ describe('payrollProformaEntry', () => {
       ['20101020', 600_000, 0, 'Juan Dela Cruz'],
       [ADV, 0, 600_000, 'Juan Dela Cruz'],
     ]);
+  });
+});
+
+describe('openingPayrollAdvances (patch 159)', () => {
+  const entries = [
+    {
+      id: 'le1',
+      sourceType: 'OPENING',
+      accountCode: ADV,
+      debit: 300_000,
+      jevId: 'j0',
+      jevNo: '01-0001',
+      entryDate: '2025-12-31',
+      agingDate: '2025-11-28',
+      referenceNo: 'DV 2025-11-0456',
+      particulars: 'Payroll advance, Nov 16-30',
+      subsidiaryType: 'EMPLOYEE',
+      subsidiaryId: 'emp7',
+      subsidiaryName: 'Juan Dela Cruz',
+    },
+    { id: 'le2', sourceType: 'DV', accountCode: ADV, debit: 5, entryDate: '2026-01-02' },
+    {
+      id: 'le3',
+      sourceType: 'OPENING',
+      accountCode: '10305010',
+      debit: 5,
+      entryDate: '2025-12-31',
+    },
+  ];
+
+  it('offers an advance for payroll carried forward, as a voucher would be', () => {
+    const vs = openingPayrollAdvances(entries, ADV);
+    expect(vs).toHaveLength(1);
+    const out = openPayrollAdvances(
+      vs,
+      [{ id: 'p', dvId: 'OB:le1', status: 'DRAFT', totalNet: 100_000 }],
+      ADV,
+    );
+    expect(out[0]).toMatchObject({
+      dvId: 'OB:le1',
+      dvNo: 'DV 2025-11-0456',
+      dvDate: '2025-11-28',
+      openingJevId: 'j0',
+      outstanding: 200_000,
+      officer: { type: 'EMPLOYEE', id: 'emp7', name: 'Juan Dela Cruz' },
+    });
   });
 });

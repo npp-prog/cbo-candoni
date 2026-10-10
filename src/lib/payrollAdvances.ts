@@ -36,6 +36,8 @@ export interface AdvanceVoucher {
   particulars?: string | null;
   officeId?: string | null;
   officeName?: string | null;
+  /** Patch 159: an advance carried in the opening balances - its JEV. */
+  openingJevId?: string | null;
   accountLines?: Array<{
     accountCode: string;
     debit: number;
@@ -70,6 +72,8 @@ export interface OpenAdvance {
   particulars: string;
   officeId: string | null;
   officeName: string | null;
+  /** Patch 159: set for an advance carried in the opening balances. */
+  openingJevId: string | null;
   /** The advance for payroll the voucher granted. */
   advance: number;
   /**
@@ -122,6 +126,7 @@ export function openPayrollAdvances(
       particulars: String(v.particulars ?? '').trim(),
       officeId: v.officeId ?? null,
       officeName: v.officeName ?? null,
+      openingJevId: v.openingJevId ?? null,
       advance,
       liquidated,
       outstanding,
@@ -260,3 +265,67 @@ export function refundReceiptDraft(
     ],
   };
 }
+
+/**
+ * Patch 159 - an ADVANCE FOR PAYROLL CARRIED IN THE OPENING BALANCES.
+ *
+ * Granted under the old system, so there is no CFMS voucher for it - only the
+ * opening entry's debit to Advances for Payroll, in the officer's subsidiary
+ * account. Each such debit is offered on New payroll as if it were a voucher:
+ * numbered by the line's Reference (the old DV No.), dated the day it arose,
+ * and keyed "OB:<ledger entry>" so the payrolls drawn on it are counted
+ * against it like any other.
+ */
+export function openingPayrollAdvances(
+  entries: Array<{
+    id: string;
+    sourceType?: string | null;
+    accountCode: string;
+    debit: number;
+    jevId?: string | null;
+    jevNo?: string | null;
+    entryDate: string;
+    agingDate?: string | null;
+    referenceNo?: string | null;
+    particulars?: string | null;
+    subsidiaryType?: string | null;
+    subsidiaryId?: string | null;
+    subsidiaryName?: string | null;
+  }>,
+  advanceAccountCode: string,
+): AdvanceVoucher[] {
+  return entries
+    .filter(
+      (e) => e.sourceType === 'OPENING' && e.accountCode === advanceAccountCode && e.debit > 0,
+    )
+    .map((e) => ({
+      id: `OB:${e.id}`,
+      // The ledger carries the opening JEV's reference ("Opening GF 2026"),
+      // which names no voucher; the line's particulars say what it was.
+      dvNo:
+        String(e.referenceNo ?? '').trim() && !/^opening\b/i.test(String(e.referenceNo))
+          ? String(e.referenceNo).trim()
+          : `Opening balance${e.jevNo ? ` (JEV ${e.jevNo})` : ''}`,
+      dvDate: e.agingDate || e.entryDate,
+      // In the books already: the opening entry is posted.
+      status: 'APPROVED',
+      payeeId: null,
+      payeeName: e.subsidiaryName ?? null,
+      particulars: String(e.particulars ?? '').trim() || 'Advance for payroll carried forward',
+      openingJevId: e.jevId ?? null,
+      accountLines: [
+        {
+          accountCode: e.accountCode,
+          debit: e.debit,
+          credit: 0,
+          subsidiaryType: e.subsidiaryType ?? null,
+          subsidiaryId: e.subsidiaryId ?? null,
+          subsidiaryName: e.subsidiaryName ?? null,
+        },
+      ],
+    }));
+}
+
+/** An advance carried forward, not a CFMS voucher. */
+export const isOpeningAdvanceId = (dvId: string | null | undefined) =>
+  String(dvId ?? '').startsWith('OB:');

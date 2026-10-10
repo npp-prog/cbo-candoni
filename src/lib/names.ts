@@ -163,3 +163,60 @@ export function planNameMerge(payees: Rec[], employees: Rec[]): MergePlan {
   }
   return plan;
 }
+
+/**
+ * Patch 159 - ONE PERSON, ONE SUBSIDIARY.
+ *
+ * An employee who is also paid on vouchers is one Name, but the books may
+ * know them under two keys: PAYEE:<name id> (a voucher's Accounts Payable)
+ * and EMPLOYEE:<employee id> (a cash advance, a collecting officer). Newer
+ * names share one id for both; names tied by "Bring them in" keep the two ids
+ * they already had, because entries already posted point at them.
+ *
+ * This resolves either key to the person: the Name's id. The subsidiary
+ * ledger and the aging schedule group by it, so the person has one account
+ * and one balance; the subsidiary picker offers the person once.
+ */
+export interface PersonResolver {
+  /** The person a subsidiary belongs to - the Name's id where there is one. */
+  key: (type: string | null | undefined, id: string | null | undefined) => string;
+  /** The Name's own name for a person key, where known. */
+  name: (key: string) => string | undefined;
+  /** For a Name, the employee record tied to it (if any). */
+  employeeOf: (payeeId: string) => string | undefined;
+  /** For an employee record, the Name it belongs to (if any). */
+  payeeOf: (employeeId: string) => string | undefined;
+}
+
+export function personResolver(
+  payees: Array<{ id: string; name?: string | null; employeeId?: string | null }>,
+  employees: Array<{ id: string; payeeId?: string | null }>,
+): PersonResolver {
+  const payeeIds = new Set(payees.map((p) => p.id));
+  const names = new Map(payees.map((p) => [p.id, String(p.name ?? '')]));
+  const empToPayee = new Map<string, string>();
+  const payeeToEmp = new Map<string, string>();
+  for (const p of payees) {
+    if (p.employeeId) {
+      empToPayee.set(p.employeeId, p.id);
+      payeeToEmp.set(p.id, p.employeeId);
+    }
+  }
+  for (const e of employees) {
+    if (e.payeeId && payeeIds.has(e.payeeId) && !empToPayee.has(e.id)) {
+      empToPayee.set(e.id, e.payeeId);
+      if (!payeeToEmp.has(e.payeeId)) payeeToEmp.set(e.payeeId, e.id);
+    }
+  }
+  return {
+    key: (type, id) => {
+      const i = String(id ?? '');
+      if (!i) return '';
+      if (type === 'EMPLOYEE') return empToPayee.get(i) ?? i;
+      return i;
+    },
+    name: (key) => names.get(key) || undefined,
+    employeeOf: (payeeId) => payeeToEmp.get(payeeId),
+    payeeOf: (employeeId) => empToPayee.get(employeeId),
+  };
+}
