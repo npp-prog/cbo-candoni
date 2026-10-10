@@ -294,6 +294,11 @@ export interface Deposit extends Partial<AuditStamps> {
   collectingOfficerId?: Id;
   collectingOfficerName?: string;
 
+  /** Patch 157: the RCD that reported this deposit. Set when it is certified. */
+  treasuryReportId?: Id;
+  treasuryReportNo?: string;
+  treasuryReportType?: string;
+
   /** Set by bank reconciliation once the credit appears on the statement. */
   bankTransactionId?: Id;
   creditedDate?: IsoDate;
@@ -540,6 +545,22 @@ export interface TreasuryReport extends Partial<AuditStamps> {
   /** RCDisb only: the payroll figures behind the net, for the printed report. */
   totalGross?: Centavos;
   totalDeductions?: Centavos;
+
+  /**
+   * Patch 157 - RCD only: the deposits it accounts for (Section B). An RCD
+   * may carry collections only, deposits only, or both. Deposits are booked
+   * when they are recorded; the RCD reports them, so they are not in its
+   * entry.
+   */
+  deposits?: Array<{
+    sourceId: Id;
+    depositSlipNo?: string;
+    date?: IsoDate;
+    bankName?: string;
+    bankAccountNumber?: string;
+    amount: Centavos;
+  }>;
+  totalDeposits?: Centavos;
 
   /**
    * The accounting entry this report proposes. Built by the engine from the

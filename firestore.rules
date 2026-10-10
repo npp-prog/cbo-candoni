@@ -993,7 +993,9 @@ service cloud.firestore {
       allow update: if signedIn()
         && hasAny(treasuryRoles())
         && resource.data.status == 'RECORDED'
-        && didNotChange(['createdBy', 'jevId', 'bankTransactionId', 'creditedDate']);
+        // Patch 157: which RCD reported it is the engine's to write.
+        && didNotChange(['createdBy', 'jevId', 'bankTransactionId', 'creditedDate',
+                         'treasuryReportId', 'treasuryReportNo', 'treasuryReportType']);
       allow delete: if false;
     }
 

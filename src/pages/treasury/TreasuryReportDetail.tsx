@@ -306,6 +306,11 @@ export default function TreasuryReportDetail() {
   const balanced = totals.debit === totals.credit;
   const agreesWithReport = totals.debit === (report?.totalAmount ?? 0);
   const postable = balanced && agreesWithReport && lines.every((l) => l.accountCode);
+  /* Patch 157: an RCD that reports deposits only. */
+  const depositsOnly =
+    report?.reportType === 'RCD' &&
+    (report.lines ?? []).filter((l) => !l.excluded).length === 0 &&
+    (report.deposits?.length ?? 0) > 0;
 
   /*
    * Who may change the entry, and when.
@@ -409,8 +414,10 @@ export default function TreasuryReportDetail() {
         })),
       });
       toast.success(
-        `JEV ${res.jevNo} posted`,
-        `${short} ${res.reportNo} is journalized and in the General Ledger.`,
+        res.jevNo ? `JEV ${res.jevNo} posted` : `${short} ${res.reportNo} taken up`,
+        res.jevNo
+          ? `${short} ${res.reportNo} is journalized and in the General Ledger.`
+          : 'Deposits only - each deposit was booked when it was recorded, so there is no entry.',
       );
       setDraftEntry(null);
       setConfirm(null);
@@ -744,6 +751,7 @@ export default function TreasuryReportDetail() {
 
       <div className="mt-4">
         {tab === 'coverage' && (
+          <>
           <Card>
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -806,6 +814,44 @@ export default function TreasuryReportDetail() {
               </tfoot>
             </table>
           </Card>
+          {/* Patch 157: the deposits an RCD reports (Section B). */}
+          {report.reportType === 'RCD' && (report.deposits?.length ?? 0) > 0 && (
+            <Card className="mt-4" title="Deposits reported (Section B)">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className="cbo-th w-40">Deposit slip</th>
+                    <th className="cbo-th w-28">Date</th>
+                    <th className="cbo-th">Bank</th>
+                    <th className="cbo-th cbo-amount-col">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(report.deposits ?? []).map((d) => (
+                    <tr key={d.sourceId}>
+                      <td className="cbo-td font-mono text-xs">{d.depositSlipNo}</td>
+                      <td className="cbo-td text-xs">{d.date ? formatShortDate(d.date) : ''}</td>
+                      <td className="cbo-td text-xs">
+                        {d.bankName} {d.bankAccountNumber}
+                      </td>
+                      <td className="cbo-td cbo-amount">{formatPeso(d.amount, { symbol: false })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
+                    <td className="cbo-td" colSpan={3}>
+                      Total deposits - booked when each was posted, so not in this report&apos;s entry
+                    </td>
+                    <td className="cbo-td cbo-amount">
+                      {formatPeso(report.totalDeposits ?? 0, { symbol: false })}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </Card>
+          )}
+          </>
         )}
 
         <CoveredDocument
@@ -881,7 +927,8 @@ export default function TreasuryReportDetail() {
                       onClick={() => setConfirm('journalize')}
                       disabled={!postable}
                     >
-                      Post journal entry
+                      {/* Patch 157: an RCD of deposits only has no entry. */}
+                      {depositsOnly ? 'Take up - deposits only, no entry' : 'Post journal entry'}
                     </Button>
                   )}
                   {(draftEntry || amendingEntry) && (

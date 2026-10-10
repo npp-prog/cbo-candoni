@@ -121,7 +121,16 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
   const rcd = useMemo(() => {
     if (!report) return legacy;
     const totalCollections = covered.reduce((sum, c) => sum + c.totalAmount, 0);
-    const bankedIds = new Set(covered.map((c) => c.depositId).filter(Boolean) as string[]);
+    /*
+     * Patch 157: an RCD names its deposits itself (Section B) - they may bank
+     * collections reported on an earlier RCD, and an RCD may carry deposits
+     * only. One prepared before that names none; its deposits are found
+     * through the receipts it covers, as before.
+     */
+    const named = new Set((report.deposits ?? []).map((d) => d.sourceId));
+    const bankedIds = named.size
+      ? named
+      : new Set(covered.map((c) => c.depositId).filter(Boolean) as string[]);
     const banked = deposits.filter((d) => bankedIds.has(d.id));
     const totalDeposits = banked.reduce((sum, d) => sum + d.amount, 0);
     return {
@@ -256,6 +265,28 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
 
   const checks = useMemo(() => covered.filter((c) => c.paymentForm === 'CHECK'), [covered]);
 
+  /*
+   * Patch 157 - the BEGINNING BALANCE of Section D: cash collections reported
+   * on earlier RCDs of this fund that no earlier RCD has yet reported as
+   * deposited. With it, an RCD of deposits only (banking an earlier report's
+   * collections) ends at nil, not below it.
+   */
+  const beginning = useMemo(() => {
+    if (!report?.reportNo) return 0;
+    const no = report.reportNo;
+    const earlier = (x: { treasuryReportType?: string; treasuryReportNo?: string }) =>
+      x.treasuryReportType === 'RCD' && !!x.treasuryReportNo && x.treasuryReportNo < no;
+    const reported = collections
+      .filter((c) => c.status !== 'CANCELLED' && !c.eCollectionKind)
+      .filter((c) => earlier(c as never))
+      .reduce((t, c) => t + c.totalAmount, 0);
+    const banked = deposits
+      .filter((d) => d.status !== 'CANCELLED' && d.fundCode === report.fundCode)
+      .filter((d) => earlier(d as never))
+      .reduce((t, d) => t + d.amount, 0);
+    return Math.max(0, reported - banked);
+  }, [report, collections, deposits]);
+
   // Patch 156: saved to PDF as "Report of Collections and Deposits_<No.>".
   usePrintTitle(rcd ? printFileName('Report of Collections and Deposits', rcd.rcdNo) : null);
 
@@ -275,7 +306,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
 
   const totalCollections = rcd.totalCollections;
   const totalDeposits = rcd.totalDeposits;
-  const balance = totalCollections - totalDeposits;
+  const balance = beginning + totalCollections - totalDeposits;
 
   const status = (rcd as { status?: string }).status;
   const certified = isCertifiedCopy(status);
@@ -521,7 +552,7 @@ export default function RcdAppendix34({ report }: { report?: TreasuryReport }) {
         <div className="mb-4 grid gap-4 sm:grid-cols-2">
           <table className="w-full border-collapse text-2xs">
             <tbody>
-              <SummaryLine label="Beginning Balance" value={0} />
+              <SummaryLine label="Beginning Balance" value={beginning} />
               <tr>
                 <td className="border border-slate-400 px-1.5 py-1 font-semibold" colSpan={2}>
                   Add: Collections

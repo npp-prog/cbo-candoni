@@ -638,7 +638,11 @@ export const engine = {
       subsidiaryName?: string;
     }>;
   }) =>
-    call<typeof p, { reportId: Id; reportNo: string; jevId: Id; jevNo: string }>(
+    call<
+      typeof p,
+      // Patch 157: no JEV for an RCD of deposits only.
+      { reportId: Id; reportNo: string; jevId: Id | null; jevNo: string | null }
+    >(
       'journalizeTreasuryReport',
       p,
     ),

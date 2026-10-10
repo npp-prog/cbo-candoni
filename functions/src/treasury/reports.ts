@@ -139,6 +139,18 @@ interface ReportDoc {
   totalGross?: number;
   totalDeductions?: number;
   entry?: EntryLine[];
+  /**
+   * Patch 157 - RCD only: the deposits this report accounts for (Section B).
+   *
+   * An RCD may carry collections only, deposits only, or both: the collector
+   * reports the day's receipts, and the Liquidating Officer banks them -
+   * sometimes a week later - on a report of their own. A deposit is booked
+   * when it is recorded (Deposits, Post: Dr Cash in Bank / Cr Cash - Local
+   * Treasury); the RCD reports it. So the deposits are not in the RCD's
+   * entry, and an RCD of deposits only has no entry at all.
+   */
+  deposits?: Array<{ sourceId: string; depositSlipNo?: string; date?: string; amount: number }>;
+  totalDeposits?: number;
   status: string;
   /**
    * Patch 143. Certifying and forwarding are two acts. A report certified
@@ -324,7 +336,8 @@ export const certifyTreasuryReport = onCall(
       );
 
       const lines = (report.lines ?? []).filter((l) => !l.excluded);
-      if (!lines.length) {
+      const depositLines = type === 'RCD' ? (report.deposits ?? []) : [];
+      if (!lines.length && !depositLines.length) {
         throw invalid(`This ${label} lists no documents.`);
       }
 
@@ -467,10 +480,55 @@ export const certifyTreasuryReport = onCall(
         );
       }
 
+      // ---- patch 157: the deposits an RCD reports -------------------------
+      const depositSnaps = await Promise.all(
+        depositLines.map((d) => tx.get(db.collection(COL.deposits).doc(d.sourceId))),
+      );
+      let verifiedDeposits = 0;
+      for (let i = 0; i < depositLines.length; i++) {
+        const d = depositLines[i];
+        const ds = depositSnaps[i];
+        const no = d.depositSlipNo || 'A deposit';
+        if (!ds.exists) throw invalid(`Deposit ${no} on this RCD no longer exists. Remove it.`);
+        const dep = ds.data() as {
+          status?: string;
+          fundCode?: string;
+          amount?: number;
+          jevId?: string;
+          treasuryReportId?: string;
+        };
+        if (dep.status === 'CANCELLED') {
+          throw invalid(`Deposit ${no} is cancelled and must not be reported. Remove it from this RCD.`);
+        }
+        if (dep.fundCode !== report.fundCode) {
+          throw invalid(`Deposit ${no} belongs to the ${String(dep.fundCode)} fund, not ${report.fundCode}.`);
+        }
+        if (dep.treasuryReportId && dep.treasuryReportId !== reportId) {
+          throw invalid(`Deposit ${no} has already been reported on another RCD. A deposit is reported once.`);
+        }
+        if (!dep.jevId) {
+          throw invalid(
+            `Deposit ${no} is not in the books yet. Post it first (Treasury, Collections and Deposits, Deposits, Post) - the RCD reports a deposit; recording it is what books Cash in Bank.`,
+          );
+        }
+        if (Number(dep.amount) !== d.amount) {
+          throw invalid(
+            `Deposit ${no} is ${(Number(dep.amount) / 100).toFixed(2)} on its own record but ${(d.amount / 100).toFixed(2)} on this RCD. Prepare the RCD again.`,
+          );
+        }
+        verifiedDeposits += d.amount;
+      }
+
       // ---- the proposed entry ---------------------------------------------
 
       const entry = report.entry ?? [];
-      if (!entry.length) {
+      // Patch 157: an RCD of deposits only has nothing to journalize - every
+      // deposit on it was booked when it was recorded.
+      const depositsOnly = type === 'RCD' && lines.length === 0;
+      if (depositsOnly && entry.length) {
+        throw invalid('An RCD of deposits only carries no entry: each deposit was booked when it was recorded.');
+      }
+      if (!depositsOnly && !entry.length) {
         throw invalid(
           `This ${label} carries no proposed accounting entry. It cannot be forwarded to Accounting without one.`,
         );
@@ -513,6 +571,15 @@ export const certifyTreasuryReport = onCall(
         });
       }
 
+      // Patch 157: the deposits are claimed by this report, as the receipts are.
+      for (const d of depositLines) {
+        tx.update(db.collection(COL.deposits).doc(d.sourceId), {
+          treasuryReportId: reportId,
+          treasuryReportNo: reportNo,
+          treasuryReportType: type,
+        });
+      }
+
       const serials = lines.map((l) => l.sourceNo).sort();
 
       tx.update(ref, {
@@ -528,9 +595,10 @@ export const certifyTreasuryReport = onCall(
         ...(type === 'RCI' && report.entry?.length
           ? { entry: renumberPaymentEntry(report.entry, type, reportNo) }
           : {}),
-        serialFrom: serials[0],
-        serialTo: serials[serials.length - 1],
+        serialFrom: serials[0] ?? null,
+        serialTo: serials[serials.length - 1] ?? null,
         totalAmount: verifiedTotal,
+        ...(type === 'RCD' ? { totalDeposits: verifiedDeposits } : {}),
         ...(type === 'RCDISB'
           ? { totalGross: verifiedGross, totalDeductions: verifiedDeductions }
           : {}),
@@ -732,6 +800,38 @@ export const journalizeTreasuryReport = onCall(
         tx,
       );
 
+      /*
+       * Patch 157. An RCD of DEPOSITS ONLY has nothing to journalize: each
+       * deposit on it was booked when it was recorded. It is taken up as
+       * received - closed, with no journal entry of its own.
+       */
+      const noCollections = (report.lines ?? []).filter((l) => !l.excluded).length === 0;
+      if (type === 'RCD' && noCollections && (report.deposits?.length ?? 0) > 0) {
+        const now = new Date().toISOString();
+        tx.update(ref, {
+          status: 'JOURNALIZED',
+          jevId: null,
+          jevNo: null,
+          journalizedAt: now,
+          remarks: 'Deposits only - each deposit was booked when it was recorded; no entry.',
+          postedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
+        });
+        recordTransition(tx, {
+          caller,
+          event: 'POST',
+          entityType: COL.treasuryReports,
+          entityId: reportId,
+          entityRef: `${type} ${report.reportNo}`,
+          fiscalYear: report.fiscalYear,
+          fundCode: report.fundCode,
+          action: 'POST',
+          previousStatus: 'CERTIFIED',
+          newStatus: 'JOURNALIZED',
+          remarks: 'Deposits only - no entry.',
+        });
+        return { reportId, reportNo: report.reportNo, jevId: null, jevNo: null };
+      }
+
       const entry = adjustedEntry?.length ? adjustedEntry : (report.entry ?? []);
       if (!entry.length) throw invalid('The journal entry has no lines.');
 
@@ -886,6 +986,17 @@ export const cancelTreasuryReport = onCall(
           treasuryReportNo: null,
           treasuryReportType: null,
         });
+      }
+      // Patch 157: and the deposits it reported - only once certified were
+      // they claimed.
+      if (report.status !== 'DRAFT') {
+        for (const d of report.deposits ?? []) {
+          tx.update(db.collection(COL.deposits).doc(d.sourceId), {
+            treasuryReportId: null,
+            treasuryReportNo: null,
+            treasuryReportType: null,
+          });
+        }
       }
 
       // The upload the report was built from goes with it. The rows stay

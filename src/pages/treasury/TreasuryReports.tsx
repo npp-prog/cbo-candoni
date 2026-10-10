@@ -29,6 +29,7 @@ import {
   useChecks,
   useAda,
   useCollections,
+  useDeposits,
   usePayrolls,
   useAccounts,
   useBankAccounts,
@@ -399,12 +400,32 @@ function PrepareReport({
   const [officerId, setOfficerId] = useState<string | null>(null);
   const [officerName, setOfficerName] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /* Patch 157: an RCD's deposits (Section B), chosen apart from its collections. */
+  const [selectedDeposits, setSelectedDeposits] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
   const checks = useChecks(reportType === 'RCI' ? (bankAccountId ?? undefined) : undefined);
   const ada = useAda(reportType === 'RADAI' ? (bankAccountId ?? undefined) : undefined);
   const collections = useCollections(fiscalYear, fundCode);
   const payrolls = usePayrolls(fiscalYear, fundCode);
+  const depositsQ = useDeposits();
+  /*
+   * Patch 157. The deposits an RCD may report: this fund, not cancelled, not
+   * yet on an RCD. A deposit not yet POSTED (booked) is shown but cannot be
+   * chosen - the RCD reports a deposit; posting it is what books it.
+   */
+  const reportableDeposits = useMemo(
+    () =>
+      reportType !== 'RCD'
+        ? []
+        : depositsQ.data
+            .filter((d) => d.fundCode === fundCode && d.status !== 'CANCELLED')
+            .filter((d) => !d.treasuryReportId)
+            .sort((a, b) => a.depositDate.localeCompare(b.depositDate)),
+    [reportType, depositsQ.data, fundCode],
+  );
+  const chosenDeposits = reportableDeposits.filter((d) => selectedDeposits.has(d.id));
+  const depositTotal = chosenDeposits.reduce((s, d) => s + d.amount, 0);
 
   /**
    * The documents available to report: this fund, not cancelled, and not
@@ -694,6 +715,8 @@ function PrepareReport({
      *                  never passed through any hands, and would then need a
      *                  deposit entry for a deposit that already happened.
      */
+    // Patch 157: an RCD of deposits only proposes no entry.
+    if (chosen.length === 0) return [];
     const byAccount = new Map<string, { accountCode: string; accountName: string; amount: number }>();
     for (const doc of chosen) {
       const collection = collections.data.find((c) => c.id === doc.id);
@@ -771,8 +794,14 @@ function PrepareReport({
     reportType === 'RCD' || reportType === 'RCDISB' || isECollectionReport(reportType);
 
   const save = async () => {
-    if (!chosen.length) {
-      toast.error('Nothing selected', 'Choose at least one document to report.');
+    // Patch 157: an RCD may carry deposits only.
+    if (!chosen.length && !(reportType === 'RCD' && chosenDeposits.length)) {
+      toast.error(
+        'Nothing selected',
+        reportType === 'RCD'
+          ? 'Choose at least one collection or one deposit to report.'
+          : 'Choose at least one document to report.',
+      );
       return;
     }
     if (reportType === 'RCDISB' && payrollOfficers.length > 1) {
@@ -809,7 +838,7 @@ function PrepareReport({
       );
       return;
     }
-    if (!entryBalances) {
+    if (!entryBalances && chosen.length > 0) {
       toast.error(
         'The entry does not foot',
         'The proposed entry does not equal the documents selected. Check the receipts on this report.',
@@ -867,6 +896,19 @@ function PrepareReport({
             : {}),
           lines,
           totalAmount: total,
+          ...(reportType === 'RCD'
+            ? {
+                deposits: chosenDeposits.map((d) => ({
+                  sourceId: d.id,
+                  depositSlipNo: d.depositSlipNo ?? '',
+                  date: d.depositDate,
+                  bankName: d.bankName ?? '',
+                  bankAccountNumber: d.bankAccountNumber ?? '',
+                  amount: d.amount,
+                })),
+                totalDeposits: depositTotal,
+              }
+            : {}),
           ...(reportType === 'RCDISB'
             ? { totalGross: payrollTotals.gross, totalDeductions: payrollTotals.deductions }
             : {}),
@@ -1050,6 +1092,81 @@ function PrepareReport({
           </div>
         )}
       </div>
+
+      {/* Patch 157: Section B - the deposits this RCD accounts for. */}
+      {reportType === 'RCD' && (
+        <div className="mt-5">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h3 className="text-sm font-semibold text-navy-900">Deposits to report</h3>
+            <span className="text-xs text-slate-500">
+              {chosenDeposits.length} selected, {formatPeso(depositTotal)}
+            </span>
+          </div>
+          <p className="mb-2 text-xs text-slate-500">
+            An RCD may carry collections only, deposits only, or both - the Liquidating Officer
+            often banks a week&apos;s collections later, on a report of their own. Deposits are
+            booked when they are posted under Deposits, so they are not in this report&apos;s
+            entry.
+          </p>
+          {reportableDeposits.length === 0 ? (
+            <Alert tone="info">No deposit of this fund is waiting to be reported.</Alert>
+          ) : (
+            <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="w-10 px-3 py-2" />
+                    <th className="px-3 py-2 text-left">Deposit slip</th>
+                    <th className="px-3 py-2 text-left">Date</th>
+                    <th className="px-3 py-2 text-left">Bank</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportableDeposits.map((d) => {
+                    const booked = Boolean(d.jevId);
+                    return (
+                      <tr key={d.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            disabled={!booked}
+                            checked={selectedDeposits.has(d.id)}
+                            onChange={() =>
+                              setSelectedDeposits((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(d.id)) next.delete(d.id);
+                                else next.add(d.id);
+                                return next;
+                              })
+                            }
+                            aria-label={`Include deposit ${d.depositSlipNo}`}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {d.depositSlipNo}
+                          {!booked && (
+                            <span className="block font-sans text-2xs text-amber-700">
+                              Not posted yet - post it under Deposits first
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{formatShortDate(d.depositDate)}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {d.bankName} {d.bankAccountNumber}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <span className="cbo-amount">{formatPeso(d.amount)}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {isPayroll && chosen.length > 0 && (
         <table className="mt-4 w-full border-collapse text-sm">
