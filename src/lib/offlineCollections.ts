@@ -18,8 +18,9 @@ import { toNumber, pad } from './serials';
  *
  *   SETUP FILE   CFMS -> app. Downloaded on Treasury > Collections > Offline
  *                app setup, for one collecting officer: the funds, the
- *                revenue codes (the same codes the Abstract upload maps),
- *                the accountable form types, and the officer's own booklet
+ *                Chart of Accounts (patch 174: the receipt names the account
+ *                code itself, as CFMS's own collection form does), the
+ *                accountable form types, and the officer's own booklet
  *                movements - so the app checks a serial against the booklets
  *                issued to him with exactly the rule CFMS uses (formCustody).
  *
@@ -31,8 +32,10 @@ import { toNumber, pad } from './serials';
  *                eORs, one for ARs - the upload takes one kind at a time.
  *
  * Nothing new is needed on the CFMS side to receive the data: the files go
- * through the same upload, with the same checks (booklet, revenue code,
- * subsidiary, duplicate), as an abstract from the old system.
+ * through the same upload, with the same checks (booklet, account,
+ * subsidiary, duplicate), as an abstract from the old system. The upload
+ * takes either Treasury's revenue codes or, since patch 174, the account
+ * code itself.
  */
 
 // ---------------------------------------------------------------------------
@@ -40,7 +43,8 @@ import { toNumber, pad } from './serials';
 // ---------------------------------------------------------------------------
 
 export const SETUP_FORMAT = 'CFMS-OFFLINE-SETUP';
-export const SETUP_VERSION = 1;
+/** 2 since patch 174: the Chart of Accounts in place of the revenue codes. */
+export const SETUP_VERSION = 2;
 
 export interface OfflineSetup {
   format: typeof SETUP_FORMAT;
@@ -57,15 +61,21 @@ export interface OfflineSetup {
   /** The collecting officer, exactly as on Master Data > Employees. */
   officer: { id: string; name: string; position: string };
   funds: Array<{ code: string; name: string }>;
-  /** Treasury's revenue codes, as the Abstract upload maps them. */
-  revenueCodes: Array<{
+  /** The postable accounts of the Chart of Accounts, as CFMS's collection form offers them. */
+  accounts: Array<{
     code: string;
-    description: string;
-    accountCode: string;
-    accountName: string;
+    name: string;
     /** The account is kept per party: the line names a subsidiary (default: the payor). */
     perParty: boolean;
   }>;
+  /**
+   * Patch 174: the subsidiary ledgers - every name on Master Data > Names
+   * (payees, and employees not already a Name). A line on a per-party
+   * account must name one of them, or the payor must be one.
+   */
+  subsidiaries: Array<{ name: string; type: 'PAYEE' | 'EMPLOYEE' }>;
+  /** Set by the app when the accounts or subsidiary ledgers were updated from an Excel/CSV list. */
+  listsUpdatedAt?: string;
   formTypes: Array<{ code: string; name: string; printedAs: string; serialLength: number }>;
   /** This officer's booklet movements (issues to him, returns from him). */
   movements: CustodyMovement[];
@@ -93,10 +103,58 @@ export function readSetup(text: string): OfflineSetup {
   if (s.version > SETUP_VERSION) {
     throw new Error('That setup file was made by a newer CFMS. Update this app first.');
   }
-  if (!s.officer?.name || !Array.isArray(s.funds) || !Array.isArray(s.revenueCodes)) {
+  if (!Array.isArray(s.accounts)) {
+    throw new Error(
+      'That setup file is from an older CFMS (it has revenue codes, not the Chart of Accounts). Download it again from CFMS.',
+    );
+  }
+  if (!Array.isArray(s.subsidiaries)) s.subsidiaries = [];
+  if (!s.officer?.name || !Array.isArray(s.funds)) {
     throw new Error('That setup file is incomplete. Download it again from CFMS.');
   }
   return s;
+}
+
+/**
+ * "DELA CRUZ, Juan M." and "Juan M. Dela Cruz" read the same - the matching
+ * the upload uses for a subsidiary (lib/names.ts nameKey).
+ */
+export function subsidiaryKey(name: string): string {
+  return String(name ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(' ');
+}
+
+/** The subsidiary ledgers a name matches: exactly one is what the upload needs. */
+export function subsidiaryMatches(setup: OfflineSetup, name: string) {
+  const k = subsidiaryKey(name);
+  return k ? setup.subsidiaries.filter((x) => subsidiaryKey(x.name) === k) : [];
+}
+
+/**
+ * The subsidiary ledgers as the Bulk upload sees them
+ * (functions/src/treasury/collectionsImport.ts): every active Name, and every
+ * active employee not already tied to a Name.
+ */
+export function subsidiaryLedgers(
+  payees: Array<{ name?: string; active?: boolean; employeeId?: string }>,
+  employees: Array<{ id: string; displayName?: string; active?: boolean; payeeId?: string }>,
+): OfflineSetup['subsidiaries'] {
+  const tied = new Set(payees.map((p) => p.employeeId).filter(Boolean));
+  const out: OfflineSetup['subsidiaries'] = [];
+  for (const p of payees) {
+    if (p.active === false || !p.name) continue;
+    out.push({ name: p.name, type: p.employeeId ? 'EMPLOYEE' : 'PAYEE' });
+  }
+  for (const e of employees) {
+    if (e.active === false || !e.displayName || tied.has(e.id) || e.payeeId) continue;
+    out.push({ name: e.displayName, type: 'EMPLOYEE' });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ---------------------------------------------------------------------------
@@ -113,8 +171,9 @@ export const OFFLINE_KIND_LABELS: Record<OfflineKind, string> = {
 };
 
 export interface OfflineLine {
-  revenueCode: string;
-  /** The particulars printed on the receipt; the revenue code's description by default. */
+  /** The account credited - Chart of Accounts code, as on CFMS's collection form. */
+  accountCode: string;
+  /** The particulars printed on the receipt; the account's name by default. */
   description: string;
   /** Centavos. */
   amount: number;
@@ -225,10 +284,25 @@ export function receiptProblems(
 
   if (!r.cancelled) {
     if (!r.payorName.trim()) p.push("the payor's name is missing");
-    if (!r.lines.length) p.push('add at least one revenue line');
+    if (!r.lines.length) p.push('add at least one line');
     r.lines.forEach((l, i) => {
-      const code = setup.revenueCodes.find((c) => c.code === l.revenueCode);
-      if (!code) p.push(`line ${i + 1}: choose the revenue code`);
+      const account = setup.accounts.find((a) => a.code === l.accountCode);
+      if (!account) p.push(`line ${i + 1}: choose the account`);
+      else if (account.perParty && setup.subsidiaries.length) {
+        const wanted = (l.subsidiary ?? '').trim() || r.payorName.trim();
+        const hits = subsidiaryMatches(setup, wanted);
+        if (hits.length !== 1) {
+          p.push(
+            `line ${i + 1}: ${account.code} ${account.name} is kept per subsidiary ledger - ${
+              !wanted
+                ? 'choose the subsidiary'
+                : hits.length === 0
+                  ? `"${wanted}" is not a subsidiary ledger in CFMS (Master Data > Names); choose one, or load a newer setup file`
+                  : `${hits.length} subsidiary ledgers are called "${wanted}"; choose the exact one`
+            }`,
+          );
+        }
+      }
       if (!(l.amount > 0)) p.push(`line ${i + 1}: the amount is missing`);
     });
     if (/cancel/i.test(r.remarks ?? '')) {
@@ -313,7 +387,7 @@ export function abstractRows(
     for (const l of r.lines) {
       rows.push({
         ...base,
-        'Account Code': l.revenueCode,
+        'Account Code': l.accountCode,
         'Account Name': l.description,
         Amount: Math.round(l.amount) / 100,
         Remarks: r.remarks ?? '',
@@ -329,4 +403,25 @@ export function abstractFileName(officerName: string, reportNo: string, kind: Of
   const who = officerName.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const k = kind === 'CASH' ? 'Cash' : kind === 'EOR' ? 'eOR' : 'AR';
   return `CFMS-Collections_${who}_${reportNo}_${k}.xlsx`;
+}
+
+/**
+ * The same rows as CSV text (comma-separated, every value quoted), for the
+ * "Save as CSV" choice. Every value is written as text - an O.R. number
+ * 0007100001 keeps its zeros - and the Bulk upload reads a CSV as text
+ * (patch 174), so it comes back exactly as written.
+ */
+export function abstractCsv(rows: AbstractRow[]): string {
+  const q = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [ABSTRACT_HEADERS.map(q).join(',')];
+  for (const r of rows) lines.push(ABSTRACT_HEADERS.map((h) => q(r[h])).join(','));
+  return lines.join('\r\n') + '\r\n';
+}
+
+export function abstractCsvFileName(
+  officerName: string,
+  reportNo: string,
+  kind: OfflineKind,
+): string {
+  return abstractFileName(officerName, reportNo, kind).replace(/\.xlsx$/, '.csv');
 }

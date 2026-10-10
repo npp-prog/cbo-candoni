@@ -20,9 +20,17 @@ import * as XLSX from 'xlsx';
 export type SheetRow = Record<string, unknown>;
 
 /** Reads the first sheet of a .csv, .xls or .xlsx into plain objects. */
-export async function readSheet(file: File): Promise<SheetRow[]> {
+export async function readSheet(
+  file: File,
+  /**
+   * Patch 174: read a CSV as text, cell for cell - an O.R. number 0007100001
+   * keeps its zeros instead of becoming the number 7100001.
+   */
+  options: { csvAsText?: boolean } = {},
+): Promise<SheetRow[]> {
   const buffer = await file.arrayBuffer();
-  const book = XLSX.read(buffer, { type: 'array', raw: false });
+  const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
+  const book = XLSX.read(buffer, { type: 'array', raw: Boolean(options.csvAsText && isCsv) });
   const sheet = book.Sheets[book.SheetNames[0]];
   if (!sheet) return [];
   return XLSX.utils.sheet_to_json<SheetRow>(sheet, { defval: '' });

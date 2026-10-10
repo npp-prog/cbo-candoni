@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Field, Select } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
-import { useFunds, useRevenueCodes } from '@/data/queries';
+import { useAccounts, useFunds, useRevenueCodes } from '@/data/queries';
 import { engine } from '@/lib/engine';
 import { formatPeso } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
@@ -44,6 +44,7 @@ export default function AbstractUpload() {
 
   const funds = useFunds();
   const revenueCodes = useRevenueCodes();
+  const accounts = useAccounts(true);
 
   const [receipts, setReceipts] = useState<AbstractReceipt[]>([]);
   const [fileName, setFileName] = useState('');
@@ -69,10 +70,12 @@ export default function AbstractUpload() {
 
   const mapped = useMemo(() => {
     const known = new Set(revenueCodes.data.map((c) => (c.code ?? c.id).trim().toUpperCase()));
+    // Patch 174: an account code of the chart is taken as it is.
+    for (const a of accounts.data) known.add(String(a.code).trim().toUpperCase());
     const used = revenueCodesUsed(receipts);
     const missing = [...used.entries()].filter(([code]) => !known.has(code.trim().toUpperCase()));
     return { used, missing };
-  }, [receipts, revenueCodes.data]);
+  }, [receipts, revenueCodes.data, accounts.data]);
 
   const broken = receipts.filter((r) => r.problem);
   const cancelled = receipts.filter((r) => r.cancelled);

@@ -88,7 +88,8 @@ function isCancelled(remarks: string): boolean {
 }
 
 export async function parseAbstractFile(file: File): Promise<AbstractReceipt[]> {
-  const sheet = await readSheet(file);
+  // Patch 174: a CSV from the offline Collections app is read as text.
+  const sheet = await readSheet(file, { csvAsText: true });
 
   /** Keyed by report reference and O.R. number: what makes one receipt. */
   const receipts = new Map<string, AbstractReceipt>();

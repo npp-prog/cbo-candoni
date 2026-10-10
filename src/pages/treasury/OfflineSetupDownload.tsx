@@ -9,10 +9,10 @@ import { useEntity } from '@/data/useEntity';
 import {
   useAccountableFormTypes,
   useAccounts,
+  usePayees,
   useEmployees,
   useFormMovements,
   useFunds,
-  useRevenueCodes,
 } from '@/data/queries';
 import { app } from '@/lib/firebase';
 import { todayPh } from '@/lib/dates';
@@ -20,6 +20,7 @@ import {
   SETUP_FORMAT,
   SETUP_VERSION,
   isPerParty,
+  subsidiaryLedgers,
   setupFileName,
   type OfflineSetup,
 } from '@/lib/offlineCollections';
@@ -38,8 +39,10 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
   const entity = useEntity();
   const employees = useEmployees();
   const funds = useFunds();
-  const revenueCodes = useRevenueCodes();
-  const accounts = useAccounts(false);
+  /* Patch 174: the postable accounts, as CFMS's collection form offers them. */
+  const accounts = useAccounts(true);
+  /* Patch 174: the subsidiary ledgers - Names, as the upload matches them. */
+  const payees = usePayees();
   const formTypes = useAccountableFormTypes();
   const movementsNow = useFormMovements(fiscalYear);
   const movementsBefore = useFormMovements(fiscalYear - 1);
@@ -47,8 +50,8 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
 
   const loading =
     employees.loading ||
+    payees.loading ||
     funds.loading ||
-    revenueCodes.loading ||
     accounts.loading ||
     formTypes.loading ||
     movementsNow.loading ||
@@ -64,11 +67,8 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
     [movementsNow.data, movementsBefore.data, officerId],
   );
 
-  const unmapped = revenueCodes.data.filter((c) => c.active !== false && !c.accountCode);
-
   const download = () => {
     if (!officer) return;
-    const accountsByCode = new Map(accounts.data.map((a) => [a.code, a]));
     const setup: OfflineSetup = {
       format: SETUP_FORMAT,
       version: SETUP_VERSION,
@@ -80,18 +80,12 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
       treasurer: { name: entity.localTreasurer.name, position: entity.localTreasurer.position },
       officer: { id: officer.id, name: officer.displayName, position: officer.position ?? '' },
       funds: funds.data.map((f) => ({ code: f.code, name: f.name })),
-      revenueCodes: revenueCodes.data
-        .filter((c) => c.active !== false && c.accountCode)
-        .map((c) => {
-          const a = accountsByCode.get(c.accountCode.trim());
-          return {
-            code: c.code,
-            description: c.description,
-            accountCode: c.accountCode.trim(),
-            accountName: a?.name ?? '',
-            perParty: isPerParty(c.accountCode, a?.requiresSubsidiary),
-          };
-        }),
+      accounts: accounts.data.map((a) => ({
+        code: a.code,
+        name: a.name,
+        perParty: isPerParty(a.code, a.requiresSubsidiary),
+      })),
+      subsidiaries: subsidiaryLedgers(payees.data, employees.data),
       formTypes: formTypes.data.map((t) => ({
         code: t.code,
         name: t.name,
@@ -139,9 +133,9 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
     >
       <p className="text-sm text-slate-700">
         The file carries what the app needs to record receipts exactly as CFMS will accept them: the
-        funds, Treasury&rsquo;s revenue codes, the accountable form types, and the booklets issued
-        to the officer. Load it in the app under Settings. Download it again after issuing the
-        officer new booklets or adding revenue codes.
+        funds, the Chart of Accounts, the accountable form types, and the booklets issued to the
+        officer. Load it in the app under Settings. Download it again after issuing the officer new
+        booklets or adding accounts.
       </p>
       <Field label="Collecting officer" className="mt-3">
         <Select value={officerId} onChange={(e) => setOfficerId(e.target.value)}>
@@ -159,17 +153,6 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
           {issues.length
             ? `${issues.length} booklet issue${issues.length === 1 ? '' : 's'} to ${officer.displayName} in ${fiscalYear - 1}-${fiscalYear} go into the file.`
             : `No booklet has been issued to ${officer.displayName} in ${fiscalYear - 1}-${fiscalYear}. The app can still record e-collections, but no counter receipt until a booklet is issued (Treasury > Accountable Forms > Issue) and the file downloaded again.`}
-        </Alert>
-      )}
-      {unmapped.length > 0 && (
-        <Alert tone="warning" className="mt-3">
-          {unmapped.length} revenue code{unmapped.length === 1 ? ' has' : 's have'} no account and
-          {unmapped.length === 1 ? ' is' : ' are'} left out:{' '}
-          {unmapped
-            .slice(0, 8)
-            .map((c) => c.code)
-            .join(', ')}
-          .
         </Alert>
       )}
     </Modal>

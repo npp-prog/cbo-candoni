@@ -378,7 +378,14 @@ export const importCollections = onCall(
             add(`a revenue line with no code or no amount`);
             continue;
           }
-          const mapped = revenueCodes.get(code.toUpperCase());
+          /*
+           * Patch 174: a Treasury revenue code, as the old abstracts carry -
+           * or the account code itself, as the offline Collections app (and
+           * CFMS's own collection form) names it.
+           */
+          const mapped =
+            revenueCodes.get(code.toUpperCase()) ??
+            (accounts.has(code) ? { accountCode: code, description: undefined } : undefined);
           if (!mapped) {
             unmapped.set(code, String(l.description ?? ''));
             continue;
@@ -448,7 +455,7 @@ export const importCollections = onCall(
         'failed-precondition',
         `${unmapped.size} revenue code${unmapped.size === 1 ? '' : 's'} in this file ${unmapped.size === 1 ? 'has' : 'have'} no COA account against ${unmapped.size === 1 ? 'it' : 'them'}, so nothing was posted. ` +
           `A collection posted to a guessed account misstates the revenue and the cash still foots, which is what makes it hard to find later. ` +
-          `Add them under Master Data - Revenue Codes: ${list}${unmapped.size > 15 ? `, and ${unmapped.size - 15} more` : ''}.`,
+          `Use an account code of the Chart of Accounts, or add them under Master Data - Revenue Codes: ${list}${unmapped.size > 15 ? `, and ${unmapped.size - 15} more` : ''}.`,
         { unmapped: [...unmapped.keys()] },
       );
     }
