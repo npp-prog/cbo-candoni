@@ -265,38 +265,113 @@ export function propertyShares(p: Af56Property) {
 const signed = (k: keyof Af56Amounts, v: Centavos) =>
   k === 'discountCurrent' || k === 'discountAdvance' ? -v : v;
 
+export type Af56AccountKey = keyof typeof AF56_ACCOUNTS;
+export type Af56Accounts = Record<Af56AccountKey, { code: string; name: string }>;
+
+/**
+ * Patch 179 - the municipality's accounts, found in the office's own Chart of
+ * Accounts by what they are called.
+ *
+ * The defaults are the GAM codes (40102040 Real Property Tax - Basic, and so
+ * on). A chart that keeps real property tax under another code, or that uses
+ * 40102040 for something else (one had "Franchise Tax" there), would have put
+ * the municipality's share on the wrong account. So each account is looked up:
+ *
+ *   - the default code is kept when the chart's account at that code is the
+ *     one expected (its name says so), or when the chart has no such code;
+ *   - otherwise the chart is searched for the account whose name matches, and
+ *     that account's code is used;
+ *   - with no match anywhere, the default stays and `af56ChartWarnings` says
+ *     what to correct in the Chart of Accounts.
+ */
+const NAME_TESTS: Record<Af56AccountKey, (name: string) => boolean> = {
+  dueToLgus: (n) => /due\s*to\s*lgu/i.test(n),
+  dueToOtherFunds: (n) => /due\s*to\s*other\s*funds?/i.test(n),
+  rptBasic: (n) =>
+    /real\s*property\s*tax|\brpt\b/i.test(n) &&
+    /basic/i.test(n) &&
+    !/discount|deferred|receivable|advance|transfer|idle|levy|special/i.test(n),
+  rptBasicDiscount: (n) =>
+    /discount/i.test(n) && /real\s*property\s*tax|\brpt\b/i.test(n) && !/advance|deferred/i.test(n),
+  deferredRpt: (n) =>
+    /deferred/i.test(n) && /real\s*property\s*tax|\brpt\b/i.test(n) && !/discount/i.test(n),
+  deferredRptDiscount: (n) =>
+    /discount/i.test(n) && /advance/i.test(n) && /real\s*property\s*tax|\brpt\b/i.test(n),
+  penalties: (n) => /fines?\s*(and|&)\s*penalt/i.test(n) && /property/i.test(n),
+};
+
+export function resolveAf56Accounts(
+  chart: Array<{ code: string; name: string; active?: boolean | null }> | null | undefined,
+): Af56Accounts {
+  const out = { ...AF56_ACCOUNTS } as Af56Accounts;
+  if (!chart || chart.length === 0) return out;
+  const live = chart.filter((a) => a.active !== false);
+  for (const key of Object.keys(AF56_ACCOUNTS) as Af56AccountKey[]) {
+    const def = AF56_ACCOUNTS[key];
+    const test = NAME_TESTS[key];
+    const atCode = live.find((a) => a.code === def.code);
+    if (atCode && test(atCode.name)) {
+      out[key] = { code: def.code, name: atCode.name };
+      continue;
+    }
+    const found = live.filter((a) => test(a.name)).sort((x, y) => x.code.localeCompare(y.code))[0];
+    if (found) out[key] = { code: found.code, name: found.name };
+  }
+  return out;
+}
+
+/** What the Chart of Accounts has to be corrected for, in plain words. */
+export function af56ChartWarnings(
+  chart: Array<{ code: string; name: string; active?: boolean | null }> | null | undefined,
+): string[] {
+  if (!chart || chart.length === 0) return [];
+  const resolved = resolveAf56Accounts(chart);
+  const out: string[] = [];
+  for (const key of [
+    'rptBasic',
+    'rptBasicDiscount',
+    'deferredRpt',
+    'penalties',
+  ] as Af56AccountKey[]) {
+    const r = resolved[key];
+    const at = chart.find((a) => a.code === r.code);
+    if (at && !NAME_TESTS[key](at.name)) {
+      out.push(
+        `The Chart of Accounts calls ${r.code} "${at.name}", but CFMS posts the municipal share of real property tax there as "${AF56_ACCOUNTS[key].name}". Add or rename the account under Master Data > Chart of Accounts.`,
+      );
+    }
+  }
+  return out;
+}
+
 /** The municipality's own account for its share of each basic figure. */
-const MUNICIPAL_ACCOUNT: Record<keyof Af56Amounts, { code: string; name: string; words: string }> =
-  {
-    prior: { ...AF56_ACCOUNTS.rptBasic, words: 'Basic RPT, prior years - municipal share 40%' },
-    current: { ...AF56_ACCOUNTS.rptBasic, words: 'Basic RPT, current year - municipal share 40%' },
-    advance: {
-      ...AF56_ACCOUNTS.deferredRpt,
-      words: 'Basic RPT paid in advance - municipal share 40%',
-    },
-    penaltyPrior: {
-      ...AF56_ACCOUNTS.penalties,
-      words: 'RPT penalty, prior years - municipal share 40%',
-    },
-    penaltyCurrent: {
-      ...AF56_ACCOUNTS.penalties,
-      words: 'RPT penalty, current year - municipal share 40%',
-    },
+function municipalAccounts(
+  acc: Af56Accounts,
+): Record<keyof Af56Amounts, { code: string; name: string; words: string }> {
+  return {
+    prior: { ...acc.rptBasic, words: 'Basic RPT, prior years - municipal share 40%' },
+    current: { ...acc.rptBasic, words: 'Basic RPT, current year - municipal share 40%' },
+    advance: { ...acc.deferredRpt, words: 'Basic RPT paid in advance - municipal share 40%' },
+    penaltyPrior: { ...acc.penalties, words: 'RPT penalty, prior years - municipal share 40%' },
+    penaltyCurrent: { ...acc.penalties, words: 'RPT penalty, current year - municipal share 40%' },
     discountCurrent: {
-      ...AF56_ACCOUNTS.rptBasicDiscount,
+      ...acc.rptBasicDiscount,
       words: 'Discount on basic RPT - municipal share 40%',
     },
     discountAdvance: {
-      ...AF56_ACCOUNTS.deferredRptDiscount,
+      ...acc.deferredRptDiscount,
       words: 'Discount on advance RPT - municipal share 40%',
     },
   };
+}
 
 /**
  * The receipt's lines, gathered by account and subsidiary. Lines that come to
- * nothing are left out; a discount line is negative.
+ * nothing are left out; a discount line is negative. `accounts` is the result
+ * of `resolveAf56Accounts` (patch 179); without it, the GAM defaults.
  */
-export function af56Lines(detail: Af56Detail): Af56Line[] {
+export function af56Lines(detail: Af56Detail, accounts: Af56Accounts = AF56_ACCOUNTS): Af56Line[] {
+  const MUNICIPAL_ACCOUNT = municipalAccounts(accounts);
   const order: string[] = [];
   const map = new Map<string, Af56Line>();
   const add = (
@@ -331,13 +406,13 @@ export function af56Lines(detail: Af56Detail): Af56Line[] {
     const sh = propertyShares(p);
     for (const k of AMOUNT_KEYS) {
       add(
-        AF56_ACCOUNTS.dueToLgus,
+        accounts.dueToLgus,
         province,
         signed(k, sh.basic[k].province),
         'RPT - provincial share (basic 35%, SEF 50%)',
       );
       add(
-        AF56_ACCOUNTS.dueToLgus,
+        accounts.dueToLgus,
         province,
         signed(k, sh.sef[k].province),
         'RPT - provincial share (basic 35%, SEF 50%)',
@@ -348,7 +423,7 @@ export function af56Lines(detail: Af56Detail): Af56Line[] {
     const sh = propertyShares(p);
     for (const k of AMOUNT_KEYS) {
       add(
-        AF56_ACCOUNTS.dueToLgus,
+        accounts.dueToLgus,
         p.barangaySubsidiary,
         signed(k, sh.basic[k].barangay),
         `Basic RPT - barangay share 25%`,
@@ -366,7 +441,7 @@ export function af56Lines(detail: Af56Detail): Af56Line[] {
     const sh = propertyShares(p);
     for (const k of AMOUNT_KEYS) {
       add(
-        AF56_ACCOUNTS.dueToOtherFunds,
+        accounts.dueToOtherFunds,
         SEF_FUND_SUBSIDIARY,
         signed(k, sh.sef[k].municipal),
         'SEF - municipal share 50%, for the SEF books',
@@ -446,6 +521,8 @@ export function af56LinesAgree(
     subsidiaryType?: string | null;
     subsidiaryId?: string | null;
   }>,
+  /** Patch 179: the accounts resolved from the chart. The GAM defaults also agree. */
+  accounts?: Af56Accounts,
 ): boolean {
   const key = (l: {
     accountCode?: string | null;
@@ -466,11 +543,14 @@ export function af56LinesAgree(
     for (const [k, v] of [...m]) if (v === 0) m.delete(k);
     return m;
   };
-  const want = sum(af56Lines(detail));
   const have = sum(lines);
-  if (want.size !== have.size) return false;
-  for (const [k, v] of want) if (have.get(k) !== v) return false;
-  return true;
+  const same = (want: Map<string, number>) => {
+    if (want.size !== have.size) return false;
+    for (const [k, v] of want) if (have.get(k) !== v) return false;
+    return true;
+  };
+  // A receipt recorded before the chart was corrected keeps the defaults.
+  return same(sum(af56Lines(detail))) || (!!accounts && same(sum(af56Lines(detail, accounts))));
 }
 
 /** Name matching for subsidiary ledgers: case, punctuation and order free. */

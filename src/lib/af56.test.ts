@@ -5,6 +5,8 @@ import {
   AF56_DISCOUNT_ACCOUNTS,
   af56Lines,
   af56LinesAgree,
+  af56ChartWarnings,
+  resolveAf56Accounts,
   af56Problems,
   af56Total,
   basicShare,
@@ -209,5 +211,37 @@ describe('the matching entry in the SEF books (patch 176)', () => {
     expect(e.find((l) => l.accountCode === '40102051')?.debit).toBe(5000);
     expect(e.find((l) => l.accountCode === '20501021')?.debit).toBe(2500);
     expect(sefBooksEntry([])).toEqual([]);
+  });
+});
+
+describe("patch 179: the municipal share on the chart's Real Property Tax account", () => {
+  const d = detail([prop({ basic: { ...ZERO_AMOUNTS, current: 2_000_00 } })]);
+
+  it('keeps 40102040 when the chart calls it Real Property Tax - Basic', () => {
+    const acc = resolveAf56Accounts([{ code: '40102040', name: 'Real Property Tax- Basic' }]);
+    expect(acc.rptBasic.code).toBe('40102040');
+    expect(af56ChartWarnings([{ code: '40102040', name: 'Real Property Tax- Basic' }])).toEqual([]);
+  });
+
+  it('finds the RPT account by name when 40102040 is something else', () => {
+    const chart = [
+      { code: '40102040', name: 'Franchise Tax' },
+      { code: '40101010', name: 'Real Property Tax - Basic' },
+      { code: '40101011', name: 'Discount on Real Property Tax - Basic' },
+    ];
+    const acc = resolveAf56Accounts(chart);
+    expect(acc.rptBasic.code).toBe('40101010');
+    expect(acc.rptBasicDiscount.code).toBe('40101011');
+    const lines = af56Lines(d, acc);
+    expect(sum(lines, '40101010')).toBe(800_00);
+    expect(sum(lines, '40102040')).toBe(0);
+    // A receipt saved either way agrees.
+    expect(af56LinesAgree(d, lines, acc)).toBe(true);
+    expect(af56LinesAgree(d, af56Lines(d), acc)).toBe(true);
+  });
+
+  it('warns when no Real Property Tax account exists and 40102040 is mislabelled', () => {
+    const w = af56ChartWarnings([{ code: '40102040', name: 'Franchise Tax' }]);
+    expect(w[0]).toMatch(/calls 40102040 "Franchise Tax"/);
   });
 });

@@ -75,11 +75,26 @@ export const setBankLedgerOpening = onCall(
       };
 
       const fiscalYear = Number(data.fiscalYear);
-      const bankAccountId = String(data.bankAccountId ?? '').trim();
       if (!Number.isInteger(fiscalYear)) throw invalid('A fiscal year is required.');
+
+      /*
+       * Patch 179: the Cash in Local Treasury book's beginning balance - cash
+       * on hand at 1 January, undeposited collections of the year before -
+       * kept on the same kind of record under "CLT__<fund>". No new
+       * function: a Treasurer's opening balance is one act whichever book it
+       * opens.
+       */
+      const local = (data as { localTreasury?: boolean }).localTreasury === true;
+      const localFund = String((data as { fundCode?: string }).fundCode ?? '')
+        .trim()
+        .toUpperCase();
+      if (local && !localFund) throw invalid('Choose the fund.');
+      const bankAccountId = local ? `CLT__${localFund}` : String(data.bankAccountId ?? '').trim();
       if (!bankAccountId) throw invalid('Choose the bank account.');
 
-      const bank = await loadBankAccount(bankAccountId);
+      const bank = local
+        ? { bankName: 'Cash in Local Treasury', accountNumber: localFund, fundCode: localFund }
+        : await loadBankAccount(bankAccountId);
       assertFundInScope(caller, bank.fundCode);
 
       const beginningBalance = cents(data.beginningBalance);

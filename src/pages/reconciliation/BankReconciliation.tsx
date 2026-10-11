@@ -105,9 +105,7 @@ export default function BankReconciliation() {
 
   const balancePerBooks = useMemo(
     () =>
-      ledger.data
-        .filter((e) => e.period <= period)
-        .reduce((s, e) => s + (e.signedAmount ?? 0), 0),
+      ledger.data.filter((e) => e.period <= period).reduce((s, e) => s + (e.signedAmount ?? 0), 0),
     [ledger.data, period],
   );
 
@@ -171,7 +169,15 @@ export default function BankReconciliation() {
             kind: t.matchStatus as 'BANK_CHARGE' | 'INTEREST_INCOME' | 'ERROR',
           })),
       }),
-    [statementDate, bank?.bankName, balancePerBooks, balancePerBank, outstandingChecks, depositsInTransit, transactions.data],
+    [
+      statementDate,
+      bank?.bankName,
+      balancePerBooks,
+      balancePerBank,
+      outstandingChecks,
+      depositsInTransit,
+      transactions.data,
+    ],
   );
   const outstandingChecksTotal = brs.outstandingChecks;
   const depositsInTransitTotal = brs.depositsInTransit;
@@ -245,7 +251,10 @@ export default function BankReconciliation() {
     try {
       await updateDoc(doc(db, COL.bankTransactions, transaction.id), { matchStatus });
     } catch (err) {
-      toast.error('Could not classify the transaction', err instanceof Error ? err.message : String(err));
+      toast.error(
+        'Could not classify the transaction',
+        err instanceof Error ? err.message : String(err),
+      );
     }
   };
 
@@ -303,7 +312,8 @@ export default function BankReconciliation() {
                 : t.matchedType === 'ERCD'
                   ? 'eRCD'
                   : t.matchedType}{' '}
-              {t.matchConfidence !== undefined && `- ${Math.round(t.matchConfidence * 100)}% confident`}
+              {t.matchConfidence !== undefined &&
+                `- ${Math.round(t.matchConfidence * 100)}% confident`}
             </span>
           </div>
         ) : (
@@ -365,7 +375,12 @@ export default function BankReconciliation() {
             <Button size="sm" onClick={printBrs} disabled={!bankAccountId}>
               Print BRS
             </Button>
-            <Button size="sm" loading={busy} onClick={() => void autoMatch()} disabled={!bankAccountId}>
+            <Button
+              size="sm"
+              loading={busy}
+              onClick={() => void autoMatch()}
+              disabled={!bankAccountId}
+            >
               Match automatically
             </Button>
             {canFinalize && (
@@ -374,7 +389,11 @@ export default function BankReconciliation() {
                 variant="primary"
                 disabled={!totals.reconciled || !bankAccountId}
                 onClick={() => setConfirmFinalize(true)}
-                title={totals.reconciled ? undefined : 'The reconciliation must balance to zero before it can be finalised.'}
+                title={
+                  totals.reconciled
+                    ? undefined
+                    : 'The reconciliation must balance to zero before it can be finalised.'
+                }
               >
                 Finalise
               </Button>
@@ -388,7 +407,11 @@ export default function BankReconciliation() {
       <Card className="mb-4" bodyClassName="py-3">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Bank account" required className="lg:col-span-2">
-            <BankAccountPicker value={bankAccountId} fundCode={fundCode} onChange={setBankAccountId} />
+            <BankAccountPicker
+              value={bankAccountId}
+              fundCode={fundCode}
+              onChange={setBankAccountId}
+            />
           </Field>
           <Field label="Statement date" required>
             <DateInput value={statementDate} onChange={setStatementDate} />
@@ -427,7 +450,11 @@ export default function BankReconciliation() {
                   label: 'Schedules',
                   count: brs.lines.reduce((t, l) => t + l.items.length, 0),
                 },
-                { id: 'summary', label: 'Previous reconciliations', count: reconciliations.data.length },
+                {
+                  id: 'summary',
+                  label: 'Previous reconciliations',
+                  count: reconciliations.data.length,
+                },
               ]}
               active={tab}
               onChange={(t) => setTab(t as typeof tab)}
@@ -581,7 +608,10 @@ export default function BankReconciliation() {
             );
             setConfirmFinalize(false);
           } catch (err) {
-            toast.error('The reconciliation was not finalised', err instanceof Error ? err.message : String(err));
+            toast.error(
+              'The reconciliation was not finalised',
+              err instanceof Error ? err.message : String(err),
+            );
           } finally {
             setBusy(false);
           }
@@ -622,10 +652,21 @@ function ReconciliationStatement({
   brs: Brs;
   bankCharges: Centavos;
   interestIncome: Centavos;
-  totals: { adjustedBankBalance: Centavos; adjustedBookBalance: Centavos; difference: Centavos; reconciled: boolean };
+  totals: {
+    adjustedBankBalance: Centavos;
+    adjustedBookBalance: Centavos;
+    difference: Centavos;
+    reconciled: boolean;
+  };
 }) {
   const fig = (v: number | null) =>
-    v === null ? '' : v === 0 ? '-' : v < 0 ? `(${formatPeso(-v, { symbol: false })})` : formatPeso(v, { symbol: false });
+    v === null
+      ? ''
+      : v === 0
+        ? '-'
+        : v < 0
+          ? `(${formatPeso(-v, { symbol: false })})`
+          : formatPeso(v, { symbol: false });
   const TD = 'px-3 py-1.5 text-right font-mono tabular';
   return (
     <Card title="Bank Reconciliation Statement" subtitle={`For the Month of ${brs.monthLabel}`}>
@@ -689,10 +730,10 @@ function ReconciliationStatement({
 
       {(bankCharges > 0 || interestIncome > 0) && (
         <Alert tone="warning" className="mt-4">
-          Bank debit memos of {formatPeso(bankCharges)} and credit memos of {formatPeso(interestIncome)}{' '}
-          appear on the statement but are not yet in the books. Post a journal entry for them - the
-          server refuses to finalise a reconciliation whose book-side adjustments have not reached
-          the ledger.
+          Bank debit memos of {formatPeso(bankCharges)} and credit memos of{' '}
+          {formatPeso(interestIncome)} appear on the statement but are not yet in the books. Post a
+          journal entry for them - the server refuses to finalise a reconciliation whose book-side
+          adjustments have not reached the ledger.
         </Alert>
       )}
     </Card>
@@ -780,7 +821,14 @@ function ImportDialog({
       // Guess the mapping from common column names. A guess the user confirms
       // is far quicker than eight dropdowns from scratch.
       const guess = (candidates: string[]) =>
-        cols.find((c) => candidates.some((k) => c.toLowerCase().replace(/[^a-z]/g, '').includes(k))) ?? '';
+        cols.find((c) =>
+          candidates.some((k) =>
+            c
+              .toLowerCase()
+              .replace(/[^a-z]/g, '')
+              .includes(k),
+          ),
+        ) ?? '';
 
       setMapping({
         transactionDate: guess(['transactiondate', 'trandate', 'date', 'valuedate']),
@@ -793,7 +841,10 @@ function ImportDialog({
         runningBalance: guess(['balance', 'runningbalance']),
       });
     } catch (err) {
-      toast.error('Could not read the file', 'Check that it is a CSV or XLSX export from the bank.');
+      toast.error(
+        'Could not read the file',
+        'Check that it is a CSV or XLSX export from the bank.',
+      );
     }
   };
 
@@ -881,10 +932,32 @@ function ImportDialog({
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <MapField label="Transaction date" required value={mapping.transactionDate} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, transactionDate: v }))} />
-            <MapField label="Description" required value={mapping.description} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, description: v }))} />
-            <MapField label="Reference number" value={mapping.referenceNo} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, referenceNo: v }))} />
-            <MapField label="Posting date" value={mapping.postingDate} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, postingDate: v }))} />
+            <MapField
+              label="Transaction date"
+              required
+              value={mapping.transactionDate}
+              headers={headers}
+              onChange={(v) => setMapping((m) => ({ ...m, transactionDate: v }))}
+            />
+            <MapField
+              label="Description"
+              required
+              value={mapping.description}
+              headers={headers}
+              onChange={(v) => setMapping((m) => ({ ...m, description: v }))}
+            />
+            <MapField
+              label="Reference number"
+              value={mapping.referenceNo}
+              headers={headers}
+              onChange={(v) => setMapping((m) => ({ ...m, referenceNo: v }))}
+            />
+            <MapField
+              label="Posting date"
+              value={mapping.postingDate}
+              headers={headers}
+              onChange={(v) => setMapping((m) => ({ ...m, postingDate: v }))}
+            />
 
             <div className="sm:col-span-2">
               <label className="flex items-center gap-2 text-sm text-navy-800">
@@ -900,15 +973,36 @@ function ImportDialog({
             </div>
 
             {singleAmountColumn ? (
-              <MapField label="Amount (negative is a withdrawal)" required value={mapping.amount} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, amount: v }))} />
+              <MapField
+                label="Amount (negative is a withdrawal)"
+                required
+                value={mapping.amount}
+                headers={headers}
+                onChange={(v) => setMapping((m) => ({ ...m, amount: v }))}
+              />
             ) : (
               <>
-                <MapField label="Withdrawal / debit" value={mapping.debit} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, debit: v }))} />
-                <MapField label="Deposit / credit" value={mapping.credit} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, credit: v }))} />
+                <MapField
+                  label="Withdrawal / debit"
+                  value={mapping.debit}
+                  headers={headers}
+                  onChange={(v) => setMapping((m) => ({ ...m, debit: v }))}
+                />
+                <MapField
+                  label="Deposit / credit"
+                  value={mapping.credit}
+                  headers={headers}
+                  onChange={(v) => setMapping((m) => ({ ...m, credit: v }))}
+                />
               </>
             )}
 
-            <MapField label="Running balance" value={mapping.runningBalance} headers={headers} onChange={(v) => setMapping((m) => ({ ...m, runningBalance: v }))} />
+            <MapField
+              label="Running balance"
+              value={mapping.runningBalance}
+              headers={headers}
+              onChange={(v) => setMapping((m) => ({ ...m, runningBalance: v }))}
+            />
           </div>
 
           {preview.length > 0 && (
@@ -928,8 +1022,12 @@ function ImportDialog({
                     <tr key={i}>
                       <td className="cbo-td text-xs">{formatShortDate(row.transactionDate)}</td>
                       <td className="cbo-td text-xs">{row.description.slice(0, 60)}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(row.debit, { symbol: false, dash: true })}</td>
-                      <td className="cbo-td cbo-amount">{formatPeso(row.credit, { symbol: false, dash: true })}</td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(row.debit, { symbol: false, dash: true })}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(row.credit, { symbol: false, dash: true })}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

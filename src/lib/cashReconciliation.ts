@@ -345,6 +345,11 @@ export function reconcileLocalTreasury(input: {
   ledger: ReconLedgerEntry[];
   /** Deposits, to claim a deposit's own (pre-patch-159) journal entry for its RCD. */
   deposits?: Array<{ id: string; treasuryReportId?: string | null }>;
+  /**
+   * Patch 179: the cash book's balance at 1 January (typed by the Treasurer,
+   * or carried from last year's book). Set against the opening entry.
+   */
+  beginning?: Centavos;
 }): ReconResult {
   const { asOf, rcds } = input;
   const reportById = new Map(rcds.map((r) => [r.id, r]));
@@ -358,6 +363,14 @@ export function reconcileLocalTreasury(input: {
   );
 
   const buckets = new Map<string, Bucket>();
+
+  if (input.beginning !== undefined) {
+    const o = bucket(buckets, 'OPENING');
+    o.treasury += input.beginning;
+    o.treasuryDate = `${input.fiscalYear}-01-01`;
+    o.treasuryRef = 'Beginning balance';
+    o.treasuryDesc = 'Cash on hand at the start of the year per the cash book';
+  }
 
   for (const r of rcds) {
     if (!REPORTED_STATUSES.has(r.status) || r.reportDate > asOf) continue;
@@ -383,6 +396,18 @@ export function reconcileLocalTreasury(input: {
   }
 
   return finish(asOf, buckets, bookBalance, (b, side) => {
+    if (b.key === 'OPENING' && b.treasuryDesc) {
+      const books = b.booksEntries.reduce((t, e) => t + e.debit - e.credit, 0);
+      return {
+        date: `${input.fiscalYear}-01-01`,
+        reference: 'Beginning balance',
+        description: 'Cash on hand at the start of the year',
+        cause:
+          b.booksEntries.length === 0
+            ? `The cash book opens at ${peso(b.treasury)}; the books carry no opening entry on Cash - Local Treasury.`
+            : `The cash book opens at ${peso(b.treasury)}; the opening entry in the books (JEV ${b.booksEntries[0].jevNo}) is ${peso(books)}. Correct the cash book's opening balance (Cash in Local Treasury > Opening balance) or the opening entry.`,
+      };
+    }
     const r = b.key.startsWith('rep:') ? reportById.get(b.key.slice(4)) : undefined;
     const first = b.booksEntries[0];
     const date = b.treasuryDate ?? first?.entryDate ?? asOf;

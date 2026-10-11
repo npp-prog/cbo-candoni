@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/Button';
 import { Field, Select, TextInput, AmountInput, DateInput } from '@/components/ui/Field';
 import { useDocument } from '@/hooks/useFirestore';
 import { COL } from '@/lib/collections';
-import { useBarangays, usePayees } from '@/data/queries';
+import { useAccounts, useBarangays, usePayees } from '@/data/queries';
 import { formatPeso } from '@/lib/money';
 import {
   AMOUNT_KEYS,
   ZERO_AMOUNTS,
   af56Lines,
+  af56ChartWarnings,
+  resolveAf56Accounts,
   af56Total,
   amountsOf,
   findBarangayName,
@@ -154,7 +156,11 @@ export function Af56Section({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
 
-  const lines = useMemo(() => af56Lines(detail), [detail]);
+  // Patch 179: the municipal share goes to the chart's own Real Property Tax account.
+  const chart = useAccounts(true);
+  const resolved = useMemo(() => resolveAf56Accounts(chart.data), [chart.data]);
+  const chartWarnings = useMemo(() => af56ChartWarnings(chart.data), [chart.data]);
+  const lines = useMemo(() => af56Lines(detail, resolved), [detail, resolved]);
   const totals = af56Total(detail);
 
   const setProp = (i: number, patch: Partial<Af56Property>) =>
@@ -172,6 +178,11 @@ export function Af56Section({
         Deferred RPT for advances, Penalties, Discounts); SEF 50% Province (Due to LGUs), 50%
         Municipality (Due to Other Funds, for the SEF books).
       </div>
+      {chartWarnings.map((w) => (
+        <Alert key={w} tone="warning" title="Chart of Accounts">
+          {w}
+        </Alert>
+      ))}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Field label="Calendar Year" required htmlFor="af56Year">

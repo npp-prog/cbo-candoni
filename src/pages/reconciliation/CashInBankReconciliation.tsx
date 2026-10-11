@@ -22,7 +22,7 @@ import { printAs, printFileName } from '@/lib/printTitle';
 import { reconcileCashInBank } from '@/lib/cashReconciliation';
 import { BANK_LEDGER_INFLOW } from '@/types/bankLedger';
 import { fundLabel } from '../budget/Obligations';
-import { defaultAsOf, toReconReport } from './CashLocalTreasuryReconciliation';
+import { defaultAsOf, toReconReport } from './reconReports';
 import {
   ReconciliationOnScreen,
   ReconciliationPrintSheet,

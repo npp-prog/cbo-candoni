@@ -44,7 +44,8 @@ import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 import { CollectionDetail } from './CollectionDetail';
 import { OfflineSetupDownload } from './OfflineSetupDownload';
 import { Af56Section } from './Af56Section';
-import { af56Lines, af56Problems, af56Total, isAf56, type Af56Detail } from '@/lib/af56';
+import { af56Lines,
+  resolveAf56Accounts, af56Problems, af56Total, isAf56, type Af56Detail } from '@/lib/af56';
 
 
 /**
@@ -585,7 +586,7 @@ function CollectionForm({
           payorTin: payorTin.trim() || null,
           rpt: af56 ? rpt : null,
           lines: af56 && rpt
-            ? af56Lines(rpt).map((l, i) => ({
+            ? af56Lines(rpt, resolveAf56Accounts(accounts.data)).map((l, i) => ({
                 lineNo: i + 1,
                 accountCode: l.accountCode,
                 accountName: accountOf(l.accountCode)?.name ?? l.accountName,

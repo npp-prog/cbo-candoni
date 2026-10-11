@@ -280,3 +280,48 @@ describe('reconcileCashInBank', () => {
     expect(r.items[0].cause).toMatch(/Not in the entry: Check No\. 0001235/);
   });
 });
+
+describe('patch 179: the cash book opens with its beginning balance', () => {
+  it('agrees the beginning balance with the opening entry', () => {
+    const r = reconcileLocalTreasury({
+      fiscalYear: 2026,
+      asOf: '2026-10-31',
+      beginning: 75_00,
+      rcds: [rcd({})],
+      ledger: [
+        gl({
+          jevId: 'jo',
+          jevNo: 'OB-1',
+          sourceType: 'OPENING',
+          entryDate: '2026-01-01',
+          debit: 75_00,
+        }),
+        gl({ debit: 300_00, sourceId: 'r1' }),
+        gl({ credit: 200_00, sourceId: 'r1' }),
+      ],
+    });
+    expect(r.treasuryBalance).toBe(175_00);
+    expect(r.items).toEqual([]);
+    expect(r.agreed.count).toBe(2);
+  });
+
+  it('names a beginning balance that differs from the opening entry', () => {
+    const r = reconcileLocalTreasury({
+      fiscalYear: 2026,
+      asOf: '2026-10-31',
+      beginning: 70_00,
+      rcds: [],
+      ledger: [
+        gl({
+          jevId: 'jo',
+          jevNo: 'OB-1',
+          sourceType: 'OPENING',
+          entryDate: '2026-01-01',
+          debit: 75_00,
+        }),
+      ],
+    });
+    expect(r.items[0]).toMatchObject({ side: 'DIFFERENT', effect: 5_00 });
+    expect(r.items[0].cause).toMatch(/opens at 70.00/);
+  });
+});

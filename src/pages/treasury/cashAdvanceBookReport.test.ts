@@ -134,4 +134,31 @@ describe('Cash Book - Cash Advances (patch 177: advances for payroll and RCDisb 
     expect(b.entries[2]).toMatchObject({ reference: 'OR 1234567', credit: 40_000_00, balance: 0 });
     expect(b.closingBalance).toBe(0);
   });
+
+  it('patch 179: brings forward an advance carried in the opening balances', () => {
+    const [b] = build({
+      vouchers: [
+        dv({
+          id: 'OB:l1',
+          dvNo: 'Opening balance (JEV 01-0001)',
+          dvDate: '2025-11-28',
+          accountLines: [
+            {
+              accountCode: AFP,
+              debit: 3_000_00,
+              credit: 0,
+              subsidiaryId: 'e1',
+              subsidiaryName: 'Juan Dela Cruz',
+            },
+          ],
+        }),
+      ],
+      payments: [],
+      payrolls: [payroll({ dvId: 'OB:l1' })],
+      rcdisbs: [rcdisb({ lines: [{ sourceId: 'pr1', sourceNo: 'PR-001', amount: 2_000_00 }] })],
+    });
+    expect(b.broughtForward).toBe(3_000_00);
+    expect(b.entries).toHaveLength(1);
+    expect(b.closingBalance).toBe(1_000_00);
+  });
 });

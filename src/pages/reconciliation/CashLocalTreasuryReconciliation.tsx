@@ -8,11 +8,11 @@ import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDeposits, useLedgerEntries, useTreasuryReports } from '@/data/queries';
 import { useEntity } from '@/data/useEntity';
+import { useLocalTreasuryOpening } from '@/data/useLocalTreasuryOpening';
 import { CASH_LOCAL_TREASURY } from '@/lib/chartOfAccounts';
-import { todayPh } from '@/lib/dates';
 import { printAs, printFileName } from '@/lib/printTitle';
-import { reconcileLocalTreasury, type ReconReport } from '@/lib/cashReconciliation';
-import type { TreasuryReport } from '@/types/treasury';
+import { reconcileLocalTreasury } from '@/lib/cashReconciliation';
+import { defaultAsOf, toReconReport } from './reconReports';
 import { fundLabel } from '../budget/Obligations';
 import {
   ReconciliationOnScreen,
@@ -34,37 +34,6 @@ import {
  * standing, or an entry made in Accounting with no RCD behind it.
  */
 
-export function toReconReport(r: TreasuryReport): ReconReport {
-  return {
-    id: r.id,
-    reportType: r.reportType,
-    reportNo: r.reportNo ?? null,
-    reportDate: r.reportDate,
-    status: r.status,
-    forwardedAt: r.forwardedAt,
-    jevId: r.jevId ?? null,
-    jevNo: r.jevNo ?? null,
-    accountableOfficerName: r.accountableOfficerName ?? null,
-    cancelledReason: r.cancelledReason ?? (r as { cancelReason?: string }).cancelReason ?? null,
-    lines: (r.lines ?? []).map((l) => ({
-      sourceId: l.sourceId,
-      sourceNo: l.sourceNo,
-      amount: l.amount,
-      excluded: l.excluded,
-    })),
-    deposits: (r.deposits ?? []).map((d) => ({
-      sourceId: d.sourceId,
-      depositSlipNo: d.depositSlipNo ?? null,
-      amount: d.amount,
-    })),
-  };
-}
-
-export function defaultAsOf(fiscalYear: number): string {
-  const today = todayPh();
-  return today.slice(0, 4) === String(fiscalYear) ? today : `${fiscalYear}-12-31`;
-}
-
 export default function CashLocalTreasuryReconciliation() {
   const { fiscalYear, fundCode } = useFilters();
   const { profile } = useAuth();
@@ -75,6 +44,7 @@ export default function CashLocalTreasuryReconciliation() {
   const rcds = useTreasuryReports('RCD', fiscalYear, fundCode);
   const ledger = useLedgerEntries(fiscalYear, fundCode, { accountCode: CASH_LOCAL_TREASURY.code });
   const deposits = useDeposits();
+  const opening = useLocalTreasuryOpening(fiscalYear, fundCode);
 
   const result = useMemo(
     () =>
@@ -97,15 +67,17 @@ export default function CashLocalTreasuryReconciliation() {
           subsidiaryId: e.subsidiaryId ?? null,
         })),
         deposits: deposits.data.map((d) => ({ id: d.id, treasuryReportId: d.treasuryReportId })),
+        beginning: opening.amount,
       }),
-    [fiscalYear, asOf, rcds.data, ledger.data, deposits.data],
+    [fiscalYear, asOf, rcds.data, ledger.data, deposits.data, opening.amount],
   );
 
   const spec: StatementSpec = {
     title: 'Reconciliation of Cash in Local Treasury',
     subtitle: 'Treasury Records and Accounting Records',
     fundLabel: fundLabel(fundCode),
-    treasuryLabel: 'Balance per Treasury records (Cash in Local Treasury cash book, from the RCDs)',
+    treasuryLabel:
+      'Balance per Treasury records (Cash in Local Treasury cash book: beginning balance and the RCDs)',
     booksLabel: `Balance per General Ledger (${CASH_LOCAL_TREASURY.code} ${CASH_LOCAL_TREASURY.name})`,
     preparedBy: {
       name: entity.bookkeeper.name || profile?.displayName || '',
@@ -115,7 +87,7 @@ export default function CashLocalTreasuryReconciliation() {
     accountant: entity.municipalAccountant,
   };
 
-  const loading = rcds.loading || ledger.loading;
+  const loading = rcds.loading || ledger.loading || opening.loading;
 
   return (
     <div>

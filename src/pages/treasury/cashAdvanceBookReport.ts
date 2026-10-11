@@ -28,6 +28,13 @@ import type { Centavos, IsoDate } from '@/types/common';
  *           dated the RCDisb, referenced "RCDisb no. / payroll no.". The
  *           officer is the one whose advance the payroll was paid from.
  *
+ * Patch 179: an advance granted in an earlier year and still outstanding comes
+ * in through the opening balances (an OPENING debit to Advances for Payroll,
+ * passed in as a voucher "OB:<ledger id>" - see openingPayrollAdvances). It is
+ * dated when it was granted, so it reaches the book as part of the balance
+ * brought forward, and the payrolls and refunds against it are credited to the
+ * same officer.
+ *
  * Patch 178: and the unused part of an advance handed back on an Official
  * Receipt (a collection marked as the refund of a payroll) - a credit, dated
  * the receipt, referenced "OR <no>", for the officer whose advance it was.
@@ -195,7 +202,8 @@ export function buildCashAdvanceBook(input: {
     push(officer, v.fundCode, {
       date: (paid?.date as IsoDate | undefined) || v.dvDate,
       particulars: particulars ? `Advance for payroll: ${particulars}` : 'Advance for payroll',
-      reference: paid?.no || `DV ${v.dvNo}`,
+      // Patch 179: an advance carried in the opening balances has no voucher.
+      reference: paid?.no || (v.id.startsWith('OB:') ? v.dvNo : `DV ${v.dvNo}`),
       debit: lines.reduce((s, l) => s + l.debit, 0),
       credit: 0,
     });

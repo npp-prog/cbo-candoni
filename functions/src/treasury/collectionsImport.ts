@@ -10,6 +10,7 @@ import {
   type Af56Detail,
 } from '../lib/af56';
 import { onCall } from '../lib/callable';
+import { loadAf56Accounts } from '../lib/af56Chart';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, assertFundInScope, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
@@ -111,6 +112,8 @@ export const importCollections = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
     const caller = await requireCaller(request, TREASURY);
+    // Patch 179: the municipal share on the chart's own RPT account.
+    const af56Accounts = await loadAf56Accounts();
     const data = (request.data ?? {}) as {
       fiscalYear?: number;
       fundCode?: string;
@@ -468,7 +471,7 @@ export const importCollections = onCall(
           continue;
         }
         let bad = false;
-        for (const l of af56Lines(rpt!)) {
+        for (const l of af56Lines(rpt!, af56Accounts)) {
           const account = accounts.get(l.accountCode);
           if (!account || account.postable === false || account.active === false) {
             badAccounts.add(`${l.accountCode} (AF 56)`);

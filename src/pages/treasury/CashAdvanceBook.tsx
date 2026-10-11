@@ -7,6 +7,7 @@ import {
   useAda,
   useChecks,
   useCollections,
+  useLedgerEntries,
   useDisbursementVouchers,
   usePayrolls,
   useTreasuryReports,
@@ -15,6 +16,7 @@ import { formatPeso } from '@/lib/money';
 import { formatLongDate, todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { ADVANCES_FOR_PAYROLL } from '@/lib/chartOfAccounts';
+import { openingPayrollAdvances } from '@/lib/payrollAdvances';
 import { buildCashAdvanceBook, type CbcaBook } from './cashAdvanceBookReport';
 import { fundLabel } from '@/pages/budget/Obligations';
 import { SectionTabs } from '@/components/ui/SectionTabs';
@@ -47,7 +49,24 @@ export default function CashAdvanceBook() {
     setToDate(defaultTo(fiscalYear));
   }, [fiscalYear]);
 
-  const vouchers = useDisbursementVouchers(fiscalYear, fundCode);
+  const dvs = useDisbursementVouchers(fiscalYear, fundCode);
+  // Patch 179: advances of earlier years, carried in the opening balances.
+  const advanceLedger = useLedgerEntries(fiscalYear, fundCode, {
+    accountCode: ADVANCES_FOR_PAYROLL.code,
+  });
+  const vouchers = useMemo(
+    () => ({
+      loading: dvs.loading || advanceLedger.loading,
+      data: [
+        ...dvs.data,
+        ...openingPayrollAdvances(advanceLedger.data, ADVANCES_FOR_PAYROLL.code).map((v) => ({
+          ...v,
+          fundCode,
+        })),
+      ],
+    }),
+    [dvs.data, dvs.loading, advanceLedger.data, advanceLedger.loading, fundCode],
+  );
   const payrolls = usePayrolls(fiscalYear, fundCode);
   const rcdisbs = useTreasuryReports('RCDISB', fiscalYear, fundCode);
   // Patch 178: the ORs that hand back the unused part of an advance.
@@ -173,7 +192,8 @@ export default function CashAdvanceBook() {
             Debit: each Advance for Payroll (a voucher debiting Advances for Payroll), referenced by
             the check or ADA that paid it. Credit: each payroll reported on a certified Report of
             Cash Disbursements (RCDisb), at its net; and the unused part of an advance handed back
-            on an Official Receipt. Nothing else is in this book.
+            on an Official Receipt. An advance of an earlier year still outstanding comes in through
+            the opening balances, in the balance brought forward. Nothing else is in this book.
           </p>
         </>
       }

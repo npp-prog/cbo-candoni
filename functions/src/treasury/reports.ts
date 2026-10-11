@@ -25,6 +25,7 @@ import { renumberPaymentEntry, reportedCashDebit } from '../lib/treasuryEntry';
 import { af56LinesAgree, isAf56, sefBooksEntry, type Af56Detail } from '../lib/af56';
 import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { assertAttachedBeforePosting } from '../lib/attachmentGate';
+import { loadAf56Accounts } from '../lib/af56Chart';
 import {
   createJevInTransaction,
   postJevInTransaction,
@@ -263,6 +264,7 @@ export const certifyTreasuryReport = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
     const caller = await requireCaller(request, TREASURY);
+    const af56Accounts = await loadAf56Accounts();
     const { reportId, reportNo: reportNoIn } = (request.data ?? {}) as {
       reportId?: string;
       /**
@@ -449,7 +451,7 @@ export const certifyTreasuryReport = onCall(
             subsidiaryType?: string | null;
             subsidiaryId?: string | null;
           }>;
-          if (!af56LinesAgree(source.rpt as Af56Detail, rptLines)) {
+          if (!af56LinesAgree(source.rpt as Af56Detail, rptLines, af56Accounts)) {
             throw invalid(
               `${line.sourceNo}: its account lines do not agree with the real property tax figures on the receipt. Open the receipt in Treasury > Collections and save it again so its sharing is worked out afresh.`,
             );

@@ -540,6 +540,9 @@ export const engine = {
   setBankLedgerOpening: (p: {
     fiscalYear: number;
     bankAccountId: Id;
+    /** Patch 179: the Cash in Local Treasury book's opening, for `fundCode`. */
+    localTreasury?: boolean;
+    fundCode?: string;
     beginningBalance: Centavos;
     buffer: Centavos;
   }) => call<typeof p, { ledgerId: Id }>('setBankLedgerOpening', p),

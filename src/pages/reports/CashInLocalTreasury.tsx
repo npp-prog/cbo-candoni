@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
-import { Field, DateInput } from '@/components/ui/Field';
+import { Field, DateInput, AmountInput } from '@/components/ui/Field';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/auth/AuthProvider';
+import { useLocalTreasuryOpening } from '@/data/useLocalTreasuryOpening';
+import { engine } from '@/lib/engine';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { useFilters } from '@/context/FilterContext';
 import { useTreasuryReports } from '@/data/queries';
@@ -70,6 +76,10 @@ export default function CashInLocalTreasury() {
   const { fiscalYear, fundCode } = useFilters();
   const { data: rcds, loading } = useTreasuryReports('RCD', fiscalYear, fundCode);
 
+  const { hasRole } = useAuth();
+  const opening = useLocalTreasuryOpening(fiscalYear, fundCode);
+  const canSetOpening = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT');
+  const [openingForm, setOpeningForm] = useState(false);
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
 
@@ -97,14 +107,19 @@ export default function CashInLocalTreasury() {
     };
   };
 
-  /** Everything closed before the period opens, folded into one line. */
+  /**
+   * Patch 179: the book opens with its beginning balance - cash on hand at 1
+   * January - then everything certified before the period opens.
+   */
   const broughtForward = useMemo(
     () =>
+      opening.amount +
       closed
         .filter((r) => r.reportDate < from)
         .reduce((bal, r) => bal + collectionsOf(r) - depositsOf(r), 0),
-    [closed, from],
+    [closed, from, opening.amount],
   );
+  const fromStart = from <= `${fiscalYear}-01-01`;
 
   const rows = useMemo(
     () =>
@@ -122,7 +137,7 @@ export default function CashInLocalTreasury() {
   );
   const closing = broughtForward + totals.debit - totals.credit;
 
-  if (loading) return <Spinner label="Reading the RCDs" />;
+  if (loading || opening.loading) return <Spinner label="Reading the RCDs" />;
 
   let running = broughtForward;
 
@@ -137,6 +152,13 @@ export default function CashInLocalTreasury() {
         certifiedBy: 'Municipal Treasurer',
       }}
       breadcrumbs={[{ label: 'Treasury', to: '/treasury' }, { label: 'Cash in Local Treasury' }]}
+      actions={
+        canSetOpening ? (
+          <Button variant="secondary" onClick={() => setOpeningForm(true)}>
+            Opening balance
+          </Button>
+        ) : null
+      }
       filters={
         <>
           <Field label="From" className="w-40">
@@ -152,7 +174,8 @@ export default function CashInLocalTreasury() {
           <p>
             Every line is a certified Report of Collections and Deposits (RCD): its collections are
             the debit, its deposits the credit. Nothing is posted to this register and nothing can
-            be typed on it.
+            be typed on it. The first line is the beginning balance: typed under Opening balance, or
+            carried from last year's book.
           </p>
           <p className="mt-1">
             Remittances received from collectors are not a debit - the collector&apos;s own RCD
@@ -161,7 +184,16 @@ export default function CashInLocalTreasury() {
         </>
       }
     >
-      {closed.length === 0 ? (
+      {openingForm && (
+        <OpeningForm
+          fiscalYear={fiscalYear}
+          fundCode={fundCode}
+          current={opening.amount}
+          source={opening.source}
+          onClose={() => setOpeningForm(false)}
+        />
+      )}
+      {closed.length === 0 && opening.amount === 0 ? (
         <Alert tone="info" title="No RCD has been certified yet">
           The register fills itself as RCDs are certified under{' '}
           <strong>Treasury &rsaquo; Collections and Deposits</strong>. A draft is still changing, so
@@ -217,7 +249,13 @@ export default function CashInLocalTreasury() {
             <tr className="bg-slate-50 font-medium">
               <td className="border border-slate-400 px-2 py-1">{formatShortDate(from)}</td>
               <td className="border border-slate-400 px-2 py-1 italic" colSpan={3}>
-                Balance forwarded
+                {fromStart ? 'Beginning balance' : 'Balance forwarded'}
+                {fromStart && opening.source === 'CARRIED' && (
+                  <span className="no-print text-2xs not-italic text-slate-500">
+                    {' '}
+                    - carried from {fiscalYear - 1}
+                  </span>
+                )}
               </td>
               <td className="border border-slate-400 px-2 py-1" />
               <td className="border border-slate-400 px-2 py-1" />
@@ -279,5 +317,86 @@ export default function CashInLocalTreasury() {
         </Alert>
       )}
     </ReportShell>
+  );
+}
+
+/**
+ * Patch 179 - the cash book's beginning balance: the cash on hand at 1
+ * January (collections of last year not yet deposited). Typed once; until it
+ * is, the book carries last year's closing balance.
+ */
+function OpeningForm({
+  fiscalYear,
+  fundCode,
+  current,
+  source,
+  onClose,
+}: {
+  fiscalYear: number;
+  fundCode: string;
+  current: number;
+  source: 'SET' | 'CARRIED' | 'NONE';
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [amount, setAmount] = useState<number | null>(current);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Beginning balance - Cash in Local Treasury"
+      description={`${fundLabel(fundCode)}, fiscal year ${fiscalYear}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await engine.setBankLedgerOpening({
+                  fiscalYear,
+                  bankAccountId: '',
+                  localTreasury: true,
+                  fundCode,
+                  beginningBalance: amount ?? 0,
+                  buffer: 0,
+                });
+                toast.success('Beginning balance saved');
+                onClose();
+              } catch (err) {
+                toast.error('Not saved', err instanceof Error ? err.message : String(err));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field
+          label="Cash on hand at 1 January"
+          hint="Collections of the year before that were not yet deposited on 31 December."
+        >
+          <AmountInput value={amount} onChange={setAmount} />
+        </Field>
+        <Alert tone="info" title="Where the figure comes from now">
+          {source === 'SET'
+            ? 'It was typed here before. Saving replaces it; the change is kept in the audit trail.'
+            : source === 'CARRIED'
+              ? `Nobody has typed it, so the book carries ${fiscalYear - 1}'s closing balance. Type it to fix the figure for the year.`
+              : 'Nobody has typed it and there is no earlier year in CFMS, so the book opens at nil.'}{' '}
+          It should agree with the opening entry on Cash - Local Treasury in the books; the
+          reconciliation shows any difference.
+        </Alert>
+      </div>
+    </Modal>
   );
 }
