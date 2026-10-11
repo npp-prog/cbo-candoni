@@ -106,4 +106,32 @@ describe('Cash Book - Cash Advances (patch 177: advances for payroll and RCDisb 
     expect(b.officerName).toBe('Ana Cruz');
     expect(b.entries).toHaveLength(2);
   });
+
+  it('patch 178: credits the unused advance refunded on an OR', () => {
+    const [b] = build({
+      refunds: [
+        {
+          id: 'c1',
+          orNumber: '1234567',
+          orDate: '2026-09-21',
+          status: 'ISSUED',
+          fundCode: 'GF',
+          totalAmount: 40_000_00,
+          refundForPayrollId: 'pr1',
+        },
+        {
+          id: 'c2',
+          orNumber: '1234568',
+          orDate: '2026-09-22',
+          status: 'CANCELLED',
+          fundCode: 'GF',
+          totalAmount: 5_00,
+          refundForPayrollId: 'pr1',
+        },
+      ],
+    });
+    expect(b.entries).toHaveLength(3);
+    expect(b.entries[2]).toMatchObject({ reference: 'OR 1234567', credit: 40_000_00, balance: 0 });
+    expect(b.closingBalance).toBe(0);
+  });
 });

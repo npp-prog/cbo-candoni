@@ -28,6 +28,10 @@ import type { Centavos, IsoDate } from '@/types/common';
  *           dated the RCDisb, referenced "RCDisb no. / payroll no.". The
  *           officer is the one whose advance the payroll was paid from.
  *
+ * Patch 178: and the unused part of an advance handed back on an Official
+ * Receipt (a collection marked as the refund of a payroll) - a credit, dated
+ * the receipt, referenced "OR <no>", for the officer whose advance it was.
+ *
  * Nothing else - the old cash advances register and the liquidation reports -
  * is read.
  */
@@ -86,6 +90,18 @@ export interface CbcaRcdisb {
   }>;
 }
 
+/** Patch 178: an Official Receipt for the unused part of an advance for payroll. */
+export interface CbcaRefund {
+  id: string;
+  orNumber: string;
+  orDate: IsoDate;
+  status: string;
+  fundCode: string;
+  totalAmount: number;
+  refundForPayrollId?: string | null;
+  refundForPayrollNo?: string | null;
+}
+
 export interface CbcaEntry {
   date: IsoDate;
   particulars: string;
@@ -132,6 +148,8 @@ export function buildCashAdvanceBook(input: {
   payments?: CbcaPayment[];
   payrolls: CbcaPayroll[];
   rcdisbs: CbcaRcdisb[];
+  /** Patch 178: collections that refund an unused advance (refundForPayrollId). */
+  refunds?: CbcaRefund[];
   advanceAccountCode: string;
   from: IsoDate;
   to: IsoDate;
@@ -208,6 +226,26 @@ export function buildCashAdvanceBook(input: {
         credit: l.amount,
       });
     }
+  }
+
+  // ---- Credits: the unused advance handed back on an OR (patch 178) -----
+  for (const c of input.refunds ?? []) {
+    if (!c.refundForPayrollId || c.status === 'CANCELLED' || !c.totalAmount) continue;
+    const p = payrollById.get(c.refundForPayrollId);
+    const officer =
+      (p?.dvId ? officerByDv.get(p.dvId) : undefined) ??
+      (p?.disbursingOfficer?.id
+        ? { id: p.disbursingOfficer.id, name: p.disbursingOfficer.name }
+        : undefined);
+    if (!officer) continue;
+    push(officer, c.fundCode, {
+      date: c.orDate,
+      particulars:
+        `Refund of unused advance - payroll ${p?.payrollNo ?? c.refundForPayrollNo ?? ''}`.trim(),
+      reference: `OR ${c.orNumber}`,
+      debit: 0,
+      credit: c.totalAmount,
+    });
   }
 
   const books: CbcaBook[] = [];

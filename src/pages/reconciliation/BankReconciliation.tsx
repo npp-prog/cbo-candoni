@@ -33,6 +33,8 @@ import { parseStatementFile, readStatementHeaders, type ParsedStatementRow } fro
 import type { BankTransaction } from '@/types/treasury';
 import type { Centavos } from '@/types/common';
 import { fundLabel } from '../budget/Obligations';
+import { SectionTabs } from '@/components/ui/SectionTabs';
+import { RECONCILIATION_TABS } from '@/layout/sections';
 
 /**
  * Bank reconciliation.
@@ -380,6 +382,8 @@ export default function BankReconciliation() {
           </>
         }
       />
+
+      <SectionTabs tabs={RECONCILIATION_TABS} />
 
       <Card className="mb-4" bodyClassName="py-3">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

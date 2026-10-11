@@ -84,6 +84,10 @@ const CashInLocalTreasury = lazy(() => import('./pages/reports/CashInLocalTreasu
 const Raaf = lazy(() => import('./pages/treasury/Raaf'));
 
 const BankReconciliation = lazy(() => import('./pages/reconciliation/BankReconciliation'));
+const CashLocalTreasuryReconciliation = lazy(
+  () => import('./pages/reconciliation/CashLocalTreasuryReconciliation'),
+);
+const CashInBankReconciliation = lazy(() => import('./pages/reconciliation/CashInBankReconciliation'));
 
 const ReportsHome = lazy(() => import('./pages/reports/ReportsHome'));
 const TrialBalance = lazy(() => import('./pages/reports/TrialBalance'));
@@ -439,6 +443,8 @@ export default function App() {
           <Route path="/reconciliation" element={<Navigate to="/reconciliation/bank" replace />} />
           <Route path="/reconciliation/bank" element={<Guard module="reconciliation"><BankReconciliation /></Guard>} />
           <Route path="/reconciliation/bank/:id" element={<Guard module="reconciliation"><BankReconciliation /></Guard>} />
+          <Route path="/reconciliation/cash-local-treasury" element={<Guard module="reconciliation"><CashLocalTreasuryReconciliation /></Guard>} />
+          <Route path="/reconciliation/cash-in-bank" element={<Guard module="reconciliation"><CashInBankReconciliation /></Guard>} />
 
           {/* Reports */}
           <Route path="/reports" element={<Guard module="reports"><ReportsHome /></Guard>} />

@@ -6,6 +6,7 @@ import { useFilters } from '@/context/FilterContext';
 import {
   useAda,
   useChecks,
+  useCollections,
   useDisbursementVouchers,
   usePayrolls,
   useTreasuryReports,
@@ -49,6 +50,24 @@ export default function CashAdvanceBook() {
   const vouchers = useDisbursementVouchers(fiscalYear, fundCode);
   const payrolls = usePayrolls(fiscalYear, fundCode);
   const rcdisbs = useTreasuryReports('RCDISB', fiscalYear, fundCode);
+  // Patch 178: the ORs that hand back the unused part of an advance.
+  const collections = useCollections(fiscalYear, fundCode);
+  const refunds = useMemo(
+    () =>
+      collections.data
+        .filter((c) => c.refundForPayrollId)
+        .map((c) => ({
+          id: c.id,
+          orNumber: c.orNumber,
+          orDate: c.orDate,
+          status: c.status,
+          fundCode: c.fundCode,
+          totalAmount: c.totalAmount,
+          refundForPayrollId: c.refundForPayrollId ?? null,
+          refundForPayrollNo: c.refundForPayrollNo ?? null,
+        })),
+    [collections.data],
+  );
   const checks = useChecks();
   const adas = useAda();
 
@@ -77,17 +96,18 @@ export default function CashAdvanceBook() {
         payments,
         payrolls: payrolls.data,
         rcdisbs: rcdisbs.data,
+        refunds,
         advanceAccountCode: ADVANCES_FOR_PAYROLL.code,
         from: fromDate,
         to: toDate,
         fundCode,
       }),
-    [vouchers.data, payments, payrolls.data, rcdisbs.data, fromDate, toDate, fundCode],
+    [vouchers.data, payments, payrolls.data, rcdisbs.data, refunds, fromDate, toDate, fundCode],
   );
   const books = officerId ? allBooks.filter((b) => b.officerId === officerId) : allBooks;
   const officers = allBooks.map((b) => [b.officerId, b.officerName] as const);
 
-  const loading = vouchers.loading || payrolls.loading || rcdisbs.loading;
+  const loading = vouchers.loading || payrolls.loading || rcdisbs.loading || collections.loading;
   const periodLabel = `${formatLongDate(fromDate)} to ${formatLongDate(toDate)}`;
 
   const exportRows = books.flatMap((b) => b.entries.map((e) => ({ book: b, e })));
@@ -152,7 +172,8 @@ export default function CashAdvanceBook() {
           <p className="mt-1">
             Debit: each Advance for Payroll (a voucher debiting Advances for Payroll), referenced by
             the check or ADA that paid it. Credit: each payroll reported on a certified Report of
-            Cash Disbursements (RCDisb), at its net. Nothing else is in this book.
+            Cash Disbursements (RCDisb), at its net; and the unused part of an advance handed back
+            on an Official Receipt. Nothing else is in this book.
           </p>
         </>
       }
@@ -216,7 +237,7 @@ function Book({ book }: { book: CbcaBook }) {
 
             {book.entries.map((e, i) => (
               <tr key={`${e.reference}-${i}`} className="border-b border-slate-100">
-                <td className="cbo-td font-mono">{e.date}</td>
+                <td className="cbo-td whitespace-nowrap font-mono">{e.date}</td>
                 <td className="cbo-td">{e.particulars}</td>
                 <td className="cbo-td font-mono">{e.reference}</td>
                 <td className="cbo-td cbo-amount">{e.debit ? formatPeso(e.debit) : ''}</td>

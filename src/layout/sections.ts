@@ -181,6 +181,20 @@ export const CASH_BOOK_TABS: SectionTab[] = [
   { label: 'Cash Position', to: '/treasury/cash-position' },
 ];
 
+/**
+ * Patch 178: Reconciliation is three statements - the bank's record against
+ * the books (the BRS), and the Treasury's own two cash records against the
+ * books.
+ */
+export const RECONCILIATION_TABS: SectionTab[] = [
+  { label: 'Bank Reconciliation', to: '/reconciliation/bank' },
+  {
+    label: 'Cash in Local Treasury: Treasury vs Accounting',
+    to: '/reconciliation/cash-local-treasury',
+  },
+  { label: 'Cash in Bank: Treasury vs Accounting', to: '/reconciliation/cash-in-bank' },
+];
+
 /** The two pre-printed forms that go through the office's own printer. */
 export const PRINTING_TABS: SectionTab[] = [
   { label: 'Print Checks', to: '/treasury/print/checks' },
@@ -243,7 +257,6 @@ export const REPORT_TAB_GROUPS: Array<{ group: string; tabs: SectionTab[] }> = [
  */
 export const REPORT_TABS: SectionTab[] = REPORT_TAB_GROUPS.flatMap((g) => g.tabs);
 
-
 /**
  * Every strip above, for the sidebar's benefit.
  *
@@ -258,6 +271,7 @@ const ALL_STRIPS: SectionTab[][] = [
   ACCOUNTING_SETUP_TABS,
   TRUST_ACCOUNT_TABS,
   CASH_BOOK_TABS,
+  RECONCILIATION_TABS,
   PRINTING_TABS,
   REPORT_TABS,
 ];
