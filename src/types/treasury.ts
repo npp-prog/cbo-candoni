@@ -1,3 +1,4 @@
+import type { Af56Detail } from '@/lib/af56';
 import type {
   ActorStamp,
   AuditStamps,
@@ -135,6 +136,13 @@ export interface Collection extends Partial<AuditStamps> {
 
   lines: CollectionLine[];
   totalAmount: Centavos;
+  /**
+   * Patch 175: real property tax on Accountable Form No. 56 - the figures the
+   * officer typed, per property. The lines above are worked out from them
+   * (src/lib/af56.ts) and the engine works them out again before an RCD is
+   * certified.
+   */
+  rpt?: Af56Detail | null;
 
   paymentForm: 'CASH' | 'CHECK' | 'ONLINE' | 'CARD';
 

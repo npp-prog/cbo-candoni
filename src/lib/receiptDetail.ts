@@ -122,7 +122,10 @@ export function describeProblems(problems: readonly MissingDetail[]): string {
  * the abstract while somebody still remembers them.
  */
 export function receiptIsIncomplete(
-  receipt: { lines?: readonly ReceiptLine[]; fundCode?: string },
+  receipt: { lines?: readonly ReceiptLine[]; fundCode?: string; rpt?: unknown },
 ): boolean {
+  // Patch 175: an AF 56 receipt carries its tax years and barangays in its
+  // own detail, not on the lines it was shared into.
+  if (receipt.rpt) return false;
   return receiptDetailProblems(receipt.lines ?? [], receipt.fundCode ?? '').length > 0;
 }

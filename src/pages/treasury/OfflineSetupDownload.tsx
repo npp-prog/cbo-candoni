@@ -15,6 +15,7 @@ import {
   useFunds,
 } from '@/data/queries';
 import { app } from '@/lib/firebase';
+import { isAf56 } from '@/lib/af56';
 import { todayPh } from '@/lib/dates';
 import {
   SETUP_FORMAT,
@@ -86,22 +87,28 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
         perParty: isPerParty(a.code, a.requiresSubsidiary),
       })),
       subsidiaries: subsidiaryLedgers(payees.data, employees.data),
-      formTypes: formTypes.data.map((t) => ({
-        code: t.code,
-        name: t.name,
-        printedAs: t.printedAs,
-        serialLength: t.serialLength ?? 0,
-      })),
-      movements: mine.map((m) => ({
-        formCode: m.formCode,
-        kind: m.kind,
-        movementDate: m.movementDate,
-        serialFrom: m.serialFrom,
-        serialTo: m.serialTo,
-        custodianId: m.custodianId ?? null,
-        fromCustodianId: m.fromCustodianId ?? null,
-        voided: false,
-      })),
+      // Patch 175: AF 56 (real property tax) is recorded in CFMS, where its
+      // shares are worked out - never offered to the offline app.
+      formTypes: formTypes.data
+        .filter((t) => !isAf56(t.code))
+        .map((t) => ({
+          code: t.code,
+          name: t.name,
+          printedAs: t.printedAs,
+          serialLength: t.serialLength ?? 0,
+        })),
+      movements: mine
+        .filter((m) => !isAf56(m.formCode))
+        .map((m) => ({
+          formCode: m.formCode,
+          kind: m.kind,
+          movementDate: m.movementDate,
+          serialFrom: m.serialFrom,
+          serialTo: m.serialTo,
+          custodianId: m.custodianId ?? null,
+          fromCustodianId: m.fromCustodianId ?? null,
+          voided: false,
+        })),
     };
     const blob = new Blob([JSON.stringify(setup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

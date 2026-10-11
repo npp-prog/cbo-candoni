@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { CoveringCell } from './CoveringCell';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { hereAsReturn, withReturn } from '@/lib/returnTo';
-import { proposePaymentEntry } from '@/lib/treasuryEntry';
+import { proposePaymentEntry, reportedCashDebit } from '@/lib/treasuryEntry';
 import { JevLink } from '@/components/JevLink';
 import { newestFirst } from '@/lib/registerOrder';
 import { creditsByAccountAndSubsidiary, missingSubsidiaries } from '@/lib/collectionSubsidiary';
@@ -936,20 +936,27 @@ function PrepareReport({
             credit: 0,
             particulars: `Collections per ${short}`,
           },
-      ...credits.map((a) => ({
-        accountCode: a.accountCode,
-        accountName: a.accountName,
-        ...(a.subsidiaryId
-          ? {
-              subsidiaryType: a.subsidiaryType,
-              subsidiaryId: a.subsidiaryId,
-              subsidiaryName: a.subsidiaryName,
-            }
-          : {}),
-        debit: 0,
-        credit: a.amount,
-        particulars: `Collections per ${short}`,
-      })),
+      /*
+       * Patch 175: a line that comes to less than nothing - the municipality's
+       * share of a real property tax discount on AF 56 - is a DEBIT to its
+       * discount account. Nothing nets to zero and drops out.
+       */
+      ...credits
+        .filter((a) => a.amount !== 0)
+        .map((a) => ({
+          accountCode: a.accountCode,
+          accountName: a.accountName,
+          ...(a.subsidiaryId
+            ? {
+                subsidiaryType: a.subsidiaryType,
+                subsidiaryId: a.subsidiaryId,
+                subsidiaryName: a.subsidiaryName,
+              }
+            : {}),
+          debit: a.amount < 0 ? -a.amount : 0,
+          credit: a.amount > 0 ? a.amount : 0,
+          particulars: `Collections per ${short}`,
+        })),
     ];
   }, [
     reportType,
@@ -1047,7 +1054,8 @@ function PrepareReport({
   const entryBalances =
     entry.length > 0 &&
     entry.reduce((s, l) => s + l.debit, 0) === entry.reduce((s, l) => s + l.credit, 0) &&
-    entry.reduce((s, l) => s + l.debit, 0) === total + toBookTotal;
+    // Patch 175: cash debits only - an RPT discount debit is not cash.
+    reportedCashDebit(entry) === total + toBookTotal;
 
   const isPayroll = reportType === 'RCDISB';
   /*

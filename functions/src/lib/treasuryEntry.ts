@@ -181,21 +181,21 @@ export function proposePaymentEntry(input: {
 
   function single(d: PaidDocument): ProposedEntryLine {
     return {
-    accountCode: (d.payableAccount ?? input.payable).code,
-    accountName: (d.payableAccount ?? input.payable).name,
-    debit: d.amount,
-    credit: 0,
-    /*
-     * The payee, where the report knows which payee record it was. A report
-     * loaded from a bank file carries a NAME and no id - the subsidiary is
-     * then left empty rather than guessed from the name, because two suppliers
-     * with similar names would be merged into one subsidiary account by a
-     * guess, and nothing would say so.
-     */
-    subsidiaryType: d.payeeId ? 'PAYEE' : null,
-    subsidiaryId: d.payeeId ?? null,
-    subsidiaryName: d.payeeId ? (d.payeeName ?? null) : null,
-    particulars: paymentParticulars(input.kind, d.sourceNo, d.particulars),
+      accountCode: (d.payableAccount ?? input.payable).code,
+      accountName: (d.payableAccount ?? input.payable).name,
+      debit: d.amount,
+      credit: 0,
+      /*
+       * The payee, where the report knows which payee record it was. A report
+       * loaded from a bank file carries a NAME and no id - the subsidiary is
+       * then left empty rather than guessed from the name, because two suppliers
+       * with similar names would be merged into one subsidiary account by a
+       * guess, and nothing would say so.
+       */
+      subsidiaryType: d.payeeId ? 'PAYEE' : null,
+      subsidiaryId: d.payeeId ?? null,
+      subsidiaryName: d.payeeId ? (d.payeeName ?? null) : null,
+      particulars: paymentParticulars(input.kind, d.sourceNo, d.particulars),
     };
   }
 
@@ -379,4 +379,39 @@ export function proposeNotPostedEntry(input: {
       } - to be repaid by a new voucher`,
     })),
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Patch 175: debits that are not cash
+// ---------------------------------------------------------------------------
+
+/**
+ * Discount accounts a collection debits (AF 56: the municipality's share of a
+ * real property tax discount). Kept here as plain codes because this file
+ * imports nothing; af56.test.ts holds the list to AF56_DISCOUNT_ACCOUNTS.
+ */
+export const DISCOUNT_DEBIT_ACCOUNTS: readonly string[] = [
+  '40102041',
+  '40102051',
+  '20501011',
+  '20501021',
+];
+
+/**
+ * The debit side of a report's entry that is the report's own money.
+ *
+ * An RCD debits Cash for what was collected. Where a receipt carried a
+ * discount, the entry also DEBITS the discount account - a debit that is not
+ * cash and that the Treasurer's total does not contain. A debit to an income
+ * account (a contra-revenue) or a listed discount account is therefore left
+ * out when the entry is held to the report's total.
+ */
+export function reportedCashDebit(
+  entry: ReadonlyArray<{ accountCode?: string | null; debit?: number | null }>,
+): number {
+  return entry.reduce((s, l) => {
+    const code = String(l.accountCode ?? '').trim();
+    const contra = code.startsWith('4') || DISCOUNT_DEBIT_ACCOUNTS.includes(code);
+    return contra ? s : s + (l.debit || 0);
+  }, 0);
 }

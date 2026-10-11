@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { reportedCashDebit } from '@/lib/treasuryEntry';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { hereAsReturn, returnPathFrom, withReturn } from '@/lib/returnTo';
 import { reportOrigin } from './reportOrigin';
@@ -305,8 +306,9 @@ export default function TreasuryReportDetail() {
 
   const balanced = totals.debit === totals.credit;
   // Patch 159: an RCD's entry also books the deposits on it.
+  // Patch 175: held on its cash debits - an RPT discount debit is not cash.
   const agreesWithReport =
-    totals.debit === (report?.totalAmount ?? 0) + (report?.depositsBookedTotal ?? 0);
+    reportedCashDebit(lines) === (report?.totalAmount ?? 0) + (report?.depositsBookedTotal ?? 0);
   const postable = balanced && agreesWithReport && lines.every((l) => l.accountCode);
   /* Patch 157: an RCD that reports deposits only. */
   const depositsOnly =

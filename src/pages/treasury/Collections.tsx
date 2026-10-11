@@ -43,6 +43,8 @@ import { fundLabel } from '../budget/Obligations';
 import { COLLECTION_TAB_GROUPS, COLLECTION_CRUMBS } from './sections';
 import { CollectionDetail } from './CollectionDetail';
 import { OfflineSetupDownload } from './OfflineSetupDownload';
+import { Af56Section } from './Af56Section';
+import { af56Lines, af56Problems, af56Total, isAf56, type Af56Detail } from '@/lib/af56';
 
 
 /**
@@ -475,7 +477,18 @@ function CollectionForm({
   const accounts = useAccounts(true);
   const accountOf = (code: string) => accounts.data.find((a) => a.code === code) ?? null;
 
-  const total = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
+  /*
+   * Patch 175: a receipt on Accountable Form No. 56 is real property tax. Its
+   * lines are not typed: they are the sharing of the figures typed in the AF
+   * 56 section (src/lib/af56.ts).
+   */
+  const af56 = isAf56(formCode);
+  const [rpt, setRpt] = useState<Af56Detail | null>(existing?.rpt ?? null);
+
+  const total = useMemo(
+    () => (af56 ? (rpt ? af56Total(rpt).total : 0) : lines.reduce((s, l) => s + (l.amount ?? 0), 0)),
+    [af56, rpt, lines],
+  );
 
   /*
    * The tax year and barangay column appears only once a real property tax
@@ -501,14 +514,21 @@ function CollectionForm({
      * in has forgotten. Here it costs one question to the taxpayer standing
      * at the counter.
      */
-    const problems = receiptDetailProblems(lines, fundCode);
+    if (af56) {
+      const rptProblems = rpt ? af56Problems(rpt, fundCode) : ['Type the real property tax paid.'];
+      if (rptProblems.length > 0) {
+        toast.error('The AF 56 receipt cannot be recorded yet', rptProblems.slice(0, 3).join(' '));
+        return;
+      }
+    }
+    const problems = af56 ? [] : receiptDetailProblems(lines, fundCode);
     if (problems.length > 0) {
       toast.error('The receipt is missing detail the reports need', describeProblems(problems));
       return;
     }
     // Patch 158: a receivable, a payable, or a revenue account kept per party
     // names its subsidiary ledger account.
-    const noSub = missingSubsidiaries(lines, accountOf);
+    const noSub = af56 ? [] : missingSubsidiaries(lines, accountOf);
     if (noSub.length > 0) {
       toast.error(
         'Choose the subsidiary ledger account',
@@ -517,7 +537,9 @@ function CollectionForm({
       return;
     }
     // Patch 156: particulars are required on every entry.
-    if (!particulars.trim()) {
+    const words =
+      particulars.trim() || (af56 && rpt ? `Real property tax - CY ${rpt.calendarYear}` : '');
+    if (!words) {
       toast.error('Particulars are required', 'Say what this entry is for - it is printed on the reports.');
       return;
     }
@@ -558,17 +580,34 @@ function CollectionForm({
           accountableFormId: formCode,
           collectingOfficerId: officerId,
           collectingOfficerName: officerName,
-          revenueSource,
+          revenueSource: af56 ? ('REAL_PROPERTY_TAX' as RevenueSource) : revenueSource,
           payorName: payorName.trim(),
           payorTin: payorTin.trim() || null,
-          lines: lines.map((l, i) => ({
+          rpt: af56 ? rpt : null,
+          lines: af56 && rpt
+            ? af56Lines(rpt).map((l, i) => ({
+                lineNo: i + 1,
+                accountCode: l.accountCode,
+                accountName: accountOf(l.accountCode)?.name ?? l.accountName,
+                amount: l.amount,
+                particulars: l.particulars,
+                trustProgramId: null,
+                trustProgramName: null,
+                rptTaxYear: null,
+                barangayId: null,
+                barangayName: null,
+                subsidiaryType: l.subsidiaryType,
+                subsidiaryId: l.subsidiaryId,
+                subsidiaryName: l.subsidiaryName,
+              }))
+            : lines.map((l, i) => ({
             lineNo: i + 1,
             accountCode: l.accountCode ?? '',
             accountName: l.accountName ?? '',
             amount: l.amount ?? 0,
             // The line's own wording where it has one, the receipt's
             // otherwise - so a one-account receipt need not be typed twice.
-            particulars: l.particulars ?? (particulars.trim() || null),
+            particulars: l.particulars ?? (words || null),
             // Trust Fund only. A programme on a General Fund receipt would be
             // a mistake, and the server ignores it rather than acting on it.
             trustProgramId: isTrust ? (l.trustProgramId ?? null) : null,
@@ -586,7 +625,7 @@ function CollectionForm({
           totalAmount: total,
           paymentForm,
           checkNo: paymentForm === 'CHECK' ? checkNo.trim() || null : null,
-          remarks: particulars.trim() || null,
+          remarks: words || null,
       };
 
       const stamp = actorStamp({
@@ -637,7 +676,7 @@ function CollectionForm({
           ? 'Correcting the ENCODING of a receipt, not the receipt itself. The paper is with the taxpayer; if the paper is wrong it is cancelled and reissued.'
           : 'One official receipt, with its revenue account distribution.'
       }
-      size="lg"
+      size={af56 ? 'full' : 'lg'}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -689,7 +728,12 @@ function CollectionForm({
         </Field>
 
         <Field label="Revenue source" htmlFor="source">
-          <Select id="source" value={revenueSource} onChange={(e) => setRevenueSource(e.target.value as RevenueSource)}>
+          <Select
+            id="source"
+            value={af56 ? 'REAL_PROPERTY_TAX' : revenueSource}
+            disabled={af56}
+            onChange={(e) => setRevenueSource(e.target.value as RevenueSource)}
+          >
             {REVENUE_SOURCES.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
@@ -715,7 +759,7 @@ function CollectionForm({
           </Field>
         )}
 
-        <Field label="Particulars" required htmlFor="particulars" className="sm:col-span-3">
+        <Field label="Particulars" required={!af56} htmlFor="particulars" className="sm:col-span-3">
           <TextInput
             id="particulars"
             value={particulars}
@@ -725,7 +769,11 @@ function CollectionForm({
         </Field>
       </div>
 
-      <div className="mt-5">
+      {af56 && (
+        <Af56Section initial={existing?.rpt ?? null} payorName={payorName} orDate={orDate} onChange={setRpt} />
+      )}
+
+      <div className={af56 ? 'hidden' : 'mt-5'}>
         <p className="cbo-label">Accounts</p>
         <table className="w-full border-collapse">
           <thead>

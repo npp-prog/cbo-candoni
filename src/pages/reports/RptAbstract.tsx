@@ -78,9 +78,10 @@ export default function RptAbstract() {
   const schedule = useMemo(
     () =>
       buildRptSchedule({
-        collections: (collections.data ?? []).filter(
-          (c) => !officer || (c.collectingOfficerName ?? '').trim() === officer,
-        ) as unknown as RptCollection[],
+        // Patch 175: AF 56 receipts are on their own abstract.
+        collections: (collections.data ?? [])
+          .filter((c) => !c.rpt)
+          .filter((c) => !officer || (c.collectingOfficerName ?? '').trim() === officer) as unknown as RptCollection[],
         fromDate,
         toDate,
       }),

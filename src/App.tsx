@@ -112,6 +112,7 @@ const Rstf = lazy(() => import('./pages/accounting/Rstf'));
 const UnreleasedChecks = lazy(() => import('./pages/treasury/UnreleasedChecks'));
 const CashAdvanceBook = lazy(() => import('./pages/treasury/CashAdvanceBook'));
 const RptAbstract = lazy(() => import('./pages/reports/RptAbstract'));
+const RptAf56Abstract = lazy(() => import('./pages/reports/RptAf56Abstract'));
 const Scbaa = lazy(() => import('./pages/reports/Scbaa'));
 const Documents = lazy(() => import('./pages/Documents'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
@@ -212,7 +213,9 @@ export default function App() {
           <Route path="/treasury/checks/unreleased" element={<Guard module="treasury"><UnreleasedChecks /></Guard>} />
           {/* Appendix 26, the third cash book beside Cash in Bank and Cash in Treasury. */}
           <Route path="/treasury/cash-advance-book" element={<Guard module="treasury"><CashAdvanceBook /></Guard>} />
-          <Route path="/reports/rpt-abstract" element={<Guard module="reports"><RptAbstract /></Guard>} />
+          {/* Patch 175: the AF 56 abstract; the ledger one stays a link away. */}
+          <Route path="/reports/rpt-abstract" element={<Guard module="reports"><RptAf56Abstract /></Guard>} />
+          <Route path="/reports/rpt-abstract/ledger" element={<Guard module="reports"><RptAbstract /></Guard>} />
 
           {/* Accounting */}
           <Route path="/accounting" element={<Navigate to="/accounting/disbursements" replace />} />

@@ -125,6 +125,10 @@ const PAIRS = [
   // Patch 172: the backup file's format, and what a restore would do - the
   // screen explains it and the engine does it from one copy.
   { source: 'src/lib/backupFormat.ts', target: 'functions/src/lib/backupFormat.ts' },
+  // Patch 175: real property tax on AF 56. The receipt form writes the lines
+  // from the sharing, and the engine works them out again before an RCD is
+  // certified; one copy, so the two cannot split the tax differently.
+  { source: 'src/lib/af56.ts', target: 'functions/src/lib/af56.ts' },
 ];
 
 const bannerFor = (sourcePath) => `// =============================================================================

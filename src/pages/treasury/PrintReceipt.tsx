@@ -1,21 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, Select } from '@/components/ui/Field';
+import { Field, Select, TextInput } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useCollections } from '@/data/queries';
 import { formatPeso, amountInWords } from '@/lib/money';
 import { formatShortDate, formatLongDate } from '@/lib/dates';
 import {
+  AF56_FIELDS,
+  AF56_ROWS_PER_SHEET,
+  AF56_ROW_SPACING,
+  AF56_SHEET,
   OR_FIELDS,
   OR_LINES_PER_SHEET,
   OR_SHEET,
   defaultCalibration,
   loadCalibration,
+  loadSheetSize,
+  saveSheetSize,
   splitWords,
   type Calibration,
+  type SheetSize,
 } from '@/lib/printCalibration';
+import { af56Total, amountsOf, totalsOf } from '@/lib/af56';
+import { AF56_MAX_PROPERTIES } from './Af56Section';
+import { useDocument } from '@/hooks/useFirestore';
+import { useEntity } from '@/data/useEntity';
+import { COL } from '@/lib/collections';
+import type { SystemSettings } from '@/types/system';
 import {
   AlignmentGuide,
   CalibrationSheet,
@@ -60,11 +73,39 @@ import { PRINTING_TABS } from '@/layout/sections';
  * ---------------------------------------------------------------------------
  */
 
-const FORM_KEY = 'or';
+/*
+ * Patch 175: two forms. The AF 51 (general collections) as before, and the
+ * AF 56 (real property tax) in landscape. Each keeps its own calibration on
+ * this machine; the AF 56 also its measured paper size.
+ */
+type FormKind = 'af51' | 'af56';
+const FORMS: Record<FormKind, { key: string; label: string; spacing: number }> = {
+  af51: { key: 'or', label: 'Accountable Form No. 51', spacing: 9 },
+  af56: {
+    key: 'af56',
+    label: 'Accountable Form No. 56 (Real Property Tax)',
+    spacing: AF56_ROW_SPACING,
+  },
+};
+
+const money = (v: number | null | undefined) => (v ? formatPeso(v, { symbol: false }) : '');
+/** Assessed values print in whole pesos: the AF 56 columns are narrow. */
+const pesos = (v: number | null | undefined) =>
+  v ? Math.round(v / 100).toLocaleString('en-PH', { maximumFractionDigits: 0 }) : '';
 
 export default function PrintReceipt() {
   const { fiscalYear, fundCode } = useFilters();
   const { can } = useAuth();
+  const entity = useEntity();
+  const settings = useDocument<SystemSettings>(COL.settings, 'general');
+  const [form, setForm] = useState<FormKind>('af51');
+  const FORM_KEY = FORMS[form].key;
+  const FIELDS = form === 'af56' ? AF56_FIELDS : OR_FIELDS;
+  const [af56Sheet, setAf56Sheet] = useState<SheetSize>(AF56_SHEET);
+  useEffect(() => {
+    setAf56Sheet(loadSheetSize('af56', AF56_SHEET));
+  }, []);
+  const SHEET = form === 'af56' ? af56Sheet : OR_SHEET;
 
   const [mode, setMode] = useState<'print' | 'calibrate'>('print');
   const [selected, setSelected] = useState<string[]>([]);
@@ -77,8 +118,15 @@ export default function PrintReceipt() {
   );
 
   useEffect(() => {
-    setCalibration(loadCalibration(FORM_KEY, OR_FIELDS, 9));
-  }, []);
+    setCalibration(
+      loadCalibration(
+        FORMS[form].key,
+        form === 'af56' ? AF56_FIELDS : OR_FIELDS,
+        FORMS[form].spacing,
+      ),
+    );
+    setSelected([]);
+  }, [form]);
 
   const { data, loading, error } = useCollections(fiscalYear, fundCode);
 
@@ -86,24 +134,101 @@ export default function PrintReceipt() {
     () =>
       data
         .filter((c) => c.status !== 'CANCELLED')
+        // Patch 175: a real property tax receipt is on the AF 56, everything else on the AF 51.
+        .filter((c) => (form === 'af56' ? Boolean(c.rpt) : !c.rpt))
         .filter((c) => !statusFilter || c.status === statusFilter)
         .sort((a, b) => b.orDate.localeCompare(a.orDate) || b.orNumber.localeCompare(a.orNumber)),
-    [data, statusFilter],
+    [data, statusFilter, form],
   );
 
   useEffect(() => {
-    setSelected((prev) => prev.filter((id) => rows.some((r) => r.id === id)));
+    setSelected((prev) => {
+      const kept = prev.filter((id) => rows.some((r) => r.id === id));
+      return kept.length === prev.length ? prev : kept;
+    });
   }, [rows]);
 
   const queue = useMemo(
     () =>
-      selected.map((id) => rows.find((r) => r.id === id)).filter((c): c is Collection => Boolean(c)),
+      selected
+        .map((id) => rows.find((r) => r.id === id))
+        .filter((c): c is Collection => Boolean(c)),
     [selected, rows],
   );
 
-  const tooLong = queue.filter((c) => c.lines.length > OR_LINES_PER_SHEET);
+  const tooLong = queue.filter((c) =>
+    form === 'af56'
+      ? (c.rpt?.properties.length ?? 0) > AF56_MAX_PROPERTIES
+      : c.lines.length > OR_LINES_PER_SHEET,
+  );
+
+  /** Patch 175: an AF 56 receipt laid onto the form - see AF56_FIELDS. */
+  const toAf56Sheet = (col: Collection): SheetValue => {
+    const d = col.rpt!;
+    const t = af56Total(d);
+    const [w1, w2] = splitWords(amountInWords(col.totalAmount), 64);
+    const rows: Array<Record<string, string>> = d.properties
+      .slice(0, AF56_MAX_PROPERTIES)
+      .map((p) => {
+        const b = totalsOf(amountsOf(p.basic));
+        const paid = b.tax - b.discount;
+        const land = p.assessedLand ?? 0;
+        const imp = p.assessedImprovement ?? 0;
+        return {
+          owner: p.declaredOwner,
+          // The column is narrow: street and barangay when they fit, else the barangay.
+          location: (() => {
+            const both = [p.location, p.barangayName]
+              .filter((x) => String(x ?? '').trim())
+              .join(', ');
+            return both.length <= 18 ? both : p.barangayName;
+          })(),
+          lotBlock: p.lotBlock ?? '',
+          tdNo: p.tdNo ?? '',
+          avLand: pesos(land),
+          avImprovement: pesos(imp),
+          avTotal: pesos(land + imp),
+          taxDue: money(b.tax),
+          instNo: d.payment === 'INSTALLMENT' ? (p.installmentNo ?? '') : '',
+          instPayment: d.payment === 'INSTALLMENT' ? money(paid) : '',
+          fullPayment: d.payment === 'FULL' ? money(paid) : '',
+          penalty: money(b.penalty),
+          total: money(b.net),
+        };
+      });
+    rows.push({ penalty: 'BASIC', total: money(t.basic) });
+    if (t.sef) rows.push({ penalty: 'SEF', total: money(t.sef) });
+    return {
+      values: {
+        municipality: (settings.data?.municipality || 'Candoni').trim(),
+        prevReceiptNo: d.previousReceiptNo ?? '',
+        prevDated: d.previousReceiptDate ? formatShortDate(d.previousReceiptDate) : '',
+        prevYear: d.previousReceiptYear ?? '',
+        date: formatLongDate(col.orDate),
+        payor: col.payorName,
+        amountWords1: w1,
+        amountWords2: w2,
+        amountFigures: formatPeso(col.totalAmount, { symbol: false }),
+        fullMark: d.payment === 'FULL' ? 'X' : '',
+        installmentMark: d.payment === 'INSTALLMENT' ? 'X' : '',
+        calendarYear: d.calendarYear,
+        basicMark: t.basic ? 'X' : '',
+        sefMark: t.sef ? 'X' : '',
+        totalFigures: formatPeso(col.totalAmount, { symbol: false }),
+        cashAmount:
+          col.paymentForm === 'CASH' ? formatPeso(col.totalAmount, { symbol: false }) : '',
+        checkNo: col.paymentForm === 'CHECK' ? (col.checkNo ?? '') : '',
+        bankDate: '',
+        modeTotal: formatPeso(col.totalAmount, { symbol: false }),
+        collectingOfficer: col.collectingOfficerName,
+        treasurer: entity.localTreasurer.name,
+      },
+      rows: rows.slice(0, AF56_ROWS_PER_SHEET),
+    };
+  };
 
   const toSheet = (col: Collection): SheetValue => {
+    if (form === 'af56' && col.rpt) return toAf56Sheet(col);
     const [words1] = splitWords(amountInWords(col.totalAmount), 96);
     return {
       values: {
@@ -123,20 +248,65 @@ export default function PrintReceipt() {
 
   const specimen: SheetValue = queue[0]
     ? toSheet(queue[0])
-    : {
-        values: {
-          date: formatLongDate('2026-09-28'),
-          payor: 'JUAN DELA CRUZ',
-          payorTin: '123-456-789-000',
-          totalFigures: '1,500.00',
-          totalWords: 'ONE THOUSAND FIVE HUNDRED PESOS AND 00/100 ONLY',
-          collectingOfficer: 'COLLECTING OFFICER',
-        },
-        rows: [
-          { description: 'Business permit fee', amount: '1,000.00' },
-          { description: "Mayor's permit", amount: '500.00' },
-        ],
-      };
+    : form === 'af56'
+      ? {
+          values: {
+            municipality: 'Candoni',
+            prevReceiptNo: '1159046',
+            prevDated: '2/18/2025',
+            prevYear: '2025',
+            date: formatLongDate('2026-09-24'),
+            payor: 'MONSERATE, IRENEO',
+            amountWords1: 'TEN THOUSAND PESOS',
+            amountWords2: 'AND 00/100 ONLY',
+            amountFigures: '10,000.00',
+            fullMark: 'X',
+            installmentMark: '',
+            calendarYear: '2026',
+            basicMark: 'X',
+            sefMark: 'X',
+            totalFigures: '10,000.00',
+            cashAmount: '10,000.00',
+            checkNo: '',
+            bankDate: '',
+            modeTotal: '10,000.00',
+            collectingOfficer: 'COLLECTING OFFICER',
+            treasurer: 'MUNICIPAL TREASURER',
+          },
+          rows: [
+            {
+              owner: 'MONSERATE, IRENEO',
+              location: 'Poblacion',
+              lotBlock: '123',
+              tdNo: '09-0001',
+              avLand: '28,976',
+              avImprovement: '',
+              avTotal: '28,976',
+              taxDue: '2,897.60',
+              instNo: '',
+              instPayment: '',
+              fullPayment: '2,897.60',
+              penalty: '2,102.40',
+              total: '5,000.00',
+            },
+            { penalty: 'BASIC', total: '5,000.00' },
+            { penalty: 'SEF', total: '5,000.00' },
+          ],
+        }
+      : {
+          values: {
+            date: formatLongDate('2026-09-28'),
+            payor: 'JUAN DELA CRUZ',
+            payorTin: '123-456-789-000',
+            totalFigures: '1,500.00',
+            totalWords: 'ONE THOUSAND FIVE HUNDRED PESOS AND 00/100 ONLY',
+            collectingOfficer: 'COLLECTING OFFICER',
+          },
+          rows: [
+            { description: 'Business permit fee', amount: '1,000.00' },
+            { description: "Mayor's permit", amount: '500.00' },
+          ],
+        };
 
   const moveField = (key: string, dx: number, dy: number) =>
     setCalibration((c) => {
@@ -151,19 +321,19 @@ export default function PrintReceipt() {
 
   return (
     <div>
-      <SheetPrintStyle sheet={OR_SHEET} />
+      <SheetPrintStyle sheet={SHEET} />
       {mode === 'print' && queue.length > 0 && (
         <SheetPrintPortal>
           {queue.map((c) => (
             <div key={c.id} className="cbo-print-sheet">
               <CalibrationSheet
-                sheet={OR_SHEET}
-                fields={OR_FIELDS}
+                sheet={SHEET}
+                fields={FIELDS}
                 calibration={calibration}
                 value={toSheet(c)}
                 mode="print"
               />
-              {showGuide && <AlignmentGuide sheet={OR_SHEET} />}
+              {showGuide && <AlignmentGuide sheet={SHEET} />}
             </div>
           ))}
         </SheetPrintPortal>
@@ -171,7 +341,7 @@ export default function PrintReceipt() {
 
       <PageHeader
         title="Print receipts"
-        subtitle={`${fundLabel(fundCode)} · onto Accountable Form No. 51, ${OR_SHEET.width} × ${OR_SHEET.height} mm`}
+        subtitle={`${fundLabel(fundCode)} · onto ${FORMS[form].label}, ${SHEET.width} × ${SHEET.height} mm${form === 'af56' ? ', landscape' : ''}`}
         breadcrumbs={[{ label: 'Treasury' }, { label: 'Print receipts' }]}
         actions={
           <>
@@ -186,13 +356,62 @@ export default function PrintReceipt() {
               disabled={queue.length === 0 || tooLong.length > 0 || mode === 'calibrate'}
               onClick={() => window.print()}
             >
-              Print {queue.length > 0 ? `${queue.length} receipt${queue.length === 1 ? '' : 's'}` : ''}
+              Print{' '}
+              {queue.length > 0 ? `${queue.length} receipt${queue.length === 1 ? '' : 's'}` : ''}
             </Button>
           </>
         }
       />
 
       <SectionTabs tabs={PRINTING_TABS} />
+
+      {/* Patch 175: which accountable form is in the printer. */}
+      <div className="no-print mb-4 flex flex-wrap items-end gap-4">
+        <Field label="Form in the printer" className="w-80">
+          <Select value={form} onChange={(e) => setForm(e.target.value as FormKind)}>
+            <option value="af51">Accountable Form No. 51 (Official Receipt)</option>
+            <option value="af56">Accountable Form No. 56 (Real Property Tax)</option>
+          </Select>
+        </Field>
+        {form === 'af56' && (
+          <>
+            <Field label="Paper width (mm)" className="w-36">
+              <TextInput
+                type="number"
+                step="0.5"
+                value={af56Sheet.width}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 50 && v <= 400) {
+                    const next = { ...af56Sheet, width: v };
+                    setAf56Sheet(next);
+                    saveSheetSize('af56', next);
+                  }
+                }}
+              />
+            </Field>
+            <Field label="Paper height (mm)" className="w-36">
+              <TextInput
+                type="number"
+                step="0.5"
+                value={af56Sheet.height}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 50 && v <= 400) {
+                    const next = { ...af56Sheet, height: v };
+                    setAf56Sheet(next);
+                    saveSheetSize('af56', next);
+                  }
+                }}
+              />
+            </Field>
+            <p className="max-w-md pb-2 text-xs text-slate-500">
+              Measure a blank AF 56 with a ruler (landscape: width is the long side) and type it
+              once - it is kept on this computer. Then calibrate on plain paper.
+            </p>
+          </>
+        )}
+      </div>
 
       <Alert tone="info" title="The form already carries its number" className="mb-4 no-print">
         Put the booklet in the printer at the serial shown beside the collection. CFMS prints the
@@ -233,7 +452,9 @@ export default function PrintReceipt() {
               )}
               {rows.map((c) => {
                 const on = selected.includes(c.id);
-                const over = c.lines.length > OR_LINES_PER_SHEET;
+                const count = form === 'af56' ? (c.rpt?.properties.length ?? 0) : c.lines.length;
+                const over =
+                  form === 'af56' ? count > AF56_MAX_PROPERTIES : count > OR_LINES_PER_SHEET;
                 return (
                   <label
                     key={c.id}
@@ -253,8 +474,11 @@ export default function PrintReceipt() {
                     <span className="w-24 text-xs text-slate-500">{formatShortDate(c.orDate)}</span>
                     <span className="min-w-0 flex-1 truncate">{c.payorName}</span>
                     <span className="font-mono text-xs tabular">{formatPeso(c.totalAmount)}</span>
-                    <span className={`w-16 text-right text-2xs ${over ? 'text-rose-600' : 'text-slate-400'}`}>
-                      {c.lines.length} line{c.lines.length === 1 ? '' : 's'}
+                    <span
+                      className={`w-16 text-right text-2xs ${over ? 'text-rose-600' : 'text-slate-400'}`}
+                    >
+                      {count} {form === 'af56' ? 'propert' : 'line'}
+                      {form === 'af56' ? (count === 1 ? 'y' : 'ies') : count === 1 ? '' : 's'}
                     </span>
                   </label>
                 );
@@ -264,16 +488,20 @@ export default function PrintReceipt() {
 
           {tooLong.length > 0 && (
             <Alert tone="error" title="These will not fit on one form" className="no-print">
-              {tooLong.map((c) => c.orNumber).join(', ')} — Accountable Form No. 51 has{' '}
-              {OR_LINES_PER_SHEET} ruled lines and these have more. Splitting one receipt over two
-              forms would consume a second accountable serial that the RAAF would then have to
-              explain, so CFMS will not do it. Either record the collection as two, or write this one
-              by hand.
+              {tooLong.map((c) => c.orNumber).join(', ')} —{' '}
+              {form === 'af56'
+                ? `Accountable Form No. 56 has room for ${AF56_MAX_PROPERTIES} properties (and the Basic and SEF lines) and these have more.`
+                : `Accountable Form No. 51 has ${OR_LINES_PER_SHEET} ruled lines and these have more.`}{' '}
+              Splitting one receipt over two forms would consume a second accountable serial that
+              the RAAF would then have to explain, so CFMS will not do it. Either record the
+              collection as two, or write this one by hand.
             </Alert>
           )}
 
           <Card
-            title={mode === 'calibrate' ? 'Drag a field to where it belongs' : 'What will be printed'}
+            title={
+              mode === 'calibrate' ? 'Drag a field to where it belongs' : 'What will be printed'
+            }
             subtitle={
               mode === 'calibrate'
                 ? 'Move the first line item only — the rest follow it by the row spacing.'
@@ -286,8 +514,8 @@ export default function PrintReceipt() {
             {mode === 'calibrate' ? (
               <div className="relative inline-block">
                 <CalibrationSheet
-                  sheet={OR_SHEET}
-                  fields={OR_FIELDS}
+                  sheet={SHEET}
+                  fields={FIELDS}
                   calibration={calibration}
                   value={specimen}
                   mode="calibrate"
@@ -301,18 +529,15 @@ export default function PrintReceipt() {
             ) : (
               <div className="space-y-4">
                 {queue.map((c) => (
-                  <div
-                    key={c.id}
-                    className="relative inline-block border border-slate-200"
-                  >
+                  <div key={c.id} className="relative inline-block border border-slate-200">
                     <CalibrationSheet
-                      sheet={OR_SHEET}
-                      fields={OR_FIELDS}
+                      sheet={SHEET}
+                      fields={FIELDS}
                       calibration={calibration}
                       value={toSheet(c)}
                       mode="print"
                     />
-                    {showGuide && <AlignmentGuide sheet={OR_SHEET} />}
+                    {showGuide && <AlignmentGuide sheet={SHEET} />}
                   </div>
                 ))}
               </div>
@@ -322,7 +547,7 @@ export default function PrintReceipt() {
 
         <CalibrationPanel
           form={FORM_KEY}
-          fields={OR_FIELDS}
+          fields={FIELDS}
           calibration={calibration}
           onChange={setCalibration}
           selectedKey={selectedField}

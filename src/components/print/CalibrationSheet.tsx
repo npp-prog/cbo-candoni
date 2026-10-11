@@ -34,8 +34,11 @@ import {
 export interface SheetValue {
   /** Field key to the text printed there. */
   values: Record<string, string>;
-  /** Repeating rows, for the receipt's line items. */
-  rows?: Array<{ description: string; amount: string }>;
+  /**
+   * Repeating rows: the AF 51's line items ({ description, amount }), or the
+   * AF 56's properties (patch 175), keyed by each row field's `row`.
+   */
+  rows?: Array<Record<string, string>>;
 }
 
 export function CalibrationSheet({
@@ -133,7 +136,14 @@ export function CalibrationSheet({
       )}
 
       {fields.map((f) => {
-        const isRowAnchor = f.key === 'lineDescription' || f.key === 'lineAmount';
+        const rowKey =
+          f.row ??
+          (f.key === 'lineDescription'
+            ? 'description'
+            : f.key === 'lineAmount'
+              ? 'amount'
+              : undefined);
+        const isRowAnchor = Boolean(rowKey);
         const rows = value.rows ?? [];
 
         // The line-item anchors print once per row, spaced by the calibration.
@@ -144,11 +154,13 @@ export function CalibrationSheet({
               style={fieldStyle(f, calibration, sheet, i)}
               className={clsx(
                 mode === 'calibrate' && 'cursor-move',
-                mode === 'calibrate' && selectedKey === f.key && 'bg-brand-100/70 outline outline-1 outline-brand-500',
+                mode === 'calibrate' &&
+                  selectedKey === f.key &&
+                  'bg-brand-100/70 outline outline-1 outline-brand-500',
               )}
               onPointerDown={i === 0 ? onPointerDown(f.key) : undefined}
             >
-              {f.key === 'lineDescription' ? row.description : row.amount}
+              {row[rowKey as string] ?? ''}
             </div>
           ));
         }
@@ -281,7 +293,10 @@ export function SheetPrintPortal({ children }: { children: ReactNode }) {
  */
 export function CheckSpecimen() {
   return (
-    <div className="pointer-events-none absolute inset-0 text-slate-300 no-print" aria-hidden="true">
+    <div
+      className="pointer-events-none absolute inset-0 text-slate-300 no-print"
+      aria-hidden="true"
+    >
       <Zone x={4} y={4} w={40} h={10} label="Barcode zone" />
       <Zone x={140} y={12} w={58} h={10} label="Date boxes" />
       <Zone x={6} y={26} w={14} h={7} label="Pay to" />

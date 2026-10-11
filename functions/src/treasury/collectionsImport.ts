@@ -1,4 +1,5 @@
 import { HttpsError } from 'firebase-functions/v2/https';
+import { isAf56 } from '../lib/af56';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, assertFundInScope, invalid, type Role } from '../lib/context';
@@ -342,6 +343,15 @@ export const importCollections = onCall(
             formText
               ? `accountable form "${formText}" is not a form type in Master Data > Accountable Form Types`
               : 'no accountable form (Type / Form No.)',
+          );
+          continue;
+        }
+        // Patch 175: real property tax on AF 56 is shared at the receipt
+        // (Province, Barangay, Municipality, SEF) and is recorded in CFMS on
+        // its own form, not uploaded as plain account lines.
+        if (isAf56(formCode)) {
+          add(
+            `${formCode} is the real property tax receipt: record it in CFMS (Treasury > Collections > Record collection, form AF 56) so its shares are worked out`,
           );
           continue;
         }

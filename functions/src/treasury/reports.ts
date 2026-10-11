@@ -21,7 +21,8 @@ import {
   TREASURY_SOURCE_COLLECTION,
   TREASURY_SOURCE_REPORT_FIELD,
 } from '../lib/treasurySources';
-import { renumberPaymentEntry } from '../lib/treasuryEntry';
+import { renumberPaymentEntry, reportedCashDebit } from '../lib/treasuryEntry';
+import { af56LinesAgree, isAf56, type Af56Detail } from '../lib/af56';
 import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import {
   createJevInTransaction,
@@ -433,6 +434,39 @@ export const certifyTreasuryReport = onCall(
           }
         }
 
+        /*
+         * ---- PATCH 175: A REAL PROPERTY TAX RECEIPT ON AF 56 --------------
+         *
+         * Its lines are the sharing of the figures typed on it - the
+         * province's and the barangays' Due to LGUs, the municipality's own
+         * accounts and the SEF's Due to Other Funds. The browser worked them
+         * out; the engine works them out again here and refuses a receipt
+         * whose lines say anything else, so what the RCD certifies is the
+         * split the Local Government Code prescribes.
+         */
+        if (type === 'RCD' && source.rpt) {
+          const form = (source.accountableForm ?? source.accountableFormId) as string | undefined;
+          if (!isAf56(form)) {
+            throw invalid(
+              `${line.sourceNo} carries real property tax detail but is not on Accountable Form No. 56.`,
+            );
+          }
+          if (String(source.fundCode ?? '').toUpperCase() !== 'GF') {
+            throw invalid(`${line.sourceNo} is an AF 56 receipt and is recorded in the General Fund only.`);
+          }
+          const rptLines = (source.lines ?? []) as Array<{
+            accountCode?: string;
+            amount?: number;
+            subsidiaryType?: string | null;
+            subsidiaryId?: string | null;
+          }>;
+          if (!af56LinesAgree(source.rpt as Af56Detail, rptLines)) {
+            throw invalid(
+              `${line.sourceNo}: its account lines do not agree with the real property tax figures on the receipt. Open the receipt in Treasury > Collections and save it again so its sharing is worked out afresh.`,
+            );
+          }
+        }
+
         // ---- a payroll on an RCDisb --------------------------------------
         //
         // The report prints gross, deductions and net, so all three are checked
@@ -644,11 +678,13 @@ export const certifyTreasuryReport = onCall(
           `The proposed entry does not balance: debits ${(foot.debit / 100).toFixed(2)}, credits ${(foot.credit / 100).toFixed(2)}.`,
         );
       }
-      if (foot.debit !== verifiedTotal + verifiedToBook) {
+      // Patch 175: cash debits only - an RPT discount debit is not cash.
+      const proposedCash = reportedCashDebit(entry);
+      if (proposedCash !== verifiedTotal + verifiedToBook) {
         throw invalid(
           verifiedToBook
-            ? `The proposed entry is for ${(foot.debit / 100).toFixed(2)} but the collections (${(verifiedTotal / 100).toFixed(2)}) and the deposits it books (${(verifiedToBook / 100).toFixed(2)}) come to ${((verifiedTotal + verifiedToBook) / 100).toFixed(2)}.`
-            : `The proposed entry is for ${(foot.debit / 100).toFixed(2)} but the documents total ${(verifiedTotal / 100).toFixed(2)}.`,
+            ? `The proposed entry is for ${(proposedCash / 100).toFixed(2)} but the collections (${(verifiedTotal / 100).toFixed(2)}) and the deposits it books (${(verifiedToBook / 100).toFixed(2)}) come to ${((verifiedTotal + verifiedToBook) / 100).toFixed(2)}.`
+            : `The proposed entry is for ${(proposedCash / 100).toFixed(2)} but the documents total ${(verifiedTotal / 100).toFixed(2)}.`,
         );
       }
       // The deposits leave the officer's hands: Cash - Local Treasury is
@@ -991,11 +1027,17 @@ export const journalizeTreasuryReport = onCall(
           `The entry does not balance: debits ${(foot.debit / 100).toFixed(2)}, credits ${(foot.credit / 100).toFixed(2)}.`,
         );
       }
-      if (foot.debit !== report.totalAmount + toBook) {
+      /*
+       * Patch 175: held to the report on its CASH debits. A real property tax
+       * discount (AF 56) debits a discount account, which is not money the
+       * Treasurer collected.
+       */
+      const cashDebit = reportedCashDebit(entry);
+      if (cashDebit !== report.totalAmount + toBook) {
         throw invalid(
           toBook
-            ? `The entry is for ${(foot.debit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)} of collections and ${(toBook / 100).toFixed(2)} of deposits to book. The journal entry must agree with the report.`
-            : `The entry is for ${(foot.debit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)}. The journal entry must agree with the report.`,
+            ? `The entry is for ${(cashDebit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)} of collections and ${(toBook / 100).toFixed(2)} of deposits to book. The journal entry must agree with the report.`
+            : `The entry is for ${(cashDebit / 100).toFixed(2)} but ${type} ${report.reportNo} was certified at ${(report.totalAmount / 100).toFixed(2)}. The journal entry must agree with the report.`,
         );
       }
 
