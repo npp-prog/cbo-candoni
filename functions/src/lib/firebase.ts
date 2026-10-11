@@ -49,6 +49,8 @@ export const COL = {
   funds: 'funds',
   accounts: 'accounts',
   offices: 'offices',
+  // Patch 176: read by the bulk upload for AF 56 receipts.
+  barangays: 'barangays',
   responsibilityCenters: 'responsibilityCenters',
   programs: 'programs',
   projects: 'projects',

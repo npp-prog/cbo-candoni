@@ -10,7 +10,7 @@ import {
 } from '../lib/context';
 import { recordTransition, notifyInTransaction } from '../lib/audit';
 import {
-  issueNumber,
+  issueNumbers,
   loadNumberingConfig,
   bookCodeForFund,
   reserveDocumentNumber,
@@ -22,7 +22,7 @@ import {
   TREASURY_SOURCE_REPORT_FIELD,
 } from '../lib/treasurySources';
 import { renumberPaymentEntry, reportedCashDebit } from '../lib/treasuryEntry';
-import { af56LinesAgree, isAf56, type Af56Detail } from '../lib/af56';
+import { af56LinesAgree, isAf56, sefBooksEntry, type Af56Detail } from '../lib/af56';
 import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import {
   createJevInTransaction,
@@ -1058,13 +1058,51 @@ export const journalizeTreasuryReport = onCall(
         (d) => d.exists && !(d.data() as { jevId?: string }).jevId,
       );
 
+      /*
+       * Patch 176 - THE SEF BOOKS' SHARE OF REAL PROPERTY TAX.
+       *
+       * AF 56 receipts are General Fund collections that hold the
+       * municipality's 50% of the SEF as Due to Other Funds. The matching
+       * entry in the SEF books (Dr Due from Other Funds, Cr Special Education
+       * Tax, Deferred SET, Penalties; Dr the discounts) is posted here, with
+       * the RCD's own entry, from the same receipts - read now, before
+       * anything is written.
+       */
+      let sefEntry: ReturnType<typeof sefBooksEntry> = [];
+      if (type === 'RCD' && String(report.fundCode).toUpperCase() === 'GF') {
+        const receiptSnaps = await Promise.all(
+          (report.lines ?? [])
+            .filter((l) => !l.excluded)
+            .map((l) => tx.get(db.collection(COL.collections).doc(l.sourceId))),
+        );
+        const details = receiptSnaps
+          .filter((r) => r.exists && (r.data() as { rpt?: unknown }).rpt)
+          .map((r) => (r.data() as { rpt: Af56Detail }).rpt);
+        sefEntry = sefBooksEntry(details, `RCD ${report.reportNo}`);
+        if (sefEntry.length) {
+          await assertPeriodOpen(
+            report.fiscalYear,
+            period,
+            'SEF',
+            `The SEF share of real property tax on ${label} ${report.reportNo}`,
+            tx,
+          );
+        }
+      }
+
       const bookCode = await bookCodeForFund(report.fundCode);
-      const jevNo = await issueNumber(tx, jevConfig, {
-        bookCode,
-        fundCode: report.fundCode,
-        fiscalYear: report.fiscalYear,
-        month: period,
-      });
+      const sefBookCode = sefEntry.length ? await bookCodeForFund('SEF') : '';
+      const [jevNo, sefJevNo] = (await issueNumbers(tx, [
+        {
+          cfg: jevConfig,
+          parts: { bookCode, fundCode: report.fundCode, fiscalYear: report.fiscalYear, month: period },
+        },
+        {
+          cfg: jevConfig,
+          parts: { bookCode: sefBookCode, fundCode: 'SEF', fiscalYear: report.fiscalYear, month: period },
+          skip: sefEntry.length === 0,
+        },
+      ])) as [string, string | null];
 
       const jevLines: JevLineData[] = entry.map((l, i) => ({
         lineNo: i + 1,
@@ -1108,6 +1146,44 @@ export const journalizeTreasuryReport = onCall(
       const { jevId } = createJevInTransaction(tx, caller, jevData);
       postJevInTransaction(tx, caller, jevId, jevData);
 
+      // Patch 176: the SEF books' matching entry, posted with it.
+      let sefJevId: string | null = null;
+      if (sefEntry.length && sefJevNo) {
+        const sefTotal = sefEntry.reduce((t, l) => t + l.debit, 0);
+        const sefData: JevData = {
+          jevNo: sefJevNo,
+          jevDate: report.reportDate,
+          fiscalYear: report.fiscalYear,
+          period,
+          fundCode: 'SEF',
+          book: 'GENERAL_JOURNAL',
+          sourceType: 'RPT_SEF_SHARE',
+          sourceId: reportId,
+          referenceNo: report.reportNo,
+          particulars: `Municipal share of the Special Education Tax collected on AF 56, held by the General Fund (JEV ${jevNo}) - ${label} ${report.reportNo}`,
+          lines: sefEntry.map((l, i) => ({
+            lineNo: i + 1,
+            accountCode: l.accountCode,
+            accountName: l.accountName,
+            debit: l.debit,
+            credit: l.credit,
+            officeId: null,
+            officeName: null,
+            responsibilityCenterId: null,
+            subsidiaryType: l.subsidiaryType,
+            subsidiaryId: l.subsidiaryId,
+            subsidiaryName: l.subsidiaryName,
+            cashFlowClass: 'NON_CASH',
+            particulars: l.particulars,
+          })),
+          totalDebit: sefTotal,
+          totalCredit: sefTotal,
+          status: 'DRAFT',
+        };
+        sefJevId = createJevInTransaction(tx, caller, sefData).jevId;
+        postJevInTransaction(tx, caller, sefJevId, sefData);
+      }
+
       const now = new Date().toISOString();
 
       for (const d of depositsToStamp) {
@@ -1119,6 +1195,7 @@ export const journalizeTreasuryReport = onCall(
         entry,
         jevId,
         jevNo,
+        ...(sefJevId ? { sefJevId, sefJevNo } : {}),
         journalizedAt: now,
         postedBy: {
           uid: caller.uid,
@@ -1139,10 +1216,10 @@ export const journalizeTreasuryReport = onCall(
         action: 'POST',
         previousStatus: 'CERTIFIED',
         newStatus: 'JOURNALIZED',
-        remarks: `JEV ${jevNo}, ${(foot.debit / 100).toFixed(2)}.`,
+        remarks: `JEV ${jevNo}, ${(foot.debit / 100).toFixed(2)}.${sefJevNo ? ` SEF share: JEV ${sefJevNo}.` : ''}`,
       });
 
-      return { reportId, reportNo: report.reportNo, jevId, jevNo };
+      return { reportId, reportNo: report.reportNo, jevId, jevNo, sefJevNo: sefJevNo ?? null };
     });
   },
 );

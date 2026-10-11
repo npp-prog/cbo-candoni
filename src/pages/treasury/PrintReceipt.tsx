@@ -9,7 +9,6 @@ import { formatPeso, amountInWords } from '@/lib/money';
 import { formatShortDate, formatLongDate } from '@/lib/dates';
 import {
   AF56_FIELDS,
-  AF56_ROWS_PER_SHEET,
   AF56_ROW_SPACING,
   AF56_SHEET,
   OR_FIELDS,
@@ -23,8 +22,7 @@ import {
   type Calibration,
   type SheetSize,
 } from '@/lib/printCalibration';
-import { af56Total, amountsOf, totalsOf } from '@/lib/af56';
-import { AF56_MAX_PROPERTIES } from './Af56Section';
+import { AF56_MAX_PROPERTIES, af56SheetValues } from '@/lib/af56Print';
 import { useDocument } from '@/hooks/useFirestore';
 import { useEntity } from '@/data/useEntity';
 import { COL } from '@/lib/collections';
@@ -87,11 +85,6 @@ const FORMS: Record<FormKind, { key: string; label: string; spacing: number }> =
     spacing: AF56_ROW_SPACING,
   },
 };
-
-const money = (v: number | null | undefined) => (v ? formatPeso(v, { symbol: false }) : '');
-/** Assessed values print in whole pesos: the AF 56 columns are narrow. */
-const pesos = (v: number | null | undefined) =>
-  v ? Math.round(v / 100).toLocaleString('en-PH', { maximumFractionDigits: 0 }) : '';
 
 export default function PrintReceipt() {
   const { fiscalYear, fundCode } = useFilters();
@@ -162,70 +155,25 @@ export default function PrintReceipt() {
       : c.lines.length > OR_LINES_PER_SHEET,
   );
 
-  /** Patch 175: an AF 56 receipt laid onto the form - see AF56_FIELDS. */
-  const toAf56Sheet = (col: Collection): SheetValue => {
-    const d = col.rpt!;
-    const t = af56Total(d);
-    const [w1, w2] = splitWords(amountInWords(col.totalAmount), 64);
-    const rows: Array<Record<string, string>> = d.properties
-      .slice(0, AF56_MAX_PROPERTIES)
-      .map((p) => {
-        const b = totalsOf(amountsOf(p.basic));
-        const paid = b.tax - b.discount;
-        const land = p.assessedLand ?? 0;
-        const imp = p.assessedImprovement ?? 0;
-        return {
-          owner: p.declaredOwner,
-          // The column is narrow: street and barangay when they fit, else the barangay.
-          location: (() => {
-            const both = [p.location, p.barangayName]
-              .filter((x) => String(x ?? '').trim())
-              .join(', ');
-            return both.length <= 18 ? both : p.barangayName;
-          })(),
-          lotBlock: p.lotBlock ?? '',
-          tdNo: p.tdNo ?? '',
-          avLand: pesos(land),
-          avImprovement: pesos(imp),
-          avTotal: pesos(land + imp),
-          taxDue: money(b.tax),
-          instNo: d.payment === 'INSTALLMENT' ? (p.installmentNo ?? '') : '',
-          instPayment: d.payment === 'INSTALLMENT' ? money(paid) : '',
-          fullPayment: d.payment === 'FULL' ? money(paid) : '',
-          penalty: money(b.penalty),
-          total: money(b.net),
-        };
-      });
-    rows.push({ penalty: 'BASIC', total: money(t.basic) });
-    if (t.sef) rows.push({ penalty: 'SEF', total: money(t.sef) });
-    return {
-      values: {
-        municipality: (settings.data?.municipality || 'Candoni').trim(),
-        prevReceiptNo: d.previousReceiptNo ?? '',
-        prevDated: d.previousReceiptDate ? formatShortDate(d.previousReceiptDate) : '',
-        prevYear: d.previousReceiptYear ?? '',
-        date: formatLongDate(col.orDate),
-        payor: col.payorName,
-        amountWords1: w1,
-        amountWords2: w2,
-        amountFigures: formatPeso(col.totalAmount, { symbol: false }),
-        fullMark: d.payment === 'FULL' ? 'X' : '',
-        installmentMark: d.payment === 'INSTALLMENT' ? 'X' : '',
-        calendarYear: d.calendarYear,
-        basicMark: t.basic ? 'X' : '',
-        sefMark: t.sef ? 'X' : '',
-        totalFigures: formatPeso(col.totalAmount, { symbol: false }),
-        cashAmount:
-          col.paymentForm === 'CASH' ? formatPeso(col.totalAmount, { symbol: false }) : '',
-        checkNo: col.paymentForm === 'CHECK' ? (col.checkNo ?? '') : '',
-        bankDate: '',
-        modeTotal: formatPeso(col.totalAmount, { symbol: false }),
-        collectingOfficer: col.collectingOfficerName,
-        treasurer: entity.localTreasurer.name,
+  /** Patch 175/176: an AF 56 receipt laid onto the form - see lib/af56Print.ts. */
+  const toAf56Sheet = (col: Collection): SheetValue =>
+    af56SheetValues(
+      {
+        rpt: col.rpt!,
+        orDate: col.orDate,
+        payorName: col.payorName,
+        totalAmount: col.totalAmount,
+        paymentForm: col.paymentForm,
+        checkNo: col.checkNo ?? null,
+        collectingOfficerName: col.collectingOfficerName,
       },
-      rows: rows.slice(0, AF56_ROWS_PER_SHEET),
-    };
-  };
+      {
+        municipality: (settings.data?.municipality || 'Candoni').trim(),
+        treasurer: entity.localTreasurer.name,
+        longDate: formatLongDate,
+        shortDate: formatShortDate,
+      },
+    );
 
   const toSheet = (col: Collection): SheetValue => {
     if (form === 'af56' && col.rpt) return toAf56Sheet(col);

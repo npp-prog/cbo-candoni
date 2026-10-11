@@ -195,6 +195,7 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       );
     }
     assertNoCheckReversed(original);
+    assertNotSefShare(original);
 
     assertFundInScope(caller, original.fundCode);
 
@@ -227,13 +228,35 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
         ? ((rcdReport.data()?.remittances ?? []) as Array<{ sourceId: string }>)
         : [];
 
+    /*
+     * Patch 176: an RCD of AF 56 receipts posted a matching entry in the SEF
+     * books. Reversing the RCD reverses that too, on the same date, so the
+     * two funds' interfund accounts never disagree. Read now.
+     */
+    const sefJevId = rcdReport?.exists ? (rcdReport.data()?.sefJevId as string | undefined) : undefined;
+    const sefSnap = sefJevId ? await tx.get(db.collection(COL.jevs).doc(sefJevId)) : null;
+    const sefOriginal =
+      sefSnap?.exists && (sefSnap.data() as JevData).status === 'POSTED'
+        ? (sefSnap.data() as JevData & { reversedByJevId?: string })
+        : null;
+    if (sefOriginal && !sefOriginal.reversedByJevId) {
+      await assertPeriodOpen(revYear, revPeriod, 'SEF', `Reversal of the SEF share, dated ${revDate}`, tx);
+    }
+    const reverseSef = Boolean(sefOriginal && !sefOriginal.reversedByJevId);
+
     const bookCode = await bookCodeForFund(original.fundCode);
-    const reversingNo = await issueNumber(tx, jevConfig, {
-      bookCode,
-      fundCode: original.fundCode,
-      fiscalYear: revYear,
-      month: revPeriod,
-    });
+    const sefBookCode = reverseSef ? await bookCodeForFund('SEF') : '';
+    const [reversingNo, sefReversingNo] = (await issueNumbers(tx, [
+      {
+        cfg: jevConfig,
+        parts: { bookCode, fundCode: original.fundCode, fiscalYear: revYear, month: revPeriod },
+      },
+      {
+        cfg: jevConfig,
+        parts: { bookCode: sefBookCode, fundCode: 'SEF', fiscalYear: revYear, month: revPeriod },
+        skip: !reverseSef,
+      },
+    ])) as [string, string | null];
 
     const reversingLines = buildReversalLines(original.lines);
 
@@ -283,6 +306,35 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
     tx.update(db.collection(COL.jevs).doc(reversingJevId), {
       reversesJevId: jevId,
     });
+
+    // Patch 176: the SEF books' matching entry goes with it.
+    if (reverseSef && sefOriginal && sefJevId && sefReversingNo) {
+      const sefLines = buildReversalLines(sefOriginal.lines);
+      const sefRev: JevData = {
+        jevNo: sefReversingNo,
+        jevDate: revDate,
+        fiscalYear: revYear,
+        period: revPeriod,
+        fundCode: 'SEF',
+        book: sefOriginal.book,
+        sourceType: 'REVERSING',
+        sourceId: sefJevId,
+        referenceNo: sefOriginal.jevNo,
+        particulars: `Reversal of JEV ${sefOriginal.jevNo}, with the General Fund's JEV ${original.jevNo}. ${reason.trim()}`,
+        lines: sefLines,
+        totalDebit: sefOriginal.totalCredit,
+        totalCredit: sefOriginal.totalDebit,
+        status: 'DRAFT',
+      };
+      const { jevId: sefRevId } = createJevInTransaction(tx, caller, sefRev);
+      postJevInTransaction(tx, caller, sefRevId, sefRev, { isReversal: true });
+      tx.update(db.collection(COL.jevs).doc(sefJevId), {
+        status: 'REVERSED',
+        reversedByJevId: sefRevId,
+        remarks: `Reversed by JEV ${sefReversingNo} on ${revDate}, with the General Fund's JEV ${original.jevNo}: ${reason.trim()}`,
+      });
+      tx.update(db.collection(COL.jevs).doc(sefRevId), { reversesJevId: sefJevId });
+    }
 
     if (isRcd) {
       for (const d of bookedDeposits?.docs ?? []) {
@@ -686,6 +738,7 @@ export const correctJev = onCall(
         );
       }
       assertNoCheckReversed(original as never);
+      assertNotSefShare(original);
 
       assertFundInScope(caller, original.fundCode);
 
@@ -1073,4 +1126,18 @@ export const amendPostedJev = onCall(
     });
   },
 );
+
+/**
+ * Patch 176: the SEF books' share of an AF 56 RCD is reversed only with the
+ * General Fund entry it matches (reverse the RCD's entry), so the Due from
+ * Other Funds in the SEF can never outlive the Due to Other Funds in the GF.
+ */
+function assertNotSefShare(jev: { sourceType?: string | null; jevNo?: string | null; referenceNo?: string | null }) {
+  if (jev.sourceType === 'RPT_SEF_SHARE') {
+    throw new HttpsError(
+      'failed-precondition',
+      `JEV ${jev.jevNo} is the SEF share of the real property tax on RCD ${jev.referenceNo ?? ''}. Reverse the RCD's entry in the General Fund; this entry is reversed with it.`,
+    );
+  }
+}
 

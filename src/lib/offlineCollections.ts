@@ -5,6 +5,7 @@ import {
   type CustodyMovement,
 } from './formCustody';
 import { toNumber, pad } from './serials';
+import { af56Lines, af56Problems, isAf56, type Af56Detail } from './af56';
 
 /**
  * Patch 173 - THE OFFLINE COLLECTION APP, and the two files that tie it to
@@ -73,7 +74,16 @@ export interface OfflineSetup {
    * (payees, and employees not already a Name). A line on a per-party
    * account must name one of them, or the payor must be one.
    */
-  subsidiaries: Array<{ name: string; type: 'PAYEE' | 'EMPLOYEE' }>;
+  subsidiaries: Array<{
+    name: string;
+    type: 'PAYEE' | 'EMPLOYEE';
+    /** Patch 176: the Name's id and type (BARANGAY, GOVERNMENT_AGENCY...), for AF 56. */
+    id?: string;
+    payeeType?: string;
+  }>;
+  /** Patch 176: the province (Settings) and the barangays, for AF 56 receipts. */
+  province?: string;
+  barangays?: Array<{ id: string; name: string }>;
   /** Set by the app when the accounts or subsidiary ledgers were updated from an Excel/CSV list. */
   listsUpdatedAt?: string;
   formTypes: Array<{ code: string; name: string; printedAs: string; serialLength: number }>;
@@ -141,14 +151,27 @@ export function subsidiaryMatches(setup: OfflineSetup, name: string) {
  * active employee not already tied to a Name.
  */
 export function subsidiaryLedgers(
-  payees: Array<{ name?: string; active?: boolean; employeeId?: string }>,
+  payees: Array<{
+    id?: string;
+    name?: string;
+    active?: boolean;
+    employeeId?: string;
+    payeeType?: string;
+  }>,
   employees: Array<{ id: string; displayName?: string; active?: boolean; payeeId?: string }>,
 ): OfflineSetup['subsidiaries'] {
   const tied = new Set(payees.map((p) => p.employeeId).filter(Boolean));
   const out: OfflineSetup['subsidiaries'] = [];
   for (const p of payees) {
     if (p.active === false || !p.name) continue;
-    out.push({ name: p.name, type: p.employeeId ? 'EMPLOYEE' : 'PAYEE' });
+    out.push({
+      name: p.name,
+      type: p.employeeId ? 'EMPLOYEE' : 'PAYEE',
+      // Patch 176: the id and type, so an AF 56 receipt finds the province's
+      // and the barangays' Names.
+      ...(p.id ? { id: p.id } : {}),
+      ...(p.payeeType ? { payeeType: p.payeeType } : {}),
+    });
   }
   for (const e of employees) {
     if (e.active === false || !e.displayName || tied.has(e.id) || e.payeeId) continue;
@@ -205,6 +228,27 @@ export interface OfflineReceipt {
   updatedAt: string;
   /** Set when the receipt goes into a report (batch); it is locked from then on. */
   batchId?: string;
+  /**
+   * Patch 176: real property tax on Accountable Form No. 56 - the figures
+   * typed per property. The lines are worked out from them (af56.ts), and
+   * CFMS works them out again on upload.
+   */
+  rpt?: Af56Detail | null;
+}
+
+/** Patch 176: a counter receipt on AF 56 (real property tax). */
+export function isAf56Receipt(r: Pick<OfflineReceipt, 'kind' | 'formCode'>): boolean {
+  return r.kind === 'CASH' && isAf56(r.formCode);
+}
+
+/** Patch 176: the receipt lines of an AF 56 receipt, from its figures. */
+export function af56ReceiptLines(rpt: Af56Detail): OfflineLine[] {
+  return af56Lines(rpt).map((l) => ({
+    accountCode: l.accountCode,
+    description: l.particulars,
+    amount: l.amount,
+    ...(l.subsidiaryName ? { subsidiary: l.subsidiaryName } : {}),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +326,14 @@ export function receiptProblems(
     p.push('the TRN (transaction reference number) is missing');
   }
 
+  // Patch 176: an AF 56 receipt is checked on its figures, not its lines.
+  if (!r.cancelled && isAf56Receipt(r)) {
+    if (!r.payorName.trim()) p.push("the payor's name is missing");
+    if (!r.rpt) p.push('type the real property tax paid');
+    else p.push(...af56Problems(r.rpt, r.fundCode));
+    return p;
+  }
+
   if (!r.cancelled) {
     if (!r.payorName.trim()) p.push("the payor's name is missing");
     if (!r.lines.length) p.push('add at least one line');
@@ -335,6 +387,9 @@ export const ABSTRACT_HEADERS = [
   'Remarks',
   'TRN',
   'Subsidiary',
+  // Patch 176: an AF 56 receipt's figures (JSON), on its first row. CFMS
+  // works its lines out again from them.
+  'RPT Detail',
 ] as const;
 
 export type AbstractRow = Record<(typeof ABSTRACT_HEADERS)[number], string | number>;
@@ -372,6 +427,7 @@ export function abstractRows(
       Collector: ctx.setup.officer.name,
       Fund: r.fundCode,
       TRN: r.kind === 'CASH' ? '' : (r.trn ?? '').trim(),
+      'RPT Detail': '',
     };
     if (r.cancelled) {
       rows.push({
@@ -384,7 +440,8 @@ export function abstractRows(
       });
       continue;
     }
-    for (const l of r.lines) {
+    const rpt = isAf56Receipt(r) && r.rpt ? JSON.stringify(r.rpt) : '';
+    r.lines.forEach((l, i) => {
       rows.push({
         ...base,
         'Account Code': l.accountCode,
@@ -392,8 +449,9 @@ export function abstractRows(
         Amount: Math.round(l.amount) / 100,
         Remarks: r.remarks ?? '',
         Subsidiary: (l.subsidiary ?? '').trim(),
+        'RPT Detail': i === 0 ? rpt : '',
       });
-    }
+    });
   }
   return rows;
 }

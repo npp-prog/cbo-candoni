@@ -45,6 +45,8 @@ export const DOCUMENT_SOURCED_KINDS: readonly string[] = [
   'ERCD_EOR',
   'PAYROLL',
   'LIQUIDATION',
+  // Patch 176: worked out from the AF 56 receipts on a certified RCD.
+  'RPT_SEF_SHARE',
 ];
 
 /**

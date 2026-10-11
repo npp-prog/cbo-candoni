@@ -13,9 +13,12 @@ import {
   useEmployees,
   useFormMovements,
   useFunds,
+  useBarangays,
 } from '@/data/queries';
 import { app } from '@/lib/firebase';
-import { isAf56 } from '@/lib/af56';
+import { useDocument } from '@/hooks/useFirestore';
+import { COL } from '@/lib/collections';
+import type { SystemSettings } from '@/types/system';
 import { todayPh } from '@/lib/dates';
 import {
   SETUP_FORMAT,
@@ -44,6 +47,9 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
   const accounts = useAccounts(true);
   /* Patch 174: the subsidiary ledgers - Names, as the upload matches them. */
   const payees = usePayees();
+  /* Patch 176: AF 56 needs the barangays and the province. */
+  const barangays = useBarangays();
+  const settings = useDocument<SystemSettings>(COL.settings, 'general');
   const formTypes = useAccountableFormTypes();
   const movementsNow = useFormMovements(fiscalYear);
   const movementsBefore = useFormMovements(fiscalYear - 1);
@@ -52,6 +58,7 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
   const loading =
     employees.loading ||
     payees.loading ||
+    barangays.loading ||
     funds.loading ||
     accounts.loading ||
     formTypes.loading ||
@@ -87,28 +94,27 @@ export function OfflineSetupDownload({ onClose }: { onClose: () => void }) {
         perParty: isPerParty(a.code, a.requiresSubsidiary),
       })),
       subsidiaries: subsidiaryLedgers(payees.data, employees.data),
-      // Patch 175: AF 56 (real property tax) is recorded in CFMS, where its
-      // shares are worked out - never offered to the offline app.
-      formTypes: formTypes.data
-        .filter((t) => !isAf56(t.code))
-        .map((t) => ({
-          code: t.code,
-          name: t.name,
-          printedAs: t.printedAs,
-          serialLength: t.serialLength ?? 0,
-        })),
-      movements: mine
-        .filter((m) => !isAf56(m.formCode))
-        .map((m) => ({
-          formCode: m.formCode,
-          kind: m.kind,
-          movementDate: m.movementDate,
-          serialFrom: m.serialFrom,
-          serialTo: m.serialTo,
-          custodianId: m.custodianId ?? null,
-          fromCustodianId: m.fromCustodianId ?? null,
-          voided: false,
-        })),
+      // Patch 176: for AF 56 - the province (Settings) and the barangays.
+      province: (settings.data?.province ?? '').trim(),
+      barangays: barangays.data.map((b) => ({ id: b.id, name: b.name })),
+      // Patch 176: AF 56 too - the app records real property tax with its
+      // figures, and CFMS works the shares out again on upload.
+      formTypes: formTypes.data.map((t) => ({
+        code: t.code,
+        name: t.name,
+        printedAs: t.printedAs,
+        serialLength: t.serialLength ?? 0,
+      })),
+      movements: mine.map((m) => ({
+        formCode: m.formCode,
+        kind: m.kind,
+        movementDate: m.movementDate,
+        serialFrom: m.serialFrom,
+        serialTo: m.serialTo,
+        custodianId: m.custodianId ?? null,
+        fromCustodianId: m.fromCustodianId ?? null,
+        voided: false,
+      })),
     };
     const blob = new Blob([JSON.stringify(setup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

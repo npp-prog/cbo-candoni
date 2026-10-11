@@ -177,3 +177,37 @@ describe('AF 56 sharing (the office worksheet)', () => {
     ).toBe(100000);
   });
 });
+
+describe('the matching entry in the SEF books (patch 176)', () => {
+  it('debits Due from Other Funds by exactly what the GF credited to Due to Other Funds', async () => {
+    const { sefBooksEntry } = await import('./af56');
+    const d = detail([
+      prop({
+        basic: { ...ZERO_AMOUNTS, prior: 289760, penaltyPrior: 210240 },
+        sef: {
+          ...ZERO_AMOUNTS,
+          prior: 289760,
+          current: 100000,
+          advance: 50000,
+          penaltyPrior: 210240,
+          discountCurrent: 10000,
+          discountAdvance: 5000,
+        },
+      }),
+    ]);
+    const gf = af56Lines(d)
+      .filter((l) => l.accountCode === AF56_ACCOUNTS.dueToOtherFunds.code)
+      .reduce((s, l) => s + l.amount, 0);
+    const e = sefBooksEntry([d], 'RCD 1');
+    const dr = e.reduce((s, l) => s + l.debit, 0);
+    const cr = e.reduce((s, l) => s + l.credit, 0);
+    expect(dr).toBe(cr);
+    expect(e.find((l) => l.accountCode === '10304050')?.debit).toBe(gf);
+    expect(e.find((l) => l.accountCode === '40102050')?.credit).toBe(144880 + 50000);
+    expect(e.find((l) => l.accountCode === '20501020')?.credit).toBe(25000);
+    expect(e.find((l) => l.accountCode === '40105020')?.credit).toBe(105120);
+    expect(e.find((l) => l.accountCode === '40102051')?.debit).toBe(5000);
+    expect(e.find((l) => l.accountCode === '20501021')?.debit).toBe(2500);
+    expect(sefBooksEntry([])).toEqual([]);
+  });
+});

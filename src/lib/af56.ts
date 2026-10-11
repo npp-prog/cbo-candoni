@@ -334,13 +334,13 @@ export function af56Lines(detail: Af56Detail): Af56Line[] {
         AF56_ACCOUNTS.dueToLgus,
         province,
         signed(k, sh.basic[k].province),
-        'Basic RPT - provincial share 35%',
+        'RPT - provincial share (basic 35%, SEF 50%)',
       );
       add(
         AF56_ACCOUNTS.dueToLgus,
         province,
         signed(k, sh.sef[k].province),
-        'SEF - provincial share 50%',
+        'RPT - provincial share (basic 35%, SEF 50%)',
       );
     }
   }
@@ -512,4 +512,139 @@ export function findProvinceName<T extends { name: string; active?: boolean | nu
     return nameKey(x.name, ['PROVINCE', 'OF', 'PROVINCIAL', 'GOVERNMENT', 'THE']) === want;
   });
   return hits.length === 1 ? hits[0] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Patch 176: the matching entry in the Special Education Fund
+// ---------------------------------------------------------------------------
+
+/*
+ * Neil: "make a matching entry in SEF: Dr Due from Other Funds, Cr Special
+ * Education Tax and SET Penalty (Cr) or Discount (Dr)."
+ *
+ * The General Fund holds the municipality's 50% of the SEF as Due to Other
+ * Funds. When the RCD carrying AF 56 receipts is journalized, the engine posts
+ * this entry in the SEF books, from the same receipts:
+ *
+ *   Dr 10304050 Due from Other Funds - General Fund        net SEF share
+ *     Cr 40102050 Special Education Tax                    prior + current
+ *     Cr 20501020 Deferred Special Education Tax           advance
+ *     Cr 40105020 Fines and Penalties - Property Taxes     penalties
+ *   Dr 40102051 Discount on Special Education Tax          current discount
+ *   Dr 20501021 Discount on Advance Payment of SET         advance discount
+ *
+ * The advance follows the basic tax's rule (Deferred, as Neil chose for it).
+ * The Due from Other Funds debit is exactly the Due to Other Funds the
+ * receipts credited in the General Fund, so the two funds' interfund accounts
+ * agree to the centavo.
+ */
+export const SEF_BOOK_ACCOUNTS = {
+  dueFromOtherFunds: { code: '10304050', name: 'Due from Other Funds' },
+  set: { code: '40102050', name: 'Special Education Tax' },
+  setDiscount: { code: '40102051', name: 'Discount on Special Education Tax' },
+  deferredSet: { code: '20501020', name: 'Deferred Special Education Tax' },
+  deferredSetDiscount: {
+    code: '20501021',
+    name: 'Discount on Advance Payment of Special Education Tax',
+  },
+  penalties: AF56_ACCOUNTS.penalties,
+} as const;
+
+export const GF_FUND_SUBSIDIARY: Af56Subsidiary = {
+  subsidiaryType: 'FUND',
+  subsidiaryId: 'GF',
+  subsidiaryName: 'General Fund',
+};
+
+export interface SefBookLine {
+  accountCode: string;
+  accountName: string;
+  debit: Centavos;
+  credit: Centavos;
+  subsidiaryType: string | null;
+  subsidiaryId: string | null;
+  subsidiaryName: string | null;
+  particulars: string;
+}
+
+/** The municipality's 50% of the SEF on these receipts, by figure. */
+export function municipalSefShares(details: Af56Detail[]): Af56Amounts {
+  const out = { ...ZERO_AMOUNTS };
+  for (const d of details) {
+    for (const p of d.properties ?? []) {
+      const sh = propertyShares(p);
+      for (const k of AMOUNT_KEYS) out[k] += sh.sef[k].municipal;
+    }
+  }
+  return out;
+}
+
+/** The SEF-books entry for these receipts; empty when there is no SEF. */
+export function sefBooksEntry(details: Af56Detail[], reference = ''): SefBookLine[] {
+  const m = municipalSefShares(details);
+  const net =
+    m.prior +
+    m.current +
+    m.advance +
+    m.penaltyPrior +
+    m.penaltyCurrent -
+    m.discountCurrent -
+    m.discountAdvance;
+  const per = reference ? ` per ${reference}` : '';
+  const line = (
+    account: { code: string; name: string },
+    debit: number,
+    credit: number,
+    particulars: string,
+    sub: Af56Subsidiary | null = null,
+  ): SefBookLine => ({
+    accountCode: account.code,
+    accountName: account.name,
+    debit,
+    credit,
+    subsidiaryType: sub?.subsidiaryType ?? null,
+    subsidiaryId: sub?.subsidiaryId ?? null,
+    subsidiaryName: sub?.subsidiaryName ?? null,
+    particulars,
+  });
+  const lines = [
+    line(
+      SEF_BOOK_ACCOUNTS.dueFromOtherFunds,
+      net,
+      0,
+      `Municipal share of SEF held by the General Fund${per}`,
+      GF_FUND_SUBSIDIARY,
+    ),
+    line(
+      SEF_BOOK_ACCOUNTS.setDiscount,
+      m.discountCurrent,
+      0,
+      `Discount on SET - municipal share${per}`,
+    ),
+    line(
+      SEF_BOOK_ACCOUNTS.deferredSetDiscount,
+      m.discountAdvance,
+      0,
+      `Discount on advance SET - municipal share${per}`,
+    ),
+    line(
+      SEF_BOOK_ACCOUNTS.set,
+      0,
+      m.prior + m.current,
+      `Special Education Tax - municipal share 50%${per}`,
+    ),
+    line(
+      SEF_BOOK_ACCOUNTS.deferredSet,
+      0,
+      m.advance,
+      `SET paid in advance - municipal share 50%${per}`,
+    ),
+    line(
+      SEF_BOOK_ACCOUNTS.penalties,
+      0,
+      m.penaltyPrior + m.penaltyCurrent,
+      `SET penalty - municipal share 50%${per}`,
+    ),
+  ];
+  return lines.filter((l) => l.debit !== 0 || l.credit !== 0);
 }

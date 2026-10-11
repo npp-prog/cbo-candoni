@@ -55,6 +55,12 @@ export interface AbstractReceipt {
   remarks: string;
   /** Patch 166: an e-collection's transaction reference number. */
   trn: string;
+  /**
+   * Patch 176: an AF 56 receipt's real property tax figures, as the CFMS
+   * Collections app writes them (JSON in the "RPT Detail" column). The
+   * engine works the receipt's lines out again from them.
+   */
+  rpt?: unknown;
   problem?: string;
 }
 
@@ -73,7 +79,18 @@ const COLUMNS = {
   amount: [/amount/i, /^total/i],
   remarks: [/remarks/i, /status/i, /note/i],
   subsidiary: [/subsidiary/i, /sub.?ledger/i],
+  rpt: [/^rpt\s*detail/i],
 };
+
+/** Patch 176: the RPT Detail cell, read as JSON; unreadable is left out. */
+function readRpt(text: string): unknown {
+  if (!text.trim()) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * A receipt is cancelled when the abstract says so.
@@ -125,6 +142,10 @@ export async function parseAbstractFile(file: File): Promise<AbstractReceipt[]> 
         problem: undefined,
       };
       receipts.set(key, receipt);
+    }
+    if (receipt.rpt === undefined) {
+      const rpt = readRpt(findText(raw, COLUMNS.rpt));
+      if (rpt !== undefined) receipt.rpt = rpt;
     }
 
     // A cancelled receipt carries no revenue line. Its amount is nil by

@@ -194,8 +194,12 @@ export default function TreasuryReportDetail() {
       .flatMap((l) => {
         const advice = adaById.get(l.sourceId);
         // The advice's own list first: it carries the line numbers the engine reads.
-        const group: Array<{ lineNo?: number; payeeName: string; accountNumber: string; amount: number }> | null =
-          advice?.payees?.length ? advice.payees : (l.payees ?? null);
+        const group: Array<{
+          lineNo?: number;
+          payeeName: string;
+          accountNumber: string;
+          amount: number;
+        }> | null = advice?.payees?.length ? advice.payees : (l.payees ?? null);
         if (group && group.length) {
           return group.map((p, i) => ({
             adaId: l.sourceId,
@@ -422,7 +426,7 @@ export default function TreasuryReportDetail() {
       toast.success(
         res.jevNo ? `JEV ${res.jevNo} posted` : `${short} ${res.reportNo} taken up`,
         res.jevNo
-          ? `${short} ${res.reportNo} is journalized and in the General Ledger.`
+          ? `${short} ${res.reportNo} is journalized and in the General Ledger.${(res as { sefJevNo?: string | null }).sefJevNo ? ` The SEF share is in the SEF books as JEV ${(res as { sefJevNo?: string | null }).sefJevNo}.` : ''}`
           : 'Deposits already in the books only - there is no entry.',
       );
       setDraftEntry(null);
@@ -496,7 +500,9 @@ export default function TreasuryReportDetail() {
   return (
     <div>
       <PageHeader
-        title={hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} draft`}
+        title={
+          hasDocumentNumber(report.reportNo) ? `${short} ${report.reportNo}` : `${short} draft`
+        }
         subtitle={label}
         /*
           THE BREADCRUMBS SAY WHERE THE OFFICER CAME FROM, not where the
@@ -530,7 +536,9 @@ export default function TreasuryReportDetail() {
                 variant="primary"
                 disabled={!hasSignedForm}
                 onClick={() => {
-                  setCertifyNo(hasDocumentNumber(report.reportNo) ? (report.reportNo as string) : '');
+                  setCertifyNo(
+                    hasDocumentNumber(report.reportNo) ? (report.reportNo as string) : '',
+                  );
                   setConfirm('certify');
                 }}
               >
@@ -613,8 +621,8 @@ export default function TreasuryReportDetail() {
         <Alert tone="warning" className="mb-4" title="Attach the signed form before certifying">
           <p>
             What CFMS holds is an encoding of the {short}. Certifying locks the documents it covers
-            to it and reserves its number (forwarding to Accounting is a separate step); the signed copy is the
-            evidence that the encoding is true, and it belongs on the record before the
+            to it and reserves its number (forwarding to Accounting is a separate step); the signed
+            copy is the evidence that the encoding is true, and it belongs on the record before the
             certificate, not after it.
           </p>
           <p className="mt-2">
@@ -646,14 +654,14 @@ export default function TreasuryReportDetail() {
           } no account number on file`}
         >
           <p>
-            The file for the bank cannot be produced until every row has one. A blank account
-            number is either rejected by the bank after the upload - which the office finds out
-            about from the bank, afterwards - or, on a less careful bank application, paid into
-            the account on the line above.
+            The file for the bank cannot be produced until every row has one. A blank account number
+            is either rejected by the bank after the upload - which the office finds out about from
+            the bank, afterwards - or, on a less careful bank application, paid into the account on
+            the line above.
           </p>
           <p className="mt-2">
-            Add the number under <strong>Master Data &gt; Payees</strong>, or on the employee
-            record where the payee is a member of staff:{' '}
+            Add the number under <strong>Master Data &gt; Payees</strong>, or on the employee record
+            where the payee is a member of staff:{' '}
             <span className="font-medium">{bankFile.missing.join(', ')}</span>.
           </p>
         </Alert>
@@ -672,8 +680,22 @@ export default function TreasuryReportDetail() {
               </JevLink>
             </>
           ) : null}
-          {report.journalizedAt ? ` on ${formatInstant(report.journalizedAt)}` : ''}. A posted entry
-          is never edited - a correction is a reversing entry in General Transactions.
+          {report.journalizedAt ? ` on ${formatInstant(report.journalizedAt)}` : ''}
+          {report.sefJevNo ? (
+            <>
+              {'; the SEF share of real property tax as '}
+              <JevLink
+                jevId={report.sefJevId ?? undefined}
+                jevNo={report.sefJevNo}
+                className="font-medium"
+              >
+                JEV {report.sefJevNo}
+              </JevLink>
+              {' in the SEF books'}
+            </>
+          ) : null}
+          . A posted entry is never edited - a correction is a reversing entry in General
+          Transactions.
         </Alert>
       )}
 
@@ -758,105 +780,108 @@ export default function TreasuryReportDetail() {
       <div className="mt-4">
         {tab === 'coverage' && (
           <>
-          <Card>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr>
-                  <th className="cbo-th w-32">No.</th>
-                  <th className="cbo-th w-28">Date</th>
-                  <th className="cbo-th">Payee or payor</th>
-                  <th className="cbo-th cbo-amount-col">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.lines.map((line) => (
-                  /*
+            <Card>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className="cbo-th w-32">No.</th>
+                    <th className="cbo-th w-28">Date</th>
+                    <th className="cbo-th">Payee or payor</th>
+                    <th className="cbo-th cbo-amount-col">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.lines.map((line) => (
+                    /*
                     CLICK A LINE TO OPEN WHAT IT COVERS. The four columns are
                     what the printed report shows and they are not enough to
                     journalize against: a check's voucher, the obligation
                     behind it and what was withheld from it are all in CFMS and
                     were four screens away. See CoveredDocument.
                   */
-                  <tr
-                    key={line.sourceId}
-                    onClick={() =>
-                      setOpened({ sourceId: line.sourceId, sourceNo: line.sourceNo })
-                    }
-                    className={`cursor-pointer hover:bg-slate-50 ${
-                      line.excluded ? 'opacity-50' : ''
-                    }`}
-                    title="Open this document"
-                  >
-                    <td className="cbo-td font-mono text-xs text-brand-700 underline decoration-dotted underline-offset-2">
-                      {line.sourceNo}
-                    </td>
-                    <td className="cbo-td text-xs">{formatShortDate(line.date)}</td>
-                    <td className="cbo-td">
-                      {line.payeeName ?? ''}
-                      {line.particulars && (
-                        <span className="block text-xs text-slate-500">{line.particulars}</span>
-                      )}
-                      {line.excluded && (
-                        <span className="block text-xs italic text-slate-500">
-                          Cancelled - excluded from the total
-                        </span>
-                      )}
-                    </td>
-                    <td className="cbo-td cbo-amount">
-                      {formatPeso(line.amount, { symbol: false })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
-                  <td className="cbo-td" colSpan={3}>
-                    {report.reportType === 'RCDISB' ? 'Cash paid per report' : 'Total per report'}
-                  </td>
-                  <td className="cbo-td cbo-amount">
-                    {formatPeso(report.totalAmount, { symbol: false })}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </Card>
-          {/* Patch 157: the deposits an RCD reports (Section B). */}
-          {report.reportType === 'RCD' && (report.deposits?.length ?? 0) > 0 && (
-            <Card className="mt-4" title="Deposits reported (Section B)">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr>
-                    <th className="cbo-th w-40">Deposit slip</th>
-                    <th className="cbo-th w-28">Date</th>
-                    <th className="cbo-th">Bank</th>
-                    <th className="cbo-th cbo-amount-col">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(report.deposits ?? []).map((d) => (
-                    <tr key={d.sourceId}>
-                      <td className="cbo-td font-mono text-xs">{d.depositSlipNo}</td>
-                      <td className="cbo-td text-xs">{d.date ? formatShortDate(d.date) : ''}</td>
-                      <td className="cbo-td text-xs">
-                        {d.bankName} {d.bankAccountNumber}
+                    <tr
+                      key={line.sourceId}
+                      onClick={() =>
+                        setOpened({ sourceId: line.sourceId, sourceNo: line.sourceNo })
+                      }
+                      className={`cursor-pointer hover:bg-slate-50 ${
+                        line.excluded ? 'opacity-50' : ''
+                      }`}
+                      title="Open this document"
+                    >
+                      <td className="cbo-td font-mono text-xs text-brand-700 underline decoration-dotted underline-offset-2">
+                        {line.sourceNo}
                       </td>
-                      <td className="cbo-td cbo-amount">{formatPeso(d.amount, { symbol: false })}</td>
+                      <td className="cbo-td text-xs">{formatShortDate(line.date)}</td>
+                      <td className="cbo-td">
+                        {line.payeeName ?? ''}
+                        {line.particulars && (
+                          <span className="block text-xs text-slate-500">{line.particulars}</span>
+                        )}
+                        {line.excluded && (
+                          <span className="block text-xs italic text-slate-500">
+                            Cancelled - excluded from the total
+                          </span>
+                        )}
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(line.amount, { symbol: false })}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
                     <td className="cbo-td" colSpan={3}>
-                      Total deposits - booked when each was posted, so not in this report&apos;s entry
+                      {report.reportType === 'RCDISB' ? 'Cash paid per report' : 'Total per report'}
                     </td>
                     <td className="cbo-td cbo-amount">
-                      {formatPeso(report.totalDeposits ?? 0, { symbol: false })}
+                      {formatPeso(report.totalAmount, { symbol: false })}
                     </td>
                   </tr>
                 </tfoot>
               </table>
             </Card>
-          )}
+            {/* Patch 157: the deposits an RCD reports (Section B). */}
+            {report.reportType === 'RCD' && (report.deposits?.length ?? 0) > 0 && (
+              <Card className="mt-4" title="Deposits reported (Section B)">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr>
+                      <th className="cbo-th w-40">Deposit slip</th>
+                      <th className="cbo-th w-28">Date</th>
+                      <th className="cbo-th">Bank</th>
+                      <th className="cbo-th cbo-amount-col">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(report.deposits ?? []).map((d) => (
+                      <tr key={d.sourceId}>
+                        <td className="cbo-td font-mono text-xs">{d.depositSlipNo}</td>
+                        <td className="cbo-td text-xs">{d.date ? formatShortDate(d.date) : ''}</td>
+                        <td className="cbo-td text-xs">
+                          {d.bankName} {d.bankAccountNumber}
+                        </td>
+                        <td className="cbo-td cbo-amount">
+                          {formatPeso(d.amount, { symbol: false })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
+                      <td className="cbo-td" colSpan={3}>
+                        Total deposits - booked when each was posted, so not in this report&apos;s
+                        entry
+                      </td>
+                      <td className="cbo-td cbo-amount">
+                        {formatPeso(report.totalDeposits ?? 0, { symbol: false })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </Card>
+            )}
           </>
         )}
 
@@ -897,8 +922,8 @@ export default function TreasuryReportDetail() {
                 </Button>
                 <p className="mt-2 text-xs text-slate-500">
                   Allowed while {report.period ? monthName(report.period) : 'the month'} is open.
-                  The ledger lines are rewritten in place and the correction is recorded against
-                  the entry; once the month is closed the only correction is a reversing entry.
+                  The ledger lines are rewritten in place and the correction is recorded against the
+                  entry; once the month is closed the only correction is a reversing entry.
                 </p>
               </div>
             )}
@@ -914,8 +939,8 @@ export default function TreasuryReportDetail() {
                 {balanced && !agreesWithReport && (
                   <Alert tone="warning" className="mt-3">
                     The entry comes to {formatPeso(totals.debit)} but {short} {report.reportNo} was
-                    certified at {formatPeso(report.totalAmount)}. The journal entry must agree
-                    with the report the Treasurer signed.
+                    certified at {formatPeso(report.totalAmount)}. The journal entry must agree with
+                    the report the Treasurer signed.
                   </Alert>
                 )}
                 <div className="mt-4 flex gap-2">
@@ -1004,7 +1029,10 @@ export default function TreasuryReportDetail() {
                 setPostingOnline(false);
               })
               .catch((err) =>
-                toast.error('Could not record the posting', err instanceof Error ? err.message : String(err)),
+                toast.error(
+                  'Could not record the posting',
+                  err instanceof Error ? err.message : String(err),
+                ),
               )
               .finally(() => setBusy(false));
           }}
@@ -1073,9 +1101,9 @@ export default function TreasuryReportDetail() {
         message={
           <>
             <p>
-              {formatPeso(report.totalAmount)} is written to the General Ledger against the
-              accounts shown. From that moment the entry is in the Trial Balance and every report
-              drawn from the ledger.
+              {formatPeso(report.totalAmount)} is written to the General Ledger against the accounts
+              shown. From that moment the entry is in the Trial Balance and every report drawn from
+              the ledger.
             </p>
             <p className="mt-2 text-xs text-slate-500">
               The entry takes its JEV number now. A posted entry is never deleted - while the month
@@ -1101,16 +1129,16 @@ export default function TreasuryReportDetail() {
           <>
             <p>
               The ledger lines for this report's entry are replaced with what is on screen. The
-              General Ledger, the Trial Balance and every report drawn from them change with it,
-              and no reversing entry is made.
+              General Ledger, the Trial Balance and every report drawn from them change with it, and
+              no reversing entry is made.
             </p>
             <p className="mt-2">
-              The total stays at {formatPeso(report.totalAmount)} - that is the figure the
-              Treasurer certified, and the journal has to agree with the report that was signed.
+              The total stays at {formatPeso(report.totalAmount)} - that is the figure the Treasurer
+              certified, and the journal has to agree with the report that was signed.
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              Allowed only while the month is open. If the server finds it closed it will refuse
-              and say so, and the correction is then a reversing entry.
+              Allowed only while the month is open. If the server finds it closed it will refuse and
+              say so, and the correction is then a reversing entry.
             </p>
           </>
         }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { parseAbstractFile } from '@/pages/treasury/parseAbstract';
+import { ZERO_AMOUNTS, type Af56Detail } from './af56';
 import {
+  af56ReceiptLines,
   ABSTRACT_HEADERS,
   abstractCsv,
   abstractRows,
@@ -243,5 +245,76 @@ describe('the subsidiary ledgers in the setup file', () => {
       { name: 'REYES, Ana', type: 'EMPLOYEE' },
       { name: 'SANTOS, Juan', type: 'EMPLOYEE' },
     ]);
+  });
+});
+
+describe('an AF 56 receipt from the app (patch 176)', () => {
+  const rpt: Af56Detail = {
+    calendarYear: '2027',
+    payment: 'FULL',
+    provinceSubsidiary: {
+      subsidiaryType: 'PAYEE',
+      subsidiaryId: 'prov',
+      subsidiaryName: 'PROVINCE OF NEGROS OCCIDENTAL',
+    },
+    properties: [
+      {
+        declaredOwner: 'TOPES, Elsie',
+        barangayId: 'b1',
+        barangayName: 'Poblacion',
+        basic: { ...ZERO_AMOUNTS, current: 100000, discountCurrent: 10000 },
+        sef: { ...ZERO_AMOUNTS, current: 100000, discountCurrent: 10000 },
+        barangaySubsidiary: {
+          subsidiaryType: 'PAYEE',
+          subsidiaryId: 'pob',
+          subsidiaryName: 'BARANGAY POBLACION',
+        },
+      },
+    ],
+  };
+  const af56Setup: OfflineSetup = {
+    ...setup,
+    formTypes: [
+      ...setup.formTypes,
+      { code: 'AF56', name: 'RPT receipt', printedAs: 'AF 56', serialLength: 6 },
+    ],
+    movements: [
+      ...setup.movements,
+      {
+        formCode: 'AF56',
+        kind: 'ISSUE',
+        movementDate: '2027-01-02',
+        serialFrom: '880751',
+        serialTo: '880800',
+        custodianId: 'e5',
+      },
+    ],
+  };
+  const r = receipt({
+    formCode: 'AF56',
+    orNumber: '880751',
+    rpt,
+    lines: af56ReceiptLines(rpt),
+    totalAmount: 180000,
+  });
+
+  it('is checked on its figures', () => {
+    expect(receiptProblems(r, af56Setup, [])).toEqual([]);
+    expect(receiptProblems({ ...r, fundCode: 'SEF' }, af56Setup, []).join()).toMatch(
+      /General Fund/,
+    );
+    expect(receiptProblems({ ...r, rpt: null }, af56Setup, []).join()).toMatch(/real property tax/);
+  });
+
+  it('carries its figures through the Abstract file and back', async () => {
+    const rows = abstractRows([r], { reportNo: 'JS-2027-009', setup: af56Setup });
+    expect(rows.reduce((t, x) => t + Number(x.Amount), 0)).toBeCloseTo(1800, 2);
+    const [x] = await parseAbstractFile(await asFile(rows));
+    expect(x.rpt).toEqual(rpt);
+    const [c] = await parseAbstractFile(
+      new File([abstractCsv(rows)], 'a.csv', { type: 'text/csv' }),
+    );
+    expect(c.rpt).toEqual(rpt);
+    expect(c.totalAmount).toBe(180000);
   });
 });

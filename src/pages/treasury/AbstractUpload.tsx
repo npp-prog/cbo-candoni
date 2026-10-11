@@ -145,6 +145,8 @@ export default function AbstractUpload() {
               cancelled: r.cancelled,
               remarks: r.remarks || undefined,
               ...(kind && r.trn ? { trn: r.trn } : {}),
+              // Patch 176: an AF 56 receipt's figures, from the offline app.
+              ...(r.rpt ? { rpt: r.rpt } : {}),
               lines: r.lines.map((l) => ({
                 revenueCode: l.revenueCode,
                 description: l.description || undefined,

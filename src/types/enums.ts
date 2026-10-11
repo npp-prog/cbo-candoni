@@ -179,6 +179,9 @@ export const JEV_SOURCE_TYPES = [
   'ERCD_EOR',
   'PAYROLL',
   'LIQUIDATION',
+  // Patch 176: the SEF books' share of real property tax on AF 56, posted with
+  // the General Fund RCD that carried the receipts.
+  'RPT_SEF_SHARE',
   // Written in Accounting itself.
   'BANK_ADJUSTMENT',
   'ADJUSTING',
@@ -202,6 +205,7 @@ export const JEV_SOURCE_LABELS: Record<JevSourceType, string> = {
   ERCD_EOR: 'Report of e-Collections and Deposits',
   PAYROLL: 'Payroll',
   LIQUIDATION: 'Liquidation Report',
+  RPT_SEF_SHARE: 'SEF share of Real Property Tax (AF 56)',
   BANK_ADJUSTMENT: 'Bank Adjustment',
   ADJUSTING: 'Adjusting Entry',
   CLOSING: 'Closing Entry',

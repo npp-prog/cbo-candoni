@@ -21,6 +21,7 @@ import {
   type Af56Subsidiary,
 } from '@/lib/af56';
 import type { SystemSettings } from '@/types/system';
+import { AF56_MAX_PROPERTIES } from '@/lib/af56Print';
 
 /**
  * Patch 175 - the real property tax on an Accountable Form No. 56 receipt.
@@ -63,7 +64,7 @@ const blankProperty = (owner: string): Af56Property => ({
 const sameAmounts = (a: Af56Amounts, b: Af56Amounts) => AMOUNT_KEYS.every((k) => a[k] === b[k]);
 
 /** Up to four properties: the form has six ruled rows, two go to Basic and SEF. */
-export const AF56_MAX_PROPERTIES = 4;
+export { AF56_MAX_PROPERTIES };
 
 export function Af56Section({
   initial,

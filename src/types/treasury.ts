@@ -660,6 +660,9 @@ export interface TreasuryReport extends Partial<AuditStamps> {
   /** The JEV raised from this report. Set once, when journalized. */
   jevId?: Id;
   jevNo?: string;
+  /** Patch 176: the SEF books' matching entry for AF 56 receipts on a GF RCD. */
+  sefJevId?: string | null;
+  sefJevNo?: string | null;
   journalizedAt?: string;
 
   remarks?: string;

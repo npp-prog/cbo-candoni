@@ -1,5 +1,14 @@
 import { HttpsError } from 'firebase-functions/v2/https';
-import { isAf56 } from '../lib/af56';
+import {
+  af56Lines,
+  af56Problems,
+  af56Total,
+  amountsOf,
+  findBarangayName,
+  findProvinceName,
+  isAf56,
+  type Af56Detail,
+} from '../lib/af56';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { requireCaller, assertFundInScope, invalid, type Role } from '../lib/context';
@@ -92,6 +101,8 @@ interface RawReceipt {
   remarks?: string;
   /** Patch 166: an e-collection's transaction reference number (TRN). */
   trn?: string;
+  /** Patch 176: an AF 56 receipt's real property tax figures. */
+  rpt?: unknown;
 }
 
 const peso = (c: number) => (c / 100).toFixed(2);
@@ -136,8 +147,16 @@ export const importCollections = onCall(
 
     // ---- master data, read once ------------------------------------------
 
-    const [codeSnap, accountSnap, employeeSnap, payeeSnap, formTypeSnap, movementSnap] =
-      await Promise.all([
+    const [
+      codeSnap,
+      accountSnap,
+      employeeSnap,
+      payeeSnap,
+      formTypeSnap,
+      movementSnap,
+      barangaySnap,
+      settingsSnap,
+    ] = await Promise.all([
         db.collection(COL.revenueCodes).get(),
         db.collection(COL.accounts).get(),
         db.collection(COL.employees).get(),
@@ -148,7 +167,71 @@ export const importCollections = onCall(
           .collection(COL.accountableFormMovements)
           .where('fiscalYear', 'in', [fiscalYear, fiscalYear - 1])
           .get(),
+        // Patch 176: for AF 56 receipts - the barangays and the province.
+        db.collection(COL.barangays).get(),
+        db.collection(COL.settings).doc('general').get(),
       ]);
+
+    /*
+     * Patch 176 - AN AF 56 RECEIPT FROM THE OFFLINE APP.
+     *
+     * It carries its real property tax figures (RPT Detail). The engine does
+     * not take its lines from the file: it finds the province's and each
+     * barangay's Name itself, and works the lines out from the figures
+     * (lib/af56.ts) - the same sharing the receipt form uses.
+     */
+    const rptNames = payeeSnap.docs.map((d) => {
+      const x = d.data() as { name?: string; payeeType?: string; active?: boolean };
+      return { id: d.id, name: String(x.name ?? ''), payeeType: x.payeeType ?? null, active: x.active };
+    });
+    const rptBarangays = barangaySnap.docs.map((d) => ({
+      id: d.id,
+      name: String((d.data() as { name?: string }).name ?? ''),
+    }));
+    const province = String((settingsSnap.data() as { province?: string } | undefined)?.province ?? '').trim() || 'Negros Occidental';
+    const provinceName = findProvinceName(province, rptNames);
+    const readAf56 = (rawRpt: unknown): Af56Detail | null => {
+      if (!rawRpt || typeof rawRpt !== 'object') return null;
+      const x = rawRpt as Partial<Af56Detail>;
+      const text = (v: unknown) => (v === null || v === undefined ? '' : String(v)).trim();
+      const props = Array.isArray(x.properties) ? x.properties.slice(0, 10) : [];
+      return {
+        calendarYear: text(x.calendarYear),
+        payment: x.payment === 'INSTALLMENT' ? 'INSTALLMENT' : 'FULL',
+        previousReceiptNo: text(x.previousReceiptNo) || null,
+        previousReceiptDate: text(x.previousReceiptDate) || null,
+        previousReceiptYear: text(x.previousReceiptYear) || null,
+        provinceSubsidiary: provinceName
+          ? { subsidiaryType: 'PAYEE', subsidiaryId: provinceName.id, subsidiaryName: provinceName.name }
+          : null,
+        properties: props.map((p) => {
+          const wanted = text(p?.barangayName);
+          const brgy =
+            rptBarangays.find((b) => b.id === text(p?.barangayId)) ??
+            rptBarangays.find((b) => nameKey(b.name) === nameKey(wanted)) ??
+            null;
+          const sub = brgy ? findBarangayName(brgy.name, rptNames) : null;
+          const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
+          return {
+            declaredOwner: text(p?.declaredOwner),
+            barangayId: brgy?.id ?? '',
+            barangayName: brgy?.name ?? wanted,
+            location: text(p?.location) || null,
+            lotBlock: text(p?.lotBlock) || null,
+            tdNo: text(p?.tdNo) || null,
+            assessedLand: num(p?.assessedLand),
+            assessedImprovement: num(p?.assessedImprovement),
+            period: text(p?.period) || null,
+            installmentNo: text(p?.installmentNo) || null,
+            basic: amountsOf(p?.basic),
+            sef: amountsOf(p?.sef),
+            barangaySubsidiary: sub
+              ? { subsidiaryType: 'PAYEE', subsidiaryId: sub.id, subsidiaryName: sub.name }
+              : null,
+          };
+        }),
+      };
+    };
 
     /*
      * Patch 162 - A RECEIPT MUST COME FROM A BOOKLET ITS COLLECTOR HOLDS.
@@ -287,6 +370,8 @@ export const importCollections = onCall(
       remarks: string;
       trn: string;
       revenueSource: string;
+      /** Patch 176: an AF 56 receipt's figures. */
+      rpt: Af56Detail | null;
       lines: Array<{
         lineNo: number;
         accountCode: string;
@@ -346,12 +431,11 @@ export const importCollections = onCall(
           );
           continue;
         }
-        // Patch 175: real property tax on AF 56 is shared at the receipt
-        // (Province, Barangay, Municipality, SEF) and is recorded in CFMS on
-        // its own form, not uploaded as plain account lines.
-        if (isAf56(formCode)) {
+        // Patch 175/176: real property tax on AF 56 comes with its figures
+        // (from the CFMS Collections app) or is recorded on the form in CFMS.
+        if (isAf56(formCode) && !r.cancelled && !r.rpt) {
           add(
-            `${formCode} is the real property tax receipt: record it in CFMS (Treasury > Collections > Record collection, form AF 56) so its shares are worked out`,
+            `${formCode} is the real property tax receipt and this row carries no RPT Detail: record it in CFMS (Treasury > Collections > Record collection, form AF 56), or send it from the CFMS Collections app`,
           );
           continue;
         }
@@ -374,8 +458,47 @@ export const importCollections = onCall(
       const lines: Ready['lines'] = [];
       let total = 0;
       let revenueSource = 'OTHER';
+      let rpt: Af56Detail | null = null;
 
-      if (!r.cancelled) {
+      if (!r.cancelled && formCode && isAf56(formCode)) {
+        rpt = readAf56(r.rpt);
+        const rptProblems = rpt ? af56Problems(rpt, fundCode) : ['its RPT Detail cannot be read'];
+        if (rptProblems.length) {
+          add(rptProblems[0]);
+          continue;
+        }
+        let bad = false;
+        for (const l of af56Lines(rpt!)) {
+          const account = accounts.get(l.accountCode);
+          if (!account || account.postable === false || account.active === false) {
+            badAccounts.add(`${l.accountCode} (AF 56)`);
+            bad = true;
+            continue;
+          }
+          lines.push({
+            lineNo: lines.length + 1,
+            accountCode: l.accountCode,
+            accountName: account.name,
+            amount: l.amount,
+            particulars: l.particulars,
+            subsidiaryType: l.subsidiaryType,
+            subsidiaryId: l.subsidiaryId,
+            subsidiaryName: l.subsidiaryName,
+          });
+        }
+        if (bad) continue;
+        total = af56Total(rpt!).total;
+        revenueSource = 'REAL_PROPERTY_TAX';
+        const fileTotal = Math.round(
+          (Array.isArray(r.lines) ? r.lines : []).reduce((t, l) => t + Number(l.amount || 0), 0),
+        );
+        if (fileTotal && fileTotal !== total) {
+          add(
+            `the file's lines come to ${(fileTotal / 100).toFixed(2)} but its RPT Detail to ${(total / 100).toFixed(2)}`,
+          );
+          continue;
+        }
+      } else if (!r.cancelled) {
         const rawLines = Array.isArray(r.lines) ? r.lines : [];
         if (!rawLines.length) {
           add('no revenue line');
@@ -453,6 +576,7 @@ export const importCollections = onCall(
         revenueSource,
         lines,
         totalAmount: total,
+        rpt,
       });
     }
 
@@ -560,6 +684,7 @@ export const importCollections = onCall(
           payorName: r.payor,
           lines: r.lines,
           totalAmount: r.totalAmount,
+          ...(r.rpt ? { rpt: r.rpt } : {}),
           paymentForm: kind ? 'ONLINE' : 'CASH',
           ...(kind ? { eCollectionKind: kind, accountableFormId: null } : {}),
           // The abstract groups receipts by its own report reference. Keeping
