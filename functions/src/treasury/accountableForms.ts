@@ -526,10 +526,293 @@ interface CollectionRow {
  * receipts after generating the report simply generates it again. A certified
  * report is never overwritten.
  */
+// ---------------------------------------------------------------------------
+// Patch 177: the RAAF computed on view, for every accountable officer at once
+// ---------------------------------------------------------------------------
+
+/** Who may read the RAAF. Reading writes nothing. */
+const RAAF_VIEW_ROLES: Role[] = [
+  'SUPER_ADMIN',
+  'MUNICIPAL_TREASURER',
+  'TREASURY_STAFF',
+  'MUNICIPAL_ACCOUNTANT',
+  'ACCOUNTING_REVIEWER',
+  'AUDITOR',
+];
+
+interface ViewCollectionRow extends CollectionRow {
+  collectingOfficerId?: string;
+  collectingOfficerName?: string;
+}
+
+/**
+ * One officer's lines for one period - the same arithmetic prepareRaaf has
+ * always done, without the reads. `used` is what the officer wrote out in the
+ * period (collecting officers only); `priorUsed` what they wrote before it.
+ */
+function officerLines(input: {
+  formTypes: Array<FormTypeDoc & { id: string }>;
+  movementsByForm: Map<string, MovementDoc[]>;
+  key: string;
+  basis: 'CUSTODIAN' | 'COLLECTING_OFFICER';
+  usedByForm: Map<string, string[]>;
+  priorUsedByForm: Map<string, string[]>;
+  periodFrom: string;
+  periodTo: string;
+}): { lines: Array<Record<string, unknown>>; hasDiscrepancy: boolean } {
+  const { formTypes, movementsByForm, key, basis, periodFrom, periodTo } = input;
+  const lines: Array<Record<string, unknown>> = [];
+  let hasDiscrepancy = false;
+
+  for (const formType of formTypes) {
+    const formCode = normaliseFormCode(formType.code ?? formType.id);
+    const movements = movementsByForm.get(formCode) ?? [];
+    const used = basis === 'COLLECTING_OFFICER' ? (input.usedByForm.get(formCode) ?? []) : [];
+
+    const opening = foldCustody(movements, periodFrom);
+    const inPeriod = movements.filter(
+      (m) => m.movementDate >= periodFrom && m.movementDate <= periodTo,
+    );
+
+    let beginning = holderOf(opening, key);
+    if (basis === 'COLLECTING_OFFICER') {
+      beginning = subtract(beginning, collapse(input.priorUsedByForm.get(formCode) ?? []));
+    }
+
+    const receiptRanges = inPeriod
+      .filter((m) =>
+        // Patch 177: forms returned by an officer come back into stock.
+        basis === 'CUSTODIAN'
+          ? m.kind === 'RECEIPT' || m.kind === 'RETURN'
+          : m.kind === 'ISSUE' && m.custodianId === key,
+      )
+      .map((m) => rangeFrom(m.serialFrom, m.serialTo))
+      .filter((r): r is NumericRange => r !== null);
+
+    const issuedRanges =
+      basis === 'CUSTODIAN'
+        ? inPeriod
+            .filter((m) => m.kind === 'ISSUE')
+            .map((m) => rangeFrom(m.serialFrom, m.serialTo))
+            .filter((r): r is NumericRange => r !== null)
+        : collapse(used);
+
+    // A collecting officer's RETURN to stock leaves their hands too; it is
+    // reported with the spoiled and cancelled so the line still foots.
+    const withdrawnRanges = inPeriod
+      .filter((m) =>
+        basis === 'CUSTODIAN'
+          ? (m.kind === 'SPOILED' || m.kind === 'CANCELLED') && !m.fromCustodianId
+          : (m.kind === 'SPOILED' || m.kind === 'CANCELLED' || m.kind === 'RETURN') &&
+            m.fromCustodianId === key,
+      )
+      .map((m) => rangeFrom(m.serialFrom, m.serialTo))
+      .filter((r): r is NumericRange => r !== null);
+
+    if (
+      count(beginning) === 0 &&
+      count(receiptRanges) === 0 &&
+      count(issuedRanges) === 0 &&
+      count(withdrawnRanges) === 0
+    ) {
+      continue;
+    }
+
+    const bookletSize = formType.bookletSize && formType.bookletSize > 0 ? formType.bookletSize : 50;
+    const acc = accountability(
+      { beginning, receipt: receiptRanges, issued: issuedRanges, withdrawn: withdrawnRanges },
+      bookletSize,
+    );
+    const continuity = analyzeContinuity(used);
+    if (acc.discrepancy) hasDiscrepancy = true;
+
+    lines.push({
+      formCode,
+      formName: formType.name ?? formCode,
+      printedAs: formType.printedAs ?? formType.name ?? formCode,
+      unitValue: formType.unitValue ?? null,
+      beginningQty: acc.beginning.qty,
+      beginningRanges: acc.beginning.ranges,
+      receiptQty: acc.receipt.qty,
+      receiptRanges: acc.receipt.ranges,
+      issuedQty: acc.issued.qty,
+      issuedRanges: acc.issued.ranges,
+      withdrawnQty: acc.withdrawn.qty,
+      withdrawnRanges: acc.withdrawn.ranges,
+      endingQty: acc.ending.qty,
+      endingRanges: acc.ending.ranges,
+      discrepancy: acc.discrepancy,
+      duplicates: continuity.duplicates,
+      gaps: continuity.gaps,
+    });
+  }
+  return { lines, hasDiscrepancy };
+}
+
+function periodLabelOf(periodFrom: string, periodTo: string): string {
+  return periodFrom.slice(0, 7) === periodTo.slice(0, 7)
+    ? new Date(`${periodFrom}T00:00:00`).toLocaleDateString('en-PH', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Manila',
+      })
+    : `${periodFrom} to ${periodTo}`;
+}
+
+/**
+ * Every accountable officer's RAAF for one period, computed from the movement
+ * ledger and the receipts - nothing is prepared, saved or numbered. The office
+ * stock (the Treasurer as custodian) comes first, then each officer who held,
+ * received, issued or gave up a form in the period.
+ */
+async function viewRaafPeriod(fiscalYear: number, periodFrom: string, periodTo: string) {
+  const typesSnap = await db.collection(COL.accountableFormTypes).get();
+  const formTypes = typesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as FormTypeDoc) }));
+
+  const movementsByForm = new Map<string, MovementDoc[]>();
+  const names = new Map<string, string>();
+  let earliest = periodFrom;
+  for (const t of formTypes) {
+    const code = normaliseFormCode(t.code ?? t.id);
+    if (movementsByForm.has(code)) continue;
+    const ms = await readMovements(null, fiscalYear, code);
+    movementsByForm.set(code, ms);
+    for (const m of ms) {
+      if (m.movementDate < earliest) earliest = m.movementDate;
+      if (m.custodianId && m.custodianName) names.set(m.custodianId, m.custodianName);
+      if (m.fromCustodianId && m.fromCustodianName) names.set(m.fromCustodianId, m.fromCustodianName);
+    }
+  }
+
+  // The receipts, from the first day the ledger knows of to the period's end:
+  // one read for every officer.
+  const colSnap = await db
+    .collection(COL.collections)
+    .where('orDate', '>=', earliest)
+    .where('orDate', '<=', periodTo)
+    .get();
+  const usedBy = new Map<string, Map<string, string[]>>();
+  const priorBy = new Map<string, Map<string, string[]>>();
+  for (const doc of colSnap.docs) {
+    const c = doc.data() as ViewCollectionRow;
+    const officer = String(c.collectingOfficerId ?? '').trim();
+    const code = normaliseFormCode(c.accountableFormId ?? c.accountableForm ?? '');
+    if (!officer || !code) continue;
+    if (c.collectingOfficerName && !names.has(officer)) names.set(officer, c.collectingOfficerName);
+    const target = String(c.orDate ?? '') < periodFrom ? priorBy : usedBy;
+    const byForm = target.get(officer) ?? new Map<string, string[]>();
+    const list = byForm.get(code) ?? [];
+    list.push(String(c.orNumber ?? '').trim());
+    byForm.set(code, list);
+    target.set(officer, byForm);
+  }
+
+  // Every officer who could have something to report.
+  const officers = new Set<string>();
+  for (const ms of movementsByForm.values()) {
+    const opening = foldCustody(ms, periodFrom);
+    for (const [k, r] of opening.byOfficer) if (count(r) > 0) officers.add(k);
+    for (const m of ms) {
+      if (m.movementDate < periodFrom || m.movementDate > periodTo) continue;
+      if (m.custodianId) officers.add(m.custodianId);
+      if (m.fromCustodianId) officers.add(m.fromCustodianId);
+    }
+  }
+  for (const k of usedBy.keys()) officers.add(k);
+  officers.delete(STOCK);
+
+  const periodLabel = periodLabelOf(periodFrom, periodTo);
+  const reports: Array<Record<string, unknown>> = [];
+
+  const stock = officerLines({
+    formTypes,
+    movementsByForm,
+    key: STOCK,
+    basis: 'CUSTODIAN',
+    usedByForm: new Map(),
+    priorUsedByForm: new Map(),
+    periodFrom,
+    periodTo,
+  });
+  if (stock.lines.length > 0) {
+    reports.push({
+      id: `${STOCK}__${periodFrom}__${periodTo}`,
+      fiscalYear,
+      basis: 'CUSTODIAN',
+      officerId: STOCK,
+      officerName: 'Municipal Treasurer (office stock)',
+      officerPosition: 'Municipal Treasurer',
+      periodFrom,
+      periodTo,
+      periodLabel,
+      status: 'DRAFT',
+      lines: stock.lines,
+      hasDiscrepancy: stock.hasDiscrepancy,
+    });
+  }
+
+  const ordered = [...officers].sort((a, b) =>
+    (names.get(a) ?? a).localeCompare(names.get(b) ?? b),
+  );
+  for (const officerId of ordered) {
+    const r = officerLines({
+      formTypes,
+      movementsByForm,
+      key: officerId,
+      basis: 'COLLECTING_OFFICER',
+      usedByForm: usedBy.get(officerId) ?? new Map(),
+      priorUsedByForm: priorBy.get(officerId) ?? new Map(),
+      periodFrom,
+      periodTo,
+    });
+    if (r.lines.length === 0) continue;
+    reports.push({
+      id: `${officerId}__${periodFrom}__${periodTo}`,
+      fiscalYear,
+      basis: 'COLLECTING_OFFICER',
+      officerId,
+      officerName: names.get(officerId) ?? officerId,
+      periodFrom,
+      periodTo,
+      periodLabel,
+      status: 'DRAFT',
+      lines: r.lines,
+      hasDiscrepancy: r.hasDiscrepancy,
+    });
+  }
+
+  return { periodFrom, periodTo, periodLabel, reports };
+}
+
 export const prepareRaaf = onCall(
   { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) =>
     reporting('Preparing the report of accountability', async () => {
+      /*
+       * Patch 177: the RAAF is no longer prepared by hand. The RAAF screen
+       * asks with mode VIEW and receives every officer's report for the
+       * period, computed and not saved. The old prepare-and-save path below is
+       * kept only so a browser not yet refreshed does not fail.
+       */
+      const view = (request.data ?? {}) as {
+        mode?: string;
+        fiscalYear?: number;
+        periodFrom?: string;
+        periodTo?: string;
+      };
+      if (view.mode === 'VIEW') {
+        await requireCaller(request, RAAF_VIEW_ROLES);
+        const fy = Number(view.fiscalYear);
+        if (!Number.isInteger(fy)) throw invalid('A fiscal year is required.');
+        const pf = String(view.periodFrom ?? '').trim();
+        const pt = String(view.periodTo ?? '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(pf) || !/^\d{4}-\d{2}-\d{2}$/.test(pt)) {
+          throw invalid('A period from and to, both in the form YYYY-MM-DD, are required.');
+        }
+        if (pt < pf) throw invalid('The period ends before it begins.');
+        return viewRaafPeriod(fy, pf, pt);
+      }
+
       const caller = await requireCaller(request, TREASURY_ROLES);
       const data = (request.data ?? {}) as {
         fiscalYear?: number;

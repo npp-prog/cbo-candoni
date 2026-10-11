@@ -2,6 +2,7 @@ import { httpsCallable, type HttpsCallableResult } from 'firebase/functions';
 import { functions } from './firebase';
 import type { Centavos, Id, IsoDate } from '@/types/common';
 import type { BackupHeader, BackupKind, RestoreCounts, RestoreMode } from './backupFormat';
+import type { Raaf } from '@/types/accountableForms';
 
 /** Patch 172: one backup file, as the register lists it. */
 export interface BackupRecordView {
@@ -1130,6 +1131,17 @@ export const engine = {
     periodFrom: IsoDate;
     periodTo: IsoDate;
   }) => call<typeof p, { raafId: Id; lines: number; hasDiscrepancy: boolean }>('prepareRaaf', p),
+
+  /**
+   * Patch 177: every accountable officer's RAAF for a period, computed from
+   * the movements and the receipts. Nothing is saved; nothing is prepared.
+   * The same callable as prepareRaaf, so no new function to deploy.
+   */
+  viewRaaf: (p: { fiscalYear: number; periodFrom: IsoDate; periodTo: IsoDate }) =>
+    call<
+      typeof p & { mode: 'VIEW' },
+      { periodFrom: IsoDate; periodTo: IsoDate; periodLabel: string; reports: Raaf[] }
+    >('prepareRaaf', { ...p, mode: 'VIEW' }),
 
   certifyRaaf: (p: { raafId: Id }) =>
     call<typeof p, { raafId: Id; raafNo: string }>('certifyRaaf', p),

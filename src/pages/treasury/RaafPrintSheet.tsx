@@ -42,12 +42,13 @@ export function RaafPrintSheet({ raaf }: { raaf: Raaf }) {
     <div className="cbo-raaf-print hidden">
       <style>{only}</style>
       <ReportPrintStyle orientation="landscape" />
-      <div className="cbo-report-sheet text-xs text-navy-900">
+      <div className="cbo-report-sheet text-xs text-black">
         <ReportHeading
           seal="left"
           meta={{
             title: RAAF_TITLE,
-            fundLabel: raaf.raafNo ? `RAAF No. ${raaf.raafNo}` : 'Draft - not yet certified',
+            // Patch 177: computed from the movements, not numbered.
+            fundLabel: raaf.raafNo ? `RAAF No. ${raaf.raafNo}` : undefined,
             periodLabel: raaf.periodLabel,
           }}
         />
@@ -97,7 +98,7 @@ export function RaafPrintSheet({ raaf }: { raaf: Raaf }) {
                   {l.printedAs}
                   {l.withdrawnQty > 0 && (
                     <div className="text-[7pt]">
-                      {l.withdrawnQty} spoiled or cancelled: {ranges(l.withdrawnRanges)}
+                      {l.withdrawnQty} returned, spoiled or cancelled: {ranges(l.withdrawnRanges)}
                     </div>
                   )}
                 </td>
@@ -117,18 +118,209 @@ export function RaafPrintSheet({ raaf }: { raaf: Raaf }) {
         <div className="mt-10 grid grid-cols-2 gap-16">
           <div>
             <p className="text-[8pt]">Prepared by:</p>
-            <p className="mt-8 border-t border-navy-900 pt-1 text-center font-semibold uppercase">
+            <p className="mt-8 border-t border-black pt-1 text-center font-semibold uppercase">
               {raaf.preparedBy?.name ?? ''}
             </p>
           </div>
           <div>
             <p className="text-[8pt]">Certified correct:</p>
-            <p className="mt-8 border-t border-navy-900 pt-1 text-center font-semibold uppercase">
+            <p className="mt-8 border-t border-black pt-1 text-center font-semibold uppercase">
               {raaf.certifiedBy?.name ?? raaf.officerName}
             </p>
             <p className="text-center text-[8pt]">
               {raaf.officerPosition ?? 'Accountable Officer'}
             </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(sheet, document.body);
+}
+
+/**
+ * Patch 177 - the consolidated RAAF: every accountable officer on one report,
+ * the office stock first, each officer's forms under their name, and the
+ * totals per form at the foot.
+ */
+export const RAAF_CONSOLIDATED_TITLE =
+  'Consolidated Report on the Accountability for Accountable Forms';
+
+export interface RaafFormTotal {
+  printedAs: string;
+  /** Every officer's and the office stock's beginning, added. */
+  beginningQty: number;
+  /**
+   * What came into the municipality, net of what was spoiled or cancelled:
+   * ending - beginning + issued. Hand-overs between the office stock and the
+   * officers are not receipts of the municipality and are not counted twice.
+   */
+  receivedNetQty: number;
+  /** Written out to payors - the collecting officers' Issued only. */
+  issuedQty: number;
+  endingQty: number;
+}
+
+/** The municipality as a whole, per form. */
+export function raafFormTotals(reports: Raaf[]): RaafFormTotal[] {
+  const by = new Map<string, RaafFormTotal>();
+  for (const r of reports) {
+    for (const l of r.lines) {
+      const t = by.get(l.formCode) ?? {
+        printedAs: l.printedAs,
+        beginningQty: 0,
+        receivedNetQty: 0,
+        issuedQty: 0,
+        endingQty: 0,
+      };
+      t.beginningQty += l.beginningQty;
+      if (r.basis !== 'CUSTODIAN') t.issuedQty += l.issuedQty;
+      t.endingQty += l.endingQty;
+      by.set(l.formCode, t);
+    }
+  }
+  for (const t of by.values()) t.receivedNetQty = t.endingQty - t.beginningQty + t.issuedQty;
+  return [...by.values()].sort((a, b) => a.printedAs.localeCompare(b.printedAs));
+}
+
+export function RaafConsolidatedPrintSheet({
+  reports,
+  periodLabel,
+  preparedBy,
+  certifiedBy,
+}: {
+  reports: Raaf[];
+  periodLabel: string;
+  preparedBy?: string;
+  certifiedBy?: string;
+}) {
+  const only = `
+@media print {
+  body > *:not(.cbo-raaf-print) { display: none !important; }
+  body > .cbo-raaf-print { display: block !important; }
+}`;
+
+  const sheet = (
+    <div className="cbo-raaf-print hidden">
+      <style>{only}</style>
+      <ReportPrintStyle orientation="landscape" />
+      <div className="cbo-report-sheet text-xs text-black">
+        <ReportHeading
+          seal="left"
+          meta={{
+            title: RAAF_CONSOLIDATED_TITLE,
+            fundLabel: 'All accountable officers',
+            periodLabel,
+          }}
+        />
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className={TH} rowSpan={2} style={{ width: '14%' }}>
+                Accountable officer
+              </th>
+              <th className={TH} rowSpan={2} style={{ width: '11%' }}>
+                Accountable form
+              </th>
+              <th className={TH} colSpan={2}>
+                Beginning balance
+              </th>
+              <th className={TH} colSpan={2}>
+                Receipt
+              </th>
+              <th className={TH} colSpan={2}>
+                Issued
+              </th>
+              <th className={TH} colSpan={2}>
+                Ending balance
+              </th>
+            </tr>
+            <tr>
+              {[0, 1, 2, 3].map((i) => [
+                <th key={`q${i}`} className={TH} style={{ width: '4%' }}>
+                  Qty
+                </th>,
+                <th key={`s${i}`} className={TH}>
+                  Inclusive serial nos.
+                </th>,
+              ])}
+            </tr>
+          </thead>
+          <tbody>
+            {reports.flatMap((r) =>
+              r.lines.map((l, i) => (
+                <tr key={`${r.officerId}-${l.formCode}`}>
+                  {i === 0 && (
+                    <td className={`${TD} font-semibold`} rowSpan={r.lines.length}>
+                      {r.officerName}
+                    </td>
+                  )}
+                  <td className={TD}>
+                    {l.printedAs}
+                    {l.withdrawnQty > 0 && (
+                      <div className="text-[7pt]">
+                        {l.withdrawnQty} returned, spoiled or cancelled: {ranges(l.withdrawnRanges)}
+                      </div>
+                    )}
+                  </td>
+                  <td className={`${TD} text-right tabular-nums`}>{qty(l.beginningQty)}</td>
+                  <td className={TD}>{ranges(l.beginningRanges)}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{qty(l.receiptQty)}</td>
+                  <td className={TD}>{ranges(l.receiptRanges)}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{qty(l.issuedQty)}</td>
+                  <td className={TD}>{ranges(l.issuedRanges)}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{qty(l.endingQty)}</td>
+                  <td className={TD}>{ranges(l.endingRanges)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+
+        <p className="mb-1 mt-4 font-semibold">Summary by form - the municipality as a whole</p>
+        <table className="border-collapse">
+          <thead>
+            <tr>
+              {[
+                'Accountable form',
+                'Beginning',
+                'Received (net of spoiled)',
+                'Issued to payors',
+                'Ending',
+              ].map((h) => (
+                <th key={h} className={TH}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {raafFormTotals(reports).map((t) => (
+              <tr key={t.printedAs}>
+                <td className={TD}>{t.printedAs}</td>
+                <td className={`${TD} text-right tabular-nums`}>{qty(t.beginningQty)}</td>
+                <td className={`${TD} text-right tabular-nums`}>{qty(t.receivedNetQty)}</td>
+                <td className={`${TD} text-right tabular-nums`}>{qty(t.issuedQty)}</td>
+                <td className={`${TD} text-right tabular-nums`}>{qty(t.endingQty)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="mt-10 grid grid-cols-2 gap-16">
+          <div>
+            <p className="text-[8pt]">Prepared by:</p>
+            <p className="mt-8 border-t border-black pt-1 text-center font-semibold uppercase">
+              {preparedBy ?? ''}
+            </p>
+          </div>
+          <div>
+            <p className="text-[8pt]">Certified correct:</p>
+            <p className="mt-8 border-t border-black pt-1 text-center font-semibold uppercase">
+              {certifiedBy ?? ''}
+            </p>
+            <p className="text-center text-[8pt]">Municipal Treasurer</p>
           </div>
         </div>
       </div>

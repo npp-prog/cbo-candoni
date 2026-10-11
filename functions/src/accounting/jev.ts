@@ -2,6 +2,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
+import { assertAttachedBeforePosting } from '../lib/attachmentGate';
 import {
   requireCaller,
   POSTING_ROLES,
@@ -59,6 +60,26 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
     await assertFiscalYearOpen(jev.fiscalYear, tx);
     await assertPeriodOpen(jev.fiscalYear, period, jev.fundCode, `JEV ${jev.jevNo || jevId}`, tx);
 
+    /*
+     * Patch 177: an entry written in Accounting is posted only with its
+     * papers on the record - the memorandum, the bank advice, the office's
+     * journal voucher. An entry raised by a document (a voucher, a treasury
+     * report, a liquidation) carries its papers on that document, and the
+     * document's own approval already required them.
+     */
+    const ownPapers = ['MANUAL', 'ADJUSTING', 'CLOSING', 'PRIOR_PERIOD'].includes(
+      String(jev.sourceType ?? 'MANUAL'),
+    );
+    if (ownPapers) {
+      await assertAttachedBeforePosting(
+        tx,
+        COL.jevs,
+        jevId,
+        `JEV ${hasJevNumber(jev.jevNo) ? jev.jevNo : 'this entry'}`,
+        'posting it',
+      );
+    }
+
 
     /*
      * ---- THE JEV NUMBER IS DRAWN HERE, AT POSTING --------------------
@@ -89,6 +110,17 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
     }
 
     const result = postJevInTransaction(tx, caller, jevId, { ...jev, jevNo });
+    if (ownPapers) {
+      tx.update(ref, {
+        attachmentsLockedAt: result.postedAt,
+        attachmentsLockedBy: {
+          uid: caller.uid,
+          name: caller.name,
+          position: caller.position ?? null,
+          at: result.postedAt,
+        },
+      });
+    }
 
     recordTransition(tx, {
       caller,

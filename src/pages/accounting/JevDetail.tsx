@@ -125,6 +125,15 @@ export default function JevDetail() {
     mayEditAtThisStage &&
     (isNew || existing?.sourceType !== 'DV');
   const canPost = !isNew && ['DRAFT', 'FOR_REVIEW', 'REVIEWED', 'APPROVED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+  /*
+   * Patch 177: an entry written in Accounting is posted only with its papers
+   * attached. An entry raised by a document carries its papers on that
+   * document, whose own approval required them. The server refuses as well.
+   */
+  const needsOwnPapers = ['MANUAL', 'ADJUSTING', 'CLOSING', 'PRIOR_PERIOD'].includes(
+    existing?.sourceType ?? sourceType,
+  );
+  const papersMissing = needsOwnPapers && attachments.data.length === 0;
   const canReverse = isPosted && isAccountant && !existing?.reversedByJevId;
   /*
    * Patch 151. The entry of an RCI is reversed CHECK BY CHECK: Reverse opens
@@ -309,7 +318,16 @@ export default function JevDetail() {
               </Button>
             )}
             {canPost && (
-              <Button variant="primary" onClick={() => setConfirm('post')} disabled={!check.ok}>
+              <Button
+                variant="primary"
+                onClick={() => setConfirm('post')}
+                disabled={!check.ok || papersMissing}
+                title={
+                  papersMissing
+                    ? 'Attach the supporting documents first. The entry is not posted without them.'
+                    : undefined
+                }
+              >
                 Post to General Ledger
               </Button>
             )}
@@ -486,6 +504,16 @@ export default function JevDetail() {
               The others stay paid. Reverse more of them with Reverse {docNoun}.
             </p>
           )}
+        </Alert>
+      )}
+
+      {canPost && papersMissing && (
+        <Alert tone="warning" title="Nothing is attached to this entry" className="mb-4">
+          It cannot be posted until its supporting documents are attached.{' '}
+          <button type="button" className="font-medium underline" onClick={() => setTab('attachments')}>
+            Attach them on the Supporting documents tab
+          </button>
+          .
         </Alert>
       )}
 
@@ -666,10 +694,9 @@ export default function JevDetail() {
             ) : (
               <>
                 <p className="mb-4 text-xs text-slate-500">
-                  Not required. An adjusting entry often has nothing behind it but the Accountant's
-                  judgement, and a box demanding a file would only produce empty ones. Where there
-                  IS a paper - a memorandum, a bank debit advice, the office's own journal voucher
-                  - this is where it belongs.
+                  Required before posting an entry written here: the memorandum, the bank debit
+                  advice, the office&apos;s own journal voucher, or whatever supports it. An entry
+                  raised by a voucher or a treasury report carries its papers on that document.
                 </p>
                 <AttachmentsPanel
                   entityType={COL.jevs}

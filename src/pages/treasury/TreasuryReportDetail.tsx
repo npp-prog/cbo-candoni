@@ -77,8 +77,8 @@ export default function TreasuryReportDetail() {
 
   const { data: report, loading } = useDocument<TreasuryReport>(COL.treasuryReports, id);
   /*
-   * The signed form. Certifying is refused without it by the engine, so the
-   * button is disabled rather than offered and then refused - and the count
+   * The signed form. Patch 177: certifying no longer needs it; journalizing
+   * does, so the Post button is disabled until it is here - and the count
    * on the tab is taken from the attachments themselves, so it stays right
    * after the report is certified and the browser can no longer write to it.
    */
@@ -534,7 +534,6 @@ export default function TreasuryReportDetail() {
             {isDraft && canCertify && (
               <Button
                 variant="primary"
-                disabled={!hasSignedForm}
                 onClick={() => {
                   setCertifyNo(
                     hasDocumentNumber(report.reportNo) ? (report.reportNo as string) : '',
@@ -617,15 +616,11 @@ export default function TreasuryReportDetail() {
         }
       />
 
-      {isDraft && !hasSignedForm && (
-        <Alert tone="warning" className="mb-4" title="Attach the signed form before certifying">
+      {!hasSignedForm && report.status !== 'JOURNALIZED' && report.status !== 'CANCELLED' && (
+        <Alert tone="warning" className="mb-4" title="The signed form is not attached yet">
           <p>
-            What CFMS holds is an encoding of the {short}. Certifying locks the documents it covers
-            to it and reserves its number (forwarding to Accounting is a separate step); the signed
-            copy is the evidence that the encoding is true, and it belongs on the record before the
-            certificate, not after it.
-          </p>
-          <p className="mt-2">
+            The {short} may be certified and forwarded without it (patch 177), but Accounting
+            cannot journalize it until the signed copy is on the record.{' '}
             <button
               type="button"
               onClick={() => setTab('attachments')}
@@ -633,7 +628,7 @@ export default function TreasuryReportDetail() {
             >
               Attach it on the Supporting documents tab
             </button>
-            . Certify is refused until then, by the server as well as by this screen.
+            .
           </p>
         </Alert>
       )}
@@ -956,7 +951,12 @@ export default function TreasuryReportDetail() {
                     <Button
                       variant="primary"
                       onClick={() => setConfirm('journalize')}
-                      disabled={!postable}
+                      disabled={!postable || !hasSignedForm}
+                      title={
+                        hasSignedForm
+                          ? undefined
+                          : 'Attach the signed form first. The entry is not posted without it.'
+                      }
                     >
                       {/* Patch 157: an RCD of deposits only has no entry. */}
                       {depositsOnly ? 'Take up - no entry' : 'Post journal entry'}

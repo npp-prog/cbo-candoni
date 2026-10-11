@@ -32,7 +32,13 @@ import { attachmentTypesFor } from '@/lib/attachmentTypes';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useTaxCodes, useDisbursementVouchers, usePayees, useAccounts } from '@/data/queries';
+import {
+  useTaxCodes,
+  useDisbursementVouchers,
+  usePayees,
+  useAccounts,
+  useAttachments,
+} from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine } from '@/lib/engine';
@@ -357,6 +363,11 @@ function DisbursementEditor() {
   const canSubmit = !isNew && editable && can('accounting', 'create');
   const canReview = !isNew && status === 'SUBMITTED' && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT', 'ACCOUNTING_REVIEWER');
   const canApprove = !isNew && ['REVIEWED', 'SUBMITTED'].includes(status) && hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
+  // Patch 177: attachments are required to APPROVE (which posts the entry), not
+  // to submit. Counted from the documents, since the counter on the voucher
+  // cannot be updated by a browser once it has left Draft.
+  const attachedDocs = useAttachments(COL.disbursementVouchers, isNew ? null : (id ?? null));
+  const attachedCount = Math.max(attachedDocs.data.length, existing?.attachmentCount ?? 0);
 
   /**
    * The entry this voucher raised, still waiting to be posted.
@@ -620,7 +631,7 @@ function DisbursementEditor() {
       });
       if (isNew) {
         const newId = await createDraft(COL.disbursementVouchers, buildPayload(), actor);
-        toast.success('Voucher saved as a draft', 'Attach the supporting documents before submitting it.');
+        toast.success('Voucher saved as a draft', 'Attach the supporting documents before it is approved.');
         navigate(keepReturn(`/accounting/disbursements/${newId}`, location.search), { replace: true });
       } else {
         await updateDraft(COL.disbursementVouchers, id!, buildPayload(), actor);
@@ -699,7 +710,16 @@ function DisbursementEditor() {
               </>
             )}
             {canApprove && (
-              <Button variant="primary" onClick={() => setConfirm('approve')}>
+              <Button
+                variant="primary"
+                disabled={attachedCount === 0}
+                title={
+                  attachedCount === 0
+                    ? 'Attach the supporting documents first. A voucher is not approved and posted without them.'
+                    : undefined
+                }
+                onClick={() => setConfirm('approve')}
+              >
                 Approve
               </Button>
             )}
@@ -820,7 +840,7 @@ function DisbursementEditor() {
         tabs={[
           { id: 'details', label: 'Voucher' },
           { id: 'entry', label: 'Accounting entry' },
-          { id: 'attachments', label: 'Supporting documents', count: existing?.attachmentCount ?? 0 },
+          { id: 'attachments', label: 'Supporting documents', count: attachedCount },
           { id: 'history', label: 'Approval history' },
         ]}
         active={tab}
@@ -1337,13 +1357,13 @@ function DisbursementEditor() {
         message={
           <>
             <p>
-              The voucher goes to the Accounting Reviewer. Its arithmetic, the balance of its
-              accounting entry and the presence of supporting documents are all checked on the
-              server before it is accepted.
+              The voucher goes to the Accounting Reviewer. Its arithmetic and the balance of its
+              accounting entry are checked on the server before it is accepted.
             </p>
-            {(existing?.attachmentCount ?? 0) === 0 && (
-              <p className="mt-2 text-rose-700">
-                No supporting documents are attached. The submission will be refused.
+            {attachedCount === 0 && (
+              <p className="mt-2 text-amber-700">
+                No supporting documents are attached yet. It can be submitted, but it cannot be
+                approved until they are.
               </p>
             )}
           </>

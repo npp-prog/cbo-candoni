@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PageHeader, Card, Alert, Spinner } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
@@ -78,6 +78,16 @@ export default function CashInBank() {
   const [openingForm, setOpeningForm] = useState(false);
   const [voiding, setVoiding] = useState<BankLedgerEntry | null>(null);
   const [busy, setBusy] = useState(false);
+  // Patch 177: the book struck between two dates. What came before From is
+  // brought forward; what comes after To is left off.
+  const [fromDate, setFromDate] = useState(`${fiscalYear}-01-01`);
+  const [toDate, setToDate] = useState(() =>
+    todayPh().slice(0, 4) === String(fiscalYear) ? todayPh() : `${fiscalYear}-12-31`,
+  );
+  useEffect(() => {
+    setFromDate(`${fiscalYear}-01-01`);
+    setToDate(todayPh().slice(0, 4) === String(fiscalYear) ? todayPh() : `${fiscalYear}-12-31`);
+  }, [fiscalYear]);
 
   const canKey = can('treasury', 'create');
   const canSetOpening = hasRole('SUPER_ADMIN', 'MUNICIPAL_TREASURER', 'MUNICIPAL_ACCOUNTANT');
@@ -160,14 +170,27 @@ export default function CashInBank() {
     );
   }, [bankAccountId, entries, deposits, checks, adas, fiscalYear]);
 
-  const totals = rows.reduce(
+  // The whole year, for the balance and what is available to commit.
+  const yearTotals = rows.reduce(
     (acc, r) => ({ deposit: acc.deposit + r.deposit, withdrawal: acc.withdrawal + r.withdrawal }),
     { deposit: 0, withdrawal: 0 },
   );
-  const book = beginning + totals.deposit - totals.withdrawal;
+  const book = beginning + yearTotals.deposit - yearTotals.withdrawal;
   const available = book - buffer;
 
-  let running = beginning;
+  // The period chosen, for the table.
+  const broughtForward =
+    beginning +
+    rows.filter((r) => r.date < fromDate).reduce((s, r) => s + r.deposit - r.withdrawal, 0);
+  const shownRows = rows.filter((r) => r.date >= fromDate && r.date <= toDate);
+  const totals = shownRows.reduce(
+    (acc, r) => ({ deposit: acc.deposit + r.deposit, withdrawal: acc.withdrawal + r.withdrawal }),
+    { deposit: 0, withdrawal: 0 },
+  );
+  const closing = broughtForward + totals.deposit - totals.withdrawal;
+  const fromStart = fromDate <= `${fiscalYear}-01-01`;
+
+  let running = broughtForward;
 
   return (
     <div>
@@ -194,9 +217,27 @@ export default function CashInBank() {
       <SectionTabs tabs={CASH_BOOK_TABS} />
 
       <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 no-print">
-        <Field label="Bank account" className="max-w-md">
-          <BankAccountPicker value={bankAccountId} onChange={setBankAccountId} fundCode={fundCode} />
-        </Field>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Bank account" className="w-full max-w-md">
+            <BankAccountPicker value={bankAccountId} onChange={setBankAccountId} fundCode={fundCode} />
+          </Field>
+          <Field label="From">
+            <TextInput
+              type="date"
+              value={fromDate}
+              max={toDate}
+              onChange={(e) => e.target.value && setFromDate(e.target.value)}
+            />
+          </Field>
+          <Field label="To">
+            <TextInput
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(e) => e.target.value && setToDate(e.target.value)}
+            />
+          </Field>
+        </div>
       </div>
 
       {!bankAccountId ? (
@@ -243,17 +284,17 @@ export default function CashInBank() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   <tr className="bg-slate-50 font-medium">
-                    <td className="px-2 py-1.5">{fiscalYear}-01-01</td>
+                    <td className="px-2 py-1.5">{formatShortDate(fromDate)}</td>
                     <td className="px-2 py-1.5 italic" colSpan={4}>
-                      Beginning balance
+                      {fromStart ? 'Beginning balance' : 'Balance brought forward'}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
-                      {formatAmount(beginning, false)}
+                      {formatAmount(broughtForward, false)}
                     </td>
                     <td />
                   </tr>
 
-                  {rows.map((r) => {
+                  {shownRows.map((r) => {
                     running += r.deposit - r.withdrawal;
                     const derived = r.source !== 'MANUAL';
                     return (
@@ -304,7 +345,7 @@ export default function CashInBank() {
                     <td className="px-2 py-2 text-right tabular-nums">
                       {formatAmount(totals.withdrawal, false)}
                     </td>
-                    <td className="px-2 py-2 text-right tabular-nums">{formatAmount(book, false)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{formatAmount(closing, false)}</td>
                     <td />
                   </tr>
                 </tfoot>

@@ -27,7 +27,7 @@ import { checkFursAgainstProgram } from '@/lib/trustPrograms';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useTrustPrograms, useBudgetBalances } from '@/data/queries';
+import { useTrustPrograms, useBudgetBalances, useAttachments } from '@/data/queries';
 import { COL } from '@/lib/collections';
 import { createDraft, updateDraft, actorStamp } from '@/data/mutations';
 import { engine, EngineError } from '@/lib/engine';
@@ -170,16 +170,15 @@ export default function ObligationDetail() {
     hasRole('SUPER_ADMIN', 'BUDGET_OFFICER') && !isNew && existing?.status === 'OBLIGATED';
 
   /**
-   * The signed form has to be on file before the number is issued.
+   * Whether anything is attached.
    *
-   * What CFMS holds is an encoding of a document the office prepared and had
-   * approved on paper. Certifying without that document attached creates a
-   * numbered commitment in the books whose authority exists only in somebody's
-   * memory - and the number cannot be reused afterwards, so the gap it leaves
-   * in the series is permanent. The server refuses it too; this is only so the
-   * reason is visible before the button is pressed.
+   * Patch 177: no longer a condition of certifying. Read from the documents
+   * themselves as well as the counter, because the counter on the obligation
+   * cannot be updated by a browser once the obligation has left Draft.
    */
-  const hasSupportingDocument = (existing?.attachmentCount ?? 0) > 0;
+  const attachedDocs = useAttachments(COL.obligations, id ?? null);
+  const hasSupportingDocument =
+    attachedDocs.data.length > 0 || (existing?.attachmentCount ?? 0) > 0;
 
   const totalAmount = useMemo(() => lines.reduce((s, l) => s + (l.amount ?? 0), 0), [lines]);
 
@@ -513,11 +512,10 @@ export default function ObligationDetail() {
             {canCertify && (
               <Button
                 variant="primary"
-                disabled={!hasSupportingDocument}
                 title={
                   hasSupportingDocument
                     ? undefined
-                    : `Attach the approved ${form.short} under Supporting documents first.`
+                    : `Nothing is attached yet. It can be certified; attach the approved ${form.short} afterwards.`
                 }
                 onClick={() => (hasShortfall ? setConfirmOverride(true) : setConfirmCertify(true))}
               >
@@ -935,11 +933,10 @@ export default function ObligationDetail() {
               className="mb-3"
             >
               {hasSupportingDocument
-                ? `The ${form.short} is on file. This obligation can be certified.`
-                : `Attach the signed and approved ${form.short} before certifying. ` +
-                  `What CFMS holds is an encoding of that document; a certified number with no ` +
-                  `approved form behind it is a commitment in the books whose authority is in ` +
-                  `nobody's file, and the number cannot be given back.`}
+                ? `The ${form.short} is on file.`
+                : `Nothing is attached yet. The ${form.short} can be certified without it; attach ` +
+                  `the signed and approved ${form.short} here when it is ready. Certifying closes ` +
+                  `the papers only when something is attached, so this record stays open for it.`}
             </Alert>
             <AttachmentsPanel
               entityType={COL.obligations}
@@ -965,7 +962,11 @@ export default function ObligationDetail() {
                 // field, and its status is the only record that the papers
                 // were seen. Read it the old way as well, so nothing that was
                 // closed quietly comes back open.
-                (attachmentsLocked(existing?.status) ? (existing?.certifiedAt ?? null) : null)
+                // Patch 177: only when something is attached - an obligation may
+                // now be certified with nothing on file, and that one is open.
+                (attachmentsLocked(existing?.status) && hasSupportingDocument
+                  ? (existing?.certifiedAt ?? null)
+                  : null)
               }
               lockedByName={
                 existing?.attachmentsLockedBy?.name ?? existing?.certifiedBy?.name ?? null

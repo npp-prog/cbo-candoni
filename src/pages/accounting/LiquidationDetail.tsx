@@ -11,7 +11,7 @@ import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { WorkflowTimeline } from '@/components/WorkflowTimeline';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useFirestore';
-import { useAccounts } from '@/data/queries';
+import { useAccounts, useAttachments } from '@/data/queries';
 import { DUE_TO_OFFICERS_AND_EMPLOYEES } from '@/lib/chartOfAccounts';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
@@ -51,6 +51,8 @@ export default function LiquidationDetail() {
   const location = useLocation();
   /** The report being raised, rather than one being read. */
   const isNew = !id || id === 'new';
+  // Patch 177: required to approve and post; counted from the documents.
+  const attachedDocs = useAttachments(COL.liquidations, isNew ? null : (id ?? null));
   const { can, hasRole } = useAuth();
   const toast = useToast();
 
@@ -200,7 +202,7 @@ export default function LiquidationDetail() {
 
   const posted = liq.status === 'POSTED';
   const editable = ['DRAFT', 'RETURNED'].includes(liq.status) && can('accounting', 'edit');
-  const attachmentCount = liq.attachmentCount ?? 0;
+  const attachmentCount = Math.max(attachedDocs.data.length, liq.attachmentCount ?? 0);
 
   const post = async () => {
     setBusy(true);
@@ -249,7 +251,16 @@ export default function LiquidationDetail() {
               </Button>
             )}
             {!posted && canPost && !editing && (
-              <Button variant="primary" onClick={() => setConfirm(true)}>
+              <Button
+                variant="primary"
+                disabled={attachmentCount === 0}
+                title={
+                  attachmentCount === 0
+                    ? 'Attach the signed liquidation report first. It is not approved and posted without it.'
+                    : undefined
+                }
+                onClick={() => setConfirm(true)}
+              >
                 Approve and post
               </Button>
             )}
@@ -269,8 +280,8 @@ export default function LiquidationDetail() {
         <Alert tone="warning" className="mb-4" title="The signed report is not attached">
           A liquidation report is the document an accountable officer signs to account for public
           money they were given. What CFMS holds is an encoding of it; the signed copy is the
-          evidence that the encoding is true, and it belongs on the record before the entry
-          reaches the books.
+          evidence that the encoding is true. It cannot be approved and posted until the signed
+          copy is attached.
         </Alert>
       )}
 
@@ -531,8 +542,7 @@ export default function LiquidationDetail() {
             {attachmentCount === 0 && (
               <p className="mt-2">
                 <strong>Nothing is attached to this report.</strong> The signed liquidation report
-                is the evidence behind these figures. Posting without it leaves an entry in the
-                books whose authority is in nobody's file.
+                is the evidence behind these figures, and posting is refused without it.
               </p>
             )}
             <p className="mt-2 text-xs text-slate-500">

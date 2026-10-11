@@ -12,92 +12,78 @@ import type { Centavos, IsoDate } from '@/types/common';
  * columns WHICH SHALL BE EQUAL TO THE AMOUNT OF CASH IN HAND of Disbursing
  * Officers."
  *
- * That is the point of the form. It is not a report about cash advances; it is
- * the record an officer is held to when somebody counts the money in the
- * drawer.
- *
  * ---------------------------------------------------------------------------
- * WHAT GOES IN EACH COLUMN, FROM INSTRUCTIONS 6 TO 8
+ * PATCH 177: ONLY THE ADVANCES FOR PAYROLL AND THE RCDisb
  * ---------------------------------------------------------------------------
- *   Ref.    "the number of the Check for the cash advance granted and
- *            Disbursement Voucher (DV)/payroll for the payments"
- *   Debit   "the amount advanced by the Disbursing Officer based on the Check
- *            issued"
- *   Credit  "the amount disbursed out of the cash advances based on the
- *            DVs/payrolls"
+ * The cash a disbursing officer holds in Candoni is the Advance for Payroll,
+ * and what he pays out of it is reported on the Report of Cash Disbursements.
+ * So the book is made of exactly those two movements:
  *
- * So the debit is the advance, referenced by the CHECK that paid it - not by
- * the voucher, which is why this computation is given the checks and looks the
- * number up. Where no check is found the voucher number is used rather than
- * leaving the column blank, and nothing is invented.
+ *   Debit   an Advance for Payroll - a voucher, approved or paid, that debits
+ *           Advances for Payroll (10305020). The amount is that debit; the
+ *           officer is the subsidiary on the line, else the voucher's payee.
+ *           Ref. is the check (or ADA) that paid it, per instruction 6, and
+ *           the voucher number only where none is on file.
+ *   Credit  each payroll on a certified (or journalized) RCDisb, at its net,
+ *           dated the RCDisb, referenced "RCDisb no. / payroll no.". The
+ *           officer is the one whose advance the payroll was paid from.
  *
- * A refund is a credit. The officer handing money back reduces the cash in his
- * drawer exactly as spending it does, and instruction 9's balance would be
- * wrong without it.
- *
- * A REIMBURSEMENT is not in this book at all. That is the case where the
- * officer spent more than he was advanced and is owed the difference: it is
- * his own money, not the LGU's cash in his hands, and putting it here would
- * make the balance disagree with a count of the drawer.
- *
- * ---------------------------------------------------------------------------
- * ONLY A POSTED LIQUIDATION IS A CREDIT
- * ---------------------------------------------------------------------------
- * The server's rule, taken from `postLiquidation`: it is that function, and
- * only that function, which moves a cash advance's `amountLiquidated` and
- * `amountRefunded`. A submitted or approved liquidation has not yet reduced
- * anything, and counting one here would show an officer clear when the record
- * still holds him accountable.
- *
- * ---------------------------------------------------------------------------
- * THE TIE-UP, AND WHEN IT CAN HONESTLY BE CHECKED
- * ---------------------------------------------------------------------------
- * Instruction 10: "The difference of the totals of Debit and Credit columns
- * should tie-up with the running balance column."
- *
- * CFMS can go further than that, because each cash advance already carries an
- * `outstandingBalance` maintained inside the transaction that posts a
- * liquidation. The book's closing balance and the sum of those figures are
- * arrived at by different means and must agree.
- *
- * They must agree ONLY when the book covers every document, though. Struck at
- * a date in the past, the book has not yet reached liquidations the stored
- * figure already includes, and a difference is expected rather than wrong. So
- * the comparison is made only when the period reaches everything, and
- * `coversEverything` says whether it did. A check that reports a discrepancy
- * it cannot distinguish from normal is a check nobody believes.
+ * Nothing else - the old cash advances register and the liquidation reports -
+ * is read.
  */
 
-/** The server moves a cash advance only when the liquidation is posted. */
-export const POSTED_LIQUIDATION = new Set(['POSTED']);
+export const ADVANCE_GRANTED = new Set(['APPROVED', 'PAID']);
+export const RCDISB_REPORTED = new Set(['CERTIFIED', 'JOURNALIZED']);
 
-export interface CbcaAdvance {
+export interface CbcaVoucher {
   id: string;
-  fundCode: string;
-  accountableOfficerId: string;
-  accountableOfficerName: string;
-  dvId: string;
   dvNo: string;
-  dateGranted: IsoDate;
-  amountGranted: Centavos;
-  purpose: string;
-  outstandingBalance: Centavos;
-}
-
-export interface CbcaLiquidation {
-  id: string;
-  cashAdvanceId: string;
-  liquidationNo: string;
-  liquidationDate: IsoDate;
-  amountLiquidated: Centavos;
-  refundAmount: Centavos;
+  dvDate: IsoDate;
   status: string;
+  fundCode: string;
+  particulars?: string | null;
+  payeeId?: string | null;
+  payeeName?: string | null;
+  accountLines?: Array<{
+    accountCode: string;
+    debit: number;
+    credit: number;
+    subsidiaryId?: string | null;
+    subsidiaryName?: string | null;
+  }> | null;
 }
 
-/** Just enough of a check to fill the reference column of a debit. */
-export interface CbcaCheck {
+/** Just enough of a check or an ADA to date and reference a debit. */
+export interface CbcaPayment {
   dvId: string;
-  checkNo: string;
+  no: string;
+  date?: IsoDate | null;
+  status?: string;
+}
+
+export interface CbcaPayroll {
+  id: string;
+  payrollNo: string;
+  dvId?: string | null;
+  particulars?: string | null;
+  disbursingOfficer?: { id: string; name: string } | null;
+}
+
+export interface CbcaRcdisb {
+  id: string;
+  reportNo?: string | null;
+  reportDate: IsoDate;
+  status: string;
+  fundCode: string;
+  accountableOfficerId?: string | null;
+  accountableOfficerName?: string | null;
+  lines: Array<{
+    sourceId: string;
+    sourceNo: string;
+    amount: number;
+    particulars?: string | null;
+    excluded?: boolean;
+  }>;
 }
 
 export interface CbcaEntry {
@@ -114,7 +100,6 @@ export interface CbcaBook {
   officerId: string;
   officerName: string;
   fundCode: string;
-
   /** Carried forward as the opening balance, per instruction 5. */
   broughtForward: Centavos;
   entries: CbcaEntry[];
@@ -122,17 +107,6 @@ export interface CbcaBook {
   totalCredit: Centavos;
   /** broughtForward + debits - credits: the cash in hand at the closing date. */
   closingBalance: Centavos;
-
-  /** The sum of `outstandingBalance` across this officer's advances. */
-  outstandingRecorded: Centavos;
-  /**
-   * True when the period reached every document, so the two figures above are
-   * comparable. False means the book stops short of what the stored figure
-   * already knows, and a difference means nothing.
-   */
-  coversEverything: boolean;
-  /** closingBalance - outstandingRecorded. Only meaningful when it covers everything. */
-  drift: Centavos;
 }
 
 interface Movement {
@@ -143,105 +117,102 @@ interface Movement {
   credit: Centavos;
 }
 
+function officerOfVoucher(
+  v: CbcaVoucher,
+  line: { subsidiaryId?: string | null; subsidiaryName?: string | null },
+): { id: string; name: string } | null {
+  if (line.subsidiaryId && line.subsidiaryName)
+    return { id: line.subsidiaryId, name: line.subsidiaryName };
+  if (v.payeeId && v.payeeName) return { id: v.payeeId, name: v.payeeName };
+  return null;
+}
+
 export function buildCashAdvanceBook(input: {
-  advances: CbcaAdvance[];
-  liquidations: CbcaLiquidation[];
-  checks?: CbcaCheck[];
+  vouchers: CbcaVoucher[];
+  payments?: CbcaPayment[];
+  payrolls: CbcaPayroll[];
+  rcdisbs: CbcaRcdisb[];
+  advanceAccountCode: string;
   from: IsoDate;
   to: IsoDate;
   officerId?: string | null;
   fundCode?: string | null;
 }): CbcaBook[] {
-  const checkByDv = new Map((input.checks ?? []).map((c) => [c.dvId, c.checkNo]));
-  const advanceById = new Map(input.advances.map((a) => [a.id, a]));
+  // The payment that released each voucher's money. A cancelled check is no payment.
+  const paymentByDv = new Map<string, CbcaPayment>();
+  for (const p of input.payments ?? []) {
+    if (p.status === 'CANCELLED') continue;
+    if (!paymentByDv.has(p.dvId)) paymentByDv.set(p.dvId, p);
+  }
 
   const movements = new Map<string, Movement[]>();
-  const covered = new Map<string, boolean>();
-  const push = (key: string, m: Movement, withinRange: boolean) => {
-    if (!withinRange) covered.set(key, false);
-    const list = movements.get(key) ?? [];
-    list.push(m);
-    movements.set(key, list);
-  };
+  const who = new Map<string, { officerId: string; officerName: string; fundCode: string }>();
+  const officerByDv = new Map<string, { id: string; name: string }>();
 
   const key = (officerId: string, fundCode: string) => `${officerId}__${fundCode}`;
-
   const wanted = (officerId: string, fundCode: string) =>
     (!input.officerId || officerId === input.officerId) &&
     (!input.fundCode || fundCode === input.fundCode);
+  const push = (officer: { id: string; name: string }, fundCode: string, m: Movement) => {
+    if (!wanted(officer.id, fundCode)) return;
+    const k = key(officer.id, fundCode);
+    if (!who.has(k)) who.set(k, { officerId: officer.id, officerName: officer.name, fundCode });
+    const list = movements.get(k) ?? [];
+    list.push(m);
+    movements.set(k, list);
+  };
 
-  for (const a of input.advances) {
-    if (!wanted(a.accountableOfficerId, a.fundCode)) continue;
-    const k = key(a.accountableOfficerId, a.fundCode);
-    if (!covered.has(k)) covered.set(k, true);
-    push(
-      k,
-      {
-        date: a.dateGranted,
-        particulars: `Cash advance granted: ${a.purpose}`,
-        // Instruction 6 wants the check, not the voucher. The voucher number
-        // is the fallback so the column is never blank, and never invented.
-        reference: checkByDv.get(a.dvId) || a.dvNo,
-        debit: a.amountGranted,
-        credit: 0,
-      },
-      a.dateGranted <= input.to,
+  // ---- Debits: the Advances for Payroll -----------------------------------
+  for (const v of input.vouchers) {
+    if (!ADVANCE_GRANTED.has(v.status)) continue;
+    const lines = (v.accountLines ?? []).filter(
+      (l) => l.accountCode === input.advanceAccountCode && (l.debit || 0) > 0,
     );
-  }
-
-  for (const l of input.liquidations) {
-    if (!POSTED_LIQUIDATION.has(l.status)) continue;
-    const a = advanceById.get(l.cashAdvanceId);
-    if (!a) continue;
-    if (!wanted(a.accountableOfficerId, a.fundCode)) continue;
-    const k = key(a.accountableOfficerId, a.fundCode);
-    if (!covered.has(k)) covered.set(k, true);
-
-    if (l.amountLiquidated !== 0) {
-      push(
-        k,
-        {
-          date: l.liquidationDate,
-          particulars: `Liquidation of cash advance: ${a.purpose}`,
-          reference: l.liquidationNo,
-          debit: 0,
-          credit: l.amountLiquidated,
-        },
-        l.liquidationDate <= input.to,
-      );
-    }
-    if (l.refundAmount !== 0) {
-      push(
-        k,
-        {
-          date: l.liquidationDate,
-          particulars: 'Cash returned by the accountable officer',
-          reference: l.liquidationNo,
-          debit: 0,
-          credit: l.refundAmount,
-        },
-        l.liquidationDate <= input.to,
-      );
-    }
-  }
-
-  const outstanding = new Map<string, Centavos>();
-  const names = new Map<string, { officerId: string; officerName: string; fundCode: string }>();
-  for (const a of input.advances) {
-    if (!wanted(a.accountableOfficerId, a.fundCode)) continue;
-    const k = key(a.accountableOfficerId, a.fundCode);
-    outstanding.set(k, (outstanding.get(k) ?? 0) + a.outstandingBalance);
-    names.set(k, {
-      officerId: a.accountableOfficerId,
-      officerName: a.accountableOfficerName,
-      fundCode: a.fundCode,
+    if (lines.length === 0) continue;
+    const officer = officerOfVoucher(v, lines[0]);
+    if (!officer) continue;
+    officerByDv.set(v.id, officer);
+    const paid = paymentByDv.get(v.id);
+    const particulars = String(v.particulars ?? '').trim();
+    push(officer, v.fundCode, {
+      date: (paid?.date as IsoDate | undefined) || v.dvDate,
+      particulars: particulars ? `Advance for payroll: ${particulars}` : 'Advance for payroll',
+      reference: paid?.no || `DV ${v.dvNo}`,
+      debit: lines.reduce((s, l) => s + l.debit, 0),
+      credit: 0,
     });
+  }
+
+  // ---- Credits: the payrolls on a certified RCDisb ------------------------
+  const payrollById = new Map(input.payrolls.map((p) => [p.id, p]));
+  for (const r of input.rcdisbs) {
+    if (!RCDISB_REPORTED.has(r.status)) continue;
+    for (const l of r.lines ?? []) {
+      if (l.excluded || !l.amount) continue;
+      const p = payrollById.get(l.sourceId);
+      const officer =
+        (p?.dvId ? officerByDv.get(p.dvId) : undefined) ??
+        (p?.disbursingOfficer?.id
+          ? { id: p.disbursingOfficer.id, name: p.disbursingOfficer.name }
+          : undefined) ??
+        (r.accountableOfficerId
+          ? { id: r.accountableOfficerId, name: r.accountableOfficerName ?? r.accountableOfficerId }
+          : undefined);
+      if (!officer) continue;
+      const particulars = String(p?.particulars ?? l.particulars ?? '').trim();
+      push(officer, r.fundCode, {
+        date: r.reportDate,
+        particulars: particulars || `Payroll ${l.sourceNo}`,
+        reference: `RCDisb ${r.reportNo ?? ''} / ${p?.payrollNo ?? l.sourceNo}`.replace('  ', ' '),
+        debit: 0,
+        credit: l.amount,
+      });
+    }
   }
 
   const books: CbcaBook[] = [];
   for (const [k, list] of movements) {
-    const who = names.get(k)!;
-
+    const w = who.get(k)!;
     let broughtForward = 0;
     const inPeriod: Movement[] = [];
     for (const m of list) {
@@ -252,13 +223,13 @@ export function buildCashAdvanceBook(input: {
       }
       inPeriod.push(m);
     }
+    if (inPeriod.length === 0 && broughtForward === 0) continue;
 
     inPeriod.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
-        // A debit before a credit on the same day: an officer cannot spend an
-        // advance before it reaches him, and a balance that dips negative for
-        // one line would be read as a shortage.
+        // A debit before a credit on the same day: the officer cannot pay out
+        // an advance before it reaches him.
         b.debit - a.debit ||
         a.reference.localeCompare(b.reference),
     );
@@ -273,21 +244,15 @@ export function buildCashAdvanceBook(input: {
       return { ...m, balance };
     });
 
-    const outstandingRecorded = outstanding.get(k) ?? 0;
-    const coversEverything = covered.get(k) !== false;
-
     books.push({
-      officerId: who.officerId,
-      officerName: who.officerName,
-      fundCode: who.fundCode,
+      officerId: w.officerId,
+      officerName: w.officerName,
+      fundCode: w.fundCode,
       broughtForward,
       entries,
       totalDebit,
       totalCredit,
       closingBalance: balance,
-      outstandingRecorded,
-      coversEverything,
-      drift: balance - outstandingRecorded,
     });
   }
 

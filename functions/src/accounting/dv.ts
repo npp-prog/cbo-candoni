@@ -1,6 +1,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
+import { assertAttachedBeforePosting } from '../lib/attachmentGate';
 import {
   requireCaller,
   APPROVING_ROLES,
@@ -256,39 +257,13 @@ export const submitDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       });
     }
 
-    // What kind of voucher this is, and whether it is held to it. Checked
-    // before the attachments so the encoder is told the structural thing
-    // first - attaching documents to a voucher of the wrong kind is wasted
-    // work.
+    // What kind of voucher this is, and whether it is held to it.
+    //
+    // Patch 177: the supporting documents are no longer required to submit.
+    // They are required at approval, where the entry is written to the books
+    // (approveDv).
     await assertDvCategory(dv);
     assertDvPayees(dv);
-
-    if ((dv.attachmentCount ?? 0) === 0) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Attach the supporting documents before submitting this voucher. A disbursement without supporting documents cannot be reviewed or audited.',
-      );
-    }
-
-    const required = REQUIRED_ATTACHMENTS;
-    if (required.length > 0) {
-      const docs = await tx.get(
-        db
-          .collection(COL.documents)
-          .where('entityType', '==', COL.disbursementVouchers)
-          .where('entityId', '==', dvId)
-          .where('active', '==', true),
-      );
-      const present = new Set(docs.docs.map((d) => d.data().documentType as string));
-      const missing = required.filter((r) => !present.has(r));
-      if (missing.length) {
-        throw new HttpsError(
-          'failed-precondition',
-          `Missing required supporting documents: ${missing.join(', ')}.`,
-          { missing },
-        );
-      }
-    }
 
     tx.update(ref, {
       status: 'SUBMITTED',
@@ -456,6 +431,39 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
      */
     await assertDvCategory(dv);
     assertDvPayees(dv);
+
+    /*
+     * Patch 177: the papers are required HERE, at approval - the act that
+     * posts the entry - and no longer at submission. Read from /documents,
+     * not from the counter on the voucher, which a browser cannot update once
+     * the voucher has left Draft.
+     */
+    await assertAttachedBeforePosting(
+      tx,
+      COL.disbursementVouchers,
+      dvId,
+      `DV ${dv.dvNo ?? 'this voucher'}`,
+      'approving it',
+    );
+    const required = REQUIRED_ATTACHMENTS;
+    if (required.length > 0) {
+      const docs = await tx.get(
+        db
+          .collection(COL.documents)
+          .where('entityType', '==', COL.disbursementVouchers)
+          .where('entityId', '==', dvId)
+          .where('active', '==', true),
+      );
+      const present = new Set(docs.docs.map((d) => d.data().documentType as string));
+      const missing = required.filter((r) => !present.has(r));
+      if (missing.length) {
+        throw new HttpsError(
+          'failed-precondition',
+          `Missing required supporting documents: ${missing.join(', ')}.`,
+          { missing },
+        );
+      }
+    }
 
     const period = periodOf(dv.dvDate);
     await assertFiscalYearOpen(dv.fiscalYear, tx);

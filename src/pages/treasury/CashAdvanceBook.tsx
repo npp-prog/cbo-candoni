@@ -1,14 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
-import { PeriodPicker } from '@/components/PeriodPicker';
 import { Alert, Spinner } from '@/components/ui/Layout';
-import { Field, Select } from '@/components/ui/Field';
+import { Field, Select, TextInput } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
-import { useCashAdvances, useChecks, useLiquidations } from '@/data/queries';
-import { periodHeading, periodRange, type ReportPeriod } from '@/lib/reportPeriods';
+import {
+  useAda,
+  useChecks,
+  useDisbursementVouchers,
+  usePayrolls,
+  useTreasuryReports,
+} from '@/data/queries';
 import { formatPeso } from '@/lib/money';
-import { todayPh } from '@/lib/dates';
+import { formatLongDate, todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
+import { ADVANCES_FOR_PAYROLL } from '@/lib/chartOfAccounts';
 import { buildCashAdvanceBook, type CbcaBook } from './cashAdvanceBookReport';
 import { fundLabel } from '@/pages/budget/Obligations';
 import { SectionTabs } from '@/components/ui/SectionTabs';
@@ -19,50 +24,71 @@ import { CASH_BOOK_TABS } from '@/layout/sections';
  *
  * One book per disbursing officer. The balance column is the point of it:
  * instruction 9 says it "shall be equal to the amount of cash in hand of
- * Disbursing Officers", which is what somebody counting the drawer is holding
- * this record against.
+ * Disbursing Officers".
+ *
+ * Patch 177: made of the Advances for Payroll (debits) and the payrolls on a
+ * certified RCDisb (credits) only, and struck between two dates - From and To -
+ * instead of a period and a month.
  */
+function defaultTo(fiscalYear: number): string {
+  const today = todayPh();
+  return today.slice(0, 4) === String(fiscalYear) ? today : `${fiscalYear}-12-31`;
+}
+
 export default function CashAdvanceBook() {
   const { fiscalYear, fundCode } = useFilters();
   const [officerId, setOfficerId] = useState<string>('');
-  const [period, setPeriod] = useState<ReportPeriod>(() => ({
-    mode: 'MONTHLY',
-    index: Number(todayPh().slice(0, 4)) === fiscalYear ? Number(todayPh().slice(5, 7)) : 1,
-  }));
+  const [fromDate, setFromDate] = useState(`${fiscalYear}-01-01`);
+  const [toDate, setToDate] = useState(() => defaultTo(fiscalYear));
 
-  // Every advance of the year, not only the outstanding ones: a book that
-  // dropped an advance the moment it was fully liquidated would have debits
-  // with no matching credits and would not foot.
-  const advances = useCashAdvances(fiscalYear, false);
-  const liquidations = useLiquidations(fiscalYear);
+  useEffect(() => {
+    setFromDate(`${fiscalYear}-01-01`);
+    setToDate(defaultTo(fiscalYear));
+  }, [fiscalYear]);
+
+  const vouchers = useDisbursementVouchers(fiscalYear, fundCode);
+  const payrolls = usePayrolls(fiscalYear, fundCode);
+  const rcdisbs = useTreasuryReports('RCDISB', fiscalYear, fundCode);
   const checks = useChecks();
+  const adas = useAda();
 
-  const range = periodRange(period, fiscalYear);
-
-  const books = useMemo(
-    () =>
-      buildCashAdvanceBook({
-        advances: advances.data,
-        liquidations: liquidations.data,
-        checks: checks.data,
-        from: range.from,
-        to: range.to,
-        officerId: officerId || null,
-        fundCode,
-      }),
-    [advances.data, liquidations.data, checks.data, range.from, range.to, officerId, fundCode],
+  const payments = useMemo(
+    () => [
+      ...checks.data.map((c) => ({
+        dvId: c.dvId,
+        no: `Check ${c.checkNo}`,
+        date: c.checkDate,
+        status: c.status,
+      })),
+      ...adas.data.map((a) => ({
+        dvId: a.dvId,
+        no: `ADA ${a.adaNo}`,
+        date: a.adaDate,
+        status: a.status,
+      })),
+    ],
+    [checks.data, adas.data],
   );
 
-  const officers = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const a of advances.data) {
-      if (a.fundCode === fundCode) seen.set(a.accountableOfficerId, a.accountableOfficerName);
-    }
-    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [advances.data, fundCode]);
+  const allBooks = useMemo(
+    () =>
+      buildCashAdvanceBook({
+        vouchers: vouchers.data,
+        payments,
+        payrolls: payrolls.data,
+        rcdisbs: rcdisbs.data,
+        advanceAccountCode: ADVANCES_FOR_PAYROLL.code,
+        from: fromDate,
+        to: toDate,
+        fundCode,
+      }),
+    [vouchers.data, payments, payrolls.data, rcdisbs.data, fromDate, toDate, fundCode],
+  );
+  const books = officerId ? allBooks.filter((b) => b.officerId === officerId) : allBooks;
+  const officers = allBooks.map((b) => [b.officerId, b.officerName] as const);
 
-  const loading = advances.loading || liquidations.loading;
-  const drifting = books.filter((b) => b.coversEverything && b.drift !== 0);
+  const loading = vouchers.loading || payrolls.loading || rcdisbs.loading;
+  const periodLabel = `${formatLongDate(fromDate)} to ${formatLongDate(toDate)}`;
 
   const exportRows = books.flatMap((b) => b.entries.map((e) => ({ book: b, e })));
   const exportColumns: ExportColumn<(typeof exportRows)[number]>[] = [
@@ -81,14 +107,29 @@ export default function CashAdvanceBook() {
       meta={{
         title: 'Cash Book - Cash Advances',
         fundLabel: fundLabel(fundCode),
-        periodLabel: periodHeading(period, fiscalYear),
+        periodLabel,
       }}
       breadcrumbs={[{ label: 'Treasury' }, { label: 'Cash Book - Cash Advances' }]}
       rows={exportRows}
       exportColumns={exportColumns}
       filters={
         <>
-          <PeriodPicker value={period} onChange={setPeriod} />
+          <Field label="From">
+            <TextInput
+              type="date"
+              value={fromDate}
+              max={toDate}
+              onChange={(e) => e.target.value && setFromDate(e.target.value)}
+            />
+          </Field>
+          <Field label="To">
+            <TextInput
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(e) => e.target.value && setToDate(e.target.value)}
+            />
+          </Field>
           <Field label="Disbursing Officer" className="w-72">
             <Select value={officerId} onChange={(e) => setOfficerId(e.target.value)}>
               <option value="">Every officer</option>
@@ -105,23 +146,13 @@ export default function CashAdvanceBook() {
         <>
           <p>
             <strong>Cash Book - Cash Advances</strong> - GAM for Local Government Units, Appendix
-            26. Maintained by the Treasurer or the disbursing officer. The balance column is the
-            cash that should be in the officer&apos;s hands.
+            26. The balance column is the cash that should be in the disbursing officer&apos;s
+            hands.
           </p>
           <p className="mt-1">
-            The debit is the advance, referenced by the check that paid it. The credit is what was
-            liquidated, and cash handed back is a credit of its own. A liquidation counts only once
-            it is posted, which is the point at which the records themselves move.
-          </p>
-          {/*
-            A reimbursement is the officer's own money, not the LGU's cash in
-            his hands. Saying so here stops the obvious question about why the
-            book and the liquidation report differ by that amount.
-          */}
-          <p className="mt-1">
-            A reimbursement - where the officer spent more than he was advanced and is owed the
-            difference - is not in this book. It is his money, not cash of the municipality in his
-            hands, and including it would make the balance disagree with a count of the drawer.
+            Debit: each Advance for Payroll (a voucher debiting Advances for Payroll), referenced by
+            the check or ADA that paid it. Credit: each payroll reported on a certified Report of
+            Cash Disbursements (RCDisb), at its net. Nothing else is in this book.
           </p>
         </>
       }
@@ -130,35 +161,11 @@ export default function CashAdvanceBook() {
         <Spinner />
       ) : books.length === 0 ? (
         <Alert tone="info" title="No cash advance to report">
-          No cash advance was granted in {fiscalYear} out of the {fundLabel(fundCode)}.
+          No Advance for Payroll and no RCDisb in the {fundLabel(fundCode)} up to{' '}
+          {formatLongDate(toDate)}.
         </Alert>
       ) : (
-        <>
-          {/*
-            The closing balance and the stored outstanding balance are worked
-            out by different code from the same documents. Where they disagree
-            and the book covers everything, one of them is wrong, and that is
-            worth interrupting for.
-          */}
-          {drifting.length > 0 && (
-            <Alert
-              tone="error"
-              title="A book does not agree with the recorded balance"
-              className="mb-4 no-print"
-            >
-              <p>
-                For {drifting.map((b) => b.officerName).join(', ')}, the balance this book foots to
-                is not the outstanding balance held against the cash advances. The two are worked
-                out separately from the same documents, so one of them is wrong. Do not sign the
-                book until it is explained.
-              </p>
-            </Alert>
-          )}
-
-          {books.map((b) => (
-            <Book key={`${b.officerId}__${b.fundCode}`} book={b} />
-          ))}
-        </>
+        books.map((b) => <Book key={`${b.officerId}__${b.fundCode}`} book={b} />)
       )}
     </ReportShell>
   );
@@ -230,34 +237,13 @@ function Book({ book }: { book: CbcaBook }) {
               <td className="cbo-td" colSpan={5}>
                 Cash in hand at the closing date
               </td>
-              <td
-                className={`cbo-td cbo-amount ${book.closingBalance < 0 ? 'text-rose-600' : ''}`}
-              >
+              <td className={`cbo-td cbo-amount ${book.closingBalance < 0 ? 'text-rose-600' : ''}`}>
                 {formatPeso(book.closingBalance)}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-
-      <p className="mt-2 text-xs text-slate-500">
-        Outstanding against the cash advances on record: {formatPeso(book.outstandingRecorded)}.{' '}
-        {book.coversEverything ? (
-          book.drift === 0 ? (
-            <span className="text-emerald-700">The book agrees with it.</span>
-          ) : (
-            <span className="text-rose-600">
-              The book is out by {formatPeso(book.drift)}; one of the two is wrong.
-            </span>
-          )
-        ) : (
-          // Said rather than shown as a discrepancy. A book struck at a past
-          // date has not reached documents the stored figure already counts.
-          <span>
-            A document falls after the closing date, so the two are not comparable on this period.
-          </span>
-        )}
-      </p>
     </section>
   );
 }

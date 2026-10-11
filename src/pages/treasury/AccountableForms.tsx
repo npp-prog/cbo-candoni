@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PageHeader, Card, Alert } from '@/components/ui/Layout';
+import { PageHeader, Alert } from '@/components/ui/Layout';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ACCOUNTABLE_FORM_TABS } from './sections';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -272,45 +272,12 @@ export default function AccountableForms() {
         </Alert>
       )}
 
-      {custody.size > 0 && (
-        <Card
-          title="Who is holding what"
-          subtitle="Computed from every movement below. This is the position COA asks about."
-          className="mb-5"
-          bodyClassName="p-0"
-        >
-          <div className="divide-y divide-slate-100">
-            {[...custody.entries()].map(([formCode, holders]) => {
-              const type = formTypes.find((t) => t.code === formCode);
-              return (
-                <div key={formCode} className="px-4 py-3">
-                  <p className="text-xs font-semibold text-navy-900">{type?.name ?? formCode}</p>
-                  <div className="mt-2 space-y-1.5">
-                    {holders.map((h) => (
-                      <div key={h.key} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
-                        <span
-                          className={
-                            h.key === STOCK ? 'w-56 shrink-0 italic text-slate-500' : 'w-56 shrink-0 text-slate-700'
-                          }
-                        >
-                          {h.name}
-                        </span>
-                        <span className="w-16 shrink-0 text-right font-medium tabular-nums">
-                          {count(h.ranges).toLocaleString('en-PH')}
-                        </span>
-                        <span className="font-mono text-2xs text-slate-500">
-                          {describe(renderSet(h.ranges, type?.bookletSize))}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
+      {/*
+        Patch 177: the "Who is holding what" card is gone - it crowded the
+        register. The same position, per officer, is the RAAF (Accountable
+        Forms > RAAF), which is now built from these movements by itself. The
+        holdings are still computed here: the movement form uses them.
+      */}
       <DataTable
         rows={movements}
         columns={columns}

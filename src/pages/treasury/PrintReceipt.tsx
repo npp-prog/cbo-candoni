@@ -105,6 +105,9 @@ export default function PrintReceipt() {
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  // Patch 177: the receipt date, From and To. Empty means no limit.
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [calibration, setCalibration] = useState<Calibration>(() =>
     defaultCalibration(OR_FIELDS, 9),
@@ -130,8 +133,10 @@ export default function PrintReceipt() {
         // Patch 175: a real property tax receipt is on the AF 56, everything else on the AF 51.
         .filter((c) => (form === 'af56' ? Boolean(c.rpt) : !c.rpt))
         .filter((c) => !statusFilter || c.status === statusFilter)
+        .filter((c) => !fromDate || c.orDate >= fromDate)
+        .filter((c) => !toDate || c.orDate <= toDate)
         .sort((a, b) => b.orDate.localeCompare(a.orDate) || b.orNumber.localeCompare(a.orNumber)),
-    [data, statusFilter, form],
+    [data, statusFilter, form, fromDate, toDate],
   );
 
   useEffect(() => {
@@ -377,14 +382,30 @@ export default function PrintReceipt() {
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-4">
           <Card title="Which receipts" bodyClassName="p-0" className="no-print">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <Field label="Status" className="max-w-xs">
+            <div className="grid gap-3 border-b border-slate-200 px-4 py-3 sm:grid-cols-3">
+              <Field label="Status">
                 <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="">All but cancelled</option>
                   <option value="ISSUED">Issued</option>
                   <option value="IN_RCD">In an RCD</option>
                   <option value="DEPOSITED">Deposited</option>
                 </Select>
+              </Field>
+              <Field label="From date">
+                <TextInput
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </Field>
+              <Field label="To date">
+                <TextInput
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
               </Field>
             </div>
 

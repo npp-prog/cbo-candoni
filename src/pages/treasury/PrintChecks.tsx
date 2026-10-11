@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, Select } from '@/components/ui/Field';
+import { Field, Select, TextInput } from '@/components/ui/Field';
 import { BankAccountPicker } from '@/components/pickers';
 import { useFilters } from '@/context/FilterContext';
 import { useAuth } from '@/auth/AuthProvider';
@@ -87,6 +87,9 @@ export default function PrintChecks() {
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  // Patch 177: the check date, From and To. Empty means no limit.
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [calibration, setCalibration] = useState<Calibration>(() =>
     defaultCalibration(CHECK_FIELDS),
@@ -105,8 +108,10 @@ export default function PrintChecks() {
     () =>
       data
         .filter((c) => c.fiscalYear === fiscalYear && c.status !== 'CANCELLED')
+        .filter((c) => !fromDate || (c.checkDate ?? '') >= fromDate)
+        .filter((c) => !toDate || (c.checkDate ?? '') <= toDate)
         .sort((a, b) => a.checkNo.localeCompare(b.checkNo)),
-    [data, fiscalYear],
+    [data, fiscalYear, fromDate, toDate],
   );
 
   // A check that leaves the list - the bank account changed, it was cancelled
@@ -234,6 +239,22 @@ export default function PrintChecks() {
                   <option value="SIGNED">Signed</option>
                   <option value="RELEASED">Released</option>
                 </Select>
+              </Field>
+              <Field label="From date">
+                <TextInput
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </Field>
+              <Field label="To date">
+                <TextInput
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
               </Field>
             </div>
 

@@ -24,6 +24,7 @@ import {
 import { renumberPaymentEntry, reportedCashDebit } from '../lib/treasuryEntry';
 import { af56LinesAgree, isAf56, sefBooksEntry, type Af56Detail } from '../lib/af56';
 import { CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
+import { assertAttachedBeforePosting } from '../lib/attachmentGate';
 import {
   createJevInTransaction,
   postJevInTransaction,
@@ -128,6 +129,7 @@ interface EntryLine {
 interface ReportDoc {
   reportType: ReportType;
   reportNo?: string;
+  attachmentsLockedAt?: string;
   reportDate: string;
   fiscalYear: number;
   fundCode: string;
@@ -291,22 +293,14 @@ export const certifyTreasuryReport = onCall(
       assertFundInScope(caller, report.fundCode);
 
       /*
-       * THE SIGNED FORM MUST BE ON THE RECORD BEFORE THE CERTIFICATE.
+       * Patch 177: the signed form is NOT required to certify.
        *
-       * Certifying forwards the report to Accounting, locks every document it
-       * covers to it, and reserves its number. All three are hard to undo and
-       * the first one puts another office to work.
-       *
-       * What CFMS holds is an ENCODING of the report. The signed copy is the
-       * evidence that the encoding is true, and the Treasurer's certificate is
-       * a statement about that paper. A certificate issued before anybody has
-       * put the paper on the record is a statement about nothing - and the
-       * practical result, every time, is that the file is attached later if at
-       * all, because the thing that needed it has already happened.
-       *
-       * Read inside the transaction, so a report cannot be certified in the
-       * instant between the check and the commit. The browser disables the
-       * button for the same reason; the browser is not the authority.
+       * The Treasurer may certify (and forward) before the scan is on the
+       * record; the Accountant cannot journalize until it is - that is where
+       * journalizeTreasuryReport refuses. What certifying still does is close
+       * the papers when there ARE papers: a certificate is a statement about
+       * the attached form. With nothing attached there is nothing to close,
+       * and the record stays open so the scan can follow.
        */
       const attached = await tx.get(
         db
@@ -316,12 +310,7 @@ export const certifyTreasuryReport = onCall(
           .where('active', '==', true)
           .limit(1),
       );
-      if (attached.empty) {
-        throw new HttpsError(
-          'failed-precondition',
-          `Attach the signed ${label} before certifying. Certifying locks the documents it covers to it and reserves its number; the signed copy is the evidence that what CFMS holds is what was signed.`,
-        );
-      }
+      const hasPaper = !attached.empty;
 
       /**
        * A report built from an upload cannot be certified while rows of that
@@ -780,13 +769,17 @@ export const certifyTreasuryReport = onCall(
          *
          * The same field certifyObligation and the manual closing write.
          */
-        attachmentsLockedAt: now,
-        attachmentsLockedBy: {
-          uid: caller.uid,
-          name: caller.name,
-          position: caller.position ?? null,
-          at: now,
-        },
+        ...(hasPaper
+          ? {
+              attachmentsLockedAt: now,
+              attachmentsLockedBy: {
+                uid: caller.uid,
+                name: caller.name,
+                position: caller.position ?? null,
+                at: now,
+              },
+            }
+          : {}),
         certifiedAt: now,
         certifiedBy: {
           uid: caller.uid,
@@ -958,6 +951,32 @@ export const journalizeTreasuryReport = onCall(
         throw invalid('This report has no number and cannot be journalized.');
       }
 
+      /*
+       * Patch 177: the papers are required HERE, not at certification. The
+       * Treasurer may certify before the scan is on the record; the entry
+       * cannot go into the books until it is. Taking it up closes the papers
+       * if certifying did not (it closes them only when something was there).
+       */
+      await assertAttachedBeforePosting(
+        tx,
+        COL.treasuryReports,
+        reportId,
+        `${label} ${report.reportNo}`,
+        'journalizing it',
+      );
+      const closeNow = new Date().toISOString();
+      const closePapers = report.attachmentsLockedAt
+        ? {}
+        : {
+            attachmentsLockedAt: closeNow,
+            attachmentsLockedBy: {
+              uid: caller.uid,
+              name: caller.name,
+              position: caller.position ?? null,
+              at: closeNow,
+            },
+          };
+
       const period = periodOf(report.reportDate);
       await assertFiscalYearOpen(report.fiscalYear, tx);
       await assertPeriodOpen(
@@ -988,6 +1007,7 @@ export const journalizeTreasuryReport = onCall(
           jevNo: null,
           journalizedAt: now,
           remarks: 'Remittances received and/or deposits already in the books only - no entry.',
+          ...closePapers,
           postedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
         });
         recordTransition(tx, {
@@ -1196,6 +1216,7 @@ export const journalizeTreasuryReport = onCall(
         jevId,
         jevNo,
         ...(sefJevId ? { sefJevId, sefJevNo } : {}),
+        ...closePapers,
         journalizedAt: now,
         postedBy: {
           uid: caller.uid,

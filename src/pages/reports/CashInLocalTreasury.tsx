@@ -3,10 +3,10 @@ import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput } from '@/components/ui/Field';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { useFilters } from '@/context/FilterContext';
-import { usePrimaryReports } from '@/data/queries';
+import { useTreasuryReports } from '@/data/queries';
 import { formatAmount } from '@/lib/money';
 import { formatShortDate } from '@/lib/dates';
-import { type PrimaryReport } from '@/types/primaryReports';
+import type { TreasuryReport } from '@/types/treasury';
 import { fundLabel } from '../budget/Obligations';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { CASH_BOOK_TABS } from '@/layout/sections';
@@ -15,29 +15,28 @@ import { CASH_BOOK_TABS } from '@/layout/sections';
  * Cash in Local Treasury.
  *
  * ---------------------------------------------------------------------------
- * WHY THIS REGISTER IS COMPUTED AND NOT KEPT
+ * PATCH 177: READ FROM THE RCDs
  * ---------------------------------------------------------------------------
- * The office's own version of this book is written up by hand, one line per
- * report, and it is the line that drifts. A primary is reopened and corrected;
- * the register keeps the old figure. A deposit is withdrawn; the register still
- * shows the money banked. By the time anybody notices, the balance has been
- * wrong for a fortnight and nobody can say from when.
+ * The primary reports are no longer kept, so the register is the Reports of
+ * Collections and Deposits themselves. Every certified (or journalized) RCD of
+ * the fund is one line:
  *
- * So nothing is posted here. The register IS the closed primary reports, read
- * in order: a closed collection report is a debit, a closed deposit is a
- * credit, and the balance is the running difference. Reopen a primary and the
- * line leaves this page by itself, because the line was never anything but
- * that primary.
+ *   Debit   the collections it reports - its receipts, the lines not set aside;
+ *   Credit  the deposits it reports.
+ *
+ * Remittances received (section A.2 of a liquidating officer's RCD) are NOT a
+ * debit: the collector's own RCD already brought that money into the
+ * treasury, and the remittance only moves it from one officer to another
+ * inside it. Counting it again would double the cash.
+ *
+ * Nothing is posted here and nothing can be typed. Cancel or withdraw an RCD
+ * and its line leaves the page by itself.
  *
  * ---------------------------------------------------------------------------
  * THE SORT ORDER IS PART OF THE CONTROL
  * ---------------------------------------------------------------------------
- * Within one date, collections come before deposits. This is not cosmetic:
- * money is received before any of it is banked, so a same-day deposit sorted
- * ahead of its collection would dip the running balance below zero and make the
- * Treasurer appear to have banked money they had not yet taken in. The register
- * would foot correctly at the end of the day and be wrong in the middle of it,
- * which is the worst of both.
+ * Date, then report number. An RCD's own collections and deposits are on one
+ * line, so a same-day deposit never shows ahead of the money it banked.
  * ---------------------------------------------------------------------------
  */
 
@@ -51,45 +50,50 @@ interface Row {
   credit: number;
 }
 
-/** Collections before deposits on the same date. See the note above. */
-function order(a: PrimaryReport, b: PrimaryReport): number {
-  if (a.reportDate !== b.reportDate) return a.reportDate.localeCompare(b.reportDate);
-  const aDeposit = a.reportType === 'DEPOSIT' ? 1 : 0;
-  const bDeposit = b.reportType === 'DEPOSIT' ? 1 : 0;
-  if (aDeposit !== bDeposit) return aDeposit - bDeposit;
-  return (a.primaryNo ?? '').localeCompare(b.primaryNo ?? '');
+const REPORTED = new Set(['CERTIFIED', 'JOURNALIZED']);
+
+function collectionsOf(r: TreasuryReport): number {
+  return (r.lines ?? []).filter((l) => !l.excluded).reduce((s, l) => s + (l.amount || 0), 0);
+}
+
+function depositsOf(r: TreasuryReport): number {
+  return (r.deposits ?? []).reduce((s, d) => s + (d.amount || 0), 0);
+}
+
+function order(a: TreasuryReport, b: TreasuryReport): number {
+  return (
+    a.reportDate.localeCompare(b.reportDate) || (a.reportNo ?? '').localeCompare(b.reportNo ?? '')
+  );
 }
 
 export default function CashInLocalTreasury() {
   const { fiscalYear, fundCode } = useFilters();
-  const { data: primaries, loading } = usePrimaryReports(fiscalYear, fundCode);
+  const { data: rcds, loading } = useTreasuryReports('RCD', fiscalYear, fundCode);
 
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
 
-  const closed = useMemo(
-    () => primaries.filter((p) => p.status === 'CLOSED').sort(order),
-    [primaries],
-  );
+  const closed = useMemo(() => rcds.filter((r) => REPORTED.has(r.status)).sort(order), [rcds]);
 
-  const toRow = (p: PrimaryReport): Row => {
-    const isDeposit = p.reportType === 'DEPOSIT';
+  const toRow = (r: TreasuryReport): Row => {
+    const receipts = (r.lines ?? []).filter((l) => !l.excluded).length;
+    const deposits = r.deposits?.length ?? 0;
     return {
-      key: p.id,
-      date: p.reportDate,
-      particulars: isDeposit
-        ? `Deposited — ${p.deposit?.bankName ?? 'depository bank'}`
-        : `Collections received — ${p.accountableOfficerName}`,
-      primaryRef: p.primaryNo ?? '',
-      secondaryRef: isDeposit
-        ? primaries
-            .filter((x) => p.coveredPrimaryIds.includes(x.id))
-            .map((x) => x.primaryNo)
-            .filter(Boolean)
-            .join(', ')
-        : `${p.rcdIds.length} report${p.rcdIds.length === 1 ? '' : 's'}`,
-      debit: isDeposit ? 0 : p.totalAmount,
-      credit: isDeposit ? p.totalAmount : 0,
+      key: r.id,
+      date: r.reportDate,
+      particulars:
+        receipts > 0
+          ? `Collections${deposits > 0 ? ' and deposits' : ''} - ${r.accountableOfficerName ?? 'collecting officer'}`
+          : `Deposited - ${r.accountableOfficerName ?? 'depository bank'}`,
+      primaryRef: r.reportNo ?? '',
+      secondaryRef: [
+        receipts ? `${receipts} receipt${receipts === 1 ? '' : 's'}` : '',
+        deposits ? `${deposits} deposit${deposits === 1 ? '' : 's'}` : '',
+      ]
+        .filter(Boolean)
+        .join(', '),
+      debit: collectionsOf(r),
+      credit: depositsOf(r),
     };
   };
 
@@ -97,16 +101,19 @@ export default function CashInLocalTreasury() {
   const broughtForward = useMemo(
     () =>
       closed
-        .filter((p) => p.reportDate < from)
-        .reduce((bal, p) => bal + (p.reportType === 'DEPOSIT' ? -p.totalAmount : p.totalAmount), 0),
+        .filter((r) => r.reportDate < from)
+        .reduce((bal, r) => bal + collectionsOf(r) - depositsOf(r), 0),
     [closed, from],
   );
 
   const rows = useMemo(
-    () => closed.filter((p) => p.reportDate >= from && p.reportDate <= to).map(toRow),
-    // toRow closes over `primaries`, which changes with the query.
+    () =>
+      closed
+        .filter((r) => r.reportDate >= from && r.reportDate <= to)
+        .map(toRow)
+        .filter((r) => r.debit !== 0 || r.credit !== 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [closed, from, to, primaries],
+    [closed, from, to],
   );
 
   const totals = rows.reduce(
@@ -115,7 +122,7 @@ export default function CashInLocalTreasury() {
   );
   const closing = broughtForward + totals.debit - totals.credit;
 
-  if (loading) return <Spinner label="Reading the primary reports" />;
+  if (loading) return <Spinner label="Reading the RCDs" />;
 
   let running = broughtForward;
 
@@ -143,47 +150,64 @@ export default function CashInLocalTreasury() {
       footnote={
         <>
           <p>
-            Every line is a closed primary report. Nothing is posted to this register and nothing
-            can be typed on it &mdash; reopen a primary and its line leaves the page by itself,
-            because the line was never anything but that report.
+            Every line is a certified Report of Collections and Deposits (RCD): its collections are
+            the debit, its deposits the credit. Nothing is posted to this register and nothing can
+            be typed on it.
           </p>
           <p className="mt-1">
-            Within one date, collections are listed before deposits: money is received before any of
-            it is banked, and a deposit sorted ahead of its collection would dip the balance below
-            what the Treasurer actually held.
+            Remittances received from collectors are not a debit - the collector&apos;s own RCD
+            already brought the money in; the remittance only moves it to another officer.
           </p>
         </>
       }
     >
       {closed.length === 0 ? (
-        <Alert tone="info" title="No primary report has been closed yet">
-          The register fills itself as reports are closed under{' '}
-          <strong>Treasury &rsaquo; Primary Reports</strong>. An open report is still changing, so it
-          is deliberately not here.
+        <Alert tone="info" title="No RCD has been certified yet">
+          The register fills itself as RCDs are certified under{' '}
+          <strong>Treasury &rsaquo; Collections and Deposits</strong>. A draft is still changing, so
+          it is deliberately not here.
         </Alert>
       ) : (
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="bg-slate-100">
-              <th className="border border-slate-400 px-2 py-1.5 text-left" style={{ width: '7rem' }}>
+              <th
+                className="border border-slate-400 px-2 py-1.5 text-left"
+                style={{ width: '7rem' }}
+              >
                 Date
               </th>
               <th className="border border-slate-400 px-2 py-1.5 text-left">Particulars</th>
-              <th className="border border-slate-400 px-2 py-1.5 text-left" style={{ width: '9rem' }}>
-                Primary Ref.
+              <th
+                className="border border-slate-400 px-2 py-1.5 text-left"
+                style={{ width: '9rem' }}
+              >
+                RCD No.
               </th>
-              <th className="border border-slate-400 px-2 py-1.5 text-left" style={{ width: '11rem' }}>
+              <th
+                className="border border-slate-400 px-2 py-1.5 text-left"
+                style={{ width: '11rem' }}
+              >
                 Covering
               </th>
-              <th className="border border-slate-400 px-2 py-1.5 text-right" style={{ width: '8rem' }}>
+              <th
+                className="border border-slate-400 px-2 py-1.5 text-right"
+                style={{ width: '8rem' }}
+              >
                 Collections
                 <span className="block text-2xs font-normal text-slate-500">Debit</span>
               </th>
-              <th className="border border-slate-400 px-2 py-1.5 text-right" style={{ width: '8rem' }}>
+              <th
+                className="border border-slate-400 px-2 py-1.5 text-right"
+                style={{ width: '8rem' }}
+              >
                 Deposits
                 <span className="block text-2xs font-normal text-slate-500">Credit</span>
               </th>
-              <th className="border border-slate-400 px-2 py-1.5 text-right" style={{ width: '9rem' }}>
+              <th
+                className="border border-slate-400 px-2 py-1.5 text-right"
+                style={{ width: '9rem' }}
+              >
                 Balance
               </th>
             </tr>
@@ -249,9 +273,9 @@ export default function CashInLocalTreasury() {
 
       {closing < 0 && (
         <Alert tone="error" title="The balance is negative" className="mt-4">
-          More has been banked than was taken in. Either a collection report has not been closed, or
-          a deposit covers collections from outside this period. Both show up as a negative balance
-          and neither is ignorable.
+          More has been banked than was taken in. Either an RCD of collections has not been
+          certified, or a deposit covers collections from outside this period. Both show up as a
+          negative balance and neither is ignorable.
         </Alert>
       )}
     </ReportShell>

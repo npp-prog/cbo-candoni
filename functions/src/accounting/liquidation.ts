@@ -3,6 +3,7 @@ import { titleForAccountCode } from '../lib/accountTitles';
 import { isLiquidatableAccount } from '../lib/chartOfAccounts';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
+import { assertAttachedBeforePosting } from '../lib/attachmentGate';
 import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
 import { recordTransition } from '../lib/audit';
 import { hasJevNumber } from '../lib/jevNumbers';
@@ -62,6 +63,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       amountLiquidated: number;
       refundAmount: number;
       reimbursementAmount: number;
+      attachmentsLockedAt?: string;
     };
 
     if (!['SUBMITTED', 'REVIEWED', 'DRAFT'].includes(liq.status)) {
@@ -70,6 +72,18 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
         `This liquidation is ${liq.status.toLowerCase()} and cannot be posted.`,
       );
     }
+
+    /*
+     * Patch 177: approving and posting a liquidation requires its signed
+     * report and supporting papers on the record. Posting closes them.
+     */
+    await assertAttachedBeforePosting(
+      tx,
+      COL.liquidations,
+      liquidationId,
+      `liquidation report ${liq.liquidationNo ?? ''}`.trim(),
+      'approving and posting it',
+    );
 
     /*
      * THE ADVANCE. Patch 133: read off the General Ledger.
@@ -395,6 +409,12 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       jevNo,
       outstandingBalance: outstanding,
       approvedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
+      ...(liq.attachmentsLockedAt
+        ? {}
+        : {
+            attachmentsLockedAt: now,
+            attachmentsLockedBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
+          }),
     });
 
     recordTransition(tx, {
