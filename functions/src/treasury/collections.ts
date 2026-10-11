@@ -2,7 +2,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable';
 import { cashInBankLine, CASH_LOCAL_TREASURY } from '../lib/chartOfAccounts';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
-import { requireCaller, notFound, invalid, type Role } from '../lib/context';
+import { assertFundInScope, requireCaller, notFound, invalid, type Role } from '../lib/context';
 import { recordTransition } from '../lib/audit';
 import {
   issueNumber,
@@ -80,6 +80,7 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
     if (!['DRAFT', 'SUBMITTED', 'VERIFIED'].includes(rcd.status)) {
       throw new HttpsError('failed-precondition', `This RCD is ${rcd.status.toLowerCase()} and cannot be posted.`);
     }
+    assertFundInScope(caller, rcd.fundCode); // patch 180
 
     const period = periodOf(rcd.rcdDate);
     await assertFiscalYearOpen(rcd.fiscalYear, tx);
@@ -95,11 +96,18 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
     if (!rcd.collectionIds?.length) {
       throw invalid('The RCD lists no collections.');
     }
+    // Patch 180: a receipt listed twice was counted twice.
+    if (new Set(rcd.collectionIds).size !== rcd.collectionIds.length) {
+      throw invalid('A receipt is listed twice on this RCD. Remove the repeated line.');
+    }
 
     // Verify each collection: exists, right fund, not already in another RCD.
     let verifiedTotal = 0;
     /** Trust Fund only: what each programme received on this report. */
     const receivedByProgram = new Map<string, number>();
+    /** Patch 180: what the receipts themselves credit, per account. */
+    const byAccount = new Map<string, number>();
+    let linesComplete = true;
     const collectionDocs = await Promise.all(
       rcd.collectionIds.map((id) => tx.get(db.collection(COL.collections).doc(id))),
     );
@@ -115,8 +123,15 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
         totalAmount: number;
         status: string;
         rcdId?: string;
-        lines?: Array<{ amount: number; trustProgramId?: string | null }>;
+        treasuryReportId?: string | null;
+        lines?: Array<{ amount: number; accountCode?: string; trustProgramId?: string | null }>;
       };
+      // Patch 180: a receipt already on a treasury-report RCD is booked there.
+      if (c.treasuryReportId) {
+        throw invalid(
+          `Official Receipt ${c.orNumber} is already on a Report of Collections and Deposits under Collections and Deposits. A collection can only be reported once.`,
+        );
+      }
       if (c.status === 'CANCELLED') {
         throw invalid(`Official Receipt ${c.orNumber} has been cancelled and cannot be reported.`);
       }
@@ -131,6 +146,14 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
         );
       }
       verifiedTotal += c.totalAmount;
+      for (const line of c.lines ?? []) {
+        if (!line.accountCode) {
+          linesComplete = false;
+          continue;
+        }
+        byAccount.set(line.accountCode, (byAccount.get(line.accountCode) ?? 0) + (line.amount || 0));
+      }
+      if (!c.lines?.length) linesComplete = false;
 
       /*
        * The Trust Fund's Receipt side, worked rather than stated.
@@ -157,6 +180,26 @@ export const postRcd = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
       throw invalid(
         `The collections listed total ${(verifiedTotal / 100).toFixed(2)} but the report states ${(rcd.totalCollections / 100).toFixed(2)}.`,
       );
+    }
+
+    /*
+     * Patch 180: the revenue accounts credited are the receipts' own, not a
+     * split the browser typed. Checked whenever every receipt carries its
+     * account lines.
+     */
+    if (linesComplete) {
+      const summary = new Map<string, number>();
+      for (const a of rcd.accountSummary) {
+        summary.set(a.accountCode, (summary.get(a.accountCode) ?? 0) + a.amount);
+      }
+      const codes = new Set([...summary.keys(), ...byAccount.keys()]);
+      for (const code of codes) {
+        if ((summary.get(code) ?? 0) !== (byAccount.get(code) ?? 0)) {
+          throw invalid(
+            `The account summary credits ${code} with ${((summary.get(code) ?? 0) / 100).toFixed(2)}, but the receipts on this RCD credit it with ${((byAccount.get(code) ?? 0) / 100).toFixed(2)}. Rebuild the RCD from the receipts.`,
+          );
+        }
+      }
     }
 
     /*

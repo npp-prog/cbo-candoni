@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, DateInput, TextInput } from '@/components/ui/Field';
+import { AmountInput, Field, DateInput, TextInput } from '@/components/ui/Field';
 import { SubsidiaryPicker } from '@/components/pickers';
 import { useToast } from '@/components/ui/Toast';
 import { useFilters } from '@/context/FilterContext';
@@ -12,7 +12,7 @@ import { useDocument } from '@/hooks/useFirestore';
 import { COL } from '@/lib/collections';
 import { engine } from '@/lib/engine';
 import { formatPeso, parsePeso } from '@/lib/money';
-import { formatLongDate } from '@/lib/dates';
+import { formatLongDate, localIsoDate } from '@/lib/dates';
 import { fundLabel } from '../budget/Obligations';
 import type { Centavos } from '@/types/common';
 import { ConfirmDialog } from '@/components/ui/Modal';
@@ -120,7 +120,7 @@ function normaliseDate(value: unknown): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   const parsed = new Date(text);
   if (!Number.isNaN(parsed.getTime()) && parsed.getFullYear() > 1990) {
-    return parsed.toISOString().slice(0, 10);
+    return localIsoDate(parsed); // patch 180: not toISOString (UTC, a day early)
   }
   return '';
 }
@@ -160,6 +160,12 @@ export default function OpeningBalances() {
   const canPost = hasRole('SUPER_ADMIN', 'MUNICIPAL_ACCOUNTANT');
 
   const [asOfDate, setAsOfDate] = useState(`${fiscalYear - 1}-12-31`);
+  // Patch 180: the lines typed belong to one year and fund. On a change they
+  // are cleared, and the as-of date follows the year.
+  useEffect(() => {
+    setAsOfDate(`${fiscalYear - 1}-12-31`);
+    setRows([blankRow(), blankRow(), blankRow()]);
+  }, [fiscalYear, fundCode]);
   const [remarks, setRemarks] = useState('');
   const [rows, setRows] = useState<Row[]>(() => [blankRow(), blankRow(), blankRow()]);
   const [posting, setPosting] = useState(false);
@@ -637,19 +643,16 @@ export default function OpeningBalances() {
                       />
                     </td>
                     <td className="px-2 py-1">
-                      <TextInput
-                        value={row.debit ? (row.debit / 100).toFixed(2) : ''}
-                        onChange={(e) => setRow(row.key, { debit: parsePeso(e.target.value) ?? 0, credit: 0 })}
-                        className="text-right"
-                        placeholder="0.00"
+                      {/* Patch 180: AmountInput - the box re-formatted on every keystroke. */}
+                      <AmountInput
+                        value={row.debit || null}
+                        onChange={(v) => setRow(row.key, { debit: v ?? 0, credit: 0 })}
                       />
                     </td>
                     <td className="px-2 py-1">
-                      <TextInput
-                        value={row.credit ? (row.credit / 100).toFixed(2) : ''}
-                        onChange={(e) => setRow(row.key, { credit: parsePeso(e.target.value) ?? 0, debit: 0 })}
-                        className="text-right"
-                        placeholder="0.00"
+                      <AmountInput
+                        value={row.credit || null}
+                        onChange={(v) => setRow(row.key, { credit: v ?? 0, debit: 0 })}
                       />
                     </td>
                     <td className="px-2 py-1 text-right">

@@ -92,7 +92,10 @@ service firebase.storage {
       allow create: if signedIn()
         && canUpload()
         && withinSizeLimit()
-        && allowedContentType();
+        && allowedContentType()
+        // Patch 180: bank statements have their own, stricter rule below;
+        // Storage allows a write if ANY matching rule allows it.
+        && documentType != 'BANK_STATEMENT';
 
       // Overwriting an existing attachment in place would destroy evidence.
       // A replacement is uploaded as a new version under a new file name and

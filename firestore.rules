@@ -578,9 +578,16 @@ service cloud.firestore {
         && officeAllowed(resource.data.officeId)
         // The OBR number, the certification, the override record and every
         // consumption figure are engine property.
+        // Patch 180: the office and fund it is moved to must be the user's
+        // too, and a draft stays in its own year and fund.
+        && officeAllowed(request.resource.data.officeId)
+        && fundAllowed(request.resource.data.fundCode)
+        // Patch 180: the OBR number (typed from the office's book) and the
+        // draft's own unpaid figure may be corrected on a draft; the number
+        // is reserved, and the figures set, by the engine at certification.
         && didNotChange([
-          'obrNo', 'createdBy', 'certifiedBy', 'certifiedAt', 'override',
-          'disbursedAmount', 'unpaidAmount',
+          'createdBy', 'certifiedBy', 'certifiedAt', 'override',
+          'disbursedAmount', 'fiscalYear', 'fundCode',
           // The closing of the supporting documents. Written by the engine,
           // never by a client - a client that could write it could write it
           // back off, and the create rule on /documents would then be
@@ -608,8 +615,13 @@ service cloud.firestore {
         && resource.data.status in ['DRAFT', 'RETURNED']
         && isClientWritableStatus(request.resource.data.status)
         && officeAllowed(resource.data.officeId)
+        // Patch 180: see the obligation rule - office, fund and year.
+        && officeAllowed(request.resource.data.officeId)
+        && fundAllowed(request.resource.data.fundCode)
+        // Patch 180: the DV number may be corrected on a draft; it is
+        // reserved (duplicates refused) by the engine at approval.
         && didNotChange([
-          'dvNo', 'createdBy', 'approvedBy', 'certifiedBy',
+          'createdBy', 'approvedBy', 'certifiedBy', 'fiscalYear', 'fundCode',
           'jevId', 'jevNo', 'jevPostedAt', 'checkId', 'adaId',
           // Whether this voucher is the Treasurer's to pay. A browser that
           // could write either of these could put a voucher in front of the
@@ -700,6 +712,9 @@ service cloud.firestore {
       allow update: if signedIn() && treasuryBook('treasury.checks')
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && onlyChanged(['status', 'dateReleased', 'releasedToName', 'releasedToPosition', 'updatedBy'])
+        // Patch 180: a cancelled, stale or cleared check is not brought back
+        // among the outstanding ones.
+        && resource.data.status in ['PREPARED', 'FOR_SIGNATURE', 'SIGNED', 'RELEASED']
         && request.resource.data.status in ['FOR_SIGNATURE', 'SIGNED', 'RELEASED']
         // A check is not handed over until it is on a certified RCI.
         && (request.resource.data.status != 'RELEASED' || isOnCertifiedReport());
@@ -734,11 +749,13 @@ service cloud.firestore {
       allow update: if signedIn() && treasuryBook('treasury.payroll')
         && hasAny(treasuryRoles().concat(['MUNICIPAL_ACCOUNTANT']))
         && resource.data.status in ['DRAFT', 'RETURNED']
-        && !('treasuryReportId' in resource.data)
+        // Patch 180: a withdrawn RCDisb leaves treasuryReportId as null, and
+        // a null field is still "in" the data - the payroll was locked for good.
+        && resource.data.get('treasuryReportId', null) == null
         && isClientWritableStatus(request.resource.data.status)
         && didNotChange(['payrollNo', 'createdBy', 'approvedBy', 'treasuryReportId', 'treasuryReportNo']);
       allow delete: if signedIn() && isAdmin() && isDraft()
-        && !('treasuryReportId' in resource.data);
+        && resource.data.get('treasuryReportId', null) == null;
     }
 
     match /cashAdvances/{id} {
@@ -764,7 +781,7 @@ service cloud.firestore {
         && isClientWritableStatus(request.resource.data.status)
         && didNotChange([
           'liquidationNo', 'createdBy', 'approvedBy', 'jevId', 'cashAdvanceId',
-          'jevNo', 'jevNoDrawnAt',
+          'jevNo', 'jevNoDrawnAt', 'fiscalYear', 'fundCode',
           // Engine property; see the obligation rule above.
           'attachmentsLockedAt', 'attachmentsLockedBy'
         ]);
@@ -827,6 +844,22 @@ service cloud.firestore {
           'treasuryReportNo',
           'treasuryReportType',
         ]);
+
+      /*
+       * Patch 180: banking a receipt that is already on a certified RCD.
+       *
+       * The office deposits after the collector's RCD is certified, and the
+       * deposit form stamps each receipt it banks. The rule above refuses any
+       * change to a reported receipt, so the deposit was written and its
+       * receipts were not. Only the banking stamp is allowed here - nothing
+       * that moves the reported figures.
+       */
+      allow update: if signedIn() && treasuryBook('treasury.collections')
+        && hasAny(treasuryRoles())
+        && fundAllowed(resource.data.fundCode)
+        && resource.data.status in ['ISSUED', 'IN_RCD', 'DEPOSITED']
+        && request.resource.data.status in ['ISSUED', 'IN_RCD', 'DEPOSITED']
+        && onlyChanged(['depositId', 'status', 'updatedBy', 'updatedAt']);
       allow delete: if false;
     }
 

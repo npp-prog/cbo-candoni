@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { localIsoDate } from './dates';
 
 /**
  * Reading spreadsheets the municipality already produces.
@@ -91,7 +92,7 @@ export function normaliseDate(value: unknown): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   const parsed = new Date(text);
   if (!Number.isNaN(parsed.getTime()) && parsed.getFullYear() > 1990) {
-    return parsed.toISOString().slice(0, 10);
+    return localIsoDate(parsed); // patch 180: not toISOString (UTC, a day early)
   }
   return '';
 }

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { useEffect, Fragment, useMemo, useState } from 'react';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Checkbox } from '@/components/ui/Field';
@@ -50,10 +50,17 @@ export default function SummaryOfCollections() {
 
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
+  // Patch 180: the dates follow the fiscal year chosen at the top.
+  useEffect(() => {
+    setFrom(`${fiscalYear}-01-01`);
+    setTo(`${fiscalYear}-12-31`);
+  }, [fiscalYear]);
   const [hideEmpty, setHideEmpty] = useState(false);
 
   const inPeriod = useMemo(
-    () => collections.filter((c) => c.orDate >= from && c.orDate <= to),
+    // Patch 180: a cancelled receipt collected nothing.
+    () =>
+      collections.filter((c) => c.status !== 'CANCELLED' && c.orDate >= from && c.orDate <= to),
     [collections, from, to],
   );
 

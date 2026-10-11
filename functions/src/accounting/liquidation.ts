@@ -4,7 +4,7 @@ import { isLiquidatableAccount } from '../lib/chartOfAccounts';
 import { onCall } from '../lib/callable';
 import { ENFORCE_APP_CHECK, db, COL, REGION } from '../lib/firebase';
 import { assertAttachedBeforePosting } from '../lib/attachmentGate';
-import { requireCaller, APPROVING_ROLES, notFound, invalid } from '../lib/context';
+import { requireCaller, assertFundInScope, APPROVING_ROLES, notFound, invalid } from '../lib/context';
 import { recordTransition } from '../lib/audit';
 import { hasJevNumber } from '../lib/jevNumbers';
 import {
@@ -66,6 +66,7 @@ export const postLiquidation = onCall({ region: REGION, enforceAppCheck: ENFORCE
       attachmentsLockedAt?: string;
     };
 
+    assertFundInScope(caller, liq.fundCode); // patch 180
     if (!['SUBMITTED', 'REVIEWED', 'DRAFT'].includes(liq.status)) {
       throw new HttpsError(
         'failed-precondition',

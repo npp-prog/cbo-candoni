@@ -1359,7 +1359,9 @@ export const withEtAl = (name: string): string => {
 /** The name without it. */
 export const withoutEtAl = (name: string): string =>
   String(name ?? '')
-    .replace(/,?\s*et\.?\s*al\.?\s*$/i, '')
+    // Patch 180: "et al" only as its own word - "NEGROS STEEL AND METAL"
+    // lost its last three letters to the old pattern.
+    .replace(/(?:\s*,\s*|\s+)et\.?\s*al\.?\s*$/i, '')
     .trim();
 
 export interface PayeeShare {

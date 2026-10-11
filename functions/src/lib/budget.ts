@@ -258,6 +258,29 @@ export function applyBudgetDelta(
 }
 
 /**
+ * Patch 180: several lines on ONE budget line in one transaction.
+ *
+ * Project lines carry an empty appropriated object code, so two lines of one
+ * obligation can share a budget balance. Each applyBudgetDelta call started
+ * from the same stale snapshot and the last write won - 60 + 60 obligated as
+ * 60. This keeps the running balance per document, so each delta builds on the
+ * one before it.
+ */
+export function applyBudgetDeltaRunning(
+  tx: Transaction,
+  running: Map<string, BudgetBalanceData>,
+  key: BudgetKey,
+  snapshot: BudgetBalanceData,
+  delta: Partial<BudgetBalanceData>,
+  labels: BudgetLabels,
+): BudgetBalanceData {
+  const path = budgetBalanceRef(key).path;
+  const merged = applyBudgetDelta(tx, key, running.get(path) ?? snapshot, delta, labels);
+  running.set(path, merged);
+  return merged;
+}
+
+/**
  * Fund-level rollup used by the dashboard. Updated alongside the line balance
  * so the dashboard does not have to aggregate thousands of documents on every
  * page load.

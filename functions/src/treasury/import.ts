@@ -301,6 +301,8 @@ export const importTreasuryPayments = onCall(
       }
 
       const seenSerials = new Set<string>();
+      /** Patch 180: one voucher, one payment - also within one file. */
+      const seenDvs = new Set<string>();
       const decisions: Decision[] = rows.map((row, i) => {
         if (!row.dvNo) return { row, reason: 'NO_DV_NUMBER' as const };
 
@@ -370,6 +372,15 @@ export const importTreasuryPayments = onCall(
           }
           seenSerials.add(row.serialNo);
         }
+
+        if (seenDvs.has(inFund.id)) {
+          return {
+            row,
+            reason: 'DV_ALREADY_PAID' as const,
+            detail: `DV ${row.dvNo} appears more than once in this file; it is paid once.`,
+          };
+        }
+        seenDvs.add(inFund.id);
 
         return { row, dvId: inFund.id, dv };
       });

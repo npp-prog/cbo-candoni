@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, Select } from '@/components/ui/Field';
@@ -46,6 +46,11 @@ export default function ClaimSheet() {
   const [scope, setScope] = useState<Scope>('SIGNED');
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
+  // Patch 180: the dates follow the fiscal year chosen at the top.
+  useEffect(() => {
+    setFrom(`${fiscalYear}-01-01`);
+    setTo(`${fiscalYear}-12-31`);
+  }, [fiscalYear]);
 
   const { data: checks, loading } = useChecks(bankAccountId ?? undefined);
 

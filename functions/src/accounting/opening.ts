@@ -98,8 +98,12 @@ export const postOpeningBalances = onCall(
     const jevConfig = await loadNumberingConfig('JEV');
     const bookCode = await bookCodeForFund(fundCode);
 
+    // Patch 180: fund scope, and January must be open - the entry posts there.
+    assertFundInScope(caller, fundCode);
+
     return db.runTransaction(async (tx) => {
       await assertFiscalYearOpen(fiscalYear, tx);
+      await assertPeriodOpen(fiscalYear, 1, fundCode, `Opening balances of ${fundCode} ${fiscalYear}`, tx);
 
       // --- once only -------------------------------------------------------
       //

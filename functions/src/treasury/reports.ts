@@ -353,6 +353,23 @@ export const certifyTreasuryReport = onCall(
         throw invalid(`This ${label} lists no documents.`);
       }
 
+      /*
+       * Patch 180: a document listed twice would be verified twice against the
+       * same record and counted twice - a check of 10,000 reported as 20,000.
+       */
+      const repeated = (ids: string[]) => ids.find((id, i) => ids.indexOf(id) !== i);
+      const dupLine = repeated(lines.map((l) => l.sourceId));
+      const dupDeposit = repeated(depositLines.map((d) => d.sourceId));
+      const dupRemit = repeated((report.remittances ?? []).map((r) => r.sourceId));
+      if (dupLine || dupDeposit || dupRemit) {
+        const which = dupLine
+          ? lines.find((l) => l.sourceId === dupLine)?.sourceNo
+          : dupDeposit
+            ? `deposit ${depositLines.find((d) => d.sourceId === dupDeposit)?.depositSlipNo ?? ''}`
+            : 'a remittance';
+        throw invalid(`${which} is listed twice on this ${label}. Remove the repeated line.`);
+      }
+
       // ---- verify every covered document against its own record -----------
 
       const sourceCollection = SOURCE_COLLECTION[type];
@@ -392,6 +409,13 @@ export const certifyTreasuryReport = onCall(
         if (typeof claimedBy === 'string' && claimedBy && claimedBy !== reportId) {
           throw invalid(
             `${line.sourceNo} has already been reported. A document is reported once only - otherwise the same disbursement reaches the General Ledger twice.`,
+          );
+        }
+        // Patch 180: a receipt already posted through the old RCD screen
+        // (collections.rcdId) has its revenue in the books already.
+        if (sourceCollection === COL.collections && typeof source.rcdId === 'string' && source.rcdId) {
+          throw invalid(
+            `${line.sourceNo} was already reported and posted on RCD ${String(source.rcdNo ?? '')} (Treasury > RCD). A collection is reported once only.`,
           );
         }
 
@@ -633,6 +657,9 @@ export const certifyTreasuryReport = onCall(
              * remittance RCD to be certified. Only a cancelled one is out.
              */
             if (e.status === 'CANCELLED') continue;
+            // Patch 180: earlier RCDs only - one dated after this one is not
+            // money the officer held on this date.
+            if (String((d.data() as { reportDate?: string }).reportDate ?? '') > report.reportDate) continue;
             carried +=
               Number(e.totalAmount ?? 0) + Number(e.totalRemittances ?? 0) - Number(e.totalDeposits ?? 0);
           }
@@ -929,6 +956,7 @@ export const journalizeTreasuryReport = onCall(
 
       const report = snap.data() as ReportDoc;
       const type = assertReportType(report.reportType);
+      assertFundInScope(caller, report.fundCode); // patch 180
       const label = REPORT_LABEL[type];
 
       if (report.status === 'JOURNALIZED') {
@@ -1146,7 +1174,7 @@ export const journalizeTreasuryReport = onCall(
         particulars: l.particulars ?? `Per ${type} ${report.reportNo}`,
       }));
 
-      const particulars = `${label} ${report.reportNo} - ${report.lines.filter((l) => !l.excluded).length} documents`;
+      const particulars = `${label} ${report.reportNo} - ${(report.lines ?? []).filter((l) => !l.excluded).length} documents`;
 
       const jevData: JevData = {
         jevNo,
@@ -1269,6 +1297,7 @@ export const cancelTreasuryReport = onCall(
 
       const report = snap.data() as ReportDoc;
       const type = assertReportType(report.reportType);
+      assertFundInScope(caller, report.fundCode); // patch 180
 
       if (report.status === 'JOURNALIZED') {
         throw new HttpsError(
@@ -1281,10 +1310,36 @@ export const cancelTreasuryReport = onCall(
       }
 
       const sourceCollection = SOURCE_COLLECTION[type];
+
+      /*
+       * Patch 180: release only what THIS report holds. A draft never claims
+       * its lines, so a document it lists may belong to another report - a
+       * check on a journalized RCI, say - and clearing that claim let the same
+       * check be reported (and journalized) a second time. Read before any
+       * write; a document that no longer exists is skipped.
+       */
+      const [lineSnaps, depositSnaps, remitSnaps] = await Promise.all([
+        Promise.all(
+          (report.lines ?? []).map((l) => tx.get(db.collection(sourceCollection).doc(l.sourceId))),
+        ),
+        report.status !== 'DRAFT'
+          ? Promise.all(
+              (report.deposits ?? []).map((d) => tx.get(db.collection(COL.deposits).doc(d.sourceId))),
+            )
+          : Promise.resolve([]),
+        report.status !== 'DRAFT'
+          ? Promise.all(
+              (report.remittances ?? []).map((r) =>
+                tx.get(db.collection(COL.collectionRemittances).doc(r.sourceId)),
+              ),
+            )
+          : Promise.resolve([]),
+      ]);
       const now = new Date().toISOString();
 
-      for (const line of report.lines ?? []) {
-        tx.update(db.collection(sourceCollection).doc(line.sourceId), {
+      for (const snap of lineSnaps) {
+        if (!snap.exists || snap.data()?.[SOURCE_REPORT_FIELD] !== reportId) continue;
+        tx.update(snap.ref, {
           [SOURCE_REPORT_FIELD]: null,
           treasuryReportNo: null,
           treasuryReportType: null,
@@ -1292,21 +1347,21 @@ export const cancelTreasuryReport = onCall(
       }
       // Patch 157: and the deposits it reported - only once certified were
       // they claimed.
-      if (report.status !== 'DRAFT') {
-        for (const d of report.deposits ?? []) {
-          tx.update(db.collection(COL.deposits).doc(d.sourceId), {
-            treasuryReportId: null,
-            treasuryReportNo: null,
-            treasuryReportType: null,
-          });
-        }
-        // Patch 161: and its remittances received.
-        for (const r of report.remittances ?? []) {
-          tx.update(db.collection(COL.collectionRemittances).doc(r.sourceId), {
-            liquidatingReportId: null,
-            liquidatingReportNo: null,
-          });
-        }
+      for (const snap of depositSnaps) {
+        if (!snap.exists || snap.data()?.treasuryReportId !== reportId) continue;
+        tx.update(snap.ref, {
+          treasuryReportId: null,
+          treasuryReportNo: null,
+          treasuryReportType: null,
+        });
+      }
+      // Patch 161: and its remittances received.
+      for (const snap of remitSnaps) {
+        if (!snap.exists || snap.data()?.liquidatingReportId !== reportId) continue;
+        tx.update(snap.ref, {
+          liquidatingReportId: null,
+          liquidatingReportNo: null,
+        });
       }
 
       // The upload the report was built from goes with it. The rows stay

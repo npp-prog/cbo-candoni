@@ -143,7 +143,10 @@ export function splitByShares(amount: Centavos, shares: ShareRate[]): Centavos[]
   }));
 
   let remainder = magnitude - parts.reduce((s, p) => s + p.value, 0);
-  for (const p of [...parts].sort((a, b) => b.exact - a.exact || a.i - b.i)) {
+  // Patch 180: largest REMAINDER first (as af56.splitShares does), not the
+  // largest share - so the schedule agrees with the AF 56 entry.
+  const frac = (p: { exact: number; value: number }) => p.exact - p.value;
+  for (const p of [...parts].sort((a, b) => frac(b) - frac(a) || a.i - b.i)) {
     if (remainder <= 0) break;
     p.value += 1;
     remainder -= 1;

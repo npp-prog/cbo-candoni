@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { PAYMENT_TAB_GROUPS, PAYMENT_CRUMBS } from '../treasury/sections';
@@ -35,6 +35,11 @@ export default function CancelledChecks() {
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
+  // Patch 180: the dates follow the fiscal year chosen at the top.
+  useEffect(() => {
+    setFrom(`${fiscalYear}-01-01`);
+    setTo(`${fiscalYear}-12-31`);
+  }, [fiscalYear]);
 
   /*
    * Patch 153. Read every check of the account and keep the cancelled ones

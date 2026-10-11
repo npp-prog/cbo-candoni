@@ -151,7 +151,13 @@ export function AttachmentsPanel({
       // A timestamp prefix keeps a re-upload of the same file name from
       // colliding with the original, which Storage rules forbid overwriting.
       const safeName = file.name.replace(/[^\w.\- ]/g, '_');
-      const path = `cbo/${fiscalYear}/${fundCode}/${storageDocType}/${storageDocId}/${Date.now()}_${safeName}`;
+      // Patch 180: an empty number ('' is not nullish) or one with a slash
+      // made a path of the wrong depth, which the Storage rules refuse.
+      const docSegment =
+        String(storageDocId ?? '')
+          .trim()
+          .replace(/[\/\\#?[\]*]+/g, '-') || String(entityId ?? 'draft');
+      const path = `cbo/${fiscalYear}/${fundCode}/${storageDocType}/${docSegment}/${Date.now()}_${safeName}`;
 
       await uploadBytes(storageRef(storage, path), file, { contentType });
 

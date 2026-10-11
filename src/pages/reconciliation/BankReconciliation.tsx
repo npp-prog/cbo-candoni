@@ -90,13 +90,40 @@ export default function BankReconciliation() {
 
   useEffect(() => {
     if (!bankAccountId && banks.data.length === 1) setBankAccountId(banks.data[0].id);
-  }, [banks.data, bankAccountId]);
+    // Patch 180: an account of another fund is let go when the fund changes.
+    if (bankAccountId && !banks.loading && !banks.data.some((b) => b.id === bankAccountId)) {
+      setBankAccountId(null);
+    }
+  }, [banks.data, banks.loading, bankAccountId]);
+
+  // Patch 180: the statement month follows the fiscal year chosen at the top.
+  useEffect(() => {
+    setStatementDate((d) =>
+      Number(d.slice(0, 4)) === fiscalYear ? d : periodRange(fiscalYear, 12).to,
+    );
+  }, [fiscalYear]);
 
   const bank = banks.data.find((b) => b.id === bankAccountId);
   const period = Number(statementDate.slice(5, 7));
 
   const transactions = useBankTransactions(bankAccountId);
-  const ledger = useLedgerEntries(fiscalYear, fundCode, { accountCode: bank?.glAccountCode });
+  // Patch 180: never the whole fund's ledger when no account is chosen.
+  const ledgerAll = useLedgerEntries(fiscalYear, fundCode, {
+    accountCode: bank?.glAccountCode || '__none__',
+  });
+  // ...and only this account's lines when several bank accounts share one GL
+  // account (the bank account is the subsidiary).
+  const sharedCode =
+    banks.data.filter((b) => b.glAccountCode && b.glAccountCode === bank?.glAccountCode).length > 1;
+  const ledger = useMemo(
+    () => ({
+      ...ledgerAll,
+      data: sharedCode
+        ? ledgerAll.data.filter((e) => e.subsidiaryId === bank?.id)
+        : ledgerAll.data,
+    }),
+    [ledgerAll, sharedCode, bank?.id],
+  );
   const checks = useChecks(bankAccountId ?? undefined);
   const deposits = useDeposits(bankAccountId ?? undefined);
   const reconciliations = useReconciliations(fiscalYear, fundCode);
@@ -118,7 +145,12 @@ export default function BankReconciliation() {
   const outstandingChecks = useMemo(
     () =>
       checks.data.filter(
-        (c) => ['RELEASED', 'SIGNED', 'PREPARED'].includes(c.status) && c.checkDate <= asOf,
+        (c) =>
+          c.checkDate <= asOf &&
+          (['RELEASED', 'SIGNED', 'PREPARED'].includes(c.status) ||
+            // Patch 180: cleared AFTER the statement date, so still
+            // outstanding on it - reconciling September in October dropped it.
+            (c.status === 'CLEARED' && !!c.clearedDate && c.clearedDate > asOf)),
       ),
     [checks.data, asOf],
   );
@@ -128,7 +160,12 @@ export default function BankReconciliation() {
     // but not yet booked by its RCD is on neither side yet.
     () =>
       deposits.data.filter(
-        (d) => ['IN_TRANSIT', 'RECORDED'].includes(d.status) && !!d.jevId && d.depositDate <= asOf,
+        (d) =>
+          !!d.jevId &&
+          d.depositDate <= asOf &&
+          (['IN_TRANSIT', 'RECORDED'].includes(d.status) ||
+            // Patch 180: credited after the statement date - in transit on it.
+            (d.status === 'CREDITED' && !!d.creditedDate && d.creditedDate > asOf)),
       ),
     [deposits.data, asOf],
   );

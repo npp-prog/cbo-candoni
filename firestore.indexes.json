@@ -1637,6 +1637,156 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "deposits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "depositDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "ledgerEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "period",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "obligations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "obrDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "obligations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "obrDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "disbursementVouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dvDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "disbursementVouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fundCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dvDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "liquidations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fiscalYear",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "liquidationDate",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

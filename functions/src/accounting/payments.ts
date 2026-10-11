@@ -86,6 +86,7 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       accountLines?: Array<{ accountCode: string; accountName: string; debit: number; credit: number }>;
     };
 
+    assertFundInScope(caller, dv.fundCode); // patch 180
     if (dv.status !== 'APPROVED' && dv.status !== 'PAID') {
       throw new HttpsError(
         'failed-precondition',
@@ -96,6 +97,13 @@ export const issueCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
       throw new HttpsError(
         'failed-precondition',
         `DV ${dv.dvNo} already has a check drawn against it. Cancel that check before issuing a replacement.`,
+      );
+    }
+    // Patch 180: one voucher, one payment - an ADA is a payment too.
+    if ((dv as { adaId?: string }).adaId) {
+      throw new HttpsError(
+        'failed-precondition',
+        `DV ${dv.dvNo} is already paid by an ADA. Cancel that ADA before drawing a check.`,
       );
     }
 
@@ -331,6 +339,7 @@ export const cancelCheck = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP
       entryReversedByJevNo?: string;
     };
 
+    assertFundInScope(caller, check.fundCode); // patch 180
     if (check.status === 'CANCELLED') {
       throw new HttpsError('failed-precondition', 'This check is already cancelled.');
     }
@@ -496,6 +505,7 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       accountLines?: Array<{ accountCode: string; accountName: string; debit: number; credit: number }>;
     };
 
+    assertFundInScope(caller, dv.fundCode); // patch 180
     if (dv.status !== 'APPROVED' && dv.status !== 'PAID') {
       throw new HttpsError(
         'failed-precondition',
@@ -504,6 +514,14 @@ export const issueAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     }
     if (dv.adaId) {
       throw new HttpsError('failed-precondition', `DV ${dv.dvNo} already has an ADA prepared.`);
+    }
+    // Patch 180: a check (live, or kept on a voucher reprocessed as a trust
+    // liability) is a payment too.
+    if ((dv as { checkId?: string }).checkId) {
+      throw new HttpsError(
+        'failed-precondition',
+        `DV ${dv.dvNo} already has a check drawn against it. Cancel that check before preparing an ADA.`,
+      );
     }
 
     const bankSnap = await tx.get(db.collection(COL.bankAccounts).doc(bankAccountId));
@@ -685,6 +703,12 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
       entryReversedByJevNo?: string;
     };
 
+    assertFundInScope(caller, ada.fundCode);
+    // Patch 180: cancelling twice took the payment back twice and orphaned
+    // the voucher's replacement ADA.
+    if (ada.status === 'CANCELLED') {
+      throw new HttpsError('failed-precondition', `ADA ${ada.adaNo} is already cancelled.`);
+    }
     if (ada.status === 'DEBITED') {
       throw new HttpsError(
         'failed-precondition',
@@ -701,8 +725,10 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
     // The disbursement this advice made, to be taken back below (patch 121) -
     // but not once it is a trust liability (see cancelCheck).
     const dvSnap = await tx.get(db.collection(COL.disbursementVouchers).doc(ada.dvId));
+    // Only when this ADA is still the voucher's payment (patch 180).
+    const isCurrent = dvSnap.exists && (dvSnap.data()?.adaId ?? null) === adaId;
     const reversal =
-      dvSnap.exists && !toTrust
+      dvSnap.exists && !toTrust && isCurrent
         ? await planPayments(tx, [dvAsPaid(dvSnap.data() as PaidDv, ada.dvId)], -1)
         : null;
 
@@ -723,7 +749,7 @@ export const cancelAda = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
           at: now,
         },
       });
-    } else {
+    } else if (isCurrent) {
       tx.update(db.collection(COL.disbursementVouchers).doc(ada.dvId), {
         adaId: null,
         adaNo: null,

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { orderBy, where, limit, type QueryConstraint } from 'firebase/firestore';
 import { COL } from '@/lib/collections';
+import { useAuth } from '@/auth/AuthProvider';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import type {
   Account,
@@ -203,19 +204,46 @@ export const useAllotments = (fiscalYear: number, fundCode: string) =>
     ['allotments', fiscalYear, fundCode],
   );
 
-export const useObligations = (fiscalYear: number, fundCode: string, status?: string) =>
-  useCollection<Obligation>(
+/**
+ * Patch 180: the offices a department user is limited to, as a query filter.
+ *
+ * The security rules read an obligation, voucher or liquidation only for the
+ * user's own offices, and a rule is not a filter: a list query that could
+ * return another office's record is refused whole. So for a DEPARTMENT_USER
+ * with an office scope, the lists ask only for those offices (Firestore's
+ * `in` takes up to 30).
+ */
+export function useOfficeFilter(): { constraints: QueryConstraint[]; key: string } {
+  const { hasRole, officeScope } = useAuth();
+  const scoped = hasRole('DEPARTMENT_USER') && (officeScope?.length ?? 0) > 0;
+  const offices = scoped ? officeScope.slice(0, 30) : [];
+  return {
+    constraints: scoped ? [where('officeId', 'in', offices)] : [],
+    key: offices.join(','),
+  };
+}
+
+export const useObligations = (fiscalYear: number, fundCode: string, status?: string) => {
+  const office = useOfficeFilter();
+  return useCollection<Obligation>(
     COL.obligations,
     status
       ? [
           where('fiscalYear', '==', fiscalYear),
           where('fundCode', '==', fundCode),
           where('status', '==', status),
+          ...office.constraints,
           orderBy('obrDate', 'desc'),
         ]
-      : [where('fiscalYear', '==', fiscalYear), where('fundCode', '==', fundCode), orderBy('obrDate', 'desc')],
-    ['obligations', fiscalYear, fundCode, status],
+      : [
+          where('fiscalYear', '==', fiscalYear),
+          where('fundCode', '==', fundCode),
+          ...office.constraints,
+          orderBy('obrDate', 'desc'),
+        ],
+    ['obligations', fiscalYear, fundCode, status, office.key],
   );
+};
 
 /**
  * Obligations available to draw a voucher against: certified, not cancelled,
@@ -304,17 +332,20 @@ export const useBudgetAlerts = (fiscalYear: number, fundCode: string) =>
 // --- Accounting --------------------------------------------------------------
 
 export const useDisbursementVouchers = (fiscalYear: number, fundCode: string, status?: string) => {
+  const office = useOfficeFilter(); // patch 180
   const constraints: QueryConstraint[] = [
     where('fiscalYear', '==', fiscalYear),
     where('fundCode', '==', fundCode),
   ];
   if (status) constraints.push(where('status', '==', status));
+  constraints.push(...office.constraints);
   constraints.push(orderBy('dvDate', 'desc'));
   return useCollection<DisbursementVoucher>(COL.disbursementVouchers, constraints, [
     'dvs',
     fiscalYear,
     fundCode,
     status,
+    office.key,
   ]);
 };
 
@@ -364,12 +395,14 @@ export const useCashAdvances = (fiscalYear: number, outstandingOnly = true) =>
     ['cashAdvances', fiscalYear, outstandingOnly],
   );
 
-export const useLiquidations = (fiscalYear: number) =>
-  useCollection<Liquidation>(
+export const useLiquidations = (fiscalYear: number) => {
+  const office = useOfficeFilter(); // patch 180
+  return useCollection<Liquidation>(
     COL.liquidations,
-    [where('fiscalYear', '==', fiscalYear), orderBy('liquidationDate', 'desc')],
-    ['liquidations', fiscalYear],
+    [where('fiscalYear', '==', fiscalYear), ...office.constraints, orderBy('liquidationDate', 'desc')],
+    ['liquidations', fiscalYear, office.key],
   );
+};
 
 // --- General Ledger ----------------------------------------------------------
 

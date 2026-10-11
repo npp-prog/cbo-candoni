@@ -81,7 +81,22 @@ export default function BudgetVsActual() {
   const [throughPeriod, setThroughPeriod] = useState<PeriodNo>(12);
 
   const balances = useBudgetBalances(fiscalYear, fundCode, officeId);
-  const ledger = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
+  const ledgerAll = useLedgerEntries(fiscalYear, fundCode, { throughPeriod });
+  /*
+   * Patch 180: with an office chosen, the expenditure is that office's too.
+   * The budget lines were filtered and the ledger was not, so every other
+   * office's spending showed as "charged to a line with no appropriation".
+   * Revenue lines carry no office and are kept for the revenue part.
+   */
+  const ledger = useMemo(
+    () => ({
+      ...ledgerAll,
+      data: officeId
+        ? ledgerAll.data.filter((e) => !e.officeId || e.officeId === officeId)
+        : ledgerAll.data,
+    }),
+    [ledgerAll, officeId],
+  );
 
   /*
    * The receipts half.

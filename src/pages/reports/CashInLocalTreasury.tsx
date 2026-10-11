@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, AmountInput } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
@@ -82,6 +82,11 @@ export default function CashInLocalTreasury() {
   const [openingForm, setOpeningForm] = useState(false);
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
+  // Patch 180: the dates follow the fiscal year chosen at the top.
+  useEffect(() => {
+    setFrom(`${fiscalYear}-01-01`);
+    setTo(`${fiscalYear}-12-31`);
+  }, [fiscalYear]);
 
   const closed = useMemo(() => rcds.filter((r) => REPORTED.has(r.status)).sort(order), [rcds]);
 

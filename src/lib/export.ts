@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import { engine } from './engine';
-import { formatLongDate, todayPh } from './dates';
-import { toPesos } from './money';
+import { formatLongDate, localIsoDate, todayPh } from './dates';
+import { parsePeso, toPesos } from './money';
 import { printAs, printFileName } from './printTitle';
 
 /**
@@ -314,7 +314,7 @@ export function readStatementHeaders(data: ArrayBuffer): { headers: string[]; sa
 
 function toIsoDate(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
+    return localIsoDate(value); // patch 180: SheetJS dates are local midnight
   }
   const s = String(value ?? '').trim();
   if (!s) return '';
@@ -338,11 +338,12 @@ function toIsoDate(value: unknown): string {
   }
 
   const parsed = Date.parse(s);
-  return Number.isNaN(parsed) ? '' : new Date(parsed).toISOString().slice(0, 10);
+  return Number.isNaN(parsed) ? '' : localIsoDate(new Date(parsed));
 }
 
 function toCentavos(value: unknown): number {
-  if (typeof value === 'number') return Math.round(value * 100);
+  // Patch 180: half-up on the decimal digits, not on the binary float.
+  if (typeof value === 'number') return parsePeso(value) ?? 0;
   const s = String(value ?? '').replace(/[₱P,\s]/gi, '').trim();
   if (!s) return 0;
   const negative = /^\(.*\)$/.test(s);

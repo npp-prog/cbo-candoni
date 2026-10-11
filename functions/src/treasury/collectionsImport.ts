@@ -390,6 +390,7 @@ export const importCollections = onCall(
 
     const ready: Ready[] = [];
 
+    const seenOrs = new Set<string>(); // patch 180
     for (const r of raw as RawReceipt[]) {
       const orNumber = String(r.orNumber ?? '').trim();
       const reportRef = String(r.reportRef ?? '').trim();
@@ -410,6 +411,18 @@ export const importCollections = onCall(
         add('no readable date');
         continue;
       }
+      // Patch 180: the receipt belongs to the year of its date, and one OR
+      // appears once in a file (two writes to one receipt failed the upload).
+      if (Number(date.slice(0, 4)) !== fiscalYear) {
+        add(`dated ${date}, outside fiscal year ${fiscalYear} - upload it under its own year`);
+        continue;
+      }
+      const orKey = `${reportRef}__${orNumber}`;
+      if (seenOrs.has(orKey)) {
+        add('appears more than once in this file');
+        continue;
+      }
+      seenOrs.add(orKey);
       // Patch 166: an e-collection names its transaction reference number.
       const trn = String(r.trn ?? '').trim();
       if (kind && !r.cancelled && !trn) {

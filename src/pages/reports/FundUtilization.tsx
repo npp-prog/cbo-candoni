@@ -7,7 +7,7 @@ import { useFilters } from '@/context/FilterContext';
 import { useObligations, useTrustPrograms } from '@/data/queries';
 import { UTILISED } from '@/pages/budget/rstf';
 import { formatPeso } from '@/lib/money';
-import { formatShortDate } from '@/lib/dates';
+import { formatShortDate, todayPh } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import type { TrustProgram } from '@/types/budget';
 import type { Centavos } from '@/types/common';
@@ -296,7 +296,7 @@ export default function FundUtilization() {
           )}
 
           <p className="mt-6 text-2xs text-slate-500">
-            Prepared as of {formatShortDate(new Date().toISOString().slice(0, 10))}.
+            Prepared as of {formatShortDate(todayPh())}.
           </p>
         </>
       )}

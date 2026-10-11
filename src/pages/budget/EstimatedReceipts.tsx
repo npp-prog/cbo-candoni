@@ -176,6 +176,11 @@ export default function EstimatedReceipts() {
     if (stored.loading || dirty) return;
     setRows(stored.data.map(fromStored));
   }, [stored.data, stored.loading, dirty]);
+  // Patch 180: another year or fund starts from its own stored figures; the
+  // unsaved edits of the one before would otherwise be saved into it.
+  useEffect(() => {
+    setDirty(false);
+  }, [fiscalYear, fundCode]);
 
   const revenueAccounts = useMemo(
     () =>

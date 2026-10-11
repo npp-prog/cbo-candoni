@@ -23,12 +23,23 @@ const MONTHS = [
 
 /** Today's date in Philippine local time, as `YYYY-MM-DD`. */
 export function todayPh(): IsoDate {
+  return phDateOf(new Date());
+}
+
+/**
+ * Patch 180: the Philippine calendar date of an instant. A stored timestamp
+ * (`2025-12-31T17:30:00.000Z`) sliced to its first ten characters gives the
+ * UTC date - the day BEFORE for anything done before 8:00 AM in Candoni.
+ */
+export function phDateOf(instant: Date | string | null | undefined): IsoDate {
+  const d = instant instanceof Date ? instant : new Date(String(instant ?? ''));
+  if (Number.isNaN(d.getTime())) return '' as IsoDate;
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: PH_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
@@ -36,6 +47,19 @@ export function todayPh(): IsoDate {
 /** Current instant as an ISO string with the Philippine offset. */
 export function nowPhIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Patch 180: the calendar date a Date object shows on THIS computer.
+ *
+ * `toISOString()` gives the UTC date, and a date parsed from text ("Jul 1,
+ * 2026", "07/01/2026") or read by SheetJS is local midnight - in the
+ * Philippines 16:00 the day before in UTC - so every such date came out a day
+ * early.
+ */
+export function localIsoDate(d: Date): IsoDate {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` as IsoDate;
 }
 
 export function yearOf(date: IsoDate): number {

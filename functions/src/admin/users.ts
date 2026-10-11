@@ -93,6 +93,11 @@ async function grantAccess(
   const previousRoles = (previousSnap.data()?.roles as string[]) ?? [];
 
   const isActive = active ?? previousSnap.data()?.active ?? true;
+  // Patch 180: scopes not sent are KEPT. An empty list means "every office /
+  // every fund", so defaulting a missing one to [] silently widened access.
+  const keptOffice =
+    officeScope ?? ((previousSnap.data()?.officeScope as string[] | undefined) ?? []);
+  const keptFund = fundScope ?? ((previousSnap.data()?.fundScope as string[] | undefined) ?? []);
   /*
    * Patch 169: the user's own access - per module, and per Treasury book -
    * which narrows the roles. Kept when not sent, so an older screen granting
@@ -105,8 +110,8 @@ async function grantAccess(
 
   await auth.setCustomUserClaims(uid, {
     roles,
-    officeScope: officeScope ?? [],
-    fundScope: fundScope ?? [],
+    officeScope: keptOffice,
+    fundScope: keptFund,
     active: isActive,
     access,
   });
@@ -127,8 +132,8 @@ async function grantAccess(
         email: userRecord.email ?? '',
         displayName: userRecord.displayName ?? userRecord.email ?? uid,
         roles,
-        officeScope: officeScope ?? [],
-        fundScope: fundScope ?? [],
+        officeScope: keptOffice,
+        fundScope: keptFund,
         active: isActive,
         access,
         claimsSyncedAt: now,
@@ -341,11 +346,12 @@ export const createUserAccount = onCall(
       });
 
       if (existing) {
+        // Patch 180: an existing (perhaps deactivated) account keeps its
+        // active flag and any scope not sent.
         const granted = await grantAccess(caller, existing.uid, {
           roles,
           officeScope,
           fundScope,
-          active: true,
         });
         return { ...granted, created: false, email: address };
       }

@@ -81,11 +81,14 @@ export function previewNumber(
   parts: Omit<NumberParts, 'sequence'> & { fundCode?: string; docType?: string },
   sequenceLength = 4,
 ): string {
+  // Patch 180: the sequence slot itself is shown as dots. Stripping trailing
+  // zeros off the rendered number also ate a month's 0, or the wrong digits
+  // when {SEQ} is not last.
   return renderDocumentNumber(
-    pattern,
+    pattern.replace(/\{SEQ\}/g, '\u0000'),
     { ...parts, sequence: 0 },
     sequenceLength,
-  ).replace(/0{1,}$/, '·'.repeat(sequenceLength));
+  ).replace(/\u0000/g, '·'.repeat(sequenceLength));
 }
 
 /** Seeded numbering rules created on first run. */

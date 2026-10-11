@@ -12,8 +12,10 @@ import { recordTransition, auditInTransaction, notifyInTransaction } from '../li
 import { assertPeriodOpen, assertFiscalYearOpen, periodOf } from '../lib/period';
 import {
   readBudgetBalance,
-  applyBudgetDelta,
+  applyBudgetDeltaRunning,
   applySummaryDelta,
+  budgetBalanceRef,
+  type BudgetBalanceData,
   type BudgetKey,
 } from '../lib/budget';
 import { checkObligationAgainstAllotment } from '../lib/rules';
@@ -265,6 +267,7 @@ export const certifyObligation = onCall(
         }
       }
 
+      const requestedOnLine = new Map<string, number>(); // patch 180
       for (const line of isTrust ? [] : obr.lines) {
         const key: BudgetKey = {
           fiscalYear: line.fiscalYear ?? obr.fiscalYear,
@@ -285,9 +288,15 @@ export const certifyObligation = onCall(
         const balance = await readBudgetBalance(tx, key);
         balances.set(line.lineNo, balance);
 
+        // Patch 180: earlier lines of this obligation on the same budget line
+        // count against it too.
+        const path = budgetBalanceRef(key).path;
+        const earlier = requestedOnLine.get(path) ?? 0;
+        requestedOnLine.set(path, earlier + line.amount);
+
         const check = checkObligationAgainstAllotment({
           allotmentReleased: balance.allotmentReleased,
-          alreadyObligated: balance.obligated,
+          alreadyObligated: balance.obligated + earlier,
           requestedObligation: line.amount,
         });
 
@@ -335,7 +344,7 @@ export const certifyObligation = onCall(
        * the one thing the reservation exists for. The status guard above is
        * what prevents a second certification, not the presence of a number.
        */
-      const obrNo = String(obr.obrNo ?? obrNoIn ?? '').trim();
+      const obrNo = String(obr.obrNo || obrNoIn || '').trim();
       if (!obrNo) {
         throw invalid(
           'An Obligation Request number is required. Assign it on the obligation from the Budget Office book before certifying.',
@@ -387,6 +396,7 @@ export const certifyObligation = onCall(
       const now = new Date().toISOString();
       const totalExcess = shortfalls.reduce((s, f) => s + f.excess, 0);
 
+      const runningBalances = new Map<string, BudgetBalanceData>(); // patch 180
       for (const line of isTrust ? [] : obr.lines) {
         const key: BudgetKey = {
           fiscalYear: line.fiscalYear ?? obr.fiscalYear,
@@ -404,8 +414,9 @@ export const certifyObligation = onCall(
           accountCode: line.appropriatedAccountCode ?? '',
         };
 
-        applyBudgetDelta(
+        applyBudgetDeltaRunning(
           tx,
+          runningBalances,
           key,
           balances.get(line.lineNo)!,
           { obligated: line.amount },
@@ -689,6 +700,23 @@ export const cancelObligation = onCall(
         );
       }
 
+      // Patch 180: fund scope, the year open, and the vouchers re-read inside
+      // the transaction - one approved since the query above is not cancelled.
+      assertFundInScope(caller, obr.fundCode);
+      await assertFiscalYearOpen(obr.fiscalYear, tx);
+      const unfinishedSnaps = await Promise.all(
+        unfinished.map((d) => tx.get(db.collection(COL.disbursementVouchers).doc(d.id))),
+      );
+      const nowCommitted = unfinishedSnaps.find((d) =>
+        ['APPROVED', 'PAID'].includes(String(d.data()?.status ?? '')),
+      );
+      if (nowCommitted) {
+        throw new HttpsError(
+          'failed-precondition',
+          `DV ${String(nowCommitted.data()?.dvNo ?? '')} was approved a moment ago against this obligation. Undo that approval first.`,
+        );
+      }
+
       const wasObligated = obr.status === 'OBLIGATED';
       const cancelIsTrust = String(obr.fundCode ?? '').trim().toUpperCase() === 'TF';
       const balances = new Map<number, Awaited<ReturnType<typeof readBudgetBalance>>>();
@@ -740,6 +768,7 @@ export const cancelObligation = onCall(
       }
 
       if (wasObligated && !cancelIsTrust) {
+        const runningBalances = new Map<string, BudgetBalanceData>(); // patch 180
         for (const line of obr.lines) {
           const key: BudgetKey = {
             fiscalYear: line.fiscalYear ?? obr.fiscalYear,
@@ -756,8 +785,9 @@ export const cancelObligation = onCall(
             // would look for a balance that does not exist.
             accountCode: line.appropriatedAccountCode ?? '',
           };
-          applyBudgetDelta(
+          applyBudgetDeltaRunning(
             tx,
+            runningBalances,
             key,
             balances.get(line.lineNo)!,
             { obligated: -line.amount },
@@ -810,7 +840,7 @@ export const cancelObligation = onCall(
        * and leaving it alive only defers the discovery to the day somebody
        * tries to approve it.
        */
-      for (const dv of unfinished) {
+      for (const dv of unfinished.filter((_, k) => unfinishedSnaps[k]?.data()?.status !== 'CANCELLED')) {
         tx.update(db.collection(COL.disbursementVouchers).doc(dv.id), {
           status: 'CANCELLED',
           cancelledReason: `The obligation it draws on was cancelled: ${reason.trim()}`,
@@ -949,6 +979,7 @@ export const uncertifyObligation = onCall(
         >;
       };
 
+      assertFundInScope(caller, obr.fundCode); // patch 180
       if (obr.status !== 'OBLIGATED') {
         throw new HttpsError(
           'failed-precondition',
@@ -988,9 +1019,11 @@ export const uncertifyObligation = onCall(
 
       // ---- WRITE PHASE ------------------------------------------------------
       if (!isTrust) {
+        const runningBalances = new Map<string, BudgetBalanceData>(); // patch 180
         for (const line of obr.lines) {
-          applyBudgetDelta(
+          applyBudgetDeltaRunning(
             tx,
+            runningBalances,
             budgetKeyForLine(obr, line),
             balances.get(line.lineNo)!,
             { obligated: -line.amount },

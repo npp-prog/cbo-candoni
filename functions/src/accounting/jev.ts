@@ -17,7 +17,7 @@ import { hasJevNumber, UNNUMBERED_JEV } from '../lib/jevNumbers';
 import {
   assertPeriodOpen,
   assertFiscalYearOpen,
-  periodOf,
+  periodOf, validReversalDate,
   monthName,
   todayPh,
 } from '../lib/period';
@@ -56,7 +56,16 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
 
     assertFundInScope(caller, jev.fundCode);
 
-    const period = jev.period ?? periodOf(jev.jevDate);
+    /*
+     * Patch 180: the month is the entry's DATE's month. A draft is written by
+     * the browser, and a stored \`period\` that disagrees with the date would
+     * check (and post into) a month other than the one the entry is dated in.
+     */
+    const datePeriod = periodOf(jev.jevDate);
+    const period =
+      Number(String(jev.jevDate).slice(0, 4)) === jev.fiscalYear
+        ? datePeriod
+        : (jev.period ?? datePeriod);
     await assertFiscalYearOpen(jev.fiscalYear, tx);
     await assertPeriodOpen(jev.fiscalYear, period, jev.fundCode, `JEV ${jev.jevNo || jevId}`, tx);
 
@@ -96,6 +105,15 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
      *
      * Drawn before any write, as the ordering requires.
      */
+    // Patch 180: an RCD-sourced entry raised by a treasury report (or a
+    // deposit) has no document in the old \`rcds\` collection; updating one
+    // that does not exist failed the posting. Read it here, before any write.
+    const rcdRef =
+      jev.sourceType === 'RCD' && jev.sourceId
+        ? db.collection(COL.rcds).doc(jev.sourceId)
+        : null;
+    const rcdExists = rcdRef ? (await tx.get(rcdRef)).exists : false;
+
     let jevNo = jev.jevNo;
     if (!hasJevNumber(jevNo)) {
       const cfg = await loadNumberingConfig('JEV');
@@ -109,7 +127,7 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
       jevNo = issued as string;
     }
 
-    const result = postJevInTransaction(tx, caller, jevId, { ...jev, jevNo });
+    const result = postJevInTransaction(tx, caller, jevId, { ...jev, jevNo, period });
     if (ownPapers) {
       tx.update(ref, {
         attachmentsLockedAt: result.postedAt,
@@ -156,13 +174,17 @@ export const postJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CHE
      * General Ledger as JEV ..." without asking the entry.
      */
     if (jev.sourceType === 'DV' && jev.sourceId) {
+      // Patch 180: jevId too - after correctJev the posted entry is a new
+      // document, and a voucher still pointing at the reversed one would be
+      // unapproved or cancelled against the wrong entry.
       tx.update(db.collection(COL.disbursementVouchers).doc(jev.sourceId), {
+        jevId,
         jevNo,
         jevPostedAt: result.postedAt,
       });
     }
-    if (jev.sourceType === 'RCD' && jev.sourceId) {
-      tx.update(db.collection(COL.rcds).doc(jev.sourceId), { status: 'POSTED' });
+    if (rcdRef && rcdExists) {
+      tx.update(rcdRef, { status: 'POSTED' });
     }
     if (jev.sourceType === 'PAYROLL' && jev.sourceId) {
       tx.update(db.collection(COL.payrolls).doc(jev.sourceId), { status: 'PAID' });
@@ -234,7 +256,7 @@ export const reverseJev = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_
     // The reversal is dated in an open period. Defaulting to today rather than
     // to the original date keeps a closed month closed - reopening a period to
     // book a correction should be a deliberate act, not a side effect.
-    const revDate = reversalDate ?? todayPh();
+    const revDate = validReversalDate(reversalDate ?? todayPh(), original.jevDate);
     const revPeriod = periodOf(revDate);
     const revYear = Number(revDate.slice(0, 4));
 
@@ -601,7 +623,7 @@ export const reverseRciChecks = onCall(
       }
       const total = lines.reduce((s, l) => s + (l.debit || 0), 0);
 
-      const revDate = reversalDate ?? todayPh();
+      const revDate = validReversalDate(reversalDate ?? todayPh(), original.jevDate);
       const revPeriod = periodOf(revDate);
       const revYear = Number(revDate.slice(0, 4));
       await assertFiscalYearOpen(revYear, tx);
@@ -1000,6 +1022,15 @@ export const amendPostedJev = onCall(
         );
       }
       assertNoCheckReversed(original as never);
+      // Patch 180: a reversing entry must keep mirroring its original, and the
+      // SEF share must keep matching the General Fund's Due to Other Funds.
+      if (original.sourceType === 'REVERSING') {
+        throw new HttpsError(
+          'failed-precondition',
+          `JEV ${original.jevNo} reverses another entry and must mirror it. Correct the original entry instead.`,
+        );
+      }
+      assertNotSefShare(original);
 
       assertFundInScope(caller, original.fundCode);
 

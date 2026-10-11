@@ -131,6 +131,8 @@ async function assertDvCategory(dv: DvDoc): Promise<void> {
 
 interface DvDoc {
   dvNo?: string;
+  /** Patch 152: a payable carried in the opening balances. */
+  openingPayable?: boolean;
   /** OBLIGATED or TRUST_LIABILITY. Absent on a voucher raised before it existed. */
   dvCategory?: string;
   dvDate: string;
@@ -326,6 +328,7 @@ export const reviewDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     const snap = await tx.get(ref);
     if (!snap.exists) throw notFound('The disbursement voucher');
     const dv = snap.data() as DvDoc;
+    assertFundInScope(caller, dv.fundCode); // patch 180
 
     if (dv.status !== 'SUBMITTED') {
       throw new HttpsError(
@@ -499,6 +502,14 @@ export const approveDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_C
         throw new HttpsError(
           'failed-precondition',
           `OBR ${obligation.obrNo} has been cancelled and cannot be drawn against.`,
+        );
+      }
+      // Patch 180: an obligation the Budget Officer has not certified has not
+      // charged the allotment; drawing on it would bypass budget control.
+      if (['DRAFT', 'SUBMITTED', 'BUDGET_REVIEWED', 'RETURNED'].includes(obligation.status)) {
+        throw new HttpsError(
+          'failed-precondition',
+          `OBR ${obligation.obrNo ?? ''} is ${obligation.status.toLowerCase().replace('_', ' ')} - not yet certified, so it cannot be drawn against.`,
         );
       }
 
@@ -900,6 +911,15 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
     if (dv.status === 'CANCELLED') {
       throw new HttpsError('failed-precondition', 'This voucher is already cancelled.');
     }
+    assertFundInScope(caller, dv.fundCode);
+    // Patch 180: a payable carried in the opening balances is part of the
+    // opening entry; it is not cancelled on its own.
+    if (dv.openingPayable) {
+      throw new HttpsError(
+        'failed-precondition',
+        `DV ${dv.dvNo} is a payable carried in the opening balances. Correct the opening balances instead.`,
+      );
+    }
     /*
      * Patch 121: the check or the ADA is the disbursement. A voucher with one
      * still live cannot be cancelled around it - the instrument would go on
@@ -916,8 +936,10 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
 
     // A voucher whose JEV is posted has already moved the books. Cancelling it
     // silently would leave the ledger asserting a payment the voucher denies.
+    let jevStatus: string | null = null;
     if (dv.jevId) {
       const jevSnap = await tx.get(db.collection(COL.jevs).doc(dv.jevId));
+      jevStatus = jevSnap.exists ? String(jevSnap.data()?.status ?? '') : null;
       if (jevSnap.exists && jevSnap.data()?.status === 'POSTED') {
         throw new HttpsError(
           'failed-precondition',
@@ -951,7 +973,9 @@ export const cancelDv = onCall({ region: REGION, enforceAppCheck: ENFORCE_APP_CH
       cancelledBy: { uid: caller.uid, name: caller.name, position: caller.position ?? null, at: now },
     });
 
-    if (dv.jevId) {
+    // Patch 180: only an entry not yet in the books is cancelled with the
+    // voucher. A REVERSED entry stays REVERSED - its reversal is in the books.
+    if (dv.jevId && jevStatus && ['DRAFT', 'FOR_REVIEW', 'APPROVED'].includes(jevStatus)) {
       tx.update(db.collection(COL.jevs).doc(dv.jevId), {
         status: 'CANCELLED',
         cancelledReason: `Source voucher DV ${dv.dvNo} cancelled: ${reason.trim()}`,
@@ -1043,6 +1067,15 @@ export const unapproveDv = onCall(
           `Only an approved voucher can be unapproved. DV ${dv.dvNo ?? dvId} is ${dv.status.toLowerCase()}.`,
         );
       }
+      assertFundInScope(caller, dv.fundCode);
+      // Patch 180: unapproving a carried-forward payable would reverse the
+      // whole opening entry it points at.
+      if (dv.openingPayable) {
+        throw new HttpsError(
+          'failed-precondition',
+          `DV ${dv.dvNo} is a payable carried in the opening balances; its approval cannot be taken back. Correct the opening balances instead.`,
+        );
+      }
       if (dv.checkId || dv.adaId) {
         throw new HttpsError(
           'failed-precondition',
@@ -1100,6 +1133,11 @@ export const unapproveDv = onCall(
       const revYear = Number(revDate.slice(0, 4));
       let reversingNo: string | null = null;
 
+      // Patch 180: read BEFORE the number is drawn - issueNumbers writes the
+      // counter, and Firestore refuses any read after a write in a
+      // transaction. A voucher with an obligation could never be unapproved.
+      const reversal = await readDvConsumption(tx, dv);
+
       if (posted) {
         await assertFiscalYearOpen(revYear, tx);
         await assertPeriodOpen(
@@ -1124,8 +1162,6 @@ export const unapproveDv = onCall(
         ]);
         reversingNo = issued as string;
       }
-
-      const reversal = await readDvConsumption(tx, dv);
 
       // ---- WRITE PHASE ------------------------------------------------------
       applyDvConsumption(tx, dv, reversal, -1);

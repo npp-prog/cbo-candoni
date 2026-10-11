@@ -115,8 +115,15 @@ export default function PriorCashFlows() {
   const [saving, setSaving] = useState(false);
 
   const savedStamp = stored.data?.savedAt ?? '';
+  // Patch 180: a change of year or fund discards unsaved figures - they were
+  // kept on screen under the new heading and saved into the other fund.
+  const shownFor = useRef(`${year}__${fundCode}`);
   useEffect(() => {
-    if (dirty) return;
+    const key = `${year}__${fundCode}`;
+    const switched = shownFor.current !== key;
+    shownFor.current = key;
+    if (switched) setDirty(false);
+    else if (dirty) return;
     const s = stored.data;
     setBeginning(s ? s.beginningCash : null);
     setAmounts(

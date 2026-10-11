@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PageHeader, Card, Alert } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, DateInput, Select } from '@/components/ui/Field';
@@ -132,7 +132,11 @@ function outstandingPieces(
 
 export default function Aging() {
   const { fiscalYear, fundCode } = useFilters();
-  const [asOf, setAsOf] = useState(todayPh());
+  // Patch 180: an earlier fiscal year is aged as at its own 31 December.
+  const asOfFor = (fy: number) =>
+    todayPh().slice(0, 4) === String(fy) ? todayPh() : `${fy}-12-31`;
+  const [asOf, setAsOf] = useState(() => asOfFor(fiscalYear));
+  useEffect(() => setAsOf(asOfFor(fiscalYear)), [fiscalYear]);
   const [side, setSide] = useState<'PAYABLE' | 'RECEIVABLE'>('PAYABLE');
   /*
    * One control account, or all of them.

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
 import { Field, DateInput, TextInput } from '@/components/ui/Field';
@@ -31,6 +31,12 @@ export default function RcdTransmittal() {
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
   const [transmittalNo, setTransmittalNo] = useState('');
   const [transmittalDate, setTransmittalDate] = useState(`${fiscalYear}-01-01`);
+  // Patch 180: the dates follow the fiscal year chosen at the top.
+  useEffect(() => {
+    setFrom(`${fiscalYear}-01-01`);
+    setTo(`${fiscalYear}-12-31`);
+    setTransmittalDate(`${fiscalYear}-01-01`);
+  }, [fiscalYear]);
 
   const rows = useMemo(
     () =>

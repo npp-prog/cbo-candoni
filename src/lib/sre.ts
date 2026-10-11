@@ -591,7 +591,9 @@ function spread(lines: Array<{ amount: Centavos }>, total: Centavos, amount: Cen
   const base = total || lines.reduce((t, l) => t + l.amount, 0) || 1;
   let given = 0;
   return lines.map((l, i) => {
-    const share = i === lines.length - 1 ? amount - given : Math.round((amount * l.amount) / base);
+    // Patch 180: the engine's own expression, operand for operand - on an
+    // exact half-centavo the two forms rounded differently.
+    const share = i === lines.length - 1 ? amount - given : Math.round((l.amount / base) * amount);
     given += share;
     return share;
   });

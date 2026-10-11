@@ -114,16 +114,22 @@ function DisbursementEditor() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { fiscalYear, fundCode } = useFilters();
-  // The budget lines this entry may be charged to, and which accounts are
-  // expenses and therefore need one.
-  const { expenseCodes } = useFppOptions(fiscalYear, fundCode);
-  const { user, profile, can, hasRole, officeScope } = useAuth();
-
   const { data: existing, loading } = useDocument<DisbursementVoucher>(
     isNew ? null : COL.disbursementVouchers,
     id,
   );
+  /*
+   * Patch 180: an existing voucher keeps ITS year and fund. The header's were
+   * used, so opening a Trust Fund voucher (from search, or a link) while the
+   * header said GF and pressing Save moved it into GF and this year.
+   */
+  const filters = useFilters();
+  const fiscalYear = existing?.fiscalYear ?? filters.fiscalYear;
+  const fundCode = existing?.fundCode ?? filters.fundCode;
+  // The budget lines this entry may be charged to, and which accounts are
+  // expenses and therefore need one.
+  const { expenseCodes } = useFppOptions(fiscalYear, fundCode);
+  const { user, profile, can, hasRole, officeScope } = useAuth();
   /*
    * The entry this voucher raised, read only. It is here so the voucher can
    * say when the Accountant's correction has left the entry carrying a
@@ -218,6 +224,15 @@ function DisbursementEditor() {
   const [unpostedDirty, setUnpostedDirty] = useState(false);
   const [savingEntry, setSavingEntry] = useState(false);
 
+  /*
+   * Patch 180: copied into the form when the document's CONTENT changes - not
+   * when only its attachment count does. Attaching a scan to a draft updated
+   * the count, re-ran this copy and threw away everything typed since the
+   * last save.
+   */
+  const syncKey = existing
+    ? JSON.stringify({ ...existing, attachmentCount: null, updatedAt: null })
+    : '';
   useEffect(() => {
     if (!existing) return;
     setDvNo(existing.dvNo ?? '');
@@ -271,7 +286,8 @@ function DisbursementEditor() {
       })),
     );
     setEntryTouched(true);
-  }, [existing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncKey]);
 
   /*
    * The TIN and the address, from the payee's record in Master Data.

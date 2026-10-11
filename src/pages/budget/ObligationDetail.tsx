@@ -70,7 +70,11 @@ export default function ObligationDetail() {
     ? '/accounting/furs'
     : '/budget/obligations';
   const toast = useToast();
-  const { fiscalYear, fundCode } = useFilters();
+  const { data: existing, loading } = useDocument<Obligation>(isNew ? null : COL.obligations, id);
+  // Patch 180: an existing obligation keeps ITS year and fund (see DV detail).
+  const filters = useFilters();
+  const fiscalYear = existing?.fiscalYear ?? filters.fiscalYear;
+  const fundCode = existing?.fundCode ?? filters.fundCode;
   // OBR in the General and Special Education Funds; FURS in the Trust Fund,
   // where the money is held for somebody else and is not the municipality's
   // own appropriation to obligate.
@@ -83,7 +87,6 @@ export default function ObligationDetail() {
   const trust = isTrustFund(fundCode);
   const { user, profile, can, hasRole, officeScope } = useAuth();
 
-  const { data: existing, loading } = useDocument<Obligation>(isNew ? null : COL.obligations, id);
   const balances = useBudgetBalances(fiscalYear, fundCode);
   const trustPrograms = useTrustPrograms(true);
 
@@ -139,6 +142,15 @@ export default function ObligationDetail() {
     { lineNo: 1, amount: 0 },
   ]);
 
+  /*
+   * Patch 180: copied into the form when the document's CONTENT changes - not
+   * when only its attachment count does. Attaching a scan to a draft updated
+   * the count, re-ran this copy and threw away everything typed since the
+   * last save.
+   */
+  const syncKey = existing
+    ? JSON.stringify({ ...existing, attachmentCount: null, updatedAt: null })
+    : '';
   useEffect(() => {
     if (!existing) return;
     setObrDate(existing.obrDate);
@@ -151,7 +163,8 @@ export default function ObligationDetail() {
     setOfficeName(existing.officeName);
     setParticulars(existing.particulars);
     setLines(existing.lines?.length ? existing.lines : [{ lineNo: 1, amount: 0 }]);
-  }, [existing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncKey]);
 
   const editable = isNew || ['DRAFT', 'RETURNED'].includes(existing?.status ?? '');
   const canEdit = can('budget', 'edit') && editable;

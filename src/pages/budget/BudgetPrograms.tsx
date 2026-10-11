@@ -50,7 +50,14 @@ import { AppropriationTabs } from './appropriationTabs';
  */
 export default function BudgetPrograms() {
   const { fiscalYear, fundCode } = useFilters();
-  const { can } = useAuth();
+  const { can, user, profile } = useAuth();
+  // Patch 180: the signed-in user, not a placeholder "ui", on every stamp.
+  const me = () =>
+    actorStamp({
+      uid: user?.uid ?? '',
+      name: profile?.displayName ?? user?.email ?? '',
+      position: profile?.position,
+    });
   const toast = useToast();
 
   const programs = usePrograms();
@@ -114,7 +121,7 @@ export default function BudgetPrograms() {
 
     setBusy(true);
     try {
-      const actor = actorStamp({ uid: 'ui', name: 'ui' });
+      const actor = me();
       await upsertMaster(
         COL.programs,
         editing === 'new' ? programDocId(fiscalYear, code) : (editing as Program).id,
@@ -148,7 +155,7 @@ export default function BudgetPrograms() {
 
     setBusy(true);
     try {
-      const actor = actorStamp({ uid: 'ui', name: 'ui' });
+      const actor = me();
       for (const p of toCopy) {
         await upsertMaster(
           COL.programs,
@@ -190,7 +197,7 @@ export default function BudgetPrograms() {
           officeName: p.officeName ?? null,
           active: true,
         },
-        actorStamp({ uid: 'ui', name: 'ui' }),
+        me(),
       );
       toast.success(`${p.code} adopted into ${fiscalYear}`);
     } catch (err) {
@@ -407,7 +414,7 @@ export default function BudgetPrograms() {
           const p = removing;
           if (!p) return;
           setBusy(true);
-          void deactivateMaster(COL.programs, p.id, actorStamp({ uid: 'ui', name: 'ui' }))
+          void deactivateMaster(COL.programs, p.id, me())
             .then(() => {
               toast.success(`${p.code} removed from ${fiscalYear}`);
               setRemoving(null);

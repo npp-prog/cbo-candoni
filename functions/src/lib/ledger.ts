@@ -200,6 +200,10 @@ export function postJevInTransaction(
 
   tx.update(db.collection(COL.jevs).doc(jevId), {
     status: 'POSTED',
+    // Patch 180: the totals as the lines give them, not as a draft stored them.
+    totalDebit: jev.lines.reduce((t, l) => t + (l.debit || 0), 0),
+    totalCredit: jev.lines.reduce((t, l) => t + (l.credit || 0), 0),
+    period: jev.period,
     // Written back because an entry raised from a voucher has no number until
     // it is posted: postJev draws one and passes it in here. For every other
     // path this writes the number the entry already had.

@@ -22,7 +22,9 @@ export function parsePeso(input: string | number | null | undefined): Centavos |
   if (input === null || input === undefined) return null;
   if (typeof input === 'number') {
     if (!Number.isFinite(input)) return null;
-    return Math.round(input * 100);
+    // Patch 180: through the string path, so 1.005 rounds as '1.005' does
+    // (half-up, 1.01) and not as the binary float 100.49999 does.
+    return parsePeso(input.toFixed(10).replace(/\.?0+$/, ''));
   }
 
   let s = input.trim();
@@ -34,12 +36,17 @@ export function parsePeso(input: string | number | null | undefined): Centavos |
     negative = true;
     s = s.slice(1, -1).trim();
   }
-  s = s.replace(/[₱P]/gi, '').replace(/,/g, '').trim();
+  // Patch 180: the peso sign or "PHP"/"P" only at the front - "1p2" is not
+  // 1,200; a minus inside parentheses is not a double negative; a lone "." is
+  // not zero.
+  s = s.replace(/^(₱|PHP|P)\s*/i, '').replace(/,/g, '').trim();
   if (s.startsWith('-')) {
-    negative = !negative;
+    if (negative) return null;
+    negative = true;
     s = s.slice(1).trim();
   }
-  if (s === '' || !/^\d*(\.\d{0,})?$/.test(s)) return null;
+  s = s.replace(/^(₱|PHP|P)\s*/i, '').trim();
+  if (s === '' || !/^(\d+(\.\d*)?|\.\d+)$/.test(s)) return null;
 
   const [whole, frac = ''] = s.split('.');
   const wholePart = whole === '' ? 0 : Number(whole);

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { useEffect, Fragment, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
 import { ReportShell } from '@/components/ReportShell';
@@ -93,6 +93,11 @@ export default function AbstractOfCollections({
 
   const [from, setFrom] = useState(`${fiscalYear}-01-01`);
   const [to, setTo] = useState(`${fiscalYear}-12-31`);
+  // Patch 180: the dates follow the fiscal year chosen at the top.
+  useEffect(() => {
+    setFrom(`${fiscalYear}-01-01`);
+    setTo(`${fiscalYear}-12-31`);
+  }, [fiscalYear]);
   const [officer, setOfficer] = useState('');
 
   const officers = useMemo(() => {
@@ -103,9 +108,13 @@ export default function AbstractOfCollections({
 
   const inPeriod = useMemo(
     () =>
-      collections.filter(
-        (c) => c.orDate >= from && c.orDate <= to && (!officer || c.collectingOfficerId === officer),
-      ),
+      collections
+        .filter(
+          (c) => c.orDate >= from && c.orDate <= to && (!officer || c.collectingOfficerId === officer),
+        )
+        // Patch 180: a cancelled receipt stays on the abstract (its serial is
+        // accounted for) but at nil - it collected nothing.
+        .map((c) => (c.status === 'CANCELLED' ? { ...c, totalAmount: 0, lines: [] } : c)),
     [collections, from, to, officer],
   );
 

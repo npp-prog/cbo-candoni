@@ -52,10 +52,13 @@ export default function JevDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { fiscalYear, fundCode } = useFilters();
   const { user, profile, can, hasRole } = useAuth();
 
   const { data: existing, loading } = useDocument<JournalEntryVoucher>(isNew ? null : COL.jevs, id);
+  // Patch 180: an existing entry keeps ITS year and fund (see DV detail).
+  const filters = useFilters();
+  const fiscalYear = existing?.fiscalYear ?? filters.fiscalYear;
+  const fundCode = existing?.fundCode ?? filters.fundCode;
 
   const [tab, setTab] = useState<'details' | 'entry' | 'attachments' | 'history'>('details');
   const attachments = useAttachments(COL.jevs, isNew ? null : (id ?? null));
@@ -76,6 +79,15 @@ export default function JevDetail() {
     { lineNo: 2, accountCode: '', accountName: '', debit: 0, credit: 0 },
   ]);
 
+  /*
+   * Patch 180: copied into the form when the document's CONTENT changes - not
+   * when only its attachment count does. Attaching a scan to a draft updated
+   * the count, re-ran this copy and threw away everything typed since the
+   * last save.
+   */
+  const syncKey = existing
+    ? JSON.stringify({ ...existing, attachmentCount: null, updatedAt: null })
+    : '';
   useEffect(() => {
     if (!existing) return;
     setJevDate(existing.jevDate);
@@ -99,7 +111,8 @@ export default function JevDetail() {
         subsidiaryName: l.subsidiaryName ?? undefined,
       })),
     );
-  }, [existing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncKey]);
 
   const status = existing?.status ?? 'DRAFT';
   const isPosted = status === 'POSTED';

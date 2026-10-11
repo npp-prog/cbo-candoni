@@ -85,6 +85,30 @@ export function periodOf(isoDate: string): number {
   return Number(isoDate.slice(5, 7));
 }
 
+/**
+ * Patch 180: a reversal's date, checked. "2026-6-1" gave period NaN, whose
+ * period document does not exist and so read as OPEN, and the reversal then
+ * sat outside every trial balance. A date before the entry it reverses is
+ * refused too.
+ */
+export function validReversalDate(date: string, notBefore?: string | null): string {
+  const d = String(date ?? '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  const month = m ? Number(m[2]) : 0;
+  const day = m ? Number(m[3]) : 0;
+  const real = m && month >= 1 && month <= 12 && day >= 1 && day <= new Date(Date.UTC(Number(m[1]), month, 0)).getUTCDate();
+  if (!real) {
+    throw new HttpsError('invalid-argument', `"${d}" is not a date. Use the form YYYY-MM-DD.`);
+  }
+  if (notBefore && d < notBefore) {
+    throw new HttpsError(
+      'invalid-argument',
+      `A reversal cannot be dated ${d}, before the entry it reverses (${notBefore}).`,
+    );
+  }
+  return d;
+}
+
 export function yearOf(isoDate: string): number {
   return Number(isoDate.slice(0, 4));
 }

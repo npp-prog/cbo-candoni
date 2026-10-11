@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ReportShell } from '@/components/ReportShell';
 import { Alert, Spinner } from '@/components/ui/Layout';
 import { GroupedSectionTabs } from '@/components/ui/SectionTabs';
@@ -6,7 +6,7 @@ import { Field, DateInput, Select } from '@/components/ui/Field';
 import { useFilters } from '@/context/FilterContext';
 import { useBankAccounts, useChecks, useDisbursementVouchers } from '@/data/queries';
 import { formatAmount, formatPeso } from '@/lib/money';
-import { formatShortDate } from '@/lib/dates';
+import { phDateOf, formatShortDate } from '@/lib/dates';
 import type { ExportColumn } from '@/lib/export';
 import { buildUnreleasedChecks, totalUnreleased, type SucRow } from './unreleasedChecksReport';
 import { PAYMENT_TAB_GROUPS } from './sections';
@@ -30,6 +30,8 @@ export default function UnreleasedChecks() {
   // 1 asks for. Any other date is allowed - a treasurer checking during the
   // year should not have to wait until December to see the list.
   const [asOf, setAsOf] = useState(`${fiscalYear}-12-31`);
+  // Patch 180: follows the fiscal year chosen at the top.
+  useEffect(() => setAsOf(`${fiscalYear}-12-31`), [fiscalYear]);
   const [bankAccountId, setBankAccountId] = useState<string>('');
 
   const checks = useChecks();
@@ -55,7 +57,11 @@ export default function UnreleasedChecks() {
           .filter((c) => c.fundCode === fundCode)
           // The cancellation stamp carries a full timestamp; the schedule
           // compares plain dates, so only the day is taken.
-          .map((c) => ({ ...c, cancelledAt: c.cancelledBy?.at?.slice(0, 10) })),
+          // Patch 180: in Philippine time - the UTC day is a day early before 8 AM.
+          .map((c) => ({
+            ...c,
+            cancelledAt: c.cancelledBy?.at ? phDateOf(c.cancelledBy.at) : undefined,
+          })),
         asOf,
         obrByDv,
         bankAccountId: bankAccountId || null,

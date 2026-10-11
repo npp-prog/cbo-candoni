@@ -194,6 +194,8 @@ export const recordTrustProgram = onCall(
         received: input.received,
         utilised,
         disbursed,
+        // Patch 180: an amendment kept the receipts posted by RCDs at nil.
+        receivedPosted: (existing as { receivedPosted?: number } | null)?.receivedPosted ?? 0,
       });
 
       tx.set(
